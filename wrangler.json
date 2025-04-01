@@ -19,5 +19,10 @@
   "observability": {
     "enabled": true
   },
-  "compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": ["nodejs_compat"],
+  "tail_consumers": [
+    {
+      "service": "al-ummah-now-auth-tail"
+    }
+  ]
 }
