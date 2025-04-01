@@ -7,6 +7,7 @@ type EnvType = {
 
 export default async function SendEmail(from: string, to: string, subject: string, html: string) {
   const envV = env as EnvType;
+  console.log("Sending email with Resend API key:", envV.RESEND_API_KEY);
   const resend = new Resend(envV.RESEND_API_KEY);
   const { data, error } = await resend.emails.send({
     from: from,
