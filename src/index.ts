@@ -51,7 +51,7 @@ export default {
               // This is where you would email the verification code to the
               // user, e.g. using Resend:
               // https://resend.com/docs/send-with-cloudflare-workers
-              await SendEmail("login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
+              await SendEmail(env.RESEND_API_KEY, "login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
             },
             copy: {
               input_code: "Code (check your inbox)",

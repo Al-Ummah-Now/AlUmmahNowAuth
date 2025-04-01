@@ -1,14 +1,7 @@
-import { env } from "cloudflare:workers";
 import { Resend } from "resend";
 
-type EnvType = {
-  RESEND_API_KEY: string;
-};
-
-export default async function SendEmail(from: string, to: string, subject: string, html: string) {
-  const envV = env as EnvType;
-  console.log("Sending email with Resend API key:", envV.RESEND_API_KEY);
-  const resend = new Resend(envV.RESEND_API_KEY);
+export default async function SendEmail(apiKey: string ,from: string, to: string, subject: string, html: string) {
+  const resend = new Resend(apiKey);
   const { data, error } = await resend.emails.send({
     from: from,
     to: to,
