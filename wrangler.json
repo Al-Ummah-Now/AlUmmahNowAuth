@@ -19,6 +19,9 @@
   "observability": {
     "enabled": true
   },
+  "logs": {
+    "enabled": true
+  },
   "compatibility_flags": ["nodejs_compat"],
   "tail_consumers": [
     {
