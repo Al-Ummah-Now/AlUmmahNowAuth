@@ -4,6 +4,7 @@ import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { createSubjects } from "@openauthjs/openauth/subject";
 import { object, string } from "valibot";
+import SendEmail from "./email";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -50,10 +51,10 @@ export default {
               // This is where you would email the verification code to the
               // user, e.g. using Resend:
               // https://resend.com/docs/send-with-cloudflare-workers
-              console.log(`Sending code ${code} to ${email}`);
+              await SendEmail("login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
             },
             copy: {
-              input_code: "Code (check Worker logs)",
+              input_code: "Code (check your inbox)",
             },
           }),
         ),

@@ -24,5 +24,8 @@
     {
       "service": "al-ummah-now-auth-tail"
     }
-  ]
+  ],
+  "env": {
+    "resend_api_key": ""
+  }
 }

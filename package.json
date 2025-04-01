@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "0.3.2",
+    "resend": "^4.2.0",
     "valibot": "^1.0.0"
   },
   "devDependencies": {
