@@ -19,16 +19,13 @@
   "observability": {
     "enabled": true
   },
-  "logs": {
-    "enabled": true
-  },
   "compatibility_flags": ["nodejs_compat"],
   "tail_consumers": [
     {
       "service": "al-ummah-now-auth-tail"
     }
   ],
-  "env": {
-    "resend_api_key": ""
+  "vars": {
+    "RESEND_API_KEY": ""
   }
 }
