@@ -17,19 +17,19 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "0.3.2",
+    "@types/node": "^22.14.1",
     "resend": "^4.2.0",
     "valibot": "^1.0.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250419.0",
     "typescript": "5.7.2",
     "wrangler": "^4.12.0"
   },
   "scripts": {
-    "check": "tsc && wrangler --experimental-json-config deploy --dry-run",
-    "deploy": "wrangler --experimental-json-config deploy",
-    "dev": "wrangler --experimental-json-config dev",
-    "predeploy": "wrangler --experimental-json-config d1 migrations apply AUTH_DB --remote",
-    "types": "wrangler --experimental-json-config types"
+    "check": "tsc && wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "predeploy": "wrangler d1 migrations apply AUTH_DB --remote",
+    "types": "wrangler types"
   }
 }

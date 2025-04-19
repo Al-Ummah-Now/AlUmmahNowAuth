@@ -1,5 +1,5 @@
 {
-  "compatibility_date": "2024-11-01",
+  "compatibility_date": "2025-04-19",
   "main": "src/index.ts",
   "name": "al-ummah-now-auth",
   "upload_source_maps": true,
@@ -19,10 +19,17 @@
   "observability": {
     "enabled": true
   },
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat","nodejs_compat_populate_process_env"],
   "tail_consumers": [
     {
       "service": "al-ummah-now-auth-tail"
+    }
+  ],
+  "secrets_store_secrets": [
+    {
+      "binding": "RESEND_API_KEY",
+      "store_id": "f8eddc9944d041919ed8dc7d08d32308",
+      "secret_name": "RESEND_API_KEY"
     }
   ]
 }
