@@ -32,6 +32,7 @@ export default {
             // eslint-disable-next-line @typescript-eslint/require-await
             sendCode: async (email, code) => {
               // https://resend.com/docs/send-with-cloudflare-workers
+              console.log("Sending email to", email, "with code", code, "and key", env.RESEND_API_KEY);
               await SendEmail(env.RESEND_API_KEY, "login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
             },
             copy: {
