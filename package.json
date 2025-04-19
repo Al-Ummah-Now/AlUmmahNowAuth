@@ -21,9 +21,9 @@
     "valibot": "^1.0.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250327.0",
+    "@cloudflare/workers-types": "^4.20250419.0",
     "typescript": "5.7.2",
-    "wrangler": "^4.8.0"
+    "wrangler": "^4.12.0"
   },
   "scripts": {
     "check": "tsc && wrangler --experimental-json-config deploy --dry-run",
