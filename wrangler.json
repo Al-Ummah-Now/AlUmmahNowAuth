@@ -28,7 +28,7 @@
   "secrets_store_secrets": [
     {
       "binding": "RESEND_API_KEY",
-      "store_id": "RESEND_API_KEY",
+      "store_id": "f8eddc9944d041919ed8dc7d08d32308",
       "secret_name": "RESEND_API_KEY"
     }
   ]
