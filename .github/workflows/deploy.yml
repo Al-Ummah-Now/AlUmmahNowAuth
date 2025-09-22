@@ -31,9 +31,6 @@ jobs:
     name: Deploy Preview
     if: github.event_name == 'pull_request'
     needs: test
-    environment:
-      name: preview
-      url: ${{ steps.deploy.outputs.preview-url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -53,17 +50,15 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --name al-ummah-now-auth-pr-${{ github.event.number }}
 
       - name: Comment Preview URL
         uses: actions/github-script@v7
         if: github.event_name == 'pull_request'
         with:
           script: |
-            const previewUrl = '${{ steps.deploy.outputs.preview-url }}';
+            // Preview URL for the specific PR deployment
+            const previewUrl = `https://al-ummah-now-auth-pr-${{ github.event.number }}.alummahnow.workers.dev`;
             
             const body = `🚀 **Preview deployment ready!**
             
@@ -75,7 +70,9 @@ jobs:
             - Access the admin panel to test user management
             - Test API endpoints with the preview URL
             
-            This preview will be automatically updated with new commits to this PR.`;
+            This preview will be automatically updated with new commits to this PR.
+            
+            **Note**: This is a dedicated preview deployment for PR #${{ github.event.number }}`;
             
             // Find existing comment and update it, or create new one
             const { data: comments } = await github.rest.issues.listComments({
@@ -110,9 +107,6 @@ jobs:
     name: Deploy Production
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: test
-    environment:
-      name: production
-      url: https://al-ummah-now-auth.alummahnow.workers.dev
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
