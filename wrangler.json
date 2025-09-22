@@ -32,39 +32,5 @@
       "store_id": "f8eddc9944d041919ed8dc7d08d32308",
       "secret_name": "RESEND_API_KEY"
     }
-  ],
-  "env": {
-    "preview": {
-      "name": "al-ummah-now-auth-preview",
-      "kv_namespaces": [
-        {
-          "binding": "AUTH_STORAGE",
-          "preview_id": "c3f796d40db8420c920aef1ce10a7f13"
-        }
-      ],
-      "d1_databases": [
-        {
-          "binding": "AUTH_DB",
-          "database_name": "al-ummah-now-d1-preview",
-          "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56"
-        }
-      ]
-    },
-    "production": {
-      "name": "al-ummah-now-auth",
-      "kv_namespaces": [
-        {
-          "binding": "AUTH_STORAGE",
-          "id": "c3f796d40db8420c920aef1ce10a7f13"
-        }
-      ],
-      "d1_databases": [
-        {
-          "binding": "AUTH_DB",
-          "database_name": "al-ummah-now-d1",
-          "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56"
-        }
-      ]
-    }
-  }
+  ]
 }

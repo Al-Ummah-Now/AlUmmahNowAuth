@@ -27,13 +27,10 @@
   },
   "scripts": {
     "check": "npx wrangler deploy --dry-run",
-    "deploy": "npx wrangler deploy --env production",
-    "deploy:preview": "npx wrangler deploy --env preview",
+    "deploy": "npx wrangler deploy",
     "dev": "npx wrangler dev",
-    "dev:preview": "npx wrangler dev --env preview",
-    "predeploy": "npx wrangler d1 migrations apply AUTH_DB --remote --env production",
+    "predeploy": "npx wrangler d1 migrations apply AUTH_DB --remote",
     "types": "npx wrangler types",
-    "migrate:preview": "npx wrangler d1 migrations apply AUTH_DB --remote --env preview",
     "test": "npm run check",
     "type-check": "npx tsc --noEmit"
   }

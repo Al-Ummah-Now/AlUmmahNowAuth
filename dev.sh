@@ -57,19 +57,7 @@ case $COMMAND in
         npm run dev
         ;;
         
-    "dev:preview")
-        echo -e "${BLUE}🔧 Starting preview development server...${NC}"
-        npm run dev:preview
-        ;;
-        
-    "deploy:preview")
-        echo -e "${BLUE}🚀 Deploying to preview environment...${NC}"
-        npm run migrate:preview
-        npm run deploy:preview
-        print_status "Preview deployment completed"
-        ;;
-        
-    "deploy:prod")
+    "deploy")
         echo -e "${BLUE}🚀 Deploying to production...${NC}"
         print_warning "This will deploy to production. Are you sure? (y/N)"
         read -r confirm
@@ -82,20 +70,14 @@ case $COMMAND in
         ;;
         
     "migrate")
-        ENV=${2:-"preview"}
-        echo -e "${BLUE}🗃️  Running migrations for $ENV environment...${NC}"
-        if [ "$ENV" = "production" ]; then
-            wrangler d1 migrations apply AUTH_DB --remote --env production
-        else
-            wrangler d1 migrations apply AUTH_DB --remote --env preview
-        fi
-        print_status "Migrations completed for $ENV"
+        echo -e "${BLUE}🗃️  Running migrations...${NC}"
+        wrangler d1 migrations apply AUTH_DB --remote
+        print_status "Migrations completed"
         ;;
         
     "logs")
-        ENV=${2:-"production"}
-        echo -e "${BLUE}📋 Tailing logs for $ENV environment...${NC}"
-        wrangler tail --env $ENV
+        echo -e "${BLUE}📋 Tailing logs...${NC}"
+        wrangler tail
         ;;
         
     "status")
@@ -105,11 +87,7 @@ case $COMMAND in
         echo "  URL: https://al-ummah-now-auth.alummahnow.workers.dev"
         echo "  Admin: https://al-ummah-now-auth.alummahnow.workers.dev/admin"
         echo
-        echo "Preview:"
-        echo "  URL: https://al-ummah-now-auth-preview.alummahnow.workers.dev"
-        echo "  Admin: https://al-ummah-now-auth-preview.alummahnow.workers.dev/admin"
-        echo
-        wrangler deployments list --env production 2>/dev/null | head -5 || print_warning "Could not fetch production deployments"
+        wrangler deployments list 2>/dev/null | head -5 || print_warning "Could not fetch deployments"
         ;;
         
     "clean")
@@ -125,11 +103,9 @@ case $COMMAND in
         echo "  install         - Install dependencies"
         echo "  test           - Run tests and validation"
         echo "  dev            - Start local development server"
-        echo "  dev:preview    - Start development server with preview config"
-        echo "  deploy:preview - Deploy to preview environment"
-        echo "  deploy:prod    - Deploy to production (with confirmation)"
-        echo "  migrate [env]  - Run database migrations (env: preview|production)"
-        echo "  logs [env]     - Tail logs from environment (env: preview|production)"
+        echo "  deploy         - Deploy to production (with confirmation)"
+        echo "  migrate        - Run database migrations"
+        echo "  logs           - Tail logs from production"
         echo "  status         - Show deployment status and URLs"
         echo "  clean          - Clean node_modules and package-lock.json"
         echo "  help           - Show this help message"
@@ -138,8 +114,8 @@ case $COMMAND in
         echo "  ./dev.sh install"
         echo "  ./dev.sh test"
         echo "  ./dev.sh dev"
-        echo "  ./dev.sh deploy:preview"
-        echo "  ./dev.sh migrate preview"
-        echo "  ./dev.sh logs production"
+        echo "  ./dev.sh deploy"
+        echo "  ./dev.sh migrate"
+        echo "  ./dev.sh logs"
         ;;
 esac

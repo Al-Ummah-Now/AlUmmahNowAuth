@@ -19,10 +19,10 @@ The project now includes automated CI/CD workflows that:
 - **Database**: Uses production D1 database with all migrations applied
 
 ### Preview
-- **URL**: `https://al-ummah-now-auth-preview.alummahnow.workers.dev`
-- **Admin Panel**: `https://al-ummah-now-auth-preview.alummahnow.workers.dev/admin`
-- **Triggers**: Automatically deployed for every pull request
-- **Database**: Uses preview D1 database (isolated from production)
+- **URL**: Auto-generated preview URL for each pull request
+- **Admin Panel**: Preview URL + `/admin`
+- **Triggers**: Automatically deployed for every pull request using Cloudflare Workers preview system
+- **Database**: Uses the same database as production but with isolated preview functionality
 
 ## GitHub Actions Workflow
 
@@ -63,19 +63,6 @@ To enable the CI/CD workflow, add these secrets to your GitHub repository:
 
 ## Local Development Commands
 
-### Preview Environment
-```bash
-# Deploy to preview
-npm run deploy:preview
-
-# Run migrations on preview database
-npm run migrate:preview
-
-# Start local dev server with preview config
-npm run dev:preview
-```
-
-### Production Environment
 ```bash
 # Deploy to production
 npm run deploy
@@ -83,22 +70,18 @@ npm run deploy
 # Run migrations on production database (automatic before deploy)
 npm run predeploy
 
-# Local development (uses production config)
+# Local development
 npm run dev
 ```
 
 ## Environment Configuration
 
-The `wrangler.json` file now includes environment-specific configurations:
-
-- **Preview**: Uses separate worker name and database for isolation
-- **Production**: Uses production resources and configurations
-- **Shared**: Common settings like compatibility flags and observability
+The `wrangler.json` file includes preview configurations that work with Cloudflare's standard preview system. Preview deployments automatically use preview resources configured in your Cloudflare account.
 
 ## Database Migrations
 
 Database migrations are automatically applied:
-- **Preview**: Manually run when needed (`npm run migrate:preview`)
+- **Preview**: Uses the same database as production with preview isolation
 - **Production**: Automatically run before deployment via `predeploy` script
 
 ## Testing Workflow
