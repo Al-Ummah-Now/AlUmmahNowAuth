@@ -7,14 +7,15 @@
     {
       "binding": "AUTH_STORAGE",
       "id": "c3f796d40db8420c920aef1ce10a7f13",
-      "preview_id": "c3f796d40db8420c920aef1ce10a7f13"
+      "preview_id": "c9f1b1f1492e4a61b5e20d1872aa14fb"
     }
   ],
   "d1_databases": [
     {
       "binding": "AUTH_DB",
       "database_name": "al-ummah-now-d1",
-      "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56"
+      "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56",
+      "preview_database_id": "e19ee76a-db77-46e0-be59-24d58a4bd7df"
     }
   ],
   "observability": {
