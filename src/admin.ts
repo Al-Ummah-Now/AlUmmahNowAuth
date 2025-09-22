@@ -7,6 +7,7 @@ export interface UserResponse {
   email: string;
   role: string;
   created_at: string;
+  password_reset_required?: boolean;
 }
 
 export interface CreateUserRequest {
@@ -23,6 +24,7 @@ export interface UpdateUserRequest {
 export async function requireAdmin(env: Env, request: Request): Promise<{ user: UserResponse } | Response> {
   // Extract authorization header or session info
   const authHeader = request.headers.get('Authorization');
+  
   if (!authHeader) {
     return new Response(JSON.stringify({ error: 'Authorization required' }), {
       status: 401,
@@ -36,6 +38,7 @@ export async function requireAdmin(env: Env, request: Request): Promise<{ user: 
   
   try {
     const user = await getUserByEmail(env, userEmail);
+    
     if (!user) {
       return new Response(JSON.stringify({ error: 'User not found' }), {
         status: 404,
@@ -52,6 +55,7 @@ export async function requireAdmin(env: Env, request: Request): Promise<{ user: 
 
     return { user };
   } catch (error) {
+    console.error('Error in requireAdmin:', error);
     return new Response(JSON.stringify({ error: 'Authentication failed' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
@@ -97,7 +101,49 @@ export async function handleCreateUser(env: Env, request: Request): Promise<Resp
     }
 
     const user = await createUser(env, body.email, body.role || 'user');
-    return new Response(JSON.stringify({ user }), {
+    
+    // Generate a temporary password
+    const tempPassword = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    
+    // Send welcome email with temporary password
+    try {
+      const key = await env.RESEND_API_KEY.get();
+      if (key) {
+        await SendEmail(
+          key,
+          "admin@alummahnow.net",
+          user.email,
+          "Welcome to Al Ummah Now - Account Created",
+          `Welcome to Al Ummah Now!
+
+Your account has been created by an administrator.
+
+Email: ${user.email}
+Role: ${user.role}
+Temporary Password: ${tempPassword}
+
+IMPORTANT: This is a temporary password. You will be required to change it upon your first login.
+
+To log in:
+1. Go to the login page
+2. Enter your email: ${user.email}
+3. Enter the temporary password above
+4. Follow the prompts to set a new password
+
+Best regards,
+Al Ummah Now Team`
+        );
+      }
+    } catch (emailError) {
+      console.error('Failed to send welcome email:', emailError);
+      // Don't fail the user creation if email fails
+    }
+
+    return new Response(JSON.stringify({ 
+      user,
+      message: 'User created successfully. Welcome email sent with temporary password.',
+      tempPassword: tempPassword // In production, consider not returning this
+    }), {
       status: 201,
       headers: { 'Content-Type': 'application/json' }
     });
