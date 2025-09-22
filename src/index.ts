@@ -50,38 +50,41 @@ export default {
             min-height: 100vh;
         }
         .header {
-            background: linear-gradient(135deg, #1a365d 0%, #0891b2 100%);
+            background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
             color: white;
             padding: 30px;
             border-radius: 12px;
             margin-bottom: 25px;
-            box-shadow: 0 8px 32px rgba(8, 145, 178, 0.3);
-            border: 1px solid rgba(56, 189, 248, 0.2);
+            box-shadow: 0 4px 20px rgba(9, 48, 65, 0.25);
+            border: 1px solid rgba(15, 77, 102, 0.2);
         }
         .header h1 {
             margin: 0 0 10px 0;
             font-size: 2.2em;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            font-weight: 600;
+            color: white;
         }
         .header p {
             margin: 0;
             opacity: 0.9;
             font-size: 1.1em;
+            color: #e2e8f0;
         }
         .card {
             background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
             border-radius: 12px;
             padding: 25px;
             margin-bottom: 25px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-            border: 1px solid rgba(56, 189, 248, 0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            border: 1px solid rgba(148, 163, 184, 0.2);
             backdrop-filter: blur(10px);
         }
         .card h2 {
-            color: #38bdf8;
+            color: #0ea5e9;
             margin-top: 0;
             font-size: 1.5em;
-            border-bottom: 2px solid #f59e0b;
+            font-weight: 600;
+            border-bottom: 2px solid #0ea5e9;
             padding-bottom: 10px;
             margin-bottom: 20px;
         }
@@ -91,62 +94,71 @@ export default {
         label {
             display: block;
             margin-bottom: 8px;
-            font-weight: 600;
-            color: #e2e8f0;
+            font-weight: 500;
+            color: #f1f5f9;
             font-size: 0.95em;
         }
         input, select, button {
             padding: 12px 16px;
-            border: 2px solid #475569;
+            border: 1px solid #64748b;
             border-radius: 8px;
             font-size: 14px;
-            transition: all 0.3s ease;
-            background: rgba(15, 23, 42, 0.8);
+            transition: all 0.2s ease;
+            background: rgba(15, 23, 42, 0.9);
             color: #f8fafc;
         }
         input, select {
             width: 240px;
-            background: rgba(15, 23, 42, 0.9);
+            background: rgba(15, 23, 42, 0.95);
         }
         input:focus, select:focus {
             outline: none;
-            border-color: #38bdf8;
-            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
-            background: rgba(15, 23, 42, 1);
+            border-color: #0f4d66;
+            box-shadow: 0 0 0 3px rgba(15, 77, 102, 0.2);
+            background: rgba(26, 32, 44, 1);
         }
         button {
-            background: linear-gradient(135deg, #0891b2 0%, #38bdf8 100%);
+            background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
             color: white;
             border: none;
             cursor: pointer;
             margin-right: 12px;
             font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
             font-size: 13px;
             min-width: 120px;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            box-shadow: 0 2px 8px rgba(9, 48, 65, 0.2);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         button:hover {
-            background: linear-gradient(135deg, #0e7490 0%, #0284c7 100%);
+            background: linear-gradient(135deg, #072935 0%, #093041 100%);
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(8, 145, 178, 0.4);
+            box-shadow: 0 4px 16px rgba(9, 48, 65, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(9, 48, 65, 0.3);
         }
         .danger {
             background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            color: white;
+            border: 1px solid rgba(239, 68, 68, 0.3);
         }
         .danger:hover {
             background: linear-gradient(135deg, #b91c1c 0%, #dc2626 100%);
-            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+            box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4);
+            border-color: rgba(239, 68, 68, 0.5);
         }
         .users-table {
             width: 100%;
             border-collapse: separate;
             border-spacing: 0;
-            background: rgba(15, 23, 42, 0.8);
+            background: rgba(15, 23, 42, 0.9);
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            border: 1px solid rgba(56, 189, 248, 0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            border: 1px solid rgba(148, 163, 184, 0.2);
         }
         .users-table thead {
             position: sticky;
@@ -154,39 +166,34 @@ export default {
             z-index: 10;
         }
         .users-table th {
-            background: #0891b2;
+            background: #093041;
             padding: 20px 16px;
             text-align: left;
-            font-weight: 700;
+            font-weight: 600;
             color: white;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
             font-size: 0.8em;
             border: none;
             position: relative;
-            box-shadow: 0 4px 20px rgba(8, 145, 178, 0.3);
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-            transition: all 0.3s ease;
-            cursor: pointer;
+            transition: all 0.2s ease;
         }
         .users-table th:hover {
-            background: #38bdf8;
-            box-shadow: 0 6px 25px rgba(8, 145, 178, 0.5);
-            transform: translateY(-1px);
+            background: #0f4d66;
         }
         .users-table th:first-child {
             border-top-left-radius: 12px;
             position: relative;
         }
         .users-table th:first-child::before {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
         }
         .users-table th:last-child {
             border-top-right-radius: 12px;
             position: relative;
         }
         .users-table th:last-child::before {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
         }
         .users-table th::after {
             content: '';
@@ -194,8 +201,8 @@ export default {
             bottom: 0;
             left: 0;
             right: 0;
-            height: 3px;
-            background: #f59e0b;
+            height: 2px;
+            background: #14556b;
             z-index: 3;
         }
         .users-table th::before {
@@ -205,28 +212,28 @@ export default {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.03);
             opacity: 0.7;
             z-index: 1;
         }
         .users-table tbody {
-            background: rgba(30, 41, 59, 0.6);
+            background: rgba(30, 41, 59, 0.8);
         }
         .users-table td {
-            padding: 20px 16px;
+            padding: 18px 16px;
             border: none;
-            border-bottom: 1px solid rgba(56, 189, 248, 0.08);
-            color: #e2e8f0;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+            color: #f1f5f9;
             vertical-align: middle;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
         }
         .users-table tr {
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
         }
         .users-table tbody tr:hover {
-            background: rgba(56, 189, 248, 0.1);
-            transform: scale(1.01);
-            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.15);
+            background: rgba(9, 48, 65, 0.15);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 10px rgba(9, 48, 65, 0.2);
         }
         .users-table tbody tr:last-child td:first-child {
             border-bottom-left-radius: 12px;
@@ -241,61 +248,71 @@ export default {
         /* User ID styling */
         .user-id {
             font-family: 'Courier New', monospace;
-            background: rgba(56, 189, 248, 0.1);
+            background: rgba(9, 48, 65, 0.2);
             padding: 6px 10px;
             border-radius: 6px;
             font-size: 0.85em;
-            color: #38bdf8;
-            border: 1px solid rgba(56, 189, 248, 0.2);
+            color: #7dd3fc;
+            border: 1px solid rgba(9, 48, 65, 0.3);
             display: inline-block;
             min-width: 80px;
             text-align: center;
+            font-weight: 600;
         }
         
         /* Email styling */
         .user-email {
-            font-weight: 600;
+            font-weight: 500;
             color: #f8fafc;
             font-size: 0.95em;
         }
         .user-email::before {
             content: '✉️';
             margin-right: 8px;
-            opacity: 0.7;
+            opacity: 0.6;
         }
         
         /* Role badge styling */
         .role-badge {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-weight: 600;
             font-size: 0.8em;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border: 2px solid;
-            min-width: 80px;
+            letter-spacing: 0.3px;
+            border: 1px solid;
+            min-width: 85px;
             text-align: center;
-            transition: all 0.3s ease;
+            justify-content: center;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
         }
         .role-admin {
             background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
-            border-color: #dc2626;
+            border-color: rgba(220, 38, 38, 0.3);
             color: white;
-            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+        }
+        .role-admin:hover {
+            box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3);
         }
         .role-user {
-            background: linear-gradient(135deg, #0891b2 0%, #38bdf8 100%);
-            border-color: #0891b2;
+            background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
+            border-color: rgba(9, 48, 65, 0.3);
             color: white;
-            box-shadow: 0 4px 12px rgba(8, 145, 178, 0.3);
+        }
+        .role-user:hover {
+            box-shadow: 0 2px 6px rgba(9, 48, 65, 0.3);
         }
         
         /* Date styling */
         .user-date {
-            color: #94a3b8;
+            color: #cbd5e1;
             font-size: 0.9em;
             font-style: italic;
+            font-weight: 500;
         }
         .user-date::before {
             content: '📅';
@@ -304,90 +321,96 @@ export default {
         
         /* Status badge enhanced styling */
         .status-badge {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 25px;
-            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 18px;
+            font-weight: 600;
             font-size: 0.8em;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
-            border: 2px solid;
-            min-width: 140px;
+            letter-spacing: 0.3px;
+            border: 1px solid;
+            min-width: 120px;
             text-align: center;
-            transition: all 0.3s ease;
+            justify-content: center;
+            transition: all 0.2s ease;
             position: relative;
-            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
         }
-        .status-badge::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            transition: left 0.5s;
-        }
-        .status-badge:hover::before {
-            left: 100%;
+        .status-badge:hover {
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
         }
         .status-reset {
             background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
-            border-color: #dc2626;
+            border-color: rgba(220, 38, 38, 0.3);
             color: white;
-            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
-            animation: pulse-red 2s infinite;
+            animation: pulse-red 3s infinite;
+        }
+        .status-reset::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 6px;
+            height: 6px;
+            background: #fbbf24;
+            border-radius: 50%;
+            animation: blink 2s infinite;
         }
         .status-active {
-            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-            border-color: #22c55e;
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            border-color: rgba(5, 150, 105, 0.3);
             color: white;
-            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
         }
         
         /* Action buttons container */
         .action-buttons {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
             align-items: center;
+            justify-content: flex-start;
         }
         .action-buttons button {
             min-width: 90px;
-            padding: 10px 14px;
+            padding: 8px 14px;
             font-size: 0.8em;
-            border-radius: 8px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            transition: all 0.3s ease;
-            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            text-transform: none;
+            letter-spacing: 0.1px;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             cursor: pointer;
             position: relative;
-            overflow: hidden;
-        }
-        .action-buttons button::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            transition: left 0.3s;
-        }
-        .action-buttons button:hover::before {
-            left: 100%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
         }
         .action-buttons button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            transform: none;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+        .action-buttons button:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
         }
         
         /* Animations */
         @keyframes pulse-red {
-            0%, 100% { box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4); }
-            50% { box-shadow: 0 4px 25px rgba(220, 38, 38, 0.7); }
+            0%, 100% { 
+                box-shadow: 0 1px 3px rgba(220, 38, 38, 0.25);
+                border-color: rgba(220, 38, 38, 0.3);
+            }
+            50% { 
+                box-shadow: 0 2px 6px rgba(220, 38, 38, 0.4);
+                border-color: rgba(220, 38, 38, 0.5);
+            }
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.4; }
         }
         
         @keyframes spin {
@@ -399,7 +422,8 @@ export default {
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            color: #64748b;
+            color: #94a3b8;
+            font-weight: 500;
         }
         .empty-state::before {
             content: '👥';
@@ -449,8 +473,9 @@ export default {
         .loading-row {
             text-align: center;
             padding: 40px 20px;
-            color: #64748b;
+            color: #94a3b8;
             font-style: italic;
+            font-weight: 500;
         }
         .loading-row::before {
             content: '⏳';
@@ -464,46 +489,55 @@ export default {
         }
         .error {
             color: #fecaca;
-            background: linear-gradient(135deg, rgba(220, 38, 38, 0.2) 0%, rgba(239, 68, 68, 0.1) 100%);
-            border: 1px solid #dc2626;
+            background: linear-gradient(135deg, rgba(229, 62, 62, 0.25) 0%, rgba(252, 129, 129, 0.15) 100%);
+            border: 1px solid #ef4444;
             padding: 12px 16px;
             border-radius: 8px;
             margin-bottom: 20px;
             backdrop-filter: blur(10px);
+            font-weight: 500;
         }
         .success {
-            color: #bbf7d0;
-            background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(74, 222, 128, 0.1) 100%);
-            border: 1px solid #22c55e;
+            color: #dcfce7;
+            background: linear-gradient(135deg, rgba(9, 48, 65, 0.25) 0%, rgba(15, 77, 102, 0.15) 100%);
+            border: 1px solid #0ea5e9;
             padding: 12px 16px;
             border-radius: 8px;
             margin-bottom: 20px;
             backdrop-filter: blur(10px);
+            font-weight: 500;
         }
         .auth-section {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(251, 191, 36, 0.1) 100%);
-            border: 1px solid #f59e0b;
+            background: linear-gradient(135deg, rgba(214, 158, 46, 0.15) 0%, rgba(236, 201, 75, 0.08) 100%);
+            border: 1px solid #d69e2e;
             padding: 20px;
             border-radius: 8px;
             margin-bottom: 25px;
             backdrop-filter: blur(10px);
         }
         .auth-section h3, .auth-section h4 {
-            color: #fbbf24;
+            color: #ecc94b;
             margin-top: 0;
+            font-weight: 600;
         }
         .auth-section p {
-            color: #fde68a;
+            color: #f8fafc;
             margin-bottom: 15px;
+            font-weight: 500;
         }
         .auth-section button {
-            background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
-            color: #0f172a;
-            font-weight: 700;
+            background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+            color: white;
+            font-weight: 600;
+            border: 1px solid rgba(217, 119, 6, 0.3);
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            box-shadow: 0 2px 8px rgba(217, 119, 6, 0.2);
         }
         .auth-section button:hover {
-            background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+            background: linear-gradient(135deg, #b45309 0%, #d97706 100%);
+            box-shadow: 0 4px 16px rgba(217, 119, 6, 0.35);
+            border-color: rgba(217, 119, 6, 0.5);
         }
         /* Custom scrollbar */
         ::-webkit-scrollbar {
@@ -540,7 +574,15 @@ export default {
             <h4>First Time Setup</h4>
             <p>If no admin users exist, create the first admin user:</p>
             <input type="email" id="bootstrapEmail" placeholder="Enter admin email">
-            <button onclick="bootstrapAdmin()" style="background-color: #28a745;">Create First Admin</button>
+            <button onclick="bootstrapAdmin()" style="
+                background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+                color: white;
+                border: 1px solid rgba(5, 150, 105, 0.3);
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                text-transform: uppercase;
+                box-shadow: 0 2px 8px rgba(5, 150, 105, 0.2);
+            ">Create First Admin</button>
         </div>
     </div>
 
@@ -567,31 +609,35 @@ export default {
                 <span style="font-size: 1.5em;">👥</span>
                 Users Management
                 <span id="userCount" style="
-                    background: linear-gradient(135deg, #0891b2 0%, #38bdf8 100%);
+                    background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
                     color: white;
                     padding: 4px 12px;
                     border-radius: 12px;
                     font-size: 0.8em;
-                    font-weight: 700;
+                    font-weight: 600;
                     min-width: 20px;
                     text-align: center;
                 ">0</span>
             </h2>
             <div style="display: flex; gap: 12px;">
                 <button onclick="loadUsers()" style="
-                    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+                    background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
                     color: white;
-                    border: none;
-                    padding: 10px 20px;
+                    border: 1px solid rgba(9, 48, 65, 0.3);
+                    padding: 12px 24px;
                     border-radius: 8px;
                     font-weight: 600;
                     cursor: pointer;
-                    transition: all 0.3s ease;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                     display: flex;
                     align-items: center;
                     gap: 8px;
-                " onmouseover="this.style.transform='translateY(-2px)'" 
-                   onmouseout="this.style.transform='translateY(0)'">
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                    font-size: 0.75em;
+                    box-shadow: 0 2px 8px rgba(9, 48, 65, 0.2);
+                " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 16px rgba(9, 48, 65, 0.4)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(9, 48, 65, 0.2)'">
                     🔄 Refresh
                 </button>
             </div>
@@ -804,11 +850,21 @@ export default {
                     <td>
                         <div class="action-buttons">
                             <button onclick="updateUserRole('\${user.id}', '\${user.role === 'admin' ? 'user' : 'admin'}')" 
-                                    style="background: linear-gradient(135deg, #0891b2 0%, #38bdf8 100%); color: white;">
+                                    style="
+                                        background: linear-gradient(135deg, #093041 0%, #0f4d66 100%); 
+                                        color: white;
+                                        border: 1px solid rgba(255, 255, 255, 0.1);
+                                        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+                                    ">
                                 \${user.role === 'admin' ? '👤 Make User' : '👑 Make Admin'}
                             </button>
                             <button onclick="resetPassword('\${user.id}')" 
-                                    style="background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); color: #0f172a;">
+                                    style="
+                                        background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); 
+                                        color: white;
+                                        border: 1px solid rgba(255, 255, 255, 0.1);
+                                        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+                                    ">
                                 🔑 Reset Pwd
                             </button>
                             <button onclick="deleteUser('\${user.id}')" 
