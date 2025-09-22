@@ -1,0 +1,118 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-type-check:
+    runs-on: ubuntu-latest
+    name: Lint and Type Check
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript compilation
+        run: npx tsc --noEmit
+
+      - name: Wrangler dry run
+        run: npx wrangler deploy --dry-run
+
+  api-validation:
+    runs-on: ubuntu-latest
+    name: API Structure Validation
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate API structure
+        run: node test-user-management.js
+
+      - name: Check migration files
+        run: |
+          echo "Checking migration files..."
+          ls -la migrations/
+          
+          # Validate SQL syntax (basic check)
+          for file in migrations/*.sql; do
+            if [ -f "$file" ]; then
+              echo "Validating $file"
+              # Basic SQL syntax validation
+              grep -E "(CREATE|ALTER|INSERT|UPDATE|DELETE)" "$file" > /dev/null || (echo "Invalid SQL in $file" && exit 1)
+            fi
+          done
+
+  security-check:
+    runs-on: ubuntu-latest
+    name: Security Check
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level high
+
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Checking for potential hardcoded secrets..."
+          
+          # Check for common secret patterns (excluding test files and documentation)
+          if grep -r -E "(password|secret|key|token).*[:=].*['\"][^'\"]{10,}['\"]" src/ --exclude-dir=node_modules --exclude="*.md" --exclude="test-*"; then
+            echo "⚠️  Potential hardcoded secrets found!"
+            exit 1
+          else
+            echo "✅ No hardcoded secrets detected"
+          fi
+
+  documentation-check:
+    runs-on: ubuntu-latest
+    name: Documentation Check
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check required documentation
+        run: |
+          echo "Checking for required documentation files..."
+          
+          required_files=("README.md" "USER_MANAGEMENT.md" "CICD.md")
+          
+          for file in "${required_files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file exists"
+            else
+              echo "❌ $file is missing"
+              exit 1
+            fi
+          done
+          
+          echo "✅ All required documentation files are present"

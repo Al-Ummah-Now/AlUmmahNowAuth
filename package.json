@@ -26,10 +26,15 @@
     "wrangler": "^4.12.0"
   },
   "scripts": {
-    "check": "tsc && wrangler deploy --dry-run",
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
-    "predeploy": "wrangler d1 migrations apply AUTH_DB --remote",
-    "types": "wrangler types"
+    "check": "npx wrangler deploy --dry-run",
+    "deploy": "npx wrangler deploy --env production",
+    "deploy:preview": "npx wrangler deploy --env preview",
+    "dev": "npx wrangler dev",
+    "dev:preview": "npx wrangler dev --env preview",
+    "predeploy": "npx wrangler d1 migrations apply AUTH_DB --remote --env production",
+    "types": "npx wrangler types",
+    "migrate:preview": "npx wrangler d1 migrations apply AUTH_DB --remote --env preview",
+    "test": "npm run check",
+    "type-check": "npx tsc --noEmit"
   }
 }
