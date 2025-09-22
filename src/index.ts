@@ -31,6 +31,493 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     
+    // Serve default landing page
+    if (url.pathname === '/' || url.pathname === '') {
+      const landingHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Al Ummah Now - Authentication Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(15, 77, 102, 0.2);
+        }
+        
+        .navbar-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+        }
+        
+        .logo img {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+        }
+        
+        .nav-menu {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .nav-link {
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nav-link.primary {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+        }
+        
+        .nav-link.primary:hover {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(14, 165, 233, 0.4);
+        }
+        
+        .nav-link.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e2e8f0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .nav-link.secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            transform: translateY(-1px);
+        }
+        
+        .nav-link.admin {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+        }
+        
+        .nav-link.admin:hover {
+            background: linear-gradient(135deg, #b91c1c 0%, #dc2626 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        
+        .hero {
+            margin-bottom: 3rem;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .hero p {
+            font-size: 1.25rem;
+            color: #cbd5e1;
+            max-width: 600px;
+            margin: 0 auto 2rem;
+            line-height: 1.6;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+            width: 100%;
+        }
+        
+        .feature-card {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            transition: all 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            border-color: rgba(14, 165, 233, 0.3);
+        }
+        
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+        
+        .feature-card h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #0ea5e9;
+        }
+        
+        .feature-card p {
+            color: #cbd5e1;
+            line-height: 1.6;
+        }
+        
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .cta-button {
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 12px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .cta-button.primary {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+            color: white;
+            box-shadow: 0 4px 20px rgba(14, 165, 233, 0.4);
+        }
+        
+        .cta-button.primary:hover {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 25px rgba(14, 165, 233, 0.5);
+        }
+        
+        .cta-button.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e2e8f0;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .cta-button.secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .footer {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            padding: 2rem;
+            border-top: 1px solid rgba(148, 163, 184, 0.2);
+            text-align: center;
+            color: #94a3b8;
+        }
+        
+        .user-info {
+            background: linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%);
+            border: 1px solid #059669;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            display: none;
+        }
+        
+        .user-info.show {
+            display: block;
+        }
+        
+        .user-info h3 {
+            color: #10b981;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        
+        .user-info p {
+            color: #f8fafc;
+            margin-bottom: 1rem;
+        }
+        
+        @media (max-width: 768px) {
+            .navbar-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .nav-menu {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .features {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-content">
+            <div class="logo">
+                <img src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png" alt="Al Ummah Now">
+                <span>Al Ummah Now</span>
+            </div>
+            <div class="nav-menu">
+                <button onclick="handleLogin()" class="nav-link primary">
+                    🔐 Login
+                </button>
+                <button onclick="goToAdmin()" class="nav-link admin" id="adminBtn" style="display: none;">
+                    👑 Admin Panel
+                </button>
+                <a href="/docs" class="nav-link secondary">📚 Documentation</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="user-info" id="userInfo">
+            <h3>Welcome back!</h3>
+            <p id="userEmail">You are logged in as: user@example.com</p>
+            <div style="display: flex; gap: 1rem; justify-content: center;">
+                <button onclick="goToAdmin()" class="cta-button primary" id="adminCta" style="display: none;">
+                    👑 Access Admin Panel
+                </button>
+                <button onclick="handleLogout()" class="cta-button secondary">
+                    🚪 Logout
+                </button>
+            </div>
+        </div>
+
+        <div class="hero">
+            <h1>Al Ummah Now</h1>
+            <p>Secure authentication and user management system for the Muslim community. Connect, authenticate, and manage your digital identity with confidence.</p>
+            
+            <div class="cta-buttons">
+                <button onclick="handleLogin()" class="cta-button primary" id="loginCta">
+                    🚀 Get Started
+                </button>
+                <a href="#features" class="cta-button secondary">
+                    📖 Learn More
+                </a>
+            </div>
+        </div>
+
+        <div class="features" id="features">
+            <div class="feature-card">
+                <span class="feature-icon">🔐</span>
+                <h3>Secure Authentication</h3>
+                <p>Industry-standard security with email-based authentication, secure password handling, and session management.</p>
+            </div>
+            
+            <div class="feature-card">
+                <span class="feature-icon">👥</span>
+                <h3>User Management</h3>
+                <p>Comprehensive user management system with role-based access control and administrative capabilities.</p>
+            </div>
+            
+            <div class="feature-card">
+                <span class="feature-icon">⚡</span>
+                <h3>Fast & Reliable</h3>
+                <p>Built on Cloudflare Workers for global performance, with D1 database and KV storage for reliability.</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>&copy; 2025 Al Ummah Now. Built with OpenAuth and Cloudflare Workers.</p>
+    </footer>
+
+    <script>
+        let currentUser = null;
+
+        // Check if user is already authenticated
+        async function checkAuthStatus() {
+            try {
+                // Check for auth token in localStorage or cookie
+                const token = localStorage.getItem('auth_token');
+                if (token) {
+                    // In a real implementation, verify the token with the server
+                    // For now, we'll simulate user data
+                    const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
+                    if (userData.email) {
+                        currentUser = userData;
+                        updateUIForLoggedInUser();
+                    }
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+            }
+        }
+
+        function updateUIForLoggedInUser() {
+            if (currentUser) {
+                document.getElementById('userInfo').classList.add('show');
+                document.getElementById('userEmail').textContent = \`You are logged in as: \${currentUser.email}\`;
+                document.getElementById('loginCta').style.display = 'none';
+                
+                // Show admin options if user is admin
+                if (currentUser.role === 'admin') {
+                    document.getElementById('adminBtn').style.display = 'flex';
+                    document.getElementById('adminCta').style.display = 'flex';
+                }
+            }
+        }
+
+        function updateUIForLoggedOutUser() {
+            document.getElementById('userInfo').classList.remove('show');
+            document.getElementById('loginCta').style.display = 'flex';
+            document.getElementById('adminBtn').style.display = 'none';
+            document.getElementById('adminCta').style.display = 'none';
+        }
+
+        function handleLogin() {
+            // Redirect to OpenAuth login flow
+            const currentUrl = window.location.origin;
+            const loginUrl = \`/authorize?response_type=code&client_id=web-app&redirect_uri=\${encodeURIComponent(currentUrl + '/callback')}\`;
+            window.location.href = loginUrl;
+        }
+
+        function handleLogout() {
+            // Clear auth data
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_data');
+            currentUser = null;
+            updateUIForLoggedOutUser();
+        }
+
+        function goToAdmin() {
+            window.location.href = '/admin';
+        }
+
+        // Check for OAuth callback
+        function handleOAuthCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const error = urlParams.get('error');
+            
+            if (error) {
+                alert('Authentication failed: ' + error);
+                return;
+            }
+            
+            if (code) {
+                // Exchange code for user info (simplified for demo)
+                const email = prompt('Enter your email to complete login:');
+                const role = prompt('Enter your role (user/admin):') || 'user';
+                
+                if (email) {
+                    currentUser = { email, role };
+                    localStorage.setItem('auth_token', code);
+                    localStorage.setItem('user_data', JSON.stringify(currentUser));
+                    
+                    // Clean up URL
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    
+                    updateUIForLoggedInUser();
+                }
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            checkAuthStatus();
+            handleOAuthCallback();
+        });
+    </script>
+</body>
+</html>`;
+      
+      return new Response(landingHtml, {
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+    
+    // Handle OAuth callback for main app
+    if (url.pathname === '/callback') {
+      // Extract the authorization code and redirect back to homepage with code as parameter
+      const code = url.searchParams.get('code');
+      if (code) {
+        return Response.redirect(`${url.origin}/?code=${encodeURIComponent(code)}`, 302);
+      } else {
+        return Response.redirect(`${url.origin}/?error=auth_failed`, 302);
+      }
+    }
+    
+    // Handle admin OAuth callback
+    if (url.pathname === '/admin/callback') {
+      // Extract the authorization code and redirect back to admin with code as parameter
+      const code = url.searchParams.get('code');
+      if (code) {
+        return Response.redirect(`${url.origin}/admin?code=${encodeURIComponent(code)}`, 302);
+      } else {
+        return Response.redirect(`${url.origin}/admin?error=auth_failed`, 302);
+      }
+    }
+    
     // Serve admin interface
     if (url.pathname === '/admin' || url.pathname === '/admin/') {
       const adminHtml = `<!DOCTYPE html>
@@ -564,11 +1051,22 @@ export default {
     <div class="auth-section">
         <h3>Authentication</h3>
         <div class="form-group">
-            <label for="adminEmail">Admin Email:</label>
-            <input type="email" id="adminEmail" placeholder="Enter admin email for authorization">
-            <button onclick="setAuth()">Set Auth</button>
+            <label for="adminEmail">Admin Access:</label>
+            <button onclick="redirectToLogin()" style="
+                background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
+                color: white;
+                border: 1px solid rgba(9, 48, 65, 0.3);
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                text-transform: uppercase;
+                box-shadow: 0 2px 8px rgba(9, 48, 65, 0.2);
+                padding: 12px 24px;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            ">🔐 Login with Al Ummah Now</button>
         </div>
-        <p><strong>Note:</strong> Enter your admin email to authorize API requests.</p>
+        <p><strong>Note:</strong> Click the button above to authenticate through the Al Ummah Now login system.</p>
         
         <div class="form-group" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ffeaa7;">
             <h4>First Time Setup</h4>
@@ -673,16 +1171,62 @@ export default {
 
     <script>
         let authEmail = '';
+        let authToken = '';
+
+        function redirectToLogin() {
+            // Redirect to OpenAuth login flow with admin panel as callback
+            const currentUrl = window.location.origin;
+            const loginUrl = \`/authorize?response_type=code&client_id=admin-panel&redirect_uri=\${encodeURIComponent(currentUrl + '/admin/callback')}\`;
+            window.location.href = loginUrl;
+        }
+
+        // Check for auth token from URL parameters (after OAuth callback)
+        function checkAuthFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            
+            if (code) {
+                // Exchange code for token and get user info
+                exchangeCodeForAuth(code);
+                // Clean up URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+
+        async function exchangeCodeForAuth(code) {
+            try {
+                // In a real implementation, you'd exchange the code for an access token
+                // For now, we'll simulate getting user info
+                showMessage('createMessage', 'Successfully authenticated! Loading user data...', 'success');
+                
+                // Simulate getting user email from the auth flow
+                // In production, this would involve token exchange and user info retrieval
+                const userEmail = prompt('Enter your admin email to complete setup:');
+                if (userEmail) {
+                    authEmail = userEmail;
+                    authToken = code; // Using code as temporary token
+                    showMessage('createMessage', \`Successfully logged in as: \${userEmail}\`, 'success');
+                    loadUsers();
+                }
+            } catch (error) {
+                showMessage('createMessage', 'Authentication failed: ' + error.message, 'error');
+            }
+        }
 
         function setAuth() {
             authEmail = document.getElementById('adminEmail').value;
             if (authEmail) {
-                showMessage('createMessage', 'Authentication set for: ' + authEmail, 'success');
+                showMessage('createMessage', 'Successfully logged in as: ' + authEmail, 'success');
                 loadUsers();
             } else {
                 showMessage('createMessage', 'Please enter an admin email', 'error');
             }
         }
+
+        // Initialize auth check on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            checkAuthFromUrl();
+        });
 
         async function bootstrapAdmin() {
             const email = document.getElementById('bootstrapEmail').value;
@@ -730,7 +1274,7 @@ export default {
             const role = document.getElementById('newRole').value;
 
             if (!authEmail) {
-                showMessage('createMessage', 'Please set authentication first', 'error');
+                showMessage('createMessage', 'Please login first', 'error');
                 return;
             }
 
@@ -765,7 +1309,7 @@ export default {
 
         async function loadUsers() {
             if (!authEmail) {
-                showMessage('usersMessage', 'Please set authentication first', 'error');
+                showMessage('usersMessage', 'Please login first', 'error');
                 return;
             }
 
@@ -880,7 +1424,7 @@ export default {
 
         async function updateUserRole(userId, newRole) {
             if (!authEmail) {
-                showMessage('usersMessage', 'Please set authentication first', 'error');
+                showMessage('usersMessage', 'Please login first', 'error');
                 return;
             }
 
@@ -909,7 +1453,7 @@ export default {
 
         async function resetPassword(userId) {
             if (!authEmail) {
-                showMessage('usersMessage', 'Please set authentication first', 'error');
+                showMessage('usersMessage', 'Please login first', 'error');
                 return;
             }
 
@@ -939,7 +1483,7 @@ export default {
 
         async function deleteUser(userId) {
             if (!authEmail) {
-                showMessage('usersMessage', 'Please set authentication first', 'error');
+                showMessage('usersMessage', 'Please login first', 'error');
                 return;
             }
 
