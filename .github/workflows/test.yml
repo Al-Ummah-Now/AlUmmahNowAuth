@@ -1,0 +1,20 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  check_for_secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Check for hardcoded secrets
+        run: |
+          if grep -r -E "(password|secret|key|token)[[:space:]]*[:=][[:space:]]*['\"][A-Za-z0-9+/=]{16,}['\"]" src/ --exclude-dir=node_modules --exclude="*.md" --exclude="test-*"; then
+            echo "Hardcoded secrets found!"
+            exit 1
+          fi
