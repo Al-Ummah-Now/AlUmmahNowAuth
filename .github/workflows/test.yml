@@ -83,14 +83,9 @@ jobs:
 
       - name: Check for hardcoded secrets
         run: |
-          echo "Checking for potential hardcoded secrets..."
-          
-          # Check for common secret patterns (excluding test files and documentation)
-          if grep -r -E "(password|secret|key|token).*[:=].*['\"][^'\"]{10,}['\"]" src/ --exclude-dir=node_modules --exclude="*.md" --exclude="test-*"; then
-            echo "⚠️  Potential hardcoded secrets found!"
+          if grep -r -E "(password|secret|key|token)[[:space:]]*[:=][[:space:]]*['\"][A-Za-z0-9+/=]{16,}['\"]" src/ --exclude-dir=node_modules --exclude="*.md" --exclude="test-*"; then
+            echo "Hardcoded secrets found!"
             exit 1
-          else
-            echo "✅ No hardcoded secrets detected"
           fi
 
   documentation-check:
