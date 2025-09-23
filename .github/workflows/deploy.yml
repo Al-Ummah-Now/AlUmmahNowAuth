@@ -14,6 +14,10 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
     name: Test
     steps:
       - name: Checkout code
@@ -33,6 +37,10 @@ jobs:
 
   deploy-preview:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
     name: Deploy Preview
     if: github.event_name == 'pull_request'
     needs: test
@@ -109,6 +117,10 @@ jobs:
 
   deploy-production:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
     name: Deploy Production
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: test
