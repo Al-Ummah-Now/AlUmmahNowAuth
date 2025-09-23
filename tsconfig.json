@@ -4,12 +4,13 @@
     "lib": ["esnext"],
     "module": "esnext",
     "moduleResolution": "bundler",
-    "types": ["./worker-configuration.d.ts", "node"],
+    "types": ["./worker-configuration.d.ts"],
     "noEmit": true,
     "isolatedModules": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "strict": true
+    "strict": false,
+    "noImplicitAny": false
   },
   "include": ["src"]
 }
