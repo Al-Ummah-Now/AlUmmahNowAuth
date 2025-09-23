@@ -360,29 +360,9 @@ export default {
                 <button onclick="handleLogin()" class="cta-button primary" id="loginCta">
                     🚀 Get Started
                 </button>
-                <a href="#features" class="cta-button secondary">
+                <a href="/docs" class="cta-button secondary">
                     📖 Learn More
                 </a>
-            </div>
-        </div>
-
-        <div class="features" id="features">
-            <div class="feature-card">
-                <span class="feature-icon">🔐</span>
-                <h3>Secure Authentication</h3>
-                <p>Industry-standard security with email-based authentication, secure password handling, and session management.</p>
-            </div>
-            
-            <div class="feature-card">
-                <span class="feature-icon">👥</span>
-                <h3>User Management</h3>
-                <p>Comprehensive user management system with role-based access control and administrative capabilities.</p>
-            </div>
-            
-            <div class="feature-card">
-                <span class="feature-icon">⚡</span>
-                <h3>Fast & Reliable</h3>
-                <p>Built on Cloudflare Workers for global performance, with D1 database and KV storage for reliability.</p>
             </div>
         </div>
     </div>
@@ -492,6 +472,185 @@ export default {
 </html>`;
       
       return new Response(landingHtml, {
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+    
+    // Serve documentation page
+    if (url.pathname === '/docs') {
+      const docsHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Al Ummah Now - API Documentation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5em;
+            color: white;
+        }
+        
+        .header p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .nav-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-back:hover {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            transform: translateY(-2px);
+        }
+        
+        .section {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+        
+        .section h2 {
+            color: #0ea5e9;
+            margin-top: 0;
+            border-bottom: 2px solid #0ea5e9;
+            padding-bottom: 10px;
+        }
+        
+        .endpoint {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-right: 10px;
+        }
+        
+        .method.get { background: #059669; color: white; }
+        .method.post { background: #dc2626; color: white; }
+        .method.put { background: #d97706; color: white; }
+        .method.delete { background: #7c2d12; color: white; }
+        
+        .url {
+            font-family: 'Courier New', monospace;
+            background: rgba(9, 48, 65, 0.3);
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #7dd3fc;
+        }
+        
+        code {
+            background: rgba(15, 23, 42, 0.8);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #7dd3fc;
+        }
+        
+        pre {
+            background: rgba(15, 23, 42, 0.8);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+        
+        ul {
+            padding-left: 20px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="nav-back">← Back to Home</a>
+    
+    <div class="header">
+        <h1>Al Ummah Now API Documentation</h1>
+        <p>OpenAuth Authentication Server with User Management</p>
+    </div>
+
+    <div class="section">
+        <h2>🔐 Authentication Endpoints</h2>
+        
+        <div class="endpoint">
+            <div>
+                <span class="method get">GET</span>
+                <span class="url">/authorize</span>
+            </div>
+            <p><strong>Description:</strong> Initiates OAuth authorization flow</p>
+            <p><strong>Parameters:</strong></p>
+            <ul>
+                <li><code>response_type</code> - Set to "code"</li>
+                <li><code>client_id</code> - Your client identifier</li>
+                <li><code>redirect_uri</code> - Where to redirect after auth</li>
+            </ul>
+            <p><strong>Example:</strong></p>
+            <pre>/authorize?response_type=code&client_id=web-app&redirect_uri=https://yourapp.com/callback</pre>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🚀 Getting Started</h2>
+        <ol>
+            <li>Visit the <a href="/" style="color: #0ea5e9;">homepage</a> and click "Login"</li>
+            <li>Complete the email authentication flow</li>
+            <li>Access your authenticated session</li>
+            <li>Enjoy secure authentication with Al Ummah Now</li>
+        </ol>
+    </div>
+
+    <div class="section">
+        <h2>📧 Support</h2>
+        <p>For support and questions about the Al Ummah Now authentication system, please contact the development team.</p>
+    </div>
+</body>
+</html>`;
+      
+      return new Response(docsHtml, {
         headers: { 'Content-Type': 'text/html' }
       });
     }
