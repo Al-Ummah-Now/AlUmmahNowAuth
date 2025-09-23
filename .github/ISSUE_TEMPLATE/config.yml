@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🗣️ Community Discussion
+    url: https://github.com/meywd/AlUmmahNowAuth/discussions
+    about: Ask questions, share ideas, or discuss features with the community
+  - name: 📖 Documentation
+    url: https://github.com/meywd/AlUmmahNowAuth/blob/main/README.md
+    about: Read the comprehensive documentation and guides
+  - name: 🚀 Live Demo
+    url: https://al-ummah-now-auth.alummahnow.workers.dev
+    about: Try the live authentication service
+  - name: 🔐 Security Contact
+    url: mailto:security@alummahnow.net
+    about: Report critical security vulnerabilities privately

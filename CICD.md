@@ -148,3 +148,10 @@ The deployment includes:
 1. Ensure migrations are up to date
 2. Check database bindings in wrangler.json
 3. Verify D1 database exists in Cloudflare dashboard
+
+## Related Documentation
+
+- [Roadmap](./ROADMAP.md) - CI/CD improvements planned for future phases
+- [Architecture](./ARCHITECTURE.md) - Deployment architecture and infrastructure details
+- [Authentication Flows](./AUTHENTICATION_FLOWS.md) - Testing authentication in CI/CD environments
+- [User Management](./USER_MANAGEMENT.md) - Database migrations for user management features

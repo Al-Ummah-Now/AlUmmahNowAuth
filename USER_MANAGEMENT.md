@@ -136,3 +136,10 @@ curl -X POST \
 - The user subject schema now includes the `role` field, so client applications can access user roles
 - Existing authentication flows continue to work unchanged
 - The migration preserves all existing users and data
+
+## Related Documentation
+
+- [Roadmap](./ROADMAP.md) - Strategic planning for user management features
+- [Architecture](./ARCHITECTURE.md) - Technical architecture including user management
+- [Authentication Flows](./AUTHENTICATION_FLOWS.md) - How authentication integrates with user management
+- [CI/CD Documentation](./CICD.md) - Deployment processes for user management changes
