@@ -6,6 +6,9 @@ contact_links:
   - name: 📖 Documentation
     url: https://github.com/meywd/AlUmmahNowAuth/blob/main/README.md
     about: Read the comprehensive documentation and guides
+  - name: 🗺️ Project Roadmap
+    url: https://github.com/meywd/AlUmmahNowAuth/blob/main/ROADMAP.md
+    about: View the strategic roadmap and v1.0 milestone planning
   - name: 🚀 Live Demo
     url: https://al-ummah-now-auth.alummahnow.workers.dev
     about: Try the live authentication service

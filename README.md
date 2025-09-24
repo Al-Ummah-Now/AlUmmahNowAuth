@@ -17,6 +17,28 @@
 - **🚀 CI/CD**: Automated deployments with preview environments
 - **📊 Monitoring**: Built-in observability and logging
 
+## 🗺️ Project Roadmap & V1.0
+
+**Current Status:** Phase 1 Complete ✅ | Phase 2 In Progress 🚧
+
+**Next Milestone:** Alpha v0.8.0 - February 15, 2025
+
+This project follows a structured roadmap toward v1.0 release (March 31, 2025). We track progress through GitHub issues organized into major epics:
+
+### 🎯 V1.0 Epics & Progress
+- **🔐 Authentication & Tokens** - Enhanced security, MFA, rate limiting
+- **🔑 OAuth & External Auth** - Full OAuth 2.0/OIDC compliance, social logins  
+- **🛡️ RBAC & User Management** - Advanced roles, multi-tenant support
+- **📚 Documentation & DX** - OpenAPI docs, SDKs, integration guides
+- **🚀 CI/CD & Infrastructure** - Monitoring, release automation, testing
+- **📦 Release & Distribution** - Security audit, performance optimization
+
+### 📋 How to Contribute to Roadmap
+1. **View the [📋 Full Roadmap](./ROADMAP.md)** for detailed v1.0 planning
+2. **Create [🗺️ Epic Issues](https://github.com/meywd/AlUmmahNowAuth/issues/new?template=roadmap_epic.md)** for major features
+3. **Create [📋 Child Issues](https://github.com/meywd/AlUmmahNowAuth/issues/new?template=v1_child_issue.md)** for specific tasks
+4. **Track Progress** via [GitHub Milestones](https://github.com/meywd/AlUmmahNowAuth/milestones)
+
 ## 🌐 Live Deployments
 
 - **Production**: [https://al-ummah-now-auth.alummahnow.workers.dev](https://al-ummah-now-auth.alummahnow.workers.dev)
