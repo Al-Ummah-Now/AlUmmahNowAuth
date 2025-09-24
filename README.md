@@ -43,7 +43,7 @@ This project follows a structured roadmap toward v1.0 release (March 31, 2025). 
 
 - **Production**: [https://al-ummah-now-auth.alummahnow.workers.dev](https://al-ummah-now-auth.alummahnow.workers.dev)
 - **Admin Panel**: [https://al-ummah-now-auth.alummahnow.workers.dev/admin](https://al-ummah-now-auth.alummahnow.workers.dev/admin)
-- **Preview**: Available for each pull request (auto-generated)
+- **Preview**: `https://al-ummah-now-auth-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/` (auto-generated for each PR)
 
 ## 🚀 Quick Start
 
