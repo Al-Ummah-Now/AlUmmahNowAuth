@@ -147,9 +147,20 @@ See [USER_MANAGEMENT.md](./USER_MANAGEMENT.md) for detailed documentation.
 
 ## 📚 Documentation
 
-- [**User Management**](./USER_MANAGEMENT.md) - Complete user management guide
-- [**CI/CD Setup**](./CICD.md) - Deployment and workflow documentation
-- [**API Reference**](./USER_MANAGEMENT.md#api-endpoints) - REST API documentation
+### Core Documentation
+- [**🗺️ Roadmap**](./ROADMAP.md) - Strategic roadmap and feature planning
+- [**🏗️ Architecture**](./ARCHITECTURE.md) - Technical architecture and system design
+- [**🔐 Authentication Flows**](./AUTHENTICATION_FLOWS.md) - Detailed authentication documentation
+- [**👥 User Management**](./USER_MANAGEMENT.md) - Complete user management guide
+- [**🚀 CI/CD Setup**](./CICD.md) - Deployment and workflow documentation
+
+### API Reference
+- [**API Endpoints**](./USER_MANAGEMENT.md#api-endpoints) - REST API documentation
+- [**Live API Docs**](https://al-ummah-now-auth.alummahnow.workers.dev/docs) - Interactive documentation
+
+### Community
+- [**Issue Templates**](./.github/ISSUE_TEMPLATE/) - Bug reports, feature requests, and documentation
+- [**Contributing Guidelines**](#-contributing) - How to contribute to the project
 
 ## 🛠️ Development Scripts
 
