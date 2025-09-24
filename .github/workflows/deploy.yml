@@ -71,7 +71,7 @@ jobs:
         with:
           script: |
             // Preview URL for the specific PR deployment
-            const previewUrl = `https://al-ummah-now-auth-pr-${{ github.event.number }}.alummahnow.workers.dev`;
+            const previewUrl = `https://al-ummah-now-auth-pr-${{ github.event.number }}.mahmoud-s-darwish.workers.dev`;
             
             const body = `🚀 **Preview deployment ready!**
             

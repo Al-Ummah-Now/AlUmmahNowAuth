@@ -19,8 +19,9 @@ The project now includes automated CI/CD workflows that:
 - **Database**: Uses production D1 database with all migrations applied
 
 ### Preview
-- **URL**: Auto-generated preview URL for each pull request
+- **URL**: `https://al-ummah-now-auth-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
 - **Admin Panel**: Preview URL + `/admin`
+- **Example**: For PR #22: `https://al-ummah-now-auth-pr-22.mahmoud-s-darwish.workers.dev/`
 - **Triggers**: Automatically deployed for every pull request using Cloudflare Workers preview system
 - **Database**: Uses the same database as production but with isolated preview functionality
 
@@ -104,9 +105,11 @@ Database migrations are automatically applied:
 
 ## Preview URL Format
 
-Preview deployments include helpful information in the GitHub comment:
-- 📱 **Preview URL**: Direct link to the preview deployment
-- 🔧 **Admin Panel**: Direct link to the admin interface
+Preview deployments follow the format: `https://al-ummah-now-auth-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
+
+Preview deployment comments include helpful information:
+- 📱 **Preview URL**: Direct link to the preview deployment (e.g., `https://al-ummah-now-auth-pr-22.mahmoud-s-darwish.workers.dev/`)
+- 🔧 **Admin Panel**: Direct link to the admin interface (e.g., `https://al-ummah-now-auth-pr-22.mahmoud-s-darwish.workers.dev/admin`)
 - **Testing instructions**: Guidance on what to test
 
 ## Rollback Strategy
