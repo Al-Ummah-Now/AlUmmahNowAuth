@@ -2,6 +2,8 @@ import { issuer } from "@openauthjs/openauth";
 import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
 import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
+import { GoogleProvider } from "@openauthjs/openauth/provider/google";
+import { FacebookProvider } from "@openauthjs/openauth/provider/facebook";
 import { createSubjects } from "@openauthjs/openauth/subject";
 import * as v from 'valibot';
 import SendEmail from "./email";
@@ -14,6 +16,7 @@ import {
   handleDeleteUser, 
   handleResetPassword 
 } from "./admin";
+import { getEnabledOAuthProviders, OAuthProviderConfig } from "./providers";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -1327,6 +1330,66 @@ export default {
             </table>
         </div>
     </div>
+    
+    <!-- OAuth Providers Management Section -->
+    <div class="card" style="margin-top: 25px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 1.5em;">🔗</span>
+                OAuth Providers
+                <span id="enabledProviderCount" style="
+                    background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
+                    color: white;
+                    padding: 4px 12px;
+                    border-radius: 12px;
+                    font-size: 0.8em;
+                    font-weight: 600;
+                    min-width: 20px;
+                    text-align: center;
+                ">0</span>
+            </h2>
+            <div style="display: flex; gap: 12px;">
+                <button onclick="loadOAuthProviders()" style="
+                    background: linear-gradient(135deg, #093041 0%, #0f4d66 100%);
+                    color: white;
+                    border: 1px solid rgba(9, 48, 65, 0.3);
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                ">🔄 Refresh</button>
+            </div>
+        </div>
+        <div id="oauthProvidersMessage"></div>
+        
+        <div style="
+            background: rgba(37, 99, 235, 0.05);
+            border: 1px solid rgba(37, 99, 235, 0.15);
+            border-radius: 8px;
+            overflow: hidden;
+        ">
+            <table class="users-table" id="oauthProvidersTable">
+                <thead>
+                    <tr>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th>Client ID</th>
+                        <th>Scopes</th>
+                        <th>PKCE Support</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="oauthProvidersTableBody">
+                    <tr class="empty-state">
+                        <td colspan="6">Loading OAuth providers...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
     <script>
         let authEmail = '';
@@ -1670,6 +1733,219 @@ export default {
                 showMessage('usersMessage', 'Network error: ' + error.message, 'error');
             }
         }
+
+        // ==== OAuth Provider Management Functions ====
+
+        async function loadOAuthProviders() {
+            if (!authEmail) {
+                showMessage('oauthProvidersMessage', 'Please login first', 'error');
+                return;
+            }
+
+            const tbody = document.getElementById('oauthProvidersTableBody');
+            const loadingRow = document.createElement('tr');
+            loadingRow.innerHTML = \`<td colspan="6">Loading OAuth providers...</td>\`;
+            tbody.innerHTML = '';
+            tbody.appendChild(loadingRow);
+
+            try {
+                const response = await fetch('/admin/oauth-providers', {
+                    headers: {
+                        'Authorization': \`Bearer \${authEmail}\`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderOAuthProviders(data);
+                    showMessage('oauthProvidersMessage', 'OAuth providers loaded successfully', 'success');
+                } else {
+                    showMessage('oauthProvidersMessage', data.error || 'Failed to load OAuth providers', 'error');
+                    tbody.innerHTML = '<tr class="empty-state"><td colspan="6">Failed to load OAuth providers</td></tr>';
+                }
+            } catch (error) {
+                showMessage('oauthProvidersMessage', 'Network error: ' + error.message, 'error');
+                tbody.innerHTML = '<tr class="empty-state"><td colspan="6">Network error occurred</td></tr>';
+            }
+        }
+
+        function renderOAuthProviders(providers) {
+            const tbody = document.getElementById('oauthProvidersTableBody');
+            const countElement = document.getElementById('enabledProviderCount');
+            
+            const enabledCount = providers.filter(p => p.enabled).length;
+            countElement.textContent = enabledCount;
+
+            if (providers.length === 0) {
+                tbody.innerHTML = '<tr class="empty-state"><td colspan="6">No OAuth providers configured</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = providers.map(provider => \`
+                <tr>
+                    <td style="font-weight: 600;">
+                        <span style="display: inline-block; width: 20px; text-align: center;">
+                            \${provider.provider_name === 'google' ? '🔍' : provider.provider_name === 'facebook' ? '👤' : '🔗'}
+                        </span>
+                        \${provider.provider_name.charAt(0).toUpperCase() + provider.provider_name.slice(1)}
+                    </td>
+                    <td>
+                        <span style="
+                            padding: 4px 12px;
+                            border-radius: 12px;
+                            font-size: 0.8em;
+                            font-weight: 600;
+                            background: \${provider.enabled ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)' : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)'};
+                            color: white;
+                        ">\${provider.enabled ? '✅ Enabled' : '❌ Disabled'}</span>
+                    </td>
+                    <td style="font-family: monospace; font-size: 0.9em;">
+                        \${provider.client_id ? provider.client_id.substring(0, 20) + '...' : '—'}
+                    </td>
+                    <td style="font-size: 0.9em;">
+                        \${provider.scopes ? provider.scopes.join(', ') : '—'}
+                    </td>
+                    <td>
+                        <span style="
+                            padding: 2px 8px;
+                            border-radius: 8px;
+                            font-size: 0.75em;
+                            font-weight: 600;
+                            background: \${provider.config?.pkce ? 'rgba(37, 99, 235, 0.1)' : 'rgba(156, 163, 175, 0.1)'};
+                            color: \${provider.config?.pkce ? '#2563eb' : '#6b7280'};
+                            border: 1px solid \${provider.config?.pkce ? 'rgba(37, 99, 235, 0.2)' : 'rgba(156, 163, 175, 0.2)'};
+                        ">\${provider.config?.pkce ? '🛡️ Yes' : '—'}</span>
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button onclick="toggleProvider('\${provider.provider_name}', \${!provider.enabled})" style="
+                                background: \${provider.enabled ? 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)' : 'linear-gradient(135deg, #059669 0%, #10b981 100%)'};
+                                color: white;
+                                border: none;
+                                padding: 6px 12px;
+                                border-radius: 6px;
+                                font-size: 0.8em;
+                                font-weight: 600;
+                                cursor: pointer;
+                                transition: all 0.2s;
+                            ">\${provider.enabled ? 'Disable' : 'Enable'}</button>
+                            <button onclick="configureProvider('\${provider.provider_name}')" style="
+                                background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+                                color: white;
+                                border: none;
+                                padding: 6px 12px;
+                                border-radius: 6px;
+                                font-size: 0.8em;
+                                font-weight: 600;
+                                cursor: pointer;
+                                transition: all 0.2s;
+                            ">⚙️ Config</button>
+                        </div>
+                    </td>
+                </tr>
+            \`).join('');
+        }
+
+        async function toggleProvider(providerName, enable) {
+            if (!authEmail) {
+                showMessage('oauthProvidersMessage', 'Please login first', 'error');
+                return;
+            }
+
+            if (enable) {
+                // Check if provider has required configuration
+                const provider = await getProviderConfig(providerName);
+                if (!provider.client_id || !provider.client_secret) {
+                    showMessage('oauthProvidersMessage', 
+                        \`Cannot enable \${providerName}. Please configure Client ID and Client Secret first.\`, 'error');
+                    return;
+                }
+            }
+
+            try {
+                const response = await fetch(\`/admin/oauth-providers/\${providerName}\`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': \`Bearer \${authEmail}\`
+                    },
+                    body: JSON.stringify({ enabled: enable })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('oauthProvidersMessage', \`\${providerName} provider \${enable ? 'enabled' : 'disabled'} successfully\`, 'success');
+                    loadOAuthProviders();
+                } else {
+                    showMessage('oauthProvidersMessage', data.error || 'Failed to update provider', 'error');
+                }
+            } catch (error) {
+                showMessage('oauthProvidersMessage', 'Network error: ' + error.message, 'error');
+            }
+        }
+
+        async function getProviderConfig(providerName) {
+            const response = await fetch(\`/admin/oauth-providers/\${providerName}\`, {
+                headers: {
+                    'Authorization': \`Bearer \${authEmail}\`
+                }
+            });
+            return await response.json();
+        }
+
+        function configureProvider(providerName) {
+            const clientId = prompt(\`Enter Client ID for \${providerName}:\`);
+            if (!clientId) return;
+
+            const clientSecret = prompt(\`Enter Client Secret for \${providerName}:\`);
+            if (!clientSecret) return;
+
+            updateProviderConfig(providerName, { 
+                client_id: clientId, 
+                client_secret: clientSecret 
+            });
+        }
+
+        async function updateProviderConfig(providerName, updates) {
+            if (!authEmail) {
+                showMessage('oauthProvidersMessage', 'Please login first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(\`/admin/oauth-providers/\${providerName}\`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': \`Bearer \${authEmail}\`
+                    },
+                    body: JSON.stringify(updates)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('oauthProvidersMessage', \`\${providerName} provider configuration updated successfully\`, 'success');
+                    loadOAuthProviders();
+                } else {
+                    showMessage('oauthProvidersMessage', data.error || 'Failed to update provider configuration', 'error');
+                }
+            } catch (error) {
+                showMessage('oauthProvidersMessage', 'Network error: ' + error.message, 'error');
+            }
+        }
+
+        // Load OAuth providers when page loads
+        window.addEventListener('load', function() {
+            // Auto-load OAuth providers if authenticated
+            setTimeout(() => {
+                if (authEmail) {
+                    loadOAuthProviders();
+                }
+            }, 1000);
+        });
     </script>
 </body>
 </html>`;
@@ -1767,6 +2043,30 @@ export default {
         }
       }
       
+      // OAuth provider management routes
+      if (pathParts[2] === 'oauth-providers') {
+        const { handleListOAuthProviders, handleGetOAuthProvider, handleUpdateOAuthProvider } = await import('./admin');
+        
+        if (request.method === 'GET' && pathParts.length === 3) {
+          // GET /admin/oauth-providers - List all OAuth providers
+          return handleListOAuthProviders(env, request);
+        }
+        
+        if (pathParts.length === 4) {
+          const providerName = pathParts[3];
+          
+          if (request.method === 'GET') {
+            // GET /admin/oauth-providers/:providerName - Get specific OAuth provider
+            return handleGetOAuthProvider(env, request, providerName);
+          }
+          
+          if (request.method === 'PUT') {
+            // PUT /admin/oauth-providers/:providerName - Update OAuth provider
+            return handleUpdateOAuthProvider(env, request, providerName);
+          }
+        }
+      }
+      
       // If no admin route matched, return 404
       return new Response(JSON.stringify({ error: 'Admin endpoint not found' }), {
         status: 404,
@@ -1774,13 +2074,9 @@ export default {
       });
     }
 
-    // The real OpenAuth server code starts here:
-    return issuer({
-      storage: CloudflareStorage({
-        namespace: env.AUTH_STORAGE,
-      }),
-      subjects,
-      providers: {
+    // Helper function to build OAuth providers from database configuration
+    async function buildOAuthProviders(env: Env): Promise<Record<string, any>> {
+      const providers: Record<string, any> = {
         password: PasswordProvider(
           PasswordUI({
             // eslint-disable-next-line @typescript-eslint/require-await
@@ -1796,7 +2092,40 @@ export default {
             },
           }),
         ),
-      },
+      };
+
+      // Get enabled OAuth providers from database
+      const oauthProviders = await getEnabledOAuthProviders(env);
+      
+      for (const provider of oauthProviders) {
+        if (provider.provider_name === 'google' && provider.client_id && provider.client_secret) {
+          providers.google = GoogleProvider({
+            clientID: provider.client_id,
+            clientSecret: provider.client_secret,
+            scopes: provider.scopes || ['openid', 'email', 'profile'],
+          });
+        } else if (provider.provider_name === 'facebook' && provider.client_id && provider.client_secret) {
+          providers.facebook = FacebookProvider({
+            clientID: provider.client_id,
+            clientSecret: provider.client_secret,  
+            scopes: provider.scopes || ['email', 'public_profile'],
+          });
+        }
+      }
+
+      return providers;
+    }
+
+    // Build providers dynamically from database
+    const providers = await buildOAuthProviders(env);
+
+    // The real OpenAuth server code starts here:
+    return issuer({
+      storage: CloudflareStorage({
+        namespace: env.AUTH_STORAGE,
+      }),
+      subjects,
+      providers,
       theme: {
         title: "Al Ummah Now",
         primary: "#0891b2",
@@ -1808,10 +2137,51 @@ export default {
         },
       },
       success: async (ctx, value) => {
-        const user = await getOrCreateUser(env, value.email);
+        let email: string;
+        let oauthProvider: string | null = null;
+        
+        // Check if this is a password provider (has email directly)
+        if ('email' in value && typeof value.email === 'string') {
+          email = value.email;
+        }
+        // Check if this is an OAuth provider (has tokenset and clientID)
+        else if ('tokenset' in value && 'clientID' in value) {
+          const tokenset = value.tokenset as any;
+          const clientID = value.clientID as string;
+          
+          // Determine provider type from the request path or other context
+          const url = new URL(ctx.req.url);
+          const pathSegments = url.pathname.split('/');
+          oauthProvider = pathSegments.find(segment => ['google', 'facebook'].includes(segment)) || null;
+          
+          // Fetch user info from OAuth provider
+          if (oauthProvider === 'google') {
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+              headers: {
+                'Authorization': `Bearer ${tokenset.access}`
+              }
+            });
+            const userInfo = await userInfoResponse.json() as any;
+            email = userInfo.email;
+          } else if (oauthProvider === 'facebook') {
+            const userInfoResponse = await fetch('https://graph.facebook.com/me?fields=email,name', {
+              headers: {
+                'Authorization': `Bearer ${tokenset.access}`
+              }
+            });
+            const userInfo = await userInfoResponse.json() as any;
+            email = userInfo.email;
+          } else {
+            throw new Error('Unsupported OAuth provider');
+          }
+        } else {
+          throw new Error('Unable to determine user email from provider response');
+        }
+
+        const user = await getOrCreateUser(env, email);
         return ctx.subject("user", {
           id: user.id,
-          email: value.email,
+          email: email,
           role: user.role,
         });
       },

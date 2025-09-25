@@ -291,3 +291,102 @@ export async function handleResetPassword(env: Env, request: Request, userId: st
     });
   }
 }
+
+// ==== OAuth Provider Management ====
+
+// Handler for GET /admin/oauth-providers - List all OAuth providers
+export async function handleListOAuthProviders(env: Env, request: Request): Promise<Response> {
+  const authResult = await requireAdmin(env, request);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+
+  try {
+    const { getOAuthProviders } = await import('./providers');
+    const providers = await getOAuthProviders(env);
+    
+    // Don't expose client secrets in list view
+    const safeProviders = providers.map(p => ({
+      ...p,
+      client_secret: p.client_secret ? '***' : undefined
+    }));
+
+    return new Response(JSON.stringify(safeProviders), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch OAuth providers' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Handler for GET /admin/oauth-providers/:providerName - Get single OAuth provider
+export async function handleGetOAuthProvider(env: Env, request: Request, providerName: string): Promise<Response> {
+  const authResult = await requireAdmin(env, request);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+
+  try {
+    const { getOAuthProvider } = await import('./providers');
+    const provider = await getOAuthProvider(env, providerName);
+    
+    if (!provider) {
+      return new Response(JSON.stringify({ error: 'OAuth provider not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Don't expose client secret in detail view either
+    const safeProvider = {
+      ...provider,
+      client_secret: provider.client_secret ? '***' : undefined
+    };
+
+    return new Response(JSON.stringify(safeProvider), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch OAuth provider' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Handler for PUT /admin/oauth-providers/:providerName - Update OAuth provider
+export async function handleUpdateOAuthProvider(env: Env, request: Request, providerName: string): Promise<Response> {
+  const authResult = await requireAdmin(env, request);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+
+  try {
+    const updates = await request.json() as any;
+    const { updateOAuthProvider } = await import('./providers');
+    
+    const success = await updateOAuthProvider(env, providerName, updates);
+    
+    if (!success) {
+      return new Response(JSON.stringify({ error: 'OAuth provider not found or no changes made' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    return new Response(JSON.stringify({ 
+      message: 'OAuth provider updated successfully',
+      providerName 
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to update OAuth provider' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
