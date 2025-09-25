@@ -2149,10 +2149,10 @@ export default {
           const tokenset = value.tokenset as any;
           const clientID = value.clientID as string;
           
-          // Determine provider type from the request path or other context
-          const url = new URL(ctx.req.url);
-          const pathSegments = url.pathname.split('/');
-          oauthProvider = pathSegments.find(segment => ['google', 'facebook'].includes(segment)) || null;
+          // Determine provider type from the clientID by checking enabled providers
+          const oauthProviders = await getEnabledOAuthProviders(env);
+          const provider = oauthProviders.find(p => p.client_id === clientID);
+          oauthProvider = provider?.provider_name || null;
           
           // Fetch user info from OAuth provider
           if (oauthProvider === 'google') {

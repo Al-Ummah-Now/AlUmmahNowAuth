@@ -128,7 +128,7 @@ export async function updateOAuthProvider(
   `;
 
   const result = await env.AUTH_DB.prepare(query).bind(...params).run();
-  return result.changes > 0;
+  return result.meta.changes > 0;
 }
 
 /**
