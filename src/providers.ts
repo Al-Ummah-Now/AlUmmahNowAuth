@@ -52,7 +52,7 @@ export async function getOAuthProvider(env: Env, providerName: string): Promise<
   const result = await env.AUTH_DB.prepare(`
     SELECT id, provider_name, enabled, client_id, client_secret, scopes, config, created_at, updated_at
     FROM oauth_providers
-    WHERE provider_name = ? AND enabled = 1
+    WHERE provider_name = ?
   `).bind(providerName).first<{
     id: string;
     provider_name: string;
