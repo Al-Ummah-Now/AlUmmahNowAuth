@@ -8,6 +8,7 @@
     "build": "react-router build",
     "dev": "react-router dev --port 5175",
     "dev:wrangler": "wrangler dev --port 5175 --local --persist-to=../../.wrangler/state",
+    "predeploy": "npm run build",
     "deploy": "wrangler deploy",
     "typecheck": "react-router typegen && tsc",
     "type-check": "react-router typegen && tsc"

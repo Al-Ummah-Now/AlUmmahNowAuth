@@ -7,6 +7,7 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 export default defineConfig({
   plugins: [
     cloudflare({
+      viteEnvironment: { name: "ssr" },
       configPath: "wrangler.json",
       persistState: { path: "../../.wrangler/state" },
     }),
