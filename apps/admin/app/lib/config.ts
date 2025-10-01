@@ -1,18 +1,6 @@
 // Configuration for the admin app
 
 export const config = {
-  // Auth server URL - change based on environment
-  authServer: {
-    // Production
-    production: "https://al-ummah-now-auth.alummahnow.workers.dev",
-
-    // Preview/Staging
-    preview: "https://al-ummah-now-auth-preview.mahmoud-s-darwish.workers.dev",
-
-    // Local development
-    local: "http://localhost:8787",
-  },
-
   // OAuth client configuration
   oauth: {
     clientId: "admin-dashboard",
@@ -20,38 +8,30 @@ export const config = {
   },
 } as const;
 
-// Get the auth server URL based on current environment
-export function getAuthServerUrl(request?: Request): string {
-  // If running in browser, check the hostname
+// Get the auth server URL from environment variables
+export function getAuthServerUrl(request?: Request, env?: Record<string, any>): string {
+  // Priority 1: Environment variable (from wrangler.json vars or secrets)
+  if (env?.AUTH_SERVER_URL) {
+    return env.AUTH_SERVER_URL;
+  }
+
+  // Priority 2: Check if running locally
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return config.authServer.local;
+      return 'http://localhost:8787';
     }
-
-    if (hostname.includes('preview') || hostname.includes('-pr-')) {
-      return config.authServer.preview;
-    }
-
-    return config.authServer.production;
   }
 
-  // Server-side detection
   if (request) {
     const url = new URL(request.url);
-
     if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-      return config.authServer.local;
-    }
-
-    if (url.hostname.includes('preview') || url.hostname.includes('-pr-')) {
-      return config.authServer.preview;
+      return 'http://localhost:8787';
     }
   }
 
-  // Default to production
-  return config.authServer.production;
+  // Priority 3: Default fallback (should be set via environment variable in production)
+  return 'https://al-ummah-now-auth.alummahnow.workers.dev';
 }
 
 // Get the current app URL (for OAuth redirect_uri)

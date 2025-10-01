@@ -6,6 +6,9 @@
     "directory": "./build/client",
     "binding": "ASSETS"
   },
+  "vars": {
+    "AUTH_SERVER_URL": "http://localhost:8787"
+  },
   "kv_namespaces": [
     {
       "binding": "AUTH_STORAGE",

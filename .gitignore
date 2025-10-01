@@ -115,6 +115,9 @@ web_modules/
 .env.production.local
 .env.local
 
+# Wrangler local dev environment variables
+.dev.vars
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

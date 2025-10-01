@@ -17,25 +17,25 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_DB: D1Database; AUTH_STORAGE: KVNamespace };
+  const env = context?.cloudflare?.env as { AUTH_DB: D1Database; AUTH_STORAGE: KVNamespace; AUTH_SERVER_URL?: string };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
-  
+
   // Initialize logger
   if (env?.AUTH_DB) {
     logger.setDatabase(env.AUTH_DB, true);
     if (ctx) logger.setContext(ctx);
   }
-  
+
   logger.logLoader('index', request);
 
   // Get auth server URL and app URL from request
-  const authServerUrl = getAuthServerUrl(request);
+  const authServerUrl = getAuthServerUrl(request, env);
   const appUrl = getAppUrl(request);
 
   logger.debug('Configuration loaded', { authServerUrl, appUrl });
 
   // Get OpenAuth client
-  const client = getOpenAuthClient(request);
+  const client = getOpenAuthClient(request, env);
 
   // Generate authorize URL
   logger.debug('Generating authorize URL');

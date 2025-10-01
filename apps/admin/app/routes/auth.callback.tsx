@@ -6,7 +6,7 @@ import { logger } from "~/lib/logger.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   // Initialize logger with D1 database (if available in Cloudflare Workers context)
-  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database };
+  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database; AUTH_SERVER_URL?: string };
   if (env?.AUTH_DB) {
     logger.setDatabase(env.AUTH_DB, true);
   } else {
@@ -32,8 +32,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   try {
     const appUrl = getAppUrl(request);
-    const client = getOpenAuthClient(request);
-    const authServerUrl = getAuthServerUrl(request);
+    const client = getOpenAuthClient(request, env);
+    const authServerUrl = getAuthServerUrl(request, env);
 
     logger.debug('OAuth configuration', {
       appUrl,

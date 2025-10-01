@@ -16,8 +16,8 @@ const subjects = createSubjects({
 export type Subjects = typeof subjects;
 
 // Create OpenAuth client
-export function getOpenAuthClient(request?: Request) {
-  const issuer = getAuthServerUrl(request);
+export function getOpenAuthClient(request?: Request, env?: Record<string, any>) {
+  const issuer = getAuthServerUrl(request, env);
 
   return createClient({
     clientID: "admin-dashboard",

@@ -10,9 +10,9 @@
     "build": "pnpm --filter \"./apps/*\" build",
     "build:auth": "pnpm --filter auth build",
     "build:admin": "pnpm --filter admin build",
-    "deploy": "pnpm --filter \"./apps/*\" deploy",
-    "deploy:auth": "pnpm --filter auth deploy",
-    "deploy:admin": "pnpm --filter admin deploy",
+    "deploy:all": "pnpm run deploy:auth && pnpm run deploy:admin",
+    "deploy:auth": "pnpm --filter auth run deploy",
+    "deploy:admin": "pnpm --filter admin run deploy",
     "type-check": "pnpm --filter \"./apps/*\" type-check"
   },
   "packageManager": "pnpm@9.0.0",
