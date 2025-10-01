@@ -1,0 +1,41 @@
+import type { LoaderFunctionArgs } from "react-router";
+import { redirect } from "react-router";
+import { getAppUrl } from "~/lib/config";
+import { getOpenAuthClient } from "~/lib/openauth.client.server";
+import { logger } from "~/lib/logger.server";
+
+// Redirect directly to auth server instead of showing a login page
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database };
+  const ctx = context?.cloudflare?.ctx as ExecutionContext;
+  
+  // Initialize logger
+  if (env?.AUTH_DB) {
+    logger.setDatabase(env.AUTH_DB, true);
+    if (ctx) logger.setContext(ctx);
+  }
+  
+  logger.logLoader('login', request);
+
+  const appUrl = getAppUrl(request);
+  const client = getOpenAuthClient(request);
+
+  // Generate authorize URL using OpenAuth client
+  logger.debug('Generating authorize URL for login');
+  const { url: authorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  logger.info('Redirecting to auth server', { authorizeUrl });
+
+  return redirect(authorizeUrl);
+}
+
+export default function Login() {
+  // This should never render as loader redirects
+  return (
+    <div className="min-h-screen bg-[rgb(var(--color-background))] flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(var(--color-primary))] mx-auto mb-4"></div>
+        <p className="text-[rgb(var(--color-foreground))]">Redirecting to authentication...</p>
+      </div>
+    </div>
+  );
+}

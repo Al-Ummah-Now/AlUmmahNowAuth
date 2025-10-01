@@ -1,0 +1,29 @@
+{
+  "name": "auth",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Al Ummah Now OpenAuth Server",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev --persist-to=../../.wrangler/state",
+    "dev:inspect": "wrangler dev --inspector --persist-to=../../.wrangler/state",
+    "tail": "wrangler tail --format pretty",
+    "deploy": "wrangler deploy",
+    "predeploy": "wrangler d1 migrations apply AUTH_DB --remote",
+    "migrations:local": "wrangler d1 migrations apply AUTH_DB --local --persist-to=../../.wrangler/state",
+    "migrations:remote": "wrangler d1 migrations apply AUTH_DB --remote",
+    "types": "wrangler types",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "0.3.2",
+    "@types/node": "^22.14.1",
+    "resend": "^4.2.0",
+    "valibot": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "5.7.2",
+    "wrangler": "^4.12.0"
+  }
+}

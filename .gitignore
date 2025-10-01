@@ -181,3 +181,10 @@ build/
 
 # Turbo output
 .turbo/
+
+# React Router build output
+apps/admin/build/
+apps/admin/.react-router/
+
+# TypeScript build info
+*.tsbuildinfo

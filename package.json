@@ -1,37 +1,22 @@
 {
-  "name": "al-ummah-now-auth",
-  "description": "Deploy an OpenAuth server on Cloudflare Workers.",
-  "cloudflare": {
-    "label": "OpenAuth Server",
-    "products": [
-      "Workers",
-      "D1",
-      "KV"
-    ],
-    "categories": [],
-    "icon_urls": [
-      "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/5ca0ca32-e897-4699-d4c1-6b680512f000/public"
-    ],
-    "preview_image_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/b2ff10c6-8f7c-419f-8757-e2ccf1c84500/public",
-    "dash": true
-  },
-  "dependencies": {
-    "@openauthjs/openauth": "0.3.2",
-    "@types/node": "^22.14.1",
-    "resend": "^4.2.0",
-    "valibot": "^1.0.0"
-  },
-  "devDependencies": {
-    "typescript": "5.7.2",
-    "wrangler": "^4.12.0"
-  },
+  "name": "al-ummah-now-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Al Ummah Now Authentication and Admin System",
   "scripts": {
-    "check": "npx wrangler deploy --dry-run",
-    "deploy": "npx wrangler deploy",
-    "dev": "npx wrangler dev",
-    "predeploy": "npx wrangler d1 migrations apply AUTH_DB --remote",
-    "types": "npx wrangler types",
-    "test": "npm run check",
-    "type-check": "npx tsc --noEmit"
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:auth": "pnpm --filter auth dev",
+    "dev:admin": "pnpm --filter admin dev",
+    "build": "pnpm --filter \"./apps/*\" build",
+    "build:auth": "pnpm --filter auth build",
+    "build:admin": "pnpm --filter admin build",
+    "deploy": "pnpm --filter \"./apps/*\" deploy",
+    "deploy:auth": "pnpm --filter auth deploy",
+    "deploy:admin": "pnpm --filter admin deploy",
+    "type-check": "pnpm --filter \"./apps/*\" type-check"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "devDependencies": {
+    "typescript": "5.7.2"
   }
 }

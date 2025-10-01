@@ -1,8 +1,11 @@
 {
   "compatibility_date": "2025-04-19",
-  "main": "src/index.ts",
-  "name": "al-ummah-now-auth",
-  "upload_source_maps": true,
+  "name": "al-ummah-now-auth-admin",
+  "main": "workers/app.ts",
+  "assets": {
+    "directory": "./build/client",
+    "binding": "ASSETS"
+  },
   "kv_namespaces": [
     {
       "binding": "AUTH_STORAGE",
@@ -20,17 +23,5 @@
   "observability": {
     "enabled": true
   },
-  "compatibility_flags": ["nodejs_compat","nodejs_compat_populate_process_env"],
-  "tail_consumers": [
-    {
-      "service": "al-ummah-now-auth-tail"
-    }
-  ],
-  "secrets_store_secrets": [
-    {
-      "binding": "RESEND_API_KEY",
-      "store_id": "f8eddc9944d041919ed8dc7d08d32308",
-      "secret_name": "RESEND_API_KEY"
-    }
-  ]
+  "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"]
 }

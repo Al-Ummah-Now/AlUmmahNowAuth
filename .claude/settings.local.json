@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cat:*)",
+      "WebSearch",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "WebFetch(domain:openauth.js.org)",
+      "Bash(pnpm build:*)",
+      "Bash(npx wrangler d1 migrations apply:*)",
+      "Bash(git mv:*)",
+      "Bash(move openauth.client.ts openauth.client.server.ts)",
+      "Bash(mv:*)",
+      "Bash(pnpm install:*)",
+      "Bash(npm install)",
+      "Bash(where pnpm)",
+      "Bash(npx pnpm install:*)",
+      "Bash(wrangler d1 migrations list:*)",
+      "Bash(npx wrangler d1 migrations list:*)",
+      "Bash(npm run migrations:local:*)",
+      "Bash(npx wrangler d1 execute:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(npx pnpm add:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

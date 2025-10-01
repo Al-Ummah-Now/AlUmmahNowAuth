@@ -23,82 +23,132 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install
 
       - name: Run TypeScript check
-        run: npx tsc --noEmit
+        run: pnpm run type-check
 
-  deploy-preview:
+  deploy-auth-preview:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
       repository-projects: write
-    name: Deploy Preview
+    name: Deploy Auth Preview
     if: github.event_name == 'pull_request'
     needs: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install
 
-      - name: Deploy to Cloudflare Workers (Preview)
-        id: deploy
+      - name: Deploy Auth to Cloudflare Workers (Preview)
+        id: deploy-auth
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/auth
           command: deploy --name al-ummah-now-auth-pr-${{ github.event.number }}
 
-      - name: Comment Preview URL
+  deploy-admin-preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
+    name: Deploy Admin Preview
+    if: github.event_name == 'pull_request'
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Admin App
+        working-directory: apps/admin
+        run: pnpm run build
+
+      - name: Deploy Admin to Cloudflare Workers (Preview)
+        id: deploy-admin
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/admin
+          command: deploy --name al-ummah-now-auth-admin-pr-${{ github.event.number }}
+
+      - name: Comment Preview URLs
         uses: actions/github-script@v7
         if: github.event_name == 'pull_request'
         with:
           script: |
-            // Preview URL for the specific PR deployment
-            const previewUrl = `https://al-ummah-now-auth-pr-${{ github.event.number }}.mahmoud-s-darwish.workers.dev`;
-            
-            const body = `🚀 **Preview deployment ready!**
-            
-            📱 **Preview URL**: ${previewUrl}
-            🔧 **Admin Panel**: ${previewUrl}/admin
-            
+            const authUrl = `https://al-ummah-now-auth-pr-${{ github.event.number }}.mahmoud-s-darwish.workers.dev`;
+            const adminUrl = `https://al-ummah-now-auth-admin-pr-${{ github.event.number }}.mahmoud-s-darwish.workers.dev`;
+
+            const body = `🚀 **Preview deployments ready!**
+
+            🔐 **Auth Server**: ${authUrl}
+            🛠️ **Admin Dashboard**: ${adminUrl}
+
             **Test the changes:**
-            - Login with your email to test authentication
-            - Access the admin panel to test user management
-            - Test API endpoints with the preview URL
-            
+            - Test authentication flow with the auth server
+            - Access the admin dashboard to manage users
+            - Both apps share the same D1 database
+
             This preview will be automatically updated with new commits to this PR.
-            
-            **Note**: This is a dedicated preview deployment for PR #${{ github.event.number }}`;
-            
-            // Find existing comment and update it, or create new one
+
+            **Note**: These are dedicated preview deployments for PR #${{ github.event.number }}`;
+
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            
-            const existingComment = comments.find(comment => 
-              comment.user.login === 'github-actions[bot]' && 
-              comment.body.includes('Preview deployment ready!')
+
+            const existingComment = comments.find(comment =>
+              comment.user.login === 'github-actions[bot]' &&
+              comment.body.includes('Preview deployments ready!')
             );
-            
+
             if (existingComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -115,44 +165,84 @@ jobs:
               });
             }
 
-  deploy-production:
+  deploy-auth-production:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
       repository-projects: write
-    name: Deploy Production
+    name: Deploy Auth Production
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install
 
       - name: Apply database migrations
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/auth
           command: d1 migrations apply AUTH_DB --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Deploy to Cloudflare Workers (Production)
+      - name: Deploy Auth to Cloudflare Workers (Production)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/auth
           command: deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-admin-production:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
+    name: Deploy Admin Production
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Admin App
+        working-directory: apps/admin
+        run: pnpm run build
+
+      - name: Deploy Admin to Cloudflare Workers (Production)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/admin
+          command: deploy

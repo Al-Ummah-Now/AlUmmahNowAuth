@@ -1,0 +1,51 @@
+{
+  "name": "admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Al Ummah Now Admin Dashboard",
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev --port 5175",
+    "dev:wrangler": "wrangler dev --port 5175 --local --persist-to=../../.wrangler/state",
+    "deploy": "wrangler deploy",
+    "typecheck": "react-router typegen && tsc",
+    "type-check": "react-router typegen && tsc"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "0.3.2",
+    "@radix-ui/react-avatar": "^1.1.0",
+    "@radix-ui/react-dialog": "^1.1.1",
+    "@radix-ui/react-dropdown-menu": "^2.1.1",
+    "@radix-ui/react-label": "^2.1.0",
+    "@radix-ui/react-select": "^2.1.1",
+    "@radix-ui/react-separator": "^1.1.0",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-toast": "^1.2.1",
+    "@react-router/cloudflare": "^7.5.3",
+    "@react-router/node": "^7.5.3",
+    "@react-router/serve": "^7.5.3",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "isbot": "^5.1.27",
+    "lucide-react": "^0.460.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^7.5.3",
+    "tailwind-merge": "^2.5.5",
+    "valibot": "^1.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.13.8",
+    "@react-router/dev": "^7.5.3",
+    "@tailwindcss/vite": "^4.1.4",
+    "@types/node": "^20",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "tailwindcss": "^4.1.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.3",
+    "vite-tsconfig-paths": "^5.1.4",
+    "wrangler": "^4.12.0"
+  }
+}

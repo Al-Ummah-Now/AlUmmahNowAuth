@@ -14,53 +14,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
         with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript compilation
-        run: npx tsc --noEmit
-
-      - name: Wrangler dry run
-        run: npx wrangler deploy --dry-run
-
-  api-validation:
-    runs-on: ubuntu-latest
-    name: API Structure Validation
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install
 
-      - name: Validate API structure
-        run: node test-user-management.js
+      - name: TypeScript type check
+        run: pnpm run type-check
 
-      - name: Check migration files
-        run: |
-          echo "Checking migration files..."
-          ls -la migrations/
-          
-          # Validate SQL syntax (basic check)
-          for file in migrations/*.sql; do
-            if [ -f "$file" ]; then
-              echo "Validating $file"
-              # Basic SQL syntax validation
-              grep -E "(CREATE|ALTER|INSERT|UPDATE|DELETE)" "$file" > /dev/null || (echo "Invalid SQL in $file" && exit 1)
-            fi
-          done
+      - name: Auth app dry run
+        working-directory: apps/auth
+        run: pnpm exec wrangler deploy --dry-run
 
   security-check:
     runs-on: ubuntu-latest
@@ -69,21 +42,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install
 
       - name: Audit dependencies
-        run: npm audit --audit-level high
+        run: pnpm audit --audit-level high
 
       - name: Check for hardcoded secrets
         run: |
-          if grep -r -E "(password|secret|key|token)[[:space:]]*[:=][[:space:]]*['\"][A-Za-z0-9+/=]{16,}['\"]" src/ --exclude-dir=node_modules --exclude="*.md" --exclude="test-*"; then
+          if grep -r -E "(password|secret|key|token)[[:space:]]*[:=][[:space:]]*['\"][A-Za-z0-9+/=]{16,}['\"]" apps/ --exclude-dir=node_modules --exclude="*.md" --exclude="test-*"; then
             echo "Hardcoded secrets found!"
             exit 1
           fi
@@ -98,9 +76,9 @@ jobs:
       - name: Check required documentation
         run: |
           echo "Checking for required documentation files..."
-          
+
           required_files=("README.md" "USER_MANAGEMENT.md" "CICD.md")
-          
+
           for file in "${required_files[@]}"; do
             if [ -f "$file" ]; then
               echo "✅ $file exists"
@@ -109,5 +87,28 @@ jobs:
               exit 1
             fi
           done
-          
+
           echo "✅ All required documentation files are present"
+
+  migration-check:
+    runs-on: ubuntu-latest
+    name: Migration Check
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check migration files
+        run: |
+          echo "Checking migration files..."
+          ls -la apps/auth/migrations/
+
+          # Validate SQL syntax (basic check)
+          for file in apps/auth/migrations/*.sql; do
+            if [ -f "$file" ]; then
+              echo "Validating $file"
+              # Basic SQL syntax validation
+              grep -E "(CREATE|ALTER|INSERT|UPDATE|DELETE)" "$file" > /dev/null || (echo "Invalid SQL in $file" && exit 1)
+            fi
+          done
+
+          echo "✅ All migration files are valid"

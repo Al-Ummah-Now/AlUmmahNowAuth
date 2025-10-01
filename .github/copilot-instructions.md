@@ -1,133 +1,145 @@
-# AlUmmahNowAuth OpenAuth Server
+# AlUmmahNowAuth - AI Agent Instructions
 
-OpenAuth server implementation running on Cloudflare Workers with D1 database and KV storage for authentication state management. This is a TypeScript-based authentication service using the OpenAuth library.
+OpenAuth authentication system built as a **pnpm monorepo** with two Cloudflare Workers apps: Auth Server and Admin Dashboard.
 
-Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
+## 🏗️ Architecture
 
-## Working Effectively
+**Monorepo Structure** (pnpm workspace):
+- `apps/auth/` - OpenAuth server (email-based authentication)
+- `apps/admin/` - React Router v7 admin dashboard
+- **Shared Resources**: Both apps use same D1 database (`AUTH_DB`) and KV storage (`AUTH_STORAGE`)
 
-### Bootstrap and Build the Repository
-- Install dependencies: `npm install` -- takes ~13 seconds
-- Check TypeScript compilation and build: `npm run check` -- takes ~3 seconds. NEVER CANCEL.
-- Generate TypeScript types: `npm run types` -- takes <1 second
+**Data Flow**:
+1. Users authenticate via Auth Server (`apps/auth`) → email verification codes sent via Resend API
+2. Auth Server stores sessions in KV and user data in D1
+3. Admin Dashboard (`apps/admin`) reads from D1 for user management
+4. OAuth flow: Admin redirects to Auth → Auth validates → returns code → Admin exchanges for token → creates session
 
-### Development Server
-- Start development server: `npm run dev` -- takes ~10 seconds to start. NEVER CANCEL.
-- Server runs on `http://localhost:8787`
-- Dev server includes hot reload and simulates Cloudflare Workers environment locally
-- All Cloudflare bindings (D1, KV, Secrets) are simulated locally via Miniflare
+## ⚡ Essential Commands
 
-### Deployment Commands  
-- Deploy to Cloudflare: `npm run deploy` -- requires proper Cloudflare credentials
-- Pre-deployment database migration: `npm run predeploy` -- applies D1 migrations to remote database
+**Always use pnpm** (NOT npm). Commands run from monorepo root:
 
-## Validation
+```powershell
+# Install dependencies (13s, use 300s timeout)
+pnpm install
 
-### Manual Testing Requirements
-Always manually validate authentication flows after making changes:
+# Development (concurrent mode - both apps)
+pnpm dev              # Auth on :8787, Admin on :5174
 
-1. **Registration Flow Test**:
-   - Navigate to `http://localhost:8787/authorize?response_type=code&client_id=test&redirect_uri=http://localhost:3000/callback`
-   - Click "Register" link
-   - Fill in email, password, and repeat password
-   - Submit form - should attempt email sending (will fail locally due to missing RESEND_API_KEY secret)
+# Development (individual apps)
+pnpm dev:auth         # Auth server only (:8787)
+pnpm dev:admin        # Admin dashboard only (:5174)
 
-2. **Login Flow Test**:
-   - Navigate to authorization URL above
-   - Enter email and password
-   - Submit form - should show code input field (email sending will fail locally)
+# Type checking & validation
+pnpm type-check       # Both apps (~3s, use 30s timeout)
 
-3. **Expected Local Behavior**:
-   - Registration/login forms display correctly with "Al Ummah Now" branding
-   - Email sending fails with "Secret RESEND_API_KEY not found" error (expected in local dev)
-   - Server logs show proper HTTP status codes (200, 302)
-   - Database operations work correctly
+# Deployment
+pnpm deploy           # Both apps to production
+pnpm deploy:auth      # Auth server only
+pnpm deploy:admin     # Admin dashboard only
+```
 
-### Build Validation
-- Always run `npm run check` before committing changes
-- Ensure TypeScript compilation succeeds without errors
-- No linting tools are configured - manual code review required
+**Never cancel** long-running terminal operations - they're actually fast but may appear slow.
 
-## Database and Storage
+## 🗄️ Database & Migrations
 
-### D1 Database Setup
-- Database name: `al-ummah-now-d1`
-- Binding: `AUTH_DB`
-- Migrations located in `migrations/` directory:
-  - `0001_create_user_table.sql` - User table with id, email, created_at
-  - `0002_create_clients_table.sql` - Client configuration table
+**Schema** (`apps/auth/migrations/`):
+- `0001_create_user_table.sql` - Users: id, email, created_at
+- `0002_create_clients_table.sql` - OAuth clients config
+- `0003_add_user_role.sql` - Adds role column (admin/user), indexes
+- `0004_add_password_reset_required.sql` - Password reset flags
 
-### KV Storage
-- Namespace binding: `AUTH_STORAGE`
-- Used by OpenAuth for session state management
+**Apply Migrations**:
+```powershell
+cd apps/auth
+pnpm run migrations:local    # Local D1 database
+pnpm run migrations:remote   # Production D1 database
+```
 
-### Secrets
-- `RESEND_API_KEY` - Required for email sending in production
-- Stored in Cloudflare Secrets Store, simulated locally
+**Critical Pattern**: All database access uses D1 prepared statements:
+```typescript
+await env.AUTH_DB.prepare(`SELECT * FROM user WHERE email = ?`)
+  .bind(email)
+  .first<{ id: string; role: string }>();
+```
 
-## Key File Structure
+## 🔐 Authentication Patterns
 
-### Source Code (`src/`)
-- `index.ts` - Main OpenAuth server configuration and handler
-- `email.ts` - Email sending functionality using Resend API
-- `users.ts` - User database operations
-- `clients.ts` - Client configuration management
+**Auth Server** (`apps/auth/src/index.ts`):
+- Uses OpenAuth's `PasswordProvider` with email verification codes
+- `getOrCreateUser()` - Returns existing user or creates new (role='user')
+- Sessions stored in KV: `session:${token}` keys
+- Cloudflare bindings: `AUTH_DB` (D1), `AUTH_STORAGE` (KV), `RESEND_API_KEY` (Secret)
 
-### Configuration Files
-- `wrangler.json` - Cloudflare Workers configuration with bindings
-- `tsconfig.json` - TypeScript compiler configuration
-- `package.json` - Dependencies and npm scripts
-- `worker-configuration.d.ts` - Auto-generated Cloudflare Workers types
+**Admin Dashboard** (`apps/admin/app/lib/auth.server.ts`):
+- `requireAuth()` - Server-side auth guard, reads session from KV
+- `getAuthenticatedUser()` - Validates session cookie against KV storage
+- Admin routes check `user.role === 'admin'` via `requireAuth(request, env, true)`
 
-### Database Migrations
-- `migrations/` - D1 database schema migrations
-- Apply with: `npx wrangler d1 migrations apply AUTH_DB --remote`
+**Environment Detection** (`apps/admin/app/lib/config.ts`):
+- Localhost → `http://localhost:8787` (auth server)
+- Preview/PR domains → preview auth server URL
+- Production → production auth server URL
 
-## Common Development Tasks
+## 🎨 UI & Components
 
-### Making Code Changes
-1. Start dev server: `npm run dev`
-2. Make changes to TypeScript files in `src/`
-3. Test changes manually using browser at `http://localhost:8787`
-4. Run build check: `npm run check`
-5. Commit changes
+**Admin Dashboard** uses shadcn/ui with dark theme (Slate/Blue):
+- Components: `apps/admin/app/components/ui/` (button, card, dialog, table, etc.)
+- Routes: `apps/admin/app/routes/` (React Router v7 file-based routing)
+- Loaders MUST call `requireAuth()` and handle redirects properly
+- Example: `users._index.tsx` - User CRUD with loader fetching from D1
 
-### Debugging Authentication Issues
-- Check server logs in the `npm run dev` terminal output
-- Verify database bindings are working (logs show D1Database and KvNamespace objects)
-- Test registration flow to see email sending attempts
-- Expected error in local dev: "Secret RESEND_API_KEY not found"
+**Common Pattern**:
+```typescript
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const env = context?.cloudflare?.env as { AUTH_DB: D1Database; AUTH_STORAGE: KVNamespace };
+  await requireAuth(request, env, true); // throws redirect if not authed
+  const users = await getAllUsers(env.AUTH_DB);
+  return { users };
+}
+```
 
-### Adding New Features
-- Always update TypeScript types: `npm run types`
-- Follow existing patterns in `src/index.ts` for OpenAuth configuration
-- Test thoroughly with manual auth flows
-- Update database schema with new migrations if needed
+## 🚀 Testing & Validation
 
-## Timing and Performance Expectations
+**Manual Testing** (required for auth changes):
+1. Start auth server: `cd apps/auth && pnpm dev`
+2. Test auth flow: `http://localhost:8787/authorize?response_type=code&client_id=test&redirect_uri=http://localhost:3000/callback`
+3. Expected: Login form displays, email sending fails with "Secret RESEND_API_KEY not found" (normal in local dev)
 
-- **Build check**: 3 seconds - Set timeout to 30+ seconds to be safe
-- **Development server startup**: 10 seconds - Set timeout to 60+ seconds
-- **Type generation**: <1 second - Set timeout to 30+ seconds
-- **Dependency installation**: 13 seconds - Set timeout to 300+ seconds
+**Admin Dashboard Testing**:
+1. Start both servers: `pnpm dev` (from root)
+2. Create OAuth client in local D1:
+   ```sql
+   INSERT INTO clients (client_id, redirect_uri, theme_title)
+   VALUES ('admin-dashboard', 'http://localhost:5174/auth/callback', 'Admin Dashboard');
+   ```
+3. Navigate to `http://localhost:5174` → should redirect to login
 
-**NEVER CANCEL** any of these operations - they are fast but may occasionally take longer depending on network conditions.
+## 📦 Deployment & CI/CD
 
-## Technology Stack Summary
+**Preview Deployments** (automatic on PRs):
+- Auth: `https://al-ummah-now-auth-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
+- Admin: `https://al-ummah-now-auth-admin-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
 
-- **Runtime**: Cloudflare Workers
-- **Language**: TypeScript
-- **Authentication**: OpenAuth library
-- **Database**: Cloudflare D1 (SQLite)
-- **Storage**: Cloudflare KV
-- **Email**: Resend API
-- **Build Tool**: Wrangler CLI
-- **Local Development**: Miniflare simulation
+**Production**:
+- Auth: `https://al-ummah-now-auth.alummahnow.workers.dev`
+- Admin: `https://al-ummah-now-auth-admin.alummahnow.workers.dev`
 
-## Known Limitations
+**GitHub Actions**: `.github/workflows/deploy.yml` handles CI/CD with separate jobs for auth/admin
 
-- No testing framework configured
-- No linting tools (ESLint, Prettier) configured  
-- Email functionality requires production Cloudflare Secrets Store setup
-- Local development simulates all Cloudflare services
-- Wrangler version in project (4.12.0) is outdated (4.38.0 available)
+## 🛠️ Project Conventions
+
+- **No linting tools** - manual code review required
+- **No test framework** - manual validation only
+- **TypeScript strict mode** - all code strongly typed
+- **Server-side rendering** - Admin uses React Router v7 SSR
+- **Shared subjects schema** (`apps/auth/src/index.ts`): Defines user type validation with Valibot
+- **Migrations are sequential** - numbered prefixes (0001, 0002, etc.)
+
+## 🚨 Common Pitfalls
+
+1. **Wrong package manager**: Always use `pnpm`, not `npm` or `yarn`
+2. **Missing bindings**: Ensure `wrangler.json` has `AUTH_DB`, `AUTH_STORAGE` bindings
+3. **Auth without KV**: Admin routes fail if `AUTH_STORAGE` unavailable (check `env` parameter)
+4. **Type generation**: Run `pnpm run types` in `apps/auth` after changing `wrangler.json`
+5. **Database access**: D1 binding only available with `pnpm dev:wrangler` for admin (not `pnpm dev`)
