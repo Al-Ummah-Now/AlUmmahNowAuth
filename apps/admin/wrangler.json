@@ -7,7 +7,8 @@
     "binding": "ASSETS"
   },
   "vars": {
-    "AUTH_SERVER_URL": "http://localhost:8787"
+    "AUTH_SERVER_URL": "https://auth.alummahnow.net",
+    "APP_URL": "https://admin.auth.alummahnow.net"
   },
   "kv_namespaces": [
     {

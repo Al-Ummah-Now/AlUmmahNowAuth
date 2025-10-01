@@ -30,7 +30,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // Get auth server URL and app URL from request
   const authServerUrl = getAuthServerUrl(request, env);
-  const appUrl = getAppUrl(request);
+  const appUrl = getAppUrl(request, env);
 
   logger.debug('Configuration loaded', { authServerUrl, appUrl });
 

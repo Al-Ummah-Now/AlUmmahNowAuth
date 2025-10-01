@@ -8,7 +8,6 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
   // Get session cookie
   const cookieHeader = request.headers.get("Cookie");
   if (!cookieHeader) {
-    logger.debug('No cookie header found');
     return null;
   }
 
@@ -22,7 +21,6 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
 
   const sessionToken = cookies["auth_session"];
   if (!sessionToken) {
-    logger.debug('No auth_session cookie found');
     return null;
   }
 
@@ -42,8 +40,6 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
       await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
       return null;
     }
-
-    logger.debug('User authenticated successfully', { userId: session.user?.id, email: session.user?.email, role: session.user?.role });
     return session.user;
   } catch (error) {
     logger.error("Error verifying session", { error: error instanceof Error ? error.message : String(error) });
@@ -65,7 +61,6 @@ export async function requireAuth(
   requireAdmin: boolean = false
 ) {
   const url = new URL(request.url);
-  logger.debug('requireAuth called', { path: url.pathname, requireAdmin });
   
   // If no storage available, always redirect to login
   if (!env?.AUTH_STORAGE) {
@@ -81,22 +76,9 @@ export async function requireAuth(
   }
 
   if (requireAdmin && user.role !== "admin") {
-    logger.warn('Non-admin tried to access admin-only resource', { 
-      userId: user.id, 
-      email: user.email, 
-      role: user.role, 
-      path: url.pathname 
-    });
     throw new Response("Forbidden: Admin access required", { status: 403 });
   }
 
-  logger.debug('Auth check passed', { 
-    userId: user.id, 
-    email: user.email, 
-    role: user.role, 
-    path: url.pathname,
-    adminRequired: requireAdmin
-  });
   
   return user;
 }
