@@ -6,7 +6,7 @@ import { logger } from "~/lib/logger.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   // Initialize logger with D1 database (if available in Cloudflare Workers context)
-  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database; AUTH_SERVER_URL?: string };
+  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database; AUTH_STORAGE?: KVNamespace; AUTH_SERVER_URL?: string };
   if (env?.AUTH_DB) {
     logger.setDatabase(env.AUTH_DB, true);
   } else {
@@ -110,7 +110,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
 
     // Store session in KV
-    const env = context?.cloudflare?.env as { AUTH_STORAGE: KVNamespace };
     if (env?.AUTH_STORAGE) {
       const sessionToken = crypto.randomUUID();
       const sessionData = {
