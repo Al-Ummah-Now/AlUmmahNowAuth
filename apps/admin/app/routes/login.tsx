@@ -6,7 +6,7 @@ import { logger } from "~/lib/logger.server";
 
 // Redirect directly to auth server instead of showing a login page
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database };
+  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database; APP_URL?: string };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
   
   // Initialize logger
@@ -17,8 +17,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   
   logger.logLoader('login', request);
 
-  const appUrl = getAppUrl(request);
-  const client = getOpenAuthClient(request);
+  const appUrl = getAppUrl(request, env);
+  const client = getOpenAuthClient(request, env);
 
   // Generate authorize URL using OpenAuth client
   logger.debug('Generating authorize URL for login');

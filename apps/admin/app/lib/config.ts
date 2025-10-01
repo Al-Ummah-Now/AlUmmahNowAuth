@@ -35,15 +35,23 @@ export function getAuthServerUrl(request?: Request, env?: Record<string, any>): 
 }
 
 // Get the current app URL (for OAuth redirect_uri)
-export function getAppUrl(request?: Request): string {
+export function getAppUrl(request?: Request, env?: Record<string, any>): string {
+  // Priority 1: Environment variable override
+  if (env?.APP_URL) {
+    return env.APP_URL;
+  }
+
+  // Priority 2: Browser context (client-side)
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
 
+  // Priority 3: Server-side request
   if (request) {
     const url = new URL(request.url);
     return url.origin;
   }
 
+  // Priority 4: Default fallback for development
   return 'http://localhost:5174';
 }
