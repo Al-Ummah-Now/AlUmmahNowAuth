@@ -28,7 +28,8 @@
       "Bash(pkill:*)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

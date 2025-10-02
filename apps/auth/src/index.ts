@@ -7,6 +7,8 @@ import * as v from 'valibot';
 import SendEmail from "./email";
 import { getOrCreateUser, checkPasswordResetRequired, clearPasswordResetRequired } from "./users";
 import { logger } from "./logger";
+import { getUserSession, createSession, deleteSession, createSessionCookie, clearSessionCookie } from "./session";
+import { getAuthClient, subjects as clientSubjects } from "./auth-client";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -76,9 +78,40 @@ export default {
       }
     }
     
+    // Handle logout
+    if (url.pathname === '/logout') {
+      logger.debug('Handling logout request');
+
+      // Delete session from KV
+      await deleteSession(request, env.AUTH_STORAGE);
+      logger.info('User logged out');
+
+      // Redirect to homepage with cleared cookie
+      const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "Location": url.origin,
+          "Set-Cookie": clearSessionCookie(isLocalhost),
+        },
+      });
+    }
+
     // Serve default landing page
     if (url.pathname === '/' || url.pathname === '') {
       logger.debug('Serving landing page');
+
+      // Check for existing session
+      const session = await getUserSession(request, env.AUTH_STORAGE);
+      const isLoggedIn = session !== null;
+      const userData = session ? JSON.stringify(session.user) : 'null';
+
+      // Determine client ID based on environment
+      const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+      const clientId = isLocalhost ? 'web-app' : 'web-app-prod';
+
+      logger.debug('Landing page session check', { isLoggedIn, hasSession: !!session, clientId });
+
       const landingHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -400,26 +433,10 @@ export default {
     </footer>
 
     <script>
-        let currentUser = null;
-
-        // Check if user is already authenticated
-        async function checkAuthStatus() {
-            try {
-                // Check for auth token in localStorage or cookie
-                const token = localStorage.getItem('auth_token');
-                if (token) {
-                    // In a real implementation, verify the token with the server
-                    // For now, we'll simulate user data
-                    const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
-                    if (userData.email) {
-                        currentUser = userData;
-                        updateUIForLoggedInUser();
-                    }
-                }
-            } catch (error) {
-                console.error('Auth check failed:', error);
-            }
-        }
+        // Session data from server
+        let currentUser = ${userData};
+        const isLoggedIn = ${isLoggedIn};
+        const clientId = '${clientId}';
 
         function updateUIForLoggedInUser() {
             if (currentUser) {
@@ -437,50 +454,33 @@ export default {
         function handleLogin() {
             // Redirect to OpenAuth login flow
             const currentUrl = window.location.origin;
-            const loginUrl = \`/authorize?response_type=code&client_id=web-app&redirect_uri=\${encodeURIComponent(currentUrl + '/callback')}\`;
+            const loginUrl = \`/authorize?response_type=code&client_id=\${clientId}&redirect_uri=\${encodeURIComponent(currentUrl + '/callback')}\`;
             window.location.href = loginUrl;
         }
 
         function handleLogout() {
-            // Clear auth data
-            localStorage.removeItem('auth_token');
-            localStorage.removeItem('user_data');
-            currentUser = null;
-            updateUIForLoggedOutUser();
+            // Redirect to logout endpoint
+            window.location.href = '/logout';
         }
 
-        // Check for OAuth callback
-        function handleOAuthCallback() {
+        // Check for error parameter
+        function checkForErrors() {
             const urlParams = new URLSearchParams(window.location.search);
-            const code = urlParams.get('code');
             const error = urlParams.get('error');
-            
+
             if (error) {
-                alert('Authentication failed: ' + error);
-                return;
-            }
-            
-            if (code) {
-                // Exchange code for user info (simplified for demo)
-                const email = prompt('Enter your email to complete login:');
-                
-                if (email) {
-                    currentUser = { email, role: 'user' };
-                    localStorage.setItem('auth_token', code);
-                    localStorage.setItem('user_data', JSON.stringify(currentUser));
-                    
-                    // Clean up URL
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                    
-                    updateUIForLoggedInUser();
-                }
+                alert('Authentication error: ' + error);
+                // Clean up URL
+                window.history.replaceState({}, document.title, window.location.pathname);
             }
         }
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', function() {
-            checkAuthStatus();
-            handleOAuthCallback();
+            if (isLoggedIn) {
+                updateUIForLoggedInUser();
+            }
+            checkForErrors();
         });
     </script>
 </body>
@@ -674,13 +674,86 @@ export default {
     // Handle OAuth callback for main app
     if (url.pathname === '/callback') {
       logger.debug('Handling OAuth callback');
-      // Extract the authorization code and redirect back to homepage with code as parameter
       const code = url.searchParams.get('code');
-      if (code) {
-        logger.info('OAuth callback successful', { hasCode: true });
-        return Response.redirect(`${url.origin}/?code=${encodeURIComponent(code)}`, 302);
-      } else {
+      const error = url.searchParams.get('error');
+
+      if (error) {
+        logger.warn('OAuth callback error', { error });
+        return Response.redirect(`${url.origin}/?error=${encodeURIComponent(error)}`, 302);
+      }
+
+      if (!code) {
         logger.warn('OAuth callback failed', { reason: 'missing_code' });
+        return Response.redirect(`${url.origin}/?error=missing_code`, 302);
+      }
+
+      try {
+        // Determine client ID based on environment
+        const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+        const clientId = isLocalhost ? 'web-app' : 'web-app-prod';
+
+        // Exchange code for tokens
+        const client = getAuthClient(url.origin);
+        const redirectUri = `${url.origin}/callback`;
+
+        logger.debug('Exchanging authorization code', { redirectUri, clientId });
+        const result = await client.exchange(code, redirectUri);
+
+        if (result.err !== false) {
+          throw new Error(`Token exchange failed: ${result.err}`);
+        }
+
+        // Verify the token and get user info
+        const verified = await client.verify(clientSubjects, result.tokens.access, {
+          refresh: result.tokens.refresh,
+        });
+
+        if ('err' in verified) {
+          throw new Error(`Token verification failed: ${verified.err}`);
+        }
+
+        if (!verified.subject) {
+          throw new Error("Failed to verify token - no subject returned");
+        }
+
+        const userInfo = verified.subject;
+        logger.info('User authenticated via callback', {
+          email: userInfo.properties.email,
+          role: userInfo.properties.role
+        });
+
+        // Create session
+        const sessionData = {
+          user: {
+            id: userInfo.properties.id,
+            email: userInfo.properties.email,
+            role: userInfo.properties.role,
+          },
+          tokens: {
+            access: result.tokens.access,
+            refresh: result.tokens.refresh,
+          },
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        };
+
+        const sessionToken = await createSession(env.AUTH_STORAGE, sessionData);
+        logger.info('Session created', { sessionToken: sessionToken.substring(0, 10) + '...', isLocalhost });
+
+        // Redirect to homepage with session cookie (reuse isLocalhost from above)
+        const cookieValue = createSessionCookie(sessionToken, isLocalhost);
+        logger.info('Setting cookie', { cookie: cookieValue });
+
+        return new Response(null, {
+          status: 302,
+          headers: {
+            "Location": url.origin,
+            "Set-Cookie": cookieValue,
+          },
+        });
+      } catch (error) {
+        logger.error('OAuth callback error', {
+          error: error instanceof Error ? error.message : String(error),
+        });
         return Response.redirect(`${url.origin}/?error=auth_failed`, 302);
       }
     }
