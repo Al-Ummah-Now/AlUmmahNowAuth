@@ -44,14 +44,30 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       appUrl,
       authServerUrl,
       redirectUri: `${appUrl}/auth/callback`,
-      clientId: 'admin-dashboard'
+      clientId: 'admin-dashboard',
+      tokenEndpoint: `${authServerUrl}/token`
     });
 
     // Exchange code for tokens
-    logger.debug('Exchanging authorization code for tokens');
-    const result = await client.exchange(code, `${appUrl}/auth/callback`);
-    
+    logger.debug('Exchanging authorization code for tokens', {
+      code: code.substring(0, 10) + '...',
+      redirectUri: `${appUrl}/auth/callback`,
+      tokenUrl: `${authServerUrl}/token`
+    });
+    let result;
+    try {
+      result = await client.exchange(code, `${appUrl}/auth/callback`);
+    } catch (exchangeError) {
+      logger.error('Token exchange request failed', {
+        error: exchangeError instanceof Error ? exchangeError.message : String(exchangeError),
+        authServerUrl,
+        hint: 'Auth server may be down or timing out (Cloudflare 522)'
+      });
+      return redirect("/login?error=auth_server_unavailable");
+    }
+
     if (result.err !== false) {
+      logger.error('Token exchange returned error', { error: result.err });
       throw new Error(`Exchange failed: ${result.err}`);
     }
 
