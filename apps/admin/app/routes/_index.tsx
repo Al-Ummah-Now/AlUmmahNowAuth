@@ -254,7 +254,7 @@ export default function Index() {
       <nav className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <img
                 src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
                 alt="Al Ummah Now"
@@ -264,7 +264,7 @@ export default function Index() {
                 <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">Al Ummah Now</h1>
                 <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Admin Dashboard</p>
               </div>
-            </div>
+            </Link>
             <div className="flex items-center gap-2">
               <Button variant="outline" asChild>
                 <Link to="/users">Manage Users</Link>

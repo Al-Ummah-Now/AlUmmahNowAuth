@@ -105,15 +105,17 @@ export default function Users() {
                   <ArrowLeft className="h-5 w-5" />
                 </Link>
               </Button>
-              <img
-                src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                alt="Al Ummah Now"
-                className="h-10 w-10 rounded-lg"
-              />
-              <div>
-                <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">User Management</h1>
-                <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Al Ummah Now Admin</p>
-              </div>
+              <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                <img
+                  src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
+                  alt="Al Ummah Now"
+                  className="h-10 w-10 rounded-lg"
+                />
+                <div>
+                  <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">User Management</h1>
+                  <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Al Ummah Now Admin</p>
+                </div>
+              </Link>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" asChild>
