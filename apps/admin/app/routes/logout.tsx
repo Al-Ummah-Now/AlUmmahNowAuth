@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
-import { logger } from "~/lib/logger.server";
+import { logger } from "../lib/logger.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as { AUTH_DB?: D1Database; AUTH_STORAGE?: KVNamespace };

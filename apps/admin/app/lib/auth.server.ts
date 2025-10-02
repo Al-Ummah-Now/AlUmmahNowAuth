@@ -1,5 +1,5 @@
 // Server-side authentication utilities for admin app
-import { logger } from "~/lib/logger.server";
+import { logger } from "./logger.server";
 
 export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE: KVNamespace }) {
   const url = new URL(request.url);

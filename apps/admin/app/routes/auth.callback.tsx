@@ -1,8 +1,8 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
-import { getAppUrl, getAuthServerUrl } from "~/lib/config";
-import { getOpenAuthClient, subjects } from "~/lib/openauth.client.server";
-import { logger } from "~/lib/logger.server";
+import { getAppUrl, getAuthServerUrl } from "../lib/config";
+import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
+import { logger } from "../lib/logger.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   // Initialize logger with D1 database (if available in Cloudflare Workers context)

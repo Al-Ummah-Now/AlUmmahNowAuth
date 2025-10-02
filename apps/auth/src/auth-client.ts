@@ -12,9 +12,9 @@ export const subjects = createSubjects({
   }),
 });
 
-export function getAuthClient(issuerUrl: string) {
+export function getAuthClient(issuerUrl: string, clientID: string = "web-app") {
   return createClient({
-    clientID: "web-app",
+    clientID,
     issuer: issuerUrl,
   });
 }

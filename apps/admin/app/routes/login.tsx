@@ -1,8 +1,8 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
-import { getAppUrl } from "~/lib/config";
-import { getOpenAuthClient } from "~/lib/openauth.client.server";
-import { logger } from "~/lib/logger.server";
+import { getAppUrl } from "../lib/config";
+import { getOpenAuthClient } from "../lib/openauth.client.server";
+import { logger } from "../lib/logger.server";
 
 // Redirect directly to auth server instead of showing a login page
 export async function loader({ request, context }: LoaderFunctionArgs) {

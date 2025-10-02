@@ -693,7 +693,7 @@ export default {
         const clientId = isLocalhost ? 'web-app' : 'web-app-prod';
 
         // Exchange code for tokens
-        const client = getAuthClient(url.origin);
+        const client = getAuthClient(url.origin, clientId);
         const redirectUri = `${url.origin}/callback`;
 
         logger.debug('Exchanging authorization code', { redirectUri, clientId });

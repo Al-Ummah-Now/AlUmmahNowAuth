@@ -2,11 +2,11 @@ import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData, useFetcher } from "react-router";
 import { ArrowLeft, Plus, Pencil, Trash2, Mail, Shield, User, LogOut } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
-import { Button } from "~/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -15,10 +15,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "~/components/ui/dialog";
-import { getAllUsers } from "~/lib/db.server";
-import { requireAuth } from "~/lib/auth.server";
-import { logger } from "~/lib/logger.server";
+} from "../components/ui/dialog";
+import { getAllUsers } from "../lib/db.server";
+import { requireAuth } from "../lib/auth.server";
+import { logger } from "../lib/logger.server";
 
 export const meta: MetaFunction = () => {
   return [

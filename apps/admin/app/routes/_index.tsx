@@ -1,13 +1,13 @@
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData } from "react-router";
 import { Users, ShieldCheck, Activity, Database, LogOut } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
-import { Button } from "~/components/ui/button";
-import { getUserStats } from "~/lib/db.server";
-import { requireAuth } from "~/lib/auth.server";
-import { getAuthServerUrl, getAppUrl, config } from "~/lib/config";
-import { getOpenAuthClient } from "~/lib/openauth.client.server";
-import { logger } from "~/lib/logger.server";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { getUserStats } from "../lib/db.server";
+import { requireAuth } from "../lib/auth.server";
+import { getAuthServerUrl, getAppUrl, config } from "../lib/config";
+import { getOpenAuthClient } from "../lib/openauth.client.server";
+import { logger } from "../lib/logger.server";
 
 export const meta: MetaFunction = () => {
   return [
