@@ -2,9 +2,9 @@
 # Copy this file to .dev.vars and update with your values
 
 # Auth server URL - the OpenAuth server endpoint
-# For local development, this should point to your local auth server
 AUTH_SERVER_URL=http://localhost:8787
 
-# For production, set this via Cloudflare dashboard:
-# Workers & Pages > Your Worker > Settings > Environment Variables
-# Example: AUTH_SERVER_URL=https://al-ummah-now-auth.alummahnow.workers.dev
+# App URL - the URL where this admin dashboard is running
+APP_URL=http://localhost:5175
+
+# IMPORTANT: For production deployment, update wrangler.json vars section to production URLs

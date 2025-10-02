@@ -1,6 +1,6 @@
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData } from "react-router";
-import { Users, ShieldCheck, Activity, Database } from "lucide-react";
+import { Users, ShieldCheck, Activity, Database, LogOut } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { getUserStats } from "~/lib/db.server";
@@ -268,6 +268,11 @@ export default function Index() {
             <div className="flex items-center gap-2">
               <Button variant="outline" asChild>
                 <Link to="/users">Manage Users</Link>
+              </Button>
+              <Button variant="ghost" size="icon" asChild>
+                <Link to="/logout">
+                  <LogOut className="h-5 w-5" />
+                </Link>
               </Button>
             </div>
           </div>

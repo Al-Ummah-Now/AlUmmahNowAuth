@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData, useFetcher } from "react-router";
-import { ArrowLeft, Plus, Pencil, Trash2, Mail, Shield, User } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Mail, Shield, User, LogOut } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
@@ -114,6 +114,13 @@ export default function Users() {
                 <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">User Management</h1>
                 <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Al Ummah Now Admin</p>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" asChild>
+                <Link to="/logout">
+                  <LogOut className="h-5 w-5" />
+                </Link>
+              </Button>
             </div>
           </div>
         </div>
