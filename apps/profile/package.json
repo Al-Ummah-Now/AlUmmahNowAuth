@@ -1,0 +1,21 @@
+{
+  "name": "profile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Al Ummah Now User Profile Application",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev --port 8788",
+    "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "0.3.2",
+    "valibot": "^1.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250110.0",
+    "typescript": "5.7.2",
+    "wrangler": "^4.12.0"
+  }
+}

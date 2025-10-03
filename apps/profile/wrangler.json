@@ -1,0 +1,28 @@
+{
+  "compatibility_date": "2025-04-19",
+  "main": "src/index.ts",
+  "name": "al-ummah-now-profile",
+  "upload_source_maps": true,
+  "kv_namespaces": [
+    {
+      "binding": "AUTH_STORAGE",
+      "id": "c3f796d40db8420c920aef1ce10a7f13",
+      "preview_id": "c9f1b1f1492e4a61b5e20d1872aa14fb"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "al-ummah-now-d1",
+      "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56"
+    }
+  ],
+  "vars": {
+    "AUTH_SERVER_URL": "https://auth.alummahnow.net",
+    "APP_URL": "https://profile.auth.alummahnow.net"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "compatibility_flags": ["nodejs_compat"]
+}

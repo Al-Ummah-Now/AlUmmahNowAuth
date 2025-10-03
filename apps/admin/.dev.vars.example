@@ -1,10 +1,8 @@
 # Local development environment variables
-# Copy this file to .dev.vars and update with your values
+# Copy this file to .dev.vars and customize for your local setup
 
-# Auth server URL - the OpenAuth server endpoint
+# Auth server URL for local development
 AUTH_SERVER_URL=http://localhost:8787
 
-# App URL - the URL where this admin dashboard is running
+# Admin app URL for local development
 APP_URL=http://localhost:5175
-
-# IMPORTANT: For production deployment, update wrangler.json vars section to production URLs

@@ -4,9 +4,10 @@
 
 <!-- dash-content-start -->
 
-[OpenAuth](https://openauth.js.org/) is a universal provider for managing user authentication. This monorepo contains two Cloudflare Workers applications:
-- **Auth Server**: OpenAuth-based authentication service
+[OpenAuth](https://openauth.js.org/) is a universal provider for managing user authentication. This monorepo contains three Cloudflare Workers applications:
+- **Auth Server**: OpenAuth-based authentication service (OAuth 2.0 provider)
 - **Admin Dashboard**: React-based user management interface
+- **Profile App**: User-facing profile application (OAuth client example)
 
 <!-- dash-content-end -->
 
@@ -32,15 +33,22 @@ AlUmmahNowAuth/
 │   │   ├── migrations/    # D1 database migrations
 │   │   └── wrangler.json
 │   │
-│   └── admin/             # Admin dashboard (React Router v7)
-│       ├── app/
-│       │   ├── routes/    # React Router routes
-│       │   ├── components/ui/  # shadcn/ui components
-│       │   └── lib/       # Utilities and DB functions
-│       ├── server.ts      # Cloudflare Worker entry
+│   ├── admin/             # Admin dashboard (React Router v7)
+│   │   ├── app/
+│   │   │   ├── routes/    # React Router routes
+│   │   │   ├── components/ui/  # shadcn/ui components
+│   │   │   └── lib/       # Utilities and DB functions
+│   │   ├── server.ts      # Cloudflare Worker entry
+│   │   └── wrangler.json
+│   │
+│   └── profile/           # Profile app (Cloudflare Worker)
+│       ├── src/
+│       │   └── index.ts   # OAuth client implementation
 │       └── wrangler.json
 │
 ├── pnpm-workspace.yaml
+├── QUICKSTART.md          # Quick start guide
+├── ARCHITECTURE.md        # System architecture
 └── package.json
 ```
 
@@ -61,15 +69,27 @@ AlUmmahNowAuth/
 - Real-time stats and analytics
 - Shares D1 database with auth app
 
+#### Profile App (`apps/profile`)
+- Deploys to: `al-ummah-now-profile` worker
+- OAuth 2.0 client implementation
+- User profile display and session management
+- Demonstrates proper client-server architecture
+- Solves the 522 timeout issue (see [ARCHITECTURE.md](./ARCHITECTURE.md))
+- Shares KV and D1 with auth app
+
 ## 🌐 Live Deployments
 
 - **Auth Server**: [https://al-ummah-now-auth.alummahnow.workers.dev](https://al-ummah-now-auth.alummahnow.workers.dev)
 - **Admin Dashboard**: [https://al-ummah-now-auth-admin.alummahnow.workers.dev](https://al-ummah-now-auth-admin.alummahnow.workers.dev)
+- **Profile App**: [https://al-ummah-now-profile.alummahnow.workers.dev](https://al-ummah-now-profile.alummahnow.workers.dev)
 - **Preview Deployments**: Auto-generated for each PR
   - Auth: `https://al-ummah-now-auth-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
   - Admin: `https://al-ummah-now-auth-admin-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
+  - Profile: `https://al-ummah-now-profile-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
 
 ## 🚀 Quick Start
+
+**New here? Start with the [QUICKSTART.md](./QUICKSTART.md) guide!**
 
 ### Prerequisites
 
@@ -89,21 +109,24 @@ pnpm install
 
 ### Development
 
-Run both apps concurrently:
+Run all apps concurrently:
 ```bash
 pnpm dev
 ```
 
 Run individual apps:
 ```bash
-# Auth server only
+# Auth server only (port 8787)
 pnpm dev:auth
 
-# Admin dashboard only
+# Admin dashboard only (port 5174)
 pnpm dev:admin
+
+# Profile app only (port 8788)
+pnpm dev:profile
 ```
 
-The auth server will be available at `http://localhost:8787` and the admin dashboard at `http://localhost:5174`.
+**Recommended:** Start with the Profile App at `http://localhost:8788` to test authentication!
 
 ### Database Setup
 

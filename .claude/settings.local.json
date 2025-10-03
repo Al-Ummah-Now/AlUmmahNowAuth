@@ -30,7 +30,8 @@
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
       "Bash(npx tsc:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []

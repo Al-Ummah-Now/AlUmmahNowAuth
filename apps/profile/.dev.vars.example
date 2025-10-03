@@ -1,0 +1,8 @@
+# Local development environment variables
+# Copy this file to .dev.vars and customize for your local setup
+
+# Auth server URL for local development
+AUTH_SERVER_URL=http://localhost:8787
+
+# Profile app URL for local development
+APP_URL=http://localhost:8788
