@@ -19,7 +19,7 @@
     }
   ],
   "vars": {
-    "PROFILE_APP_URL": "https://al-ummah-now-profile.alummahnow.workers.dev"
+    "PROFILE_APP_URL": "https://profile.auth.alummahnow.net/"
   },
   "observability": {
     "enabled": true

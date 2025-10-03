@@ -31,7 +31,10 @@
       "Bash(taskkill:*)",
       "Bash(npx tsc:*)",
       "Bash(gh run view:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(npx wrangler:*)",
+      "Bash(pnpm run:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

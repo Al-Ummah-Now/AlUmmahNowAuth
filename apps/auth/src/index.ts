@@ -101,21 +101,26 @@ export default {
     if (url.pathname === '/' || url.pathname === '') {
       logger.debug('Redirecting to profile app');
 
-      // Get profile app URL from environment
-      const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-      const profileUrl = isLocalhost ? 'http://localhost:8788' : (env.PROFILE_APP_URL || 'https://al-ummah-now-profile.alummahnow.workers.dev');
+      // Get profile app URL from environment (configured in wrangler.json or .dev.vars)
+      if (!env.PROFILE_APP_URL) {
+        logger.error('PROFILE_APP_URL not configured');
+        return new Response('Profile app URL not configured', { status: 500 });
+      }
 
-      return Response.redirect(profileUrl, 302);
+      return Response.redirect(env.PROFILE_APP_URL, 302);
     }
 
     // Redirect /docs to profile app
     if (url.pathname === '/docs') {
       logger.debug('Redirecting /docs to profile app');
 
-      const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-      const profileUrl = isLocalhost ? 'http://localhost:8788' : (env.PROFILE_APP_URL || 'https://al-ummah-now-profile.alummahnow.workers.dev');
+      // Get profile app URL from environment (configured in wrangler.json or .dev.vars)
+      if (!env.PROFILE_APP_URL) {
+        logger.error('PROFILE_APP_URL not configured');
+        return new Response('Profile app URL not configured', { status: 500 });
+      }
 
-      return Response.redirect(profileUrl, 302);
+      return Response.redirect(env.PROFILE_APP_URL, 302);
     }
 
     // Handle OAuth callback for main app
