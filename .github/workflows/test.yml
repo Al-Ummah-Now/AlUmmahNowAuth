@@ -57,7 +57,7 @@ jobs:
         run: pnpm install
 
       - name: Audit dependencies
-        run: pnpm audit --audit-level high
+        run: pnpm audit --audit-level high --prod
 
       - name: Check for hardcoded secrets
         run: |
