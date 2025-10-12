@@ -249,10 +249,23 @@ This project follows a structured roadmap toward v1.0 release (March 31, 2025). 
 
 ## 📚 Documentation
 
-- [User Management Guide](./USER_MANAGEMENT.md)
-- [CI/CD Documentation](./CICD.md)
-- [Authentication Flows](./AUTHENTICATION_FLOWS.md)
-- [Architecture Overview](./ARCHITECTURE.md)
+### Getting Started
+- **[Quick Start Guide](./QUICKSTART.md)** - Get up and running in minutes
+- **[Architecture Overview](./ARCHITECTURE.md)** - System design and components
+
+### Developer Guides
+- **[API Reference](./API_REFERENCE.md)** - Complete API documentation
+- **[OpenAPI Specification](./openapi.yaml)** - Machine-readable API spec
+- **[SDK Usage Guide](./SDK_USAGE.md)** - Client integration examples
+- **[Authentication Flows](./AUTHENTICATION_FLOWS.md)** - Detailed flow diagrams
+
+### Operations & Maintenance
+- **[Testing Guide](./TESTING.md)** - Testing infrastructure and practices
+- **[CI/CD Documentation](./CICD.md)** - Deployment and automation
+- **[User Management Guide](./USER_MANAGEMENT.md)** - User administration
+- **[Security Policy](./SECURITY.md)** - Vulnerability reporting
+- **[Contributing Guidelines](./CONTRIBUTING.md)** - How to contribute
+- **[Project Roadmap](./ROADMAP.md)** - Feature roadmap and milestones
 
 ## 🔒 Security
 
