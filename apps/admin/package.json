@@ -43,7 +43,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.13.8",
     "@cloudflare/vitest-pool-workers": "^0.5.29",
-    "@cloudflare/workers-types": "^4.20250110.0",
+    "@cloudflare/workers-types": "^4.20251011.0",
     "@react-router/dev": "^7.5.3",
     "@tailwindcss/vite": "^4.1.4",
     "@types/node": "^20",
