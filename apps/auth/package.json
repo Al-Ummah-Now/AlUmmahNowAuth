@@ -21,7 +21,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@openauthjs/openauth": "0.3.2",
+    "@openauthjs/openauth": "0.4.3",
     "@types/node": "^22.14.1",
     "resend": "^6.1.2",
     "valibot": "^1.0.0"
