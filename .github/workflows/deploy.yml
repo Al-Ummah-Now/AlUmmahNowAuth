@@ -3,8 +3,13 @@ name: Deploy to Cloudflare Workers
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_previews:
+        description: 'Deploy preview environments'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,7 +52,7 @@ jobs:
       pull-requests: write
       repository-projects: write
     name: Deploy Auth Preview
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_previews == 'true'
     needs: test
     steps:
       - name: Checkout code
@@ -83,7 +88,7 @@ jobs:
       pull-requests: write
       repository-projects: write
     name: Deploy Profile Preview
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_previews == 'true'
     needs: test
     steps:
       - name: Checkout code
@@ -119,7 +124,7 @@ jobs:
       pull-requests: write
       repository-projects: write
     name: Deploy Admin Preview
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_previews == 'true'
     needs: test
     steps:
       - name: Checkout code
@@ -154,7 +159,7 @@ jobs:
 
       - name: Comment Preview URLs
         uses: actions/github-script@v7
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_previews == 'true'
         with:
           script: |
             const authUrl = `https://al-ummah-now-auth-pr-${{ github.event.number }}.mahmoud-s-darwish.workers.dev`;
