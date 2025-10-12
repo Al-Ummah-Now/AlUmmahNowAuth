@@ -12,7 +12,7 @@ jobs:
     name: Lint and Type Check
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -40,7 +40,7 @@ jobs:
     name: Security Check
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -71,7 +71,7 @@ jobs:
     name: Documentation Check
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check required documentation
         run: |
@@ -95,7 +95,7 @@ jobs:
     name: Migration Check
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check migration files
         run: |
