@@ -5,9 +5,11 @@ import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
+  const requestId = crypto.randomUUID();
+
   // Initialize logger with D1 database (if available in Cloudflare Workers context)
-  const env = context?.cloudflare?.env as { 
-    AUTH_DB?: D1Database; 
+  const env = context?.cloudflare?.env as {
+    AUTH_DB?: D1Database;
     AUTH_STORAGE?: KVNamespace;
     AUTH_SERVER_URL?: string;
     APP_URL?: string;
@@ -19,7 +21,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     logger.setDatabase(null, false);
   }
 
-  logger.logLoader('auth.callback', request);
+  // Set execution context if available
+  if (context?.cloudflare?.ctx) {
+    logger.setContext(context.cloudflare.ctx);
+  }
+
+  // Initialize request context to prevent stale timer usage
+  logger.initialRequest(requestId);
+
+  logger.logLoader('auth.callback', request, { requestId });
 
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -27,11 +37,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   if (error) {
     logger.warn('OAuth error received', { error });
+    await logger.finalizeRequest();
     return redirect(`/?error=${encodeURIComponent(error)}`);
   }
 
   if (!code) {
     logger.warn('No authorization code received');
+    await logger.finalizeRequest();
     return redirect("/?error=missing_code");
   }
 
@@ -63,6 +75,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         authServerUrl,
         hint: 'Auth server may be down or timing out (Cloudflare 522)'
       });
+      await logger.finalizeRequest();
       return redirect("/login?error=auth_server_unavailable");
     }
 
@@ -77,23 +90,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
 
     // Verify the token and get user info
+    // IMPORTANT: Never decode JWT tokens without verification first.
+    // JWTs can be forged, and decoding without verification exposes the application
+    // to security vulnerabilities. Always use client.verify() before trusting token contents.
     logger.debug('Verifying access token', { hasTokens: !!result.tokens, hasAccess: !!result.tokens.access });
-
-    // Decode token to inspect claims (for debugging)
-    try {
-      const tokenParts = result.tokens.access.split('.');
-      if (tokenParts.length === 3) {
-        const payload = JSON.parse(atob(tokenParts[1]));
-        logger.debug('Token payload', {
-          iss: payload.iss,
-          sub: payload.sub,
-          aud: payload.aud,
-          exp: payload.exp
-        });
-      }
-    } catch (e) {
-      logger.warn('Could not decode token for debugging');
-    }
 
     const verified = await client.verify(subjects, result.tokens.access, {
       refresh: result.tokens.refresh,
@@ -127,6 +127,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         email: userInfo.properties.email,
         role: userInfo.properties.role
       });
+      await logger.finalizeRequest();
       return redirect("/?error=admin_required");
     }
 
@@ -158,22 +159,27 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         email: userInfo.properties.email
       });
 
+      // Finalize request before returning
+      await logger.finalizeRequest();
+
       // Set cookie and redirect
       return redirect("/", {
         headers: {
-          "Set-Cookie": `auth_session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}`,
+          "Set-Cookie": `auth_session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${7 * 24 * 60 * 60}`,
         },
       });
     }
 
     // Fallback if no KV available
     logger.warn('No KV storage available, using demo mode');
+    await logger.finalizeRequest();
     return redirect("/?demo=true");
   } catch (error) {
     logger.error("Auth callback error", {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
     });
+    await logger.finalizeRequest();
     return redirect("/login?error=auth_failed");
   }
 }

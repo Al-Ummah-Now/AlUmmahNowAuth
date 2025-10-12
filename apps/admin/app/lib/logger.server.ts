@@ -22,6 +22,7 @@ class Logger {
   private logQueue: Array<{ level: LogLevel; message: string; context?: LogContext; timestamp: string }> = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private isFlushingLogs = false;
+  private currentRequestId: string | null = null;
 
   /**
    * Initialize D1 logging (call this from your loaders/actions)
@@ -36,6 +37,47 @@ class Logger {
    */
   setContext(ctx: ExecutionContext): void {
     this.ctx = ctx;
+  }
+
+  /**
+   * Initialize a new request context
+   * Call this at the start of each request to prevent stale context usage
+   */
+  initialRequest(requestId: string): void {
+    // Clear any pending timers from previous requests
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+
+    // Set the current request ID
+    this.currentRequestId = requestId;
+
+    this.debug('Request initialized', { requestId });
+  }
+
+  /**
+   * Finalize the current request and flush any pending logs
+   * Call this at the end of each request to ensure logs are written
+   */
+  async finalizeRequest(): Promise<void> {
+    const requestId = this.currentRequestId;
+
+    if (requestId) {
+      this.debug('Request finalized', { requestId });
+    }
+
+    // Flush any remaining logs
+    await this.flushLogsToD1();
+
+    // Clear the timer
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+
+    // Clear request ID
+    this.currentRequestId = null;
   }
 
   private formatMessage(level: LogLevel, message: string, context?: LogContext): string {

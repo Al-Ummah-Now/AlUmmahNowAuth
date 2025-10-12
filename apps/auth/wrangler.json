@@ -1,5 +1,5 @@
 {
-  "compatibility_date": "2025-04-19",
+  "compatibility_date": "2024-12-30",
   "main": "src/index.ts",
   "name": "al-ummah-now-auth",
   "upload_source_maps": true,
@@ -24,7 +24,7 @@
   "observability": {
     "enabled": true
   },
-  "compatibility_flags": ["nodejs_compat","nodejs_compat_populate_process_env"],
+  "compatibility_flags": ["nodejs_compat"],
   "tail_consumers": [
     {
       "service": "al-ummah-now-auth-tail"

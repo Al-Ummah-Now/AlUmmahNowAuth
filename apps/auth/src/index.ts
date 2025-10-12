@@ -9,6 +9,7 @@ import { getOrCreateUser, checkPasswordResetRequired, clearPasswordResetRequired
 import { logger } from "./logger";
 import { getUserSession, createSession, deleteSession, createSessionCookie, clearSessionCookie } from "./session";
 import { getAuthClient, subjects as clientSubjects } from "./auth-client";
+import { checkRateLimit, getClientIP } from "./rate-limit";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -22,62 +23,92 @@ const subjects = createSubjects({
   }),
 });
 
+/**
+ * Add security headers to response
+ *
+ * Applies comprehensive security headers to all responses:
+ * - X-Content-Type-Options: Prevent MIME type sniffing
+ * - X-Frame-Options: Prevent clickjacking
+ * - X-XSS-Protection: Enable browser XSS protection
+ * - Referrer-Policy: Control referrer information
+ * - Strict-Transport-Security: Enforce HTTPS (production only)
+ * - Content-Security-Policy: Restrict resource loading
+ *
+ * @param response - The response to add headers to
+ * @param isProduction - Whether the app is running in production
+ * @returns Response with security headers applied
+ */
+function addSecurityHeaders(response: Response, isProduction: boolean = true): Response {
+  const headers = new Headers(response.headers);
+
+  // Prevent MIME type sniffing
+  headers.set('X-Content-Type-Options', 'nosniff');
+
+  // Prevent clickjacking
+  headers.set('X-Frame-Options', 'DENY');
+
+  // Enable XSS protection (legacy browsers)
+  headers.set('X-XSS-Protection', '1; mode=block');
+
+  // Control referrer information
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // Enforce HTTPS in production
+  if (isProduction) {
+    // HSTS: Enforce HTTPS for 1 year, include subdomains
+    headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+
+  // Content Security Policy
+  // - default-src 'self': Only load resources from same origin by default
+  // - script-src 'self' 'unsafe-inline': Allow inline scripts for OpenAuth UI
+  // - style-src 'self' 'unsafe-inline': Allow inline styles for OpenAuth UI
+  // - img-src 'self' data: https: Allow images from same origin, data URIs, and HTTPS
+  // - font-src 'self': Only load fonts from same origin
+  // - connect-src 'self': Only make network requests to same origin
+  // - frame-ancestors 'none': Prevent embedding (same as X-Frame-Options: DENY)
+  headers.set(
+    'Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: https:; " +
+    "font-src 'self'; " +
+    "connect-src 'self'; " +
+    "frame-ancestors 'none'"
+  );
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const startTime = Date.now();
     const url = new URL(request.url);
+    const requestId = crypto.randomUUID();
+
+    // Determine if running in production
+    const isProduction = url.hostname !== 'localhost' && url.hostname !== '127.0.0.1';
 
     // Initialize D1 logging (optional - set to false to disable)
     logger.setDatabase(env.AUTH_DB, true);
     logger.setContext(ctx);
 
+    // Initialize request context to prevent stale timer usage
+    logger.initialRequest(requestId);
+
     // Log all incoming requests
     logger.logRequest(request, {
+      requestId,
       pathname: url.pathname,
       hasAuthStorage: !!env.AUTH_STORAGE,
       hasAuthDB: !!env.AUTH_DB,
     });
-    
-    // Logs endpoint - view recent logs from D1
-    if (url.pathname === '/logs') {
-      logger.debug('Serving logs page');
-      try {
-        const limit = parseInt(url.searchParams.get('limit') || '100');
-        const level = url.searchParams.get('level') || null;
-        
-        let query = 'SELECT * FROM logs';
-        const params: any[] = [];
-        
-        if (level) {
-          query += ' WHERE level = ?';
-          params.push(level.toUpperCase());
-        }
-        
-        query += ' ORDER BY timestamp DESC LIMIT ?';
-        params.push(limit);
-        
-        const result = await env.AUTH_DB.prepare(query).bind(...params).all();
-        
-        return new Response(JSON.stringify(result.results, null, 2), {
-          headers: { 
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          }
-        });
-      } catch (error) {
-        logger.error('Failed to fetch logs', { 
-          error: error instanceof Error ? error.message : String(error) 
-        });
-        return new Response(JSON.stringify({ 
-          error: 'Failed to fetch logs',
-          message: error instanceof Error ? error.message : String(error)
-        }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-    }
-    
+
     // Handle logout
     if (url.pathname === '/logout') {
       logger.debug('Handling logout request');
@@ -86,15 +117,19 @@ export default {
       await deleteSession(request, env.AUTH_STORAGE);
       logger.info('User logged out');
 
+      // Finalize request before returning
+      ctx.waitUntil(logger.finalizeRequest());
+
       // Redirect to homepage with cleared cookie
       const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-      return new Response(null, {
+      const response = new Response(null, {
         status: 302,
         headers: {
           "Location": url.origin,
           "Set-Cookie": clearSessionCookie(isLocalhost),
         },
       });
+      return addSecurityHeaders(response, isProduction);
     }
 
     // Redirect root to profile app
@@ -104,10 +139,14 @@ export default {
       // Get profile app URL from environment (configured in wrangler.json or .dev.vars)
       if (!env.PROFILE_APP_URL) {
         logger.error('PROFILE_APP_URL not configured');
-        return new Response('Profile app URL not configured', { status: 500 });
+        ctx.waitUntil(logger.finalizeRequest());
+        const response = new Response('Profile app URL not configured', { status: 500 });
+        return addSecurityHeaders(response, isProduction);
       }
 
-      return Response.redirect(env.PROFILE_APP_URL, 302);
+      ctx.waitUntil(logger.finalizeRequest());
+      const response = Response.redirect(env.PROFILE_APP_URL, 302);
+      return addSecurityHeaders(response, isProduction);
     }
 
     // Redirect /docs to profile app
@@ -117,10 +156,14 @@ export default {
       // Get profile app URL from environment (configured in wrangler.json or .dev.vars)
       if (!env.PROFILE_APP_URL) {
         logger.error('PROFILE_APP_URL not configured');
-        return new Response('Profile app URL not configured', { status: 500 });
+        ctx.waitUntil(logger.finalizeRequest());
+        const response = new Response('Profile app URL not configured', { status: 500 });
+        return addSecurityHeaders(response, isProduction);
       }
 
-      return Response.redirect(env.PROFILE_APP_URL, 302);
+      ctx.waitUntil(logger.finalizeRequest());
+      const response = Response.redirect(env.PROFILE_APP_URL, 302);
+      return addSecurityHeaders(response, isProduction);
     }
 
     // Handle OAuth callback for main app
@@ -131,12 +174,16 @@ export default {
 
       if (error) {
         logger.warn('OAuth callback error', { error });
-        return Response.redirect(`${url.origin}/?error=${encodeURIComponent(error)}`, 302);
+        ctx.waitUntil(logger.finalizeRequest());
+        const response = Response.redirect(`${url.origin}/?error=${encodeURIComponent(error)}`, 302);
+        return addSecurityHeaders(response, isProduction);
       }
 
       if (!code) {
         logger.warn('OAuth callback failed', { reason: 'missing_code' });
-        return Response.redirect(`${url.origin}/?error=missing_code`, 302);
+        ctx.waitUntil(logger.finalizeRequest());
+        const response = Response.redirect(`${url.origin}/?error=missing_code`, 302);
+        return addSecurityHeaders(response, isProduction);
       }
 
       // Note: This callback endpoint has a fundamental issue - the auth server
@@ -154,7 +201,9 @@ export default {
       });
 
       // Redirect to home with error message
-      return Response.redirect(`${url.origin}/?error=callback_not_supported`, 302);
+      ctx.waitUntil(logger.finalizeRequest());
+      const response = Response.redirect(`${url.origin}/?error=callback_not_supported`, 302);
+      return addSecurityHeaders(response, isProduction);
     }
     
     // The real OpenAuth server code starts here:
@@ -163,7 +212,8 @@ export default {
       issuerEnv: env.OPENAUTH_ISSUER,
     });
 
-    return issuer({
+    // Handle OpenAuth issuer and apply security headers
+    const issuerResponse = await issuer({
       storage: CloudflareStorage({
         namespace: env.AUTH_STORAGE,
       }),
@@ -171,18 +221,43 @@ export default {
       providers: {
         password: PasswordProvider(
           PasswordUI({
-            // eslint-disable-next-line @typescript-eslint/require-await
             sendCode: async (email, code) => {
               // https://resend.com/docs/send-with-cloudflare-workers
               logger.info('Sending login code', { email, codeLength: code.length });
-              
+
+              // Rate limiting: 5 attempts per 5 minutes per IP
+              const clientIP = getClientIP(request);
+              const rateLimitKey = `login:${clientIP}`;
+              const rateLimit = await checkRateLimit(
+                env.AUTH_STORAGE,
+                rateLimitKey,
+                5, // limit
+                300 // 5 minutes in seconds
+              );
+
+              if (!rateLimit.allowed) {
+                const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+                logger.warn('Rate limit exceeded for login attempt', {
+                  clientIP,
+                  email,
+                  retryAfter,
+                });
+                throw new Error(`Too many login attempts. Please try again in ${Math.ceil(retryAfter / 60)} minutes.`);
+              }
+
+              logger.debug('Rate limit check passed', {
+                clientIP,
+                email,
+                remaining: rateLimit.remaining,
+              });
+
               try {
                 const apiKey = env.RESEND_API_KEY;
-                
+
                 if (!apiKey) {
                   throw new Error('RESEND_API_KEY not configured');
                 }
-                
+
                 logger.debug('Using RESEND_API_KEY from environment');
                 await SendEmail(apiKey, "login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
                 logger.info('Login code sent successfully', { email });
@@ -224,6 +299,9 @@ export default {
         }
       },
     }).fetch(request, env, ctx);
+
+    // Apply security headers to all OpenAuth responses
+    return addSecurityHeaders(issuerResponse, isProduction);
   },
 } satisfies ExportedHandler<Env>;
 

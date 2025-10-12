@@ -16,10 +16,17 @@
     "deploy:auth": "pnpm --filter auth run deploy",
     "deploy:admin": "pnpm --filter admin run deploy",
     "deploy:profile": "pnpm --filter profile run deploy",
-    "type-check": "pnpm --filter \"./apps/*\" type-check"
+    "type-check": "pnpm --filter \"./apps/*\" type-check",
+    "test": "pnpm --filter \"./apps/*\" test",
+    "test:unit": "pnpm --filter \"./apps/*\" test:unit",
+    "test:watch": "pnpm --filter \"./apps/*\" test:watch",
+    "test:coverage": "pnpm --filter \"./apps/*\" test:coverage"
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {
-    "typescript": "5.7.2"
+    "@cloudflare/vitest-pool-workers": "^0.5.29",
+    "@cloudflare/workers-types": "^4.20250110.0",
+    "typescript": "5.7.2",
+    "vitest": "^2.1.8"
   }
 }

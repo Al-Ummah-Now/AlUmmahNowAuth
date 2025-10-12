@@ -264,6 +264,111 @@ This project follows a structured roadmap toward v1.0 release (March 31, 2025). 
 
 ## 🧪 Testing
 
+This project uses [Vitest](https://vitest.dev/) with the [@cloudflare/vitest-pool-workers](https://github.com/cloudflare/workers-sdk/tree/main/fixtures/vitest-pool-workers-examples) plugin for testing Cloudflare Workers applications.
+
+### Running Tests
+
+```bash
+# Run all tests across all apps
+pnpm test
+
+# Run tests in verbose mode
+pnpm test:unit
+
+# Run tests in watch mode (auto-rerun on changes)
+pnpm test:watch
+
+# Run tests with coverage report
+pnpm test:coverage
+
+# Run tests for a specific app
+pnpm --filter auth test
+pnpm --filter admin test
+pnpm --filter profile test
+```
+
+### Test Structure
+
+Each app has its own test suite with comprehensive coverage:
+
+#### Auth App Tests (`apps/auth/src/*.test.ts`)
+
+**User Management Tests** (`users.test.ts`)
+- User creation and retrieval
+- User updates (email, role)
+- User deletion
+- Password reset functionality
+- Race condition handling
+- Edge cases and error scenarios
+
+**Session Management Tests** (`session.test.ts`)
+- Session creation and storage in KV
+- Session retrieval with cookie parsing
+- Expired session handling
+- Corrupted session data handling
+- Session deletion
+- Cookie helper functions
+
+**Email Sending Tests** (`email.test.ts`)
+- Email validation (valid/invalid addresses)
+- Successful email delivery
+- Retry logic with exponential backoff
+- Error handling after retry exhaustion
+- Resend API mocking
+
+### Test Configuration
+
+Each app has a `vitest.config.ts` file that configures:
+- Cloudflare Workers testing environment
+- D1 database bindings
+- KV namespace bindings
+- Coverage reporting
+
+Example configuration:
+```typescript
+import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+
+export default defineWorkersConfig({
+  test: {
+    poolOptions: {
+      workers: {
+        wrangler: {
+          configPath: "./wrangler.json",
+        },
+        miniflare: {
+          d1Databases: ["AUTH_DB"],
+          kvNamespaces: ["AUTH_STORAGE"],
+        },
+      },
+    },
+  },
+});
+```
+
+### Writing Tests
+
+Tests use the Vitest API and can access Cloudflare bindings:
+
+```typescript
+import { describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:test";
+
+describe("My Feature", () => {
+  beforeEach(async () => {
+    // Clean up before each test
+    await env.AUTH_DB.prepare("DELETE FROM user").run();
+  });
+
+  it("should work correctly", async () => {
+    // Test implementation
+    const result = await myFunction(env);
+    expect(result).toBeDefined();
+  });
+});
+```
+
+### Type Checking
+
 ```bash
 # Type check all apps
 pnpm type-check
@@ -271,7 +376,16 @@ pnpm type-check
 # Type check individual apps
 pnpm --filter auth type-check
 pnpm --filter admin type-check
+pnpm --filter profile type-check
 ```
+
+### Best Practices
+
+1. **Isolation**: Each test is independent with cleanup in `beforeEach`
+2. **Mocking**: External services (like Resend) are mocked using `vi.mock()`
+3. **Coverage**: Aim for high coverage on business logic
+4. **Fast**: Tests run quickly using in-memory Miniflare environment
+5. **Real Bindings**: Tests use actual D1 and KV APIs for accuracy
 
 ## 📦 Scripts Reference
 
@@ -280,11 +394,16 @@ pnpm --filter admin type-check
 - `pnpm build` - Build all apps
 - `pnpm deploy` - Deploy all apps
 - `pnpm type-check` - Type check all apps
+- `pnpm test` - Run all tests
+- `pnpm test:unit` - Run tests in verbose mode
+- `pnpm test:watch` - Run tests in watch mode
+- `pnpm test:coverage` - Run tests with coverage
 
 ### Per-App
-- `pnpm dev:auth` / `pnpm dev:admin` - Run specific app
-- `pnpm build:auth` / `pnpm build:admin` - Build specific app
-- `pnpm deploy:auth` / `pnpm deploy:admin` - Deploy specific app
+- `pnpm dev:auth` / `pnpm dev:admin` / `pnpm dev:profile` - Run specific app
+- `pnpm build:auth` / `pnpm build:admin` / `pnpm build:profile` - Build specific app
+- `pnpm deploy:auth` / `pnpm deploy:admin` / `pnpm deploy:profile` - Deploy specific app
+- `pnpm --filter auth test` - Run tests for specific app
 
 ## 🤝 Contributing
 
