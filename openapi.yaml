@@ -1,0 +1,325 @@
+openapi: 3.1.0
+info:
+  title: Al Ummah Now Authentication API
+  description: OAuth 2.0 authentication server powered by OpenAuth.js and Cloudflare Workers
+  version: 1.0.0
+  contact:
+    name: Al Ummah Now
+    email: security@alummahnow.net
+  license:
+    name: MIT
+    url: https://github.com/meywd/AlUmmahNowAuth/blob/main/LICENSE
+
+servers:
+  - url: http://localhost:8787
+    description: Local development server
+  - url: https://al-ummah-now-auth.alummahnow.workers.dev
+    description: Production server
+
+tags:
+  - name: OAuth 2.0
+    description: Standard OAuth 2.0 endpoints
+  - name: Custom
+    description: Custom authentication endpoints
+
+paths:
+  /authorize:
+    get:
+      tags:
+        - OAuth 2.0
+      summary: Start OAuth authorization flow
+      description: Initiates the OAuth 2.0 authorization code flow. Redirects to login UI if user is not authenticated.
+      operationId: authorize
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          description: Client application identifier
+          schema:
+            type: string
+            example: profile
+        - name: redirect_uri
+          in: query
+          required: true
+          description: URI to redirect to after authorization
+          schema:
+            type: string
+            format: uri
+            example: http://localhost:8788/callback
+        - name: response_type
+          in: query
+          required: true
+          description: OAuth response type
+          schema:
+            type: string
+            enum: [code]
+            example: code
+        - name: state
+          in: query
+          required: false
+          description: Random string to prevent CSRF attacks
+          schema:
+            type: string
+            example: random123abc
+      responses:
+        '302':
+          description: Redirects to login UI or back to client with authorization code
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: Redirect URL
+        '400':
+          description: Bad request - missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
+  /token:
+    post:
+      tags:
+        - OAuth 2.0
+      summary: Exchange authorization code for access token
+      description: Exchanges an authorization code for access and refresh tokens, or refreshes an expired access token
+      operationId: token
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/AuthorizationCodeGrant'
+                - $ref: '#/components/schemas/RefreshTokenGrant'
+      responses:
+        '200':
+          description: Successfully exchanged code or refreshed token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        '401':
+          description: Unauthorized - invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
+  /logout:
+    get:
+      tags:
+        - Custom
+      summary: Log out current user
+      description: Deletes the user's session and clears the session cookie
+      operationId: logout
+      parameters:
+        - name: Cookie
+          in: header
+          required: true
+          description: Session cookie
+          schema:
+            type: string
+            example: auth_session=550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '302':
+          description: Successfully logged out, redirects to home
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: Redirect to home page
+            Set-Cookie:
+              schema:
+                type: string
+              description: Clears session cookie
+
+  /:
+    get:
+      tags:
+        - Custom
+      summary: Root endpoint
+      description: Redirects to the configured profile application
+      operationId: root
+      responses:
+        '302':
+          description: Redirects to profile app
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+                example: http://localhost:8788
+        '500':
+          description: Profile app URL not configured
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Profile app URL not configured
+
+components:
+  schemas:
+    AuthorizationCodeGrant:
+      type: object
+      required:
+        - grant_type
+        - code
+        - redirect_uri
+        - client_id
+        - client_secret
+      properties:
+        grant_type:
+          type: string
+          enum: [authorization_code]
+          description: Grant type
+        code:
+          type: string
+          description: Authorization code from /authorize
+          example: abc123xyz
+        redirect_uri:
+          type: string
+          format: uri
+          description: Same redirect URI used in /authorize
+          example: http://localhost:8788/callback
+        client_id:
+          type: string
+          description: Client application identifier
+          example: profile
+        client_secret:
+          type: string
+          description: Client application secret
+          example: your-secret-key
+        code_verifier:
+          type: string
+          description: PKCE code verifier (optional)
+          example: dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+
+    RefreshTokenGrant:
+      type: object
+      required:
+        - grant_type
+        - refresh_token
+        - client_id
+        - client_secret
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token]
+          description: Grant type
+        refresh_token:
+          type: string
+          description: Refresh token from previous /token response
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        client_id:
+          type: string
+          description: Client application identifier
+          example: profile
+        client_secret:
+          type: string
+          description: Client application secret
+          example: your-secret-key
+
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Token type
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+          example: 3600
+        refresh_token:
+          type: string
+          description: JWT refresh token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        subject:
+          $ref: '#/components/schemas/UserSubject'
+
+    UserSubject:
+      type: object
+      required:
+        - type
+        - properties
+      properties:
+        type:
+          type: string
+          enum: [user]
+          description: Subject type
+          example: user
+        properties:
+          type: object
+          required:
+            - id
+            - email
+            - role
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: User ID
+              example: 550e8400-e29b-41d4-a716-446655440000
+            email:
+              type: string
+              format: email
+              description: User email address
+              example: user@example.com
+            role:
+              type: string
+              enum: [user, admin]
+              description: User role
+              example: user
+
+    OAuthError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error code
+          enum:
+            - invalid_request
+            - unauthorized_client
+            - access_denied
+            - unsupported_response_type
+            - invalid_scope
+            - server_error
+            - temporarily_unavailable
+          example: invalid_request
+        error_description:
+          type: string
+          description: Human-readable error description
+          example: Missing required parameter client_id
+        error_uri:
+          type: string
+          format: uri
+          description: URI to error documentation
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token from /token endpoint
+
+security:
+  - BearerAuth: []
