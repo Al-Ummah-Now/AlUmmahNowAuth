@@ -11,6 +11,8 @@ declare namespace Cloudflare {
 		RESEND_API_KEY: string;
 		PROFILE_APP_URL: string;
 		AUTH_DB: D1Database;
+		AUDIT_WEBHOOK_URL?: string;
+		AUDIT_WEBHOOK_SECRET?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

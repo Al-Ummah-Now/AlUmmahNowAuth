@@ -10,6 +10,14 @@ import { logger } from "./logger";
 import { getUserSession, createSession, deleteSession, createSessionCookie, clearSessionCookie } from "./session";
 import { getAuthClient, subjects as clientSubjects } from "./auth-client";
 import { checkRateLimit, getClientIP } from "./rate-limit";
+import { initializeAuditEmitter, getAuditEmitter } from "./audit-emitter";
+import {
+  createLoginSuccessEvent,
+  createLoginFailedEvent,
+  createLogoutEvent,
+  createRateLimitExceededEvent,
+  createAccountCreatedEvent,
+} from "./audit-events";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -101,6 +109,15 @@ export default {
     // Initialize request context to prevent stale timer usage
     logger.initialRequest(requestId);
 
+    // Initialize audit emitter
+    initializeAuditEmitter({
+      enableStdout: true,
+      webhookUrl: env.AUDIT_WEBHOOK_URL,
+      webhookSecret: env.AUDIT_WEBHOOK_SECRET,
+      db: env.AUTH_DB,
+      ctx,
+    });
+
     // Log all incoming requests
     logger.logRequest(request, {
       requestId,
@@ -113,9 +130,24 @@ export default {
     if (url.pathname === '/logout') {
       logger.debug('Handling logout request');
 
+      // Get user session before deleting it
+      const session = await getUserSession(request, env.AUTH_STORAGE);
+      const userId = session?.user?.id;
+
       // Delete session from KV
       await deleteSession(request, env.AUTH_STORAGE);
       logger.info('User logged out');
+
+      // Emit logout audit event
+      if (userId) {
+        const clientIP = getClientIP(request);
+        const auditEvent = createLogoutEvent(userId, {
+          ipAddress: clientIP,
+          userAgent: request.headers.get('User-Agent') ?? undefined,
+          requestId,
+        });
+        ctx.waitUntil(getAuditEmitter().emit(auditEvent));
+      }
 
       // Finalize request before returning
       ctx.waitUntil(logger.finalizeRequest());
@@ -242,6 +274,21 @@ export default {
                   email,
                   retryAfter,
                 });
+
+                // Emit rate limit exceeded audit event
+                const auditEvent = createRateLimitExceededEvent(
+                  '/sendCode',
+                  5,
+                  300,
+                  retryAfter,
+                  {
+                    ipAddress: clientIP,
+                    userAgent: request.headers.get('User-Agent') ?? undefined,
+                    requestId,
+                  }
+                );
+                ctx.waitUntil(getAuditEmitter().emit(auditEvent));
+
                 throw new Error(`Too many login attempts. Please try again in ${Math.ceil(retryAfter / 60)} minutes.`);
               }
 
@@ -289,12 +336,55 @@ export default {
         logger.info('Authentication successful', { email: value.email });
         try {
           const user = await getOrCreateUser(env, value.email);
+          const isNewUser = user.isNew; // Track if this is a new account
+
+          // Emit login success audit event
+          const clientIP = getClientIP(request);
+          const loginEvent = createLoginSuccessEvent(
+            value.email,
+            user.id,
+            {
+              ipAddress: clientIP,
+              userAgent: request.headers.get('User-Agent') ?? undefined,
+              requestId,
+            }
+          );
+          getAuditEmitter().emit(loginEvent); // Fire and forget
+
+          // If new user, emit account created event
+          if (isNewUser) {
+            const accountEvent = createAccountCreatedEvent(
+              user.id,
+              value.email,
+              user.role,
+              {
+                ipAddress: clientIP,
+                userAgent: request.headers.get('User-Agent') ?? undefined,
+                requestId,
+              }
+            );
+            getAuditEmitter().emit(accountEvent); // Fire and forget
+          }
+
           return ctx.subject("user", {
             id: user.id,
             email: value.email,
             role: user.role,
           });
         } catch (error) {
+          // Emit login failed audit event
+          const clientIP = getClientIP(request);
+          const failedEvent = createLoginFailedEvent(
+            value.email,
+            error instanceof Error ? error.message : String(error),
+            {
+              ipAddress: clientIP,
+              userAgent: request.headers.get('User-Agent') ?? undefined,
+              requestId,
+            }
+          );
+          getAuditEmitter().emit(failedEvent); // Fire and forget
+
           throw error;
         }
       },

@@ -1,7 +1,7 @@
 import { logger } from './logger';
 import * as v from 'valibot';
 
-export async function getOrCreateUser(env: Env, email: string): Promise<{ id: string; role: string }> {
+export async function getOrCreateUser(env: Env, email: string): Promise<{ id: string; role: string; isNew: boolean }> {
     logger.debug('getOrCreateUser called', { email });
 
     // First check if user already exists
@@ -13,7 +13,7 @@ export async function getOrCreateUser(env: Env, email: string): Promise<{ id: st
 
     if (existingUser) {
       logger.info('Existing user found', { userId: existingUser.id, email, role: existingUser.role });
-      return existingUser;
+      return { ...existingUser, isNew: false };
     }
 
     logger.info('Creating new user', { email });
@@ -32,7 +32,7 @@ export async function getOrCreateUser(env: Env, email: string): Promise<{ id: st
       }
 
       logger.info('User created successfully', { userId: result.id, email, role: result.role });
-      return result;
+      return { ...result, isNew: true };
     } catch (error) {
       // Check if this is a UNIQUE constraint violation (race condition)
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -48,7 +48,7 @@ export async function getOrCreateUser(env: Env, email: string): Promise<{ id: st
 
         if (concurrentUser) {
           logger.info('User fetched after race condition', { userId: concurrentUser.id, email, role: concurrentUser.role });
-          return concurrentUser;
+          return { ...concurrentUser, isNew: false };
         }
       }
 
