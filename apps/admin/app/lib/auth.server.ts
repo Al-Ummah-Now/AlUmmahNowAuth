@@ -28,11 +28,21 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
   try {
     const sessionData = await env.AUTH_STORAGE.get(`session:${sessionToken}`);
     if (!sessionData) {
-      logger.warn('Session not found in KV storage', { sessionToken: sessionToken.substring(0, 10) + '...' });
+      logger.warn('Session not found in KV storage');
       return null;
     }
 
-    const session = JSON.parse(sessionData);
+    // Parse session data with error handling
+    let session: any;
+    try {
+      session = JSON.parse(sessionData);
+    } catch (parseError) {
+      logger.error('Failed to parse session data, deleting corrupted session', {
+        error: parseError instanceof Error ? parseError.message : String(parseError)
+      });
+      await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
+      return null;
+    }
 
     // Check if session is expired
     if (session.expiresAt && new Date(session.expiresAt) < new Date()) {

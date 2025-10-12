@@ -11,7 +11,11 @@
     "predeploy": "npm run build",
     "deploy": "wrangler deploy",
     "typecheck": "react-router typegen && tsc",
-    "type-check": "react-router typegen && tsc"
+    "type-check": "react-router typegen && tsc",
+    "test": "vitest run",
+    "test:unit": "vitest run --reporter=verbose",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@openauthjs/openauth": "0.3.2",
@@ -38,14 +42,18 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.13.8",
+    "@cloudflare/vitest-pool-workers": "^0.5.29",
+    "@cloudflare/workers-types": "^4.20250110.0",
     "@react-router/dev": "^7.5.3",
     "@tailwindcss/vite": "^4.1.4",
     "@types/node": "^20",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "@vitest/coverage-v8": "^2.1.8",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3",
     "vite": "^6.3.3",
+    "vitest": "^2.1.8",
     "vite-tsconfig-paths": "^5.1.4",
     "wrangler": "^4.12.0"
   }

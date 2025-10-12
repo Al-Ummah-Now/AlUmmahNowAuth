@@ -37,7 +37,15 @@ async function getSession(request: Request, storage: KVNamespace) {
     const sessionData = await storage.get(`session:${sessionToken}`);
     if (!sessionData) return null;
 
-    const session = JSON.parse(sessionData);
+    // Parse session data with error handling
+    let session: any;
+    try {
+      session = JSON.parse(sessionData);
+    } catch (parseError) {
+      console.error("Failed to parse session data, deleting corrupted session:", parseError);
+      await storage.delete(`session:${sessionToken}`);
+      return null;
+    }
 
     // Check if session is expired
     if (session.expiresAt && new Date(session.expiresAt) < new Date()) {

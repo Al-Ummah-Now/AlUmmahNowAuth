@@ -44,7 +44,15 @@ export async function getUserSession(
     const sessionData = await storage.get(`session:${sessionToken}`);
     if (!sessionData) return null;
 
-    const session = JSON.parse(sessionData) as SessionData;
+    // Parse session data with error handling
+    let session: SessionData;
+    try {
+      session = JSON.parse(sessionData) as SessionData;
+    } catch (parseError) {
+      console.error("Failed to parse session data, deleting corrupted session:", parseError);
+      await storage.delete(`session:${sessionToken}`);
+      return null;
+    }
 
     // Check if session is expired
     if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
@@ -96,7 +104,7 @@ export async function deleteSession(
 export function createSessionCookie(sessionToken: string, isLocalhost: boolean = false): string {
   // Don't use Secure flag in local development (localhost uses HTTP)
   const secureFlag = isLocalhost ? "" : "Secure; ";
-  return `auth_session=${sessionToken}; Path=/; HttpOnly; ${secureFlag}SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}`;
+  return `auth_session=${sessionToken}; Path=/; HttpOnly; ${secureFlag}SameSite=Strict; Max-Age=${7 * 24 * 60 * 60}`;
 }
 
 /**
@@ -104,5 +112,5 @@ export function createSessionCookie(sessionToken: string, isLocalhost: boolean =
  */
 export function clearSessionCookie(isLocalhost: boolean = false): string {
   const secureFlag = isLocalhost ? "" : "Secure; ";
-  return `auth_session=; Path=/; HttpOnly; ${secureFlag}SameSite=Lax; Max-Age=0`;
+  return `auth_session=; Path=/; HttpOnly; ${secureFlag}SameSite=Strict; Max-Age=0`;
 }
