@@ -7,6 +7,21 @@
 import { AuditEvent } from './audit-events';
 import { WebhookSink } from './audit-emitter';
 
+/**
+ * Database row structure from webhook_dlq table
+ */
+interface DLQRow {
+  id: number;
+  events: string;           // JSON string of AuditEvent[]
+  webhook_url: string;
+  error: string;
+  timestamp: string;
+  retry_count: number;
+  status: string;
+  replayed_at: string | null;
+  created_at: string;
+}
+
 export interface DLQEntry {
   id: number;
   events: AuditEvent[];
@@ -78,7 +93,7 @@ export class DLQReplayService {
     query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
     bindings.push(limit, offset);
 
-    const results = await this.db.prepare(query).bind(...bindings).all<any>();
+    const results = await this.db.prepare(query).bind(...bindings).all<DLQRow>();
 
     const entries: DLQEntry[] = results.results.map(row => ({
       id: row.id,
@@ -87,8 +102,8 @@ export class DLQReplayService {
       error: row.error,
       timestamp: row.timestamp,
       retryCount: row.retry_count,
-      status: row.status,
-      replayedAt: row.replayed_at,
+      status: row.status as DLQEntry['status'],
+      replayedAt: row.replayed_at ?? undefined,
       createdAt: row.created_at,
     }));
 
@@ -250,6 +265,16 @@ export class DLQReplayService {
     oldestEntry?: string;
     newestEntry?: string;
   }> {
+    interface StatsRow {
+      total: number;
+      pending: number;
+      replaying: number;
+      completed: number;
+      failed: number;
+      oldest_entry: string | null;
+      newest_entry: string | null;
+    }
+
     const stats = await this.db.prepare(`
       SELECT
         COUNT(*) as total,
@@ -260,7 +285,7 @@ export class DLQReplayService {
         MIN(timestamp) as oldest_entry,
         MAX(timestamp) as newest_entry
       FROM webhook_dlq
-    `).first<any>();
+    `).first<StatsRow>();
 
     return {
       total: stats?.total ?? 0,
@@ -268,8 +293,8 @@ export class DLQReplayService {
       replaying: stats?.replaying ?? 0,
       completed: stats?.completed ?? 0,
       failed: stats?.failed ?? 0,
-      oldestEntry: stats?.oldest_entry,
-      newestEntry: stats?.newest_entry,
+      oldestEntry: stats?.oldest_entry ?? undefined,
+      newestEntry: stats?.newest_entry ?? undefined,
     };
   }
 }

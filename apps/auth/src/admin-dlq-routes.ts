@@ -57,6 +57,10 @@ export async function handleDLQReplay(
     return new Response('Unauthorized', { status: 401 });
   }
 
+  // Determine if running in development mode
+  const url = new URL(request.url);
+  const isDevelopment = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
   try {
     // Parse request body
     const body = await request.json();
@@ -86,7 +90,7 @@ export async function handleDLQReplay(
     console.error('DLQ replay error:', error);
     return Response.json({
       error: 'Internal server error',
-      message: error instanceof Error ? error.message : String(error),
+      ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
     }, { status: 500 });
   }
 }
@@ -103,8 +107,11 @@ export async function handleDLQList(
     return new Response('Unauthorized', { status: 401 });
   }
 
+  // Determine if running in development mode
+  const url = new URL(request.url);
+  const isDevelopment = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
   try {
-    const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get('limit') ?? '100');
     const offset = parseInt(url.searchParams.get('offset') ?? '0');
     const status = url.searchParams.get('status') ?? undefined;
@@ -125,7 +132,7 @@ export async function handleDLQList(
     console.error('DLQ list error:', error);
     return Response.json({
       error: 'Internal server error',
-      message: error instanceof Error ? error.message : String(error),
+      ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
     }, { status: 500 });
   }
 }
@@ -142,6 +149,10 @@ export async function handleDLQStats(
     return new Response('Unauthorized', { status: 401 });
   }
 
+  // Determine if running in development mode
+  const url = new URL(request.url);
+  const isDevelopment = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
   try {
     const replayService = new DLQReplayService(env.AUTH_DB);
     const stats = await replayService.getStatistics();
@@ -151,7 +162,7 @@ export async function handleDLQStats(
     console.error('DLQ stats error:', error);
     return Response.json({
       error: 'Internal server error',
-      message: error instanceof Error ? error.message : String(error),
+      ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
     }, { status: 500 });
   }
 }
@@ -167,6 +178,10 @@ export async function handleDLQCleanup(
   if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
     return new Response('Unauthorized', { status: 401 });
   }
+
+  // Determine if running in development mode
+  const url = new URL(request.url);
+  const isDevelopment = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
 
   try {
     const body = await request.json();
@@ -193,7 +208,7 @@ export async function handleDLQCleanup(
     console.error('DLQ cleanup error:', error);
     return Response.json({
       error: 'Internal server error',
-      message: error instanceof Error ? error.message : String(error),
+      ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
     }, { status: 500 });
   }
 }
