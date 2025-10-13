@@ -7,6 +7,7 @@
 import * as v from 'valibot';
 import { DLQReplayService } from './dlq-replay';
 import { getUserSession } from './session';
+import { checkRateLimit, getClientIP } from './rate-limit';
 
 const replaySchema = v.object({
   batchSize: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(100))),
@@ -55,6 +56,28 @@ export async function handleDLQReplay(
   // Verify admin authentication
   if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
     return new Response('Unauthorized', { status: 401 });
+  }
+
+  // Rate limiting: 10 replay requests per hour per admin (Issue #5)
+  const clientIP = getClientIP(request);
+  const rateLimitKey = `admin:dlq:replay:${clientIP}`;
+  const rateLimit = await checkRateLimit(
+    env.AUTH_STORAGE,
+    rateLimitKey,
+    10, // limit
+    3600 // 1 hour in seconds
+  );
+
+  if (!rateLimit.allowed) {
+    const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+    return Response.json({
+      error: 'Too Many Requests',
+      details: `Rate limit exceeded. Try again in ${Math.ceil(retryAfter / 60)} minutes.`,
+      retryAfter,
+    }, {
+      status: 429,
+      headers: { 'Retry-After': String(retryAfter) },
+    });
   }
 
   // Determine if running in development mode
@@ -112,12 +135,45 @@ export async function handleDLQList(
   const isDevelopment = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
 
   try {
-    const limit = parseInt(url.searchParams.get('limit') ?? '100');
-    const offset = parseInt(url.searchParams.get('offset') ?? '0');
+    // Parse and validate pagination parameters
+    const limitParam = url.searchParams.get('limit') ?? '100';
+    const offsetParam = url.searchParams.get('offset') ?? '0';
+    const limit = parseInt(limitParam);
+    const offset = parseInt(offsetParam);
+
+    // Enforce pagination limits (Issue #7)
+    if (isNaN(limit) || limit < 1 || limit > 1000) {
+      return Response.json({
+        error: 'Invalid limit parameter',
+        details: 'Limit must be between 1 and 1000',
+      }, { status: 400 });
+    }
+
+    if (isNaN(offset) || offset < 0) {
+      return Response.json({
+        error: 'Invalid offset parameter',
+        details: 'Offset must be >= 0',
+      }, { status: 400 });
+    }
+
+    // Validate status parameter
     const status = url.searchParams.get('status') ?? undefined;
-    const maxAge = url.searchParams.get('maxAge')
-      ? parseInt(url.searchParams.get('maxAge')!)
-      : undefined;
+    if (status && !['pending', 'replaying', 'completed', 'failed'].includes(status)) {
+      return Response.json({
+        error: 'Invalid status parameter',
+        details: 'Status must be one of: pending, replaying, completed, failed',
+      }, { status: 400 });
+    }
+
+    const maxAgeParam = url.searchParams.get('maxAge');
+    const maxAge = maxAgeParam ? parseInt(maxAgeParam) : undefined;
+
+    if (maxAge !== undefined && (isNaN(maxAge) || maxAge < 1)) {
+      return Response.json({
+        error: 'Invalid maxAge parameter',
+        details: 'maxAge must be >= 1',
+      }, { status: 400 });
+    }
 
     const replayService = new DLQReplayService(env.AUTH_DB);
     const result = await replayService.getQueuedEvents({

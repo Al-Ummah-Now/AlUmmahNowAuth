@@ -137,77 +137,88 @@ export class WebhookSink implements AuditEventSink {
   }
 
   async flush(): Promise<void> {
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
-
-    if (this.eventQueue.length === 0) {
+    // Prevent concurrent flush operations (Issue #2 - Race condition)
+    if (this.flushing) {
       return;
     }
+    this.flushing = true;
 
-    const events = [...this.eventQueue];
-    this.eventQueue = [];
-
-    const body = JSON.stringify({ events });
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'User-Agent': 'AlUmmahNow-Auth/1.0',
-    };
-
-    // Add signature if secret is configured
-    if (this.secret) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(body);
-      const keyData = encoder.encode(this.secret);
-      const key = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-      const signature = await crypto.subtle.sign('HMAC', key, data);
-      const hexSignature = Array.from(new Uint8Array(signature))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      headers['X-Audit-Signature'] = `sha256=${hexSignature}`;
-    }
-
-    // Attempt delivery with retry logic
     try {
-      this.deliveryMetrics.totalAttempts++;
-
-      const response = await this.fetchWithRetry(this.url, {
-        method: 'POST',
-        headers,
-        body,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (this.flushTimer) {
+        clearTimeout(this.flushTimer);
+        this.flushTimer = null;
       }
 
-      this.deliveryMetrics.successfulDeliveries++;
-      console.log(`Webhook delivery successful: ${events.length} events delivered`);
-
-    } catch (error) {
-      this.deliveryMetrics.failedDeliveries++;
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      console.error('Webhook delivery failed after retries:', {
-        error: errorMessage,
-        eventCount: events.length,
-        url: this.url,
-      });
-
-      // Store in DLQ if database is available
-      if (this.db) {
-        await this.storeToDLQ(events, errorMessage);
-      } else {
-        // Fallback: log events that would go to DLQ
-        console.error('DLQ not configured. Lost events:', JSON.stringify({ events, error: errorMessage }));
+      if (this.eventQueue.length === 0) {
+        return;
       }
+
+      const events = [...this.eventQueue];
+      this.eventQueue = [];
+
+      const body = JSON.stringify({ events });
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'AlUmmahNow-Auth/1.0',
+      };
+
+      // Add signature if secret is configured
+      if (this.secret) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(body);
+        const keyData = encoder.encode(this.secret);
+        const key = await crypto.subtle.importKey(
+          'raw',
+          keyData,
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const signature = await crypto.subtle.sign('HMAC', key, data);
+        const hexSignature = Array.from(new Uint8Array(signature))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+        headers['X-Audit-Signature'] = `sha256=${hexSignature}`;
+      }
+
+      // Attempt delivery with retry logic
+      try {
+        this.deliveryMetrics.totalAttempts++;
+
+        const response = await this.fetchWithRetry(this.url, {
+          method: 'POST',
+          headers,
+          body,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        this.deliveryMetrics.successfulDeliveries++;
+        console.log(`Webhook delivery successful: ${events.length} events delivered`);
+
+      } catch (error) {
+        this.deliveryMetrics.failedDeliveries++;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        console.error('Webhook delivery failed after retries:', {
+          error: errorMessage,
+          eventCount: events.length,
+          url: this.url,
+        });
+
+        // Store in DLQ if database is available
+        if (this.db) {
+          await this.storeToDLQ(events, errorMessage);
+        } else {
+          // Fallback: log events that would go to DLQ
+          console.error('DLQ not configured. Lost events:', JSON.stringify({ events, error: errorMessage }));
+        }
+      }
+    } finally {
+      // Always reset flushing flag
+      this.flushing = false;
     }
   }
 
