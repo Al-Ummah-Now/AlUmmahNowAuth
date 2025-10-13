@@ -4,21 +4,21 @@
  * Provides HTTP endpoints for managing the webhook Dead Letter Queue
  */
 
-import { z } from 'zod';
+import * as v from 'valibot';
 import { DLQReplayService } from './dlq-replay';
 import { getUserSession } from './session';
 
-const replaySchema = z.object({
-  batchSize: z.number().min(1).max(100).optional(),
-  maxAge: z.number().min(1).max(720).optional(), // Max 30 days
-  filterStatus: z.enum(['pending', 'failed']).optional(),
-  webhookUrl: z.string().url().optional(),
-  dryRun: z.boolean().optional(),
+const replaySchema = v.object({
+  batchSize: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(100))),
+  maxAge: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(720))), // Max 30 days
+  filterStatus: v.optional(v.union([v.literal('pending'), v.literal('failed')])),
+  webhookUrl: v.optional(v.pipe(v.string(), v.url())),
+  dryRun: v.optional(v.boolean()),
 });
 
-const cleanupSchema = z.object({
-  maxAge: z.number().min(1).max(365).optional(), // Max 1 year
-  statusFilter: z.string().optional(),
+const cleanupSchema = v.object({
+  maxAge: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(365))), // Max 1 year
+  statusFilter: v.optional(v.string()),
 });
 
 /**
@@ -60,12 +60,12 @@ export async function handleDLQReplay(
   try {
     // Parse request body
     const body = await request.json();
-    const parsed = replaySchema.safeParse(body);
+    const parsed = v.safeParse(replaySchema, body);
 
     if (!parsed.success) {
       return Response.json({
         error: 'Invalid request',
-        details: parsed.error.flatten(),
+        details: v.flatten(parsed.issues),
       }, { status: 400 });
     }
 
@@ -76,7 +76,7 @@ export async function handleDLQReplay(
     );
 
     // Execute replay
-    const result = await replayService.replayFailedEvents(parsed.data);
+    const result = await replayService.replayFailedEvents(parsed.output);
 
     return Response.json({
       success: true,
@@ -170,19 +170,19 @@ export async function handleDLQCleanup(
 
   try {
     const body = await request.json();
-    const parsed = cleanupSchema.safeParse(body);
+    const parsed = v.safeParse(cleanupSchema, body);
 
     if (!parsed.success) {
       return Response.json({
         error: 'Invalid request',
-        details: parsed.error.flatten(),
+        details: v.flatten(parsed.issues),
       }, { status: 400 });
     }
 
     const replayService = new DLQReplayService(env.AUTH_DB);
     const result = await replayService.cleanup({
-      maxAge: parsed.data.maxAge,
-      statusFilter: parsed.data.statusFilter,
+      maxAge: parsed.output.maxAge,
+      statusFilter: parsed.output.statusFilter,
     });
 
     return Response.json({

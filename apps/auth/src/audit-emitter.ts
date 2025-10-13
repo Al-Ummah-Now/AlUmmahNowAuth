@@ -322,7 +322,7 @@ export class WebhookSink implements AuditEventSink {
       // Log only non-sensitive metadata
       console.log(`Stored ${events.length} events to DLQ`, {
         dlqId: result.meta.last_row_id,
-        eventTypes: events.map(e => e.type),
+        eventTypes: events.map(e => e.eventType),
         timestamp: new Date().toISOString(),
       });
     } catch (dlqError) {
@@ -331,7 +331,7 @@ export class WebhookSink implements AuditEventSink {
 
       // Log only event metadata to avoid leaking sensitive information
       const eventMetadata = events.map(e => ({
-        type: e.type,
+        type: e.eventType,
         timestamp: e.timestamp,
         severity: e.severity,
       }));
