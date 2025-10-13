@@ -332,7 +332,7 @@ export default {
             "https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png",
         },
       },
-      success: async (ctx, value) => {
+      success: async (oauthCtx, value) => {
         logger.info('Authentication successful', { email: value.email });
         try {
           const user = await getOrCreateUser(env, value.email);
@@ -349,7 +349,7 @@ export default {
               requestId,
             }
           );
-          getAuditEmitter().emit(loginEvent); // Fire and forget
+          ctx.waitUntil(getAuditEmitter().emit(loginEvent));
 
           // If new user, emit account created event
           if (isNewUser) {
@@ -363,10 +363,10 @@ export default {
                 requestId,
               }
             );
-            getAuditEmitter().emit(accountEvent); // Fire and forget
+            ctx.waitUntil(getAuditEmitter().emit(accountEvent));
           }
 
-          return ctx.subject("user", {
+          return oauthCtx.subject("user", {
             id: user.id,
             email: value.email,
             role: user.role,
@@ -383,7 +383,7 @@ export default {
               requestId,
             }
           );
-          getAuditEmitter().emit(failedEvent); // Fire and forget
+          ctx.waitUntil(getAuditEmitter().emit(failedEvent));
 
           throw error;
         }
