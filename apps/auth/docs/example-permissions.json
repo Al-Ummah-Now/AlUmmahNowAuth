@@ -1,0 +1,811 @@
+{
+  "permissions": [
+    {
+      "id": "perm_users_create_all",
+      "name": "users:create:all",
+      "resource": "users",
+      "action": "create",
+      "scope": "all",
+      "description": "Create new user accounts",
+      "category": "User Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_users_read_all",
+      "name": "users:read:all",
+      "resource": "users",
+      "action": "read",
+      "scope": "all",
+      "description": "View all user profiles and data",
+      "category": "User Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_users_read_own",
+      "name": "users:read:own",
+      "resource": "users",
+      "action": "read",
+      "scope": "own",
+      "description": "View own user profile",
+      "category": "User Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_users_update_all",
+      "name": "users:update:all",
+      "resource": "users",
+      "action": "update",
+      "scope": "all",
+      "description": "Update any user account",
+      "category": "User Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_users_update_own",
+      "name": "users:update:own",
+      "resource": "users",
+      "action": "update",
+      "scope": "own",
+      "description": "Update own profile information",
+      "category": "User Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_users_delete_all",
+      "name": "users:delete:all",
+      "resource": "users",
+      "action": "delete",
+      "scope": "all",
+      "description": "Delete any user account",
+      "category": "User Management",
+      "isSystem": true,
+      "dangerous": true
+    },
+    {
+      "id": "perm_users_manage_all",
+      "name": "users:manage:all",
+      "resource": "users",
+      "action": "manage",
+      "scope": "all",
+      "description": "Manage user roles and permissions",
+      "category": "User Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_users_impersonate_all",
+      "name": "users:impersonate:all",
+      "resource": "users",
+      "action": "impersonate",
+      "scope": "all",
+      "description": "Impersonate other users",
+      "category": "User Management",
+      "isSystem": true,
+      "dangerous": true,
+      "requiresMFA": true
+    },
+    {
+      "id": "perm_roles_create_all",
+      "name": "roles:create:all",
+      "resource": "roles",
+      "action": "create",
+      "scope": "all",
+      "description": "Create new roles",
+      "category": "Role Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_roles_read_all",
+      "name": "roles:read:all",
+      "resource": "roles",
+      "action": "read",
+      "scope": "all",
+      "description": "View all roles and their permissions",
+      "category": "Role Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_roles_update_all",
+      "name": "roles:update:all",
+      "resource": "roles",
+      "action": "update",
+      "scope": "all",
+      "description": "Modify existing roles",
+      "category": "Role Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_roles_delete_all",
+      "name": "roles:delete:all",
+      "resource": "roles",
+      "action": "delete",
+      "scope": "all",
+      "description": "Delete roles",
+      "category": "Role Management",
+      "isSystem": true,
+      "dangerous": true
+    },
+    {
+      "id": "perm_roles_manage_all",
+      "name": "roles:manage:all",
+      "resource": "roles",
+      "action": "manage",
+      "scope": "all",
+      "description": "Manage role permissions and hierarchy",
+      "category": "Role Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_create_all",
+      "name": "content:create:all",
+      "resource": "content",
+      "action": "create",
+      "scope": "all",
+      "description": "Create content in any category",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_read_all",
+      "name": "content:read:all",
+      "resource": "content",
+      "action": "read",
+      "scope": "all",
+      "description": "Read all content including private",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_read_public",
+      "name": "content:read:public",
+      "resource": "content",
+      "action": "read",
+      "scope": "public",
+      "description": "Read public content only",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_read_own",
+      "name": "content:read:own",
+      "resource": "content",
+      "action": "read",
+      "scope": "own",
+      "description": "Read own content",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_update_all",
+      "name": "content:update:all",
+      "resource": "content",
+      "action": "update",
+      "scope": "all",
+      "description": "Edit any content",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_update_own",
+      "name": "content:update:own",
+      "resource": "content",
+      "action": "update",
+      "scope": "own",
+      "description": "Edit own content",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_delete_all",
+      "name": "content:delete:all",
+      "resource": "content",
+      "action": "delete",
+      "scope": "all",
+      "description": "Delete any content",
+      "category": "Content Management",
+      "isSystem": true,
+      "dangerous": true
+    },
+    {
+      "id": "perm_content_delete_own",
+      "name": "content:delete:own",
+      "resource": "content",
+      "action": "delete",
+      "scope": "own",
+      "description": "Delete own content",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_publish_all",
+      "name": "content:publish:all",
+      "resource": "content",
+      "action": "publish",
+      "scope": "all",
+      "description": "Publish any content",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_publish_own",
+      "name": "content:publish:own",
+      "resource": "content",
+      "action": "publish",
+      "scope": "own",
+      "description": "Publish own content",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_content_moderate_all",
+      "name": "content:moderate:all",
+      "resource": "content",
+      "action": "moderate",
+      "scope": "all",
+      "description": "Moderate content (approve, reject, flag)",
+      "category": "Content Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_settings_read_all",
+      "name": "settings:read:all",
+      "resource": "settings",
+      "action": "read",
+      "scope": "all",
+      "description": "View system settings",
+      "category": "System Settings",
+      "isSystem": true
+    },
+    {
+      "id": "perm_settings_update_all",
+      "name": "settings:update:all",
+      "resource": "settings",
+      "action": "update",
+      "scope": "all",
+      "description": "Modify system settings",
+      "category": "System Settings",
+      "isSystem": true,
+      "dangerous": true
+    },
+    {
+      "id": "perm_settings_manage_all",
+      "name": "settings:manage:all",
+      "resource": "settings",
+      "action": "manage",
+      "scope": "all",
+      "description": "Full system settings management",
+      "category": "System Settings",
+      "isSystem": true,
+      "dangerous": true
+    },
+    {
+      "id": "perm_audit_read_all",
+      "name": "audit:read:all",
+      "resource": "audit",
+      "action": "read",
+      "scope": "all",
+      "description": "View audit logs",
+      "category": "Audit & Compliance",
+      "isSystem": true
+    },
+    {
+      "id": "perm_audit_export_all",
+      "name": "audit:export:all",
+      "resource": "audit",
+      "action": "export",
+      "scope": "all",
+      "description": "Export audit logs",
+      "category": "Audit & Compliance",
+      "isSystem": true
+    },
+    {
+      "id": "perm_audit_delete_all",
+      "name": "audit:delete:all",
+      "resource": "audit",
+      "action": "delete",
+      "scope": "all",
+      "description": "Delete audit logs",
+      "category": "Audit & Compliance",
+      "isSystem": true,
+      "dangerous": true,
+      "requiresMFA": true
+    },
+    {
+      "id": "perm_analytics_read_all",
+      "name": "analytics:read:all",
+      "resource": "analytics",
+      "action": "read",
+      "scope": "all",
+      "description": "View all analytics data",
+      "category": "Analytics",
+      "isSystem": true
+    },
+    {
+      "id": "perm_analytics_read_own",
+      "name": "analytics:read:own",
+      "resource": "analytics",
+      "action": "read",
+      "scope": "own",
+      "description": "View own content analytics",
+      "category": "Analytics",
+      "isSystem": true
+    },
+    {
+      "id": "perm_analytics_export_all",
+      "name": "analytics:export:all",
+      "resource": "analytics",
+      "action": "export",
+      "scope": "all",
+      "description": "Export analytics reports",
+      "category": "Analytics",
+      "isSystem": true
+    },
+    {
+      "id": "perm_system_health_read",
+      "name": "system:health:read",
+      "resource": "system",
+      "action": "health",
+      "scope": "read",
+      "description": "View system health and status",
+      "category": "System Administration",
+      "isSystem": true
+    },
+    {
+      "id": "perm_system_manage_all",
+      "name": "system:manage:all",
+      "resource": "system",
+      "action": "manage",
+      "scope": "all",
+      "description": "Full system administration",
+      "category": "System Administration",
+      "isSystem": true,
+      "dangerous": true,
+      "requiresMFA": true
+    },
+    {
+      "id": "perm_system_backup_all",
+      "name": "system:backup:all",
+      "resource": "system",
+      "action": "backup",
+      "scope": "all",
+      "description": "Create and restore system backups",
+      "category": "System Administration",
+      "isSystem": true,
+      "dangerous": true
+    },
+    {
+      "id": "perm_clients_create_all",
+      "name": "clients:create:all",
+      "resource": "clients",
+      "action": "create",
+      "scope": "all",
+      "description": "Create OAuth clients",
+      "category": "OAuth Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_clients_read_all",
+      "name": "clients:read:all",
+      "resource": "clients",
+      "action": "read",
+      "scope": "all",
+      "description": "View all OAuth clients",
+      "category": "OAuth Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_clients_update_all",
+      "name": "clients:update:all",
+      "resource": "clients",
+      "action": "update",
+      "scope": "all",
+      "description": "Update OAuth clients",
+      "category": "OAuth Management",
+      "isSystem": true
+    },
+    {
+      "id": "perm_clients_delete_all",
+      "name": "clients:delete:all",
+      "resource": "clients",
+      "action": "delete",
+      "scope": "all",
+      "description": "Delete OAuth clients",
+      "category": "OAuth Management",
+      "isSystem": true,
+      "dangerous": true
+    },
+    {
+      "id": "perm_super_admin",
+      "name": "*:*:*",
+      "resource": "*",
+      "action": "*",
+      "scope": "*",
+      "description": "Super admin with all permissions",
+      "category": "Super Admin",
+      "isSystem": true,
+      "dangerous": true,
+      "requiresMFA": true
+    }
+  ],
+  "roles": [
+    {
+      "id": "role_super_admin",
+      "name": "super_admin",
+      "description": "Super Administrator with unrestricted access",
+      "permissions": ["*:*:*"],
+      "isSystem": true,
+      "priority": 1000,
+      "color": "#FF0000",
+      "icon": "shield-alert"
+    },
+    {
+      "id": "role_admin",
+      "name": "admin",
+      "description": "Administrator with broad management capabilities",
+      "permissions": [
+        "users:create:all",
+        "users:read:all",
+        "users:update:all",
+        "users:delete:all",
+        "users:manage:all",
+        "roles:read:all",
+        "content:create:all",
+        "content:read:all",
+        "content:update:all",
+        "content:delete:all",
+        "content:publish:all",
+        "content:moderate:all",
+        "settings:read:all",
+        "settings:update:all",
+        "audit:read:all",
+        "analytics:read:all",
+        "analytics:export:all",
+        "clients:read:all",
+        "clients:manage:all",
+        "system:health:read"
+      ],
+      "isSystem": true,
+      "priority": 900,
+      "color": "#FFA500",
+      "icon": "shield"
+    },
+    {
+      "id": "role_moderator",
+      "name": "moderator",
+      "description": "Content moderator with content management permissions",
+      "permissions": [
+        "users:read:all",
+        "content:read:all",
+        "content:update:all",
+        "content:delete:all",
+        "content:publish:all",
+        "content:moderate:all",
+        "analytics:read:all"
+      ],
+      "isSystem": true,
+      "priority": 500,
+      "color": "#00CED1",
+      "icon": "user-check"
+    },
+    {
+      "id": "role_content_creator",
+      "name": "content_creator",
+      "description": "Content creator with permissions to manage own content",
+      "permissions": [
+        "content:create:all",
+        "content:read:own",
+        "content:update:own",
+        "content:delete:own",
+        "content:publish:own",
+        "users:read:own",
+        "users:update:own",
+        "analytics:read:own"
+      ],
+      "isSystem": true,
+      "priority": 200,
+      "color": "#32CD32",
+      "icon": "edit"
+    },
+    {
+      "id": "role_user",
+      "name": "user",
+      "description": "Regular user with basic permissions",
+      "permissions": [
+        "users:read:own",
+        "users:update:own",
+        "content:read:public"
+      ],
+      "isSystem": true,
+      "priority": 100,
+      "color": "#808080",
+      "icon": "user"
+    },
+    {
+      "id": "role_guest",
+      "name": "guest",
+      "description": "Guest user with minimal read-only permissions",
+      "permissions": [
+        "content:read:public"
+      ],
+      "isSystem": true,
+      "priority": 10,
+      "color": "#D3D3D3",
+      "icon": "user-x"
+    },
+    {
+      "id": "role_analytics_viewer",
+      "name": "analytics_viewer",
+      "description": "Analytics viewer with read-only access to analytics",
+      "permissions": [
+        "analytics:read:all",
+        "analytics:export:all"
+      ],
+      "isSystem": false,
+      "priority": 150,
+      "color": "#4B0082",
+      "icon": "chart"
+    },
+    {
+      "id": "role_support_agent",
+      "name": "support_agent",
+      "description": "Support agent with user assistance permissions",
+      "permissions": [
+        "users:read:all",
+        "users:update:all",
+        "content:read:all",
+        "audit:read:all"
+      ],
+      "isSystem": false,
+      "priority": 300,
+      "color": "#008B8B",
+      "icon": "headphones"
+    },
+    {
+      "id": "role_compliance_officer",
+      "name": "compliance_officer",
+      "description": "Compliance officer with audit and monitoring permissions",
+      "permissions": [
+        "users:read:all",
+        "audit:read:all",
+        "audit:export:all",
+        "content:read:all",
+        "analytics:read:all"
+      ],
+      "isSystem": false,
+      "priority": 400,
+      "color": "#4682B4",
+      "icon": "clipboard-check"
+    },
+    {
+      "id": "role_developer",
+      "name": "developer",
+      "description": "Developer with API and system monitoring permissions",
+      "permissions": [
+        "clients:create:all",
+        "clients:read:all",
+        "clients:update:all",
+        "clients:delete:all",
+        "system:health:read",
+        "audit:read:all"
+      ],
+      "isSystem": false,
+      "priority": 350,
+      "color": "#FF1493",
+      "icon": "code"
+    }
+  ],
+  "roleHierarchy": {
+    "super_admin": {
+      "inherits": [],
+      "canGrant": ["*"],
+      "canRevoke": ["*"]
+    },
+    "admin": {
+      "inherits": [],
+      "canGrant": ["moderator", "content_creator", "user", "analytics_viewer", "support_agent"],
+      "canRevoke": ["moderator", "content_creator", "user", "analytics_viewer", "support_agent"]
+    },
+    "moderator": {
+      "inherits": ["content_creator"],
+      "canGrant": ["content_creator", "user"],
+      "canRevoke": ["content_creator", "user"]
+    },
+    "content_creator": {
+      "inherits": ["user"],
+      "canGrant": [],
+      "canRevoke": []
+    },
+    "user": {
+      "inherits": ["guest"],
+      "canGrant": [],
+      "canRevoke": []
+    },
+    "guest": {
+      "inherits": [],
+      "canGrant": [],
+      "canRevoke": []
+    }
+  },
+  "permissionGroups": {
+    "userManagement": {
+      "name": "User Management",
+      "description": "Permissions related to user account management",
+      "permissions": [
+        "users:create:all",
+        "users:read:all",
+        "users:read:own",
+        "users:update:all",
+        "users:update:own",
+        "users:delete:all",
+        "users:manage:all",
+        "users:impersonate:all"
+      ]
+    },
+    "roleManagement": {
+      "name": "Role Management",
+      "description": "Permissions related to role and permission management",
+      "permissions": [
+        "roles:create:all",
+        "roles:read:all",
+        "roles:update:all",
+        "roles:delete:all",
+        "roles:manage:all"
+      ]
+    },
+    "contentManagement": {
+      "name": "Content Management",
+      "description": "Permissions related to content creation and management",
+      "permissions": [
+        "content:create:all",
+        "content:read:all",
+        "content:read:public",
+        "content:read:own",
+        "content:update:all",
+        "content:update:own",
+        "content:delete:all",
+        "content:delete:own",
+        "content:publish:all",
+        "content:publish:own",
+        "content:moderate:all"
+      ]
+    },
+    "systemAdministration": {
+      "name": "System Administration",
+      "description": "Permissions related to system configuration and management",
+      "permissions": [
+        "settings:read:all",
+        "settings:update:all",
+        "settings:manage:all",
+        "system:health:read",
+        "system:manage:all",
+        "system:backup:all"
+      ]
+    },
+    "auditCompliance": {
+      "name": "Audit & Compliance",
+      "description": "Permissions related to audit logs and compliance",
+      "permissions": [
+        "audit:read:all",
+        "audit:export:all",
+        "audit:delete:all"
+      ]
+    },
+    "analytics": {
+      "name": "Analytics",
+      "description": "Permissions related to analytics and reporting",
+      "permissions": [
+        "analytics:read:all",
+        "analytics:read:own",
+        "analytics:export:all"
+      ]
+    },
+    "oauthManagement": {
+      "name": "OAuth Management",
+      "description": "Permissions related to OAuth client management",
+      "permissions": [
+        "clients:create:all",
+        "clients:read:all",
+        "clients:update:all",
+        "clients:delete:all"
+      ]
+    }
+  },
+  "defaultAssignments": {
+    "newUser": {
+      "roles": ["user"],
+      "permissions": []
+    },
+    "firstUser": {
+      "roles": ["super_admin"],
+      "permissions": []
+    },
+    "invitedUser": {
+      "roles": ["user"],
+      "permissions": []
+    },
+    "oauthUser": {
+      "roles": ["user"],
+      "permissions": []
+    }
+  },
+  "policies": [
+    {
+      "id": "policy_mfa_required",
+      "name": "MFA Required for Dangerous Operations",
+      "description": "Require multi-factor authentication for dangerous permissions",
+      "type": "mfa_required",
+      "applies_to": {
+        "permissions": [
+          "*:*:*",
+          "users:impersonate:all",
+          "audit:delete:all",
+          "system:manage:all",
+          "settings:manage:all"
+        ]
+      },
+      "enforcement": "strict"
+    },
+    {
+      "id": "policy_time_based",
+      "name": "Business Hours Only",
+      "description": "Certain operations only allowed during business hours",
+      "type": "time_based",
+      "applies_to": {
+        "permissions": [
+          "users:delete:all",
+          "system:backup:all"
+        ]
+      },
+      "conditions": {
+        "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        "hours": {
+          "start": "09:00",
+          "end": "17:00"
+        },
+        "timezone": "UTC"
+      }
+    },
+    {
+      "id": "policy_approval_required",
+      "name": "Approval Required",
+      "description": "Require approval for critical operations",
+      "type": "approval_required",
+      "applies_to": {
+        "permissions": [
+          "users:delete:all",
+          "roles:delete:all",
+          "audit:delete:all"
+        ]
+      },
+      "conditions": {
+        "approvers": ["role:admin", "role:super_admin"],
+        "minimum_approvals": 1,
+        "approval_timeout_hours": 24
+      }
+    },
+    {
+      "id": "policy_rate_limit",
+      "name": "Rate Limiting",
+      "description": "Limit frequency of certain operations",
+      "type": "rate_limit",
+      "applies_to": {
+        "permissions": [
+          "users:create:all",
+          "content:create:all"
+        ]
+      },
+      "conditions": {
+        "max_per_hour": 100,
+        "max_per_day": 1000
+      }
+    }
+  ],
+  "metadata": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-01-13T00:00:00Z",
+    "environment": "production",
+    "schemaVersion": "1.0",
+    "totalPermissions": 45,
+    "totalRoles": 10,
+    "totalPolicies": 4
+  }
+}
