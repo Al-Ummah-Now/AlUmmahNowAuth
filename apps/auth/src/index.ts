@@ -18,6 +18,7 @@ import {
   createRateLimitExceededEvent,
   createAccountCreatedEvent,
 } from "./audit-events";
+import { routeAdminDLQ } from "./admin-dlq-routes";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -237,7 +238,17 @@ export default {
       const response = Response.redirect(`${url.origin}/?error=callback_not_supported`, 302);
       return addSecurityHeaders(response, isProduction);
     }
-    
+
+    // Handle admin DLQ management routes
+    if (url.pathname.startsWith('/admin/dlq')) {
+      logger.debug('Handling admin DLQ request', { pathname: url.pathname });
+      const dlqResponse = await routeAdminDLQ(request, env, ctx);
+      if (dlqResponse) {
+        ctx.waitUntil(logger.finalizeRequest());
+        return addSecurityHeaders(dlqResponse, isProduction);
+      }
+    }
+
     // The real OpenAuth server code starts here:
     logger.debug('Initializing OpenAuth issuer', {
       hasStorage: !!env.AUTH_STORAGE,
