@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { DLQReplayService } from './dlq-replay';
+import { getUserSession } from './session';
 
 const replaySchema = z.object({
   batchSize: z.number().min(1).max(100).optional(),
@@ -22,10 +23,25 @@ const cleanupSchema = z.object({
 
 /**
  * Verify admin authentication
+ *
+ * Validates that the request has a valid session token and the user has admin role.
+ * Supports both Authorization header (Bearer token) and cookie-based authentication.
  */
-function verifyAdminAuth(request: Request): boolean {
-  const authHeader = request.headers.get('Authorization');
-  return authHeader?.startsWith('Bearer ') ?? false;
+async function verifyAdminAuth(request: Request, storage: KVNamespace): Promise<boolean> {
+  try {
+    // Get user session from cookie or Authorization header
+    const session = await getUserSession(request, storage);
+
+    if (!session || !session.user) {
+      return false;
+    }
+
+    // Verify user has admin role
+    return session.user.role === 'admin';
+  } catch (error) {
+    console.error('Admin auth verification failed:', error);
+    return false;
+  }
 }
 
 /**
@@ -37,7 +53,7 @@ export async function handleDLQReplay(
   ctx: ExecutionContext
 ): Promise<Response> {
   // Verify admin authentication
-  if (!verifyAdminAuth(request)) {
+  if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -83,7 +99,7 @@ export async function handleDLQList(
   env: Env
 ): Promise<Response> {
   // Verify admin authentication
-  if (!verifyAdminAuth(request)) {
+  if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -122,7 +138,7 @@ export async function handleDLQStats(
   env: Env
 ): Promise<Response> {
   // Verify admin authentication
-  if (!verifyAdminAuth(request)) {
+  if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -148,7 +164,7 @@ export async function handleDLQCleanup(
   env: Env
 ): Promise<Response> {
   // Verify admin authentication
-  if (!verifyAdminAuth(request)) {
+  if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
     return new Response('Unauthorized', { status: 401 });
   }
 

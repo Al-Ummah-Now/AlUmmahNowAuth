@@ -98,7 +98,7 @@ export class WebhookSink implements AuditEventSink {
 
     // Validate webhook secret strength
     if (options.secret && options.secret.length < 32) {
-      console.warn('Webhook secret should be at least 32 characters for security');
+      throw new Error('Webhook secret must be at least 32 characters for security');
     }
   }
 
@@ -319,11 +319,26 @@ export class WebhookSink implements AuditEventSink {
 
       this.deliveryMetrics.dlqWrites++;
 
-      console.log(`Stored ${events.length} events to DLQ (ID: ${result.meta.last_row_id})`);
+      // Log only non-sensitive metadata
+      console.log(`Stored ${events.length} events to DLQ`, {
+        dlqId: result.meta.last_row_id,
+        eventTypes: events.map(e => e.type),
+        timestamp: new Date().toISOString(),
+      });
     } catch (dlqError) {
       // Critical: Failed to store in DLQ - last resort logging
       console.error('CRITICAL: Failed to store events in DLQ:', dlqError);
-      console.error('Lost events:', JSON.stringify(events));
+
+      // Log only event metadata to avoid leaking sensitive information
+      const eventMetadata = events.map(e => ({
+        type: e.type,
+        timestamp: e.timestamp,
+        severity: e.severity,
+      }));
+      console.error(
+        `Lost ${events.length} events. Metadata:`,
+        JSON.stringify(eventMetadata)
+      );
     }
   }
 

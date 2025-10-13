@@ -346,7 +346,7 @@ export default {
       success: async (oauthCtx, value) => {
         logger.info('Authentication successful', { email: value.email });
         try {
-          const user = await getOrCreateUser(env, value.email);
+          const user = await getOrCreateUser(env, value.email, true);
           const isNewUser = user.isNew; // Track if this is a new account
 
           // Emit login success audit event
