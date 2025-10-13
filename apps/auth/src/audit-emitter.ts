@@ -35,10 +35,22 @@ export class StdoutSink implements AuditEventSink {
 
   async emit(event: AuditEvent): Promise<void> {
     // Output as structured JSON for parsing by log aggregators
-    console.log(JSON.stringify({
-      type: 'audit_event',
-      event,
-    }));
+    try {
+      console.log(JSON.stringify({
+        type: 'audit_event',
+        event,
+      }));
+    } catch (error) {
+      // Handle circular references or other JSON serialization errors
+      console.error('Failed to stringify audit event:', error);
+      console.log(JSON.stringify({
+        type: 'audit_event',
+        event: {
+          ...event,
+          metadata: '[Circular or Invalid JSON]',
+        },
+      }));
+    }
   }
 }
 
@@ -146,15 +158,24 @@ export class WebhookSink implements AuditEventSink {
         headers['X-Audit-Signature'] = `sha256=${hexSignature}`;
       }
 
-      const response = await fetch(this.url, {
-        method: 'POST',
-        headers,
-        body,
-      });
+      // Set up timeout for webhook request (10 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      if (!response.ok) {
-        console.error(`Webhook delivery failed: ${response.status} ${response.statusText}`);
-        // In a production system, you might want to implement retry logic here
+      try {
+        const response = await fetch(this.url, {
+          method: 'POST',
+          headers,
+          body,
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          console.error(`Webhook delivery failed: ${response.status} ${response.statusText}`);
+          // In a production system, you might want to implement retry logic here
+        }
+      } finally {
+        clearTimeout(timeoutId);
       }
     } catch (error) {
       console.error('Webhook delivery error:', error);
@@ -254,7 +275,20 @@ export class D1Sink implements AuditEventSink {
         )
       );
 
-      await this.db.batch(statements);
+      const results = await this.db.batch(statements);
+
+      // Check if any individual statement failed
+      results.forEach((result, index) => {
+        if (!result.success) {
+          console.error(`D1 batch statement ${index} failed:`, result.error);
+          // Log the failed event to stdout as backup
+          console.log(JSON.stringify({
+            type: 'audit_event_backup',
+            event: events[index],
+            error: result.error,
+          }));
+        }
+      });
     } catch (error) {
       console.error('D1 audit event storage error:', error);
       // Events are lost if D1 write fails - consider fallback to stdout
