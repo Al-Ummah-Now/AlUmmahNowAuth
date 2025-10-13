@@ -191,3 +191,14 @@ apps/admin/.react-router/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Playwright E2E test artifacts
+/test-results/
+/playwright-report/
+/e2e-report/
+/e2e-results.json
+/e2e-results.xml
+/playwright/.cache/
+/.auth-server.pid
+/.admin-dashboard.pid
+/.profile-app.pid

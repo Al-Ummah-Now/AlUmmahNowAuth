@@ -277,12 +277,14 @@ This project follows a structured roadmap toward v1.0 release (March 31, 2025). 
 
 ## 🧪 Testing
 
-This project uses [Vitest](https://vitest.dev/) with the [@cloudflare/vitest-pool-workers](https://github.com/cloudflare/workers-sdk/tree/main/fixtures/vitest-pool-workers-examples) plugin for testing Cloudflare Workers applications.
+This project has comprehensive test coverage with both **unit tests** (Vitest) and **E2E tests** (Playwright).
 
-### Running Tests
+### Unit Tests
+
+Uses [Vitest](https://vitest.dev/) with the [@cloudflare/vitest-pool-workers](https://github.com/cloudflare/workers-sdk/tree/main/fixtures/vitest-pool-workers-examples) plugin for testing Cloudflare Workers applications.
 
 ```bash
-# Run all tests across all apps
+# Run all unit tests across all apps
 pnpm test
 
 # Run tests in verbose mode
@@ -299,6 +301,37 @@ pnpm --filter auth test
 pnpm --filter admin test
 pnpm --filter profile test
 ```
+
+### E2E Tests
+
+Uses [Playwright](https://playwright.dev/) for end-to-end testing of complete user flows.
+
+```bash
+# Run E2E tests (services must be running)
+pnpm test:e2e
+
+# Run with interactive UI mode
+pnpm test:e2e:ui
+
+# Run in debug mode
+pnpm test:e2e:debug
+
+# View HTML report
+pnpm test:e2e:report
+```
+
+**E2E Test Coverage**:
+- ✅ Email-based authentication flow
+- ✅ OAuth 2.0 authorization code flow
+- ✅ Admin user CRUD operations
+- ✅ Session management and persistence
+- ✅ Cross-app session sharing
+- ✅ Logout functionality
+
+For detailed information, see:
+- **[E2E Testing Guide](./E2E_TESTING_GUIDE.md)** - Complete guide to running and writing E2E tests
+- **[E2E Testing Strategy](./E2E_TESTING_STRATEGY.md)** - Testing strategy and architecture
+- **[E2E Implementation Summary](./E2E_IMPLEMENTATION_SUMMARY.md)** - Implementation details
 
 ### Test Structure
 
@@ -407,10 +440,14 @@ pnpm --filter profile type-check
 - `pnpm build` - Build all apps
 - `pnpm deploy` - Deploy all apps
 - `pnpm type-check` - Type check all apps
-- `pnpm test` - Run all tests
-- `pnpm test:unit` - Run tests in verbose mode
-- `pnpm test:watch` - Run tests in watch mode
-- `pnpm test:coverage` - Run tests with coverage
+- `pnpm test` - Run all unit tests
+- `pnpm test:unit` - Run unit tests in verbose mode
+- `pnpm test:watch` - Run unit tests in watch mode
+- `pnpm test:coverage` - Run unit tests with coverage
+- `pnpm test:e2e` - Run E2E tests
+- `pnpm test:e2e:ui` - Run E2E tests with UI mode
+- `pnpm test:e2e:debug` - Run E2E tests in debug mode
+- `pnpm test:e2e:report` - View E2E test report
 
 ### Per-App
 - `pnpm dev:auth` / `pnpm dev:admin` / `pnpm dev:profile` - Run specific app
