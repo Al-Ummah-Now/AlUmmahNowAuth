@@ -54,6 +54,7 @@ export class WebhookSink implements AuditEventSink {
   private eventQueue: AuditEvent[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private ctx: ExecutionContext | null = null;
+  private flushing = false;
 
   constructor(options: {
     url: string;
@@ -65,6 +66,11 @@ export class WebhookSink implements AuditEventSink {
     this.secret = options.secret;
     this.batchSize = options.batchSize ?? 10;
     this.batchTimeout = options.batchTimeout ?? 5000; // 5 seconds
+
+    // Validate webhook secret strength
+    if (options.secret && options.secret.length < 32) {
+      console.warn('Webhook secret should be at least 32 characters for security');
+    }
   }
 
   /**
@@ -77,17 +83,24 @@ export class WebhookSink implements AuditEventSink {
   async emit(event: AuditEvent): Promise<void> {
     this.eventQueue.push(event);
 
-    // Flush if batch size reached
+    // Flush if batch size reached and not already flushing
     if (this.eventQueue.length >= this.batchSize) {
-      await this.flush();
+      if (!this.flushing) {
+        await this.flush();
+      }
     } else {
-      // Schedule flush if not already scheduled
-      if (!this.flushTimer) {
+      // Schedule flush if not already scheduled and not currently flushing
+      if (!this.flushTimer && !this.flushing) {
         this.flushTimer = setTimeout(() => {
+          this.flushing = true;
+          const flushPromise = this.flush().finally(() => {
+            this.flushing = false;
+          });
+
           if (this.ctx) {
-            this.ctx.waitUntil(this.flush());
+            this.ctx.waitUntil(flushPromise);
           } else {
-            this.flush().catch(console.error);
+            flushPromise.catch(console.error);
           }
         }, this.batchTimeout);
       }
@@ -161,6 +174,7 @@ export class D1Sink implements AuditEventSink {
   private eventQueue: AuditEvent[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private ctx: ExecutionContext | null = null;
+  private flushing = false;
 
   constructor(db: D1Database, options?: {
     batchSize?: number;
@@ -181,17 +195,24 @@ export class D1Sink implements AuditEventSink {
   async emit(event: AuditEvent): Promise<void> {
     this.eventQueue.push(event);
 
-    // Flush if batch size reached
+    // Flush if batch size reached and not already flushing
     if (this.eventQueue.length >= this.batchSize) {
-      await this.flush();
+      if (!this.flushing) {
+        await this.flush();
+      }
     } else {
-      // Schedule flush if not already scheduled
-      if (!this.flushTimer) {
+      // Schedule flush if not already scheduled and not currently flushing
+      if (!this.flushTimer && !this.flushing) {
         this.flushTimer = setTimeout(() => {
+          this.flushing = true;
+          const flushPromise = this.flush().finally(() => {
+            this.flushing = false;
+          });
+
           if (this.ctx) {
-            this.ctx.waitUntil(this.flush());
+            this.ctx.waitUntil(flushPromise);
           } else {
-            this.flush().catch(console.error);
+            flushPromise.catch(console.error);
           }
         }, this.batchTimeout);
       }

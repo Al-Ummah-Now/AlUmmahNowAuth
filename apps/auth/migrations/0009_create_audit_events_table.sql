@@ -33,3 +33,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_user_timestamp ON audit_events(user_
 
 -- Index on request_id for tracing specific requests
 CREATE INDEX IF NOT EXISTS idx_audit_events_request_id ON audit_events(request_id);
+
+-- Composite index for IP address analysis over time
+CREATE INDEX IF NOT EXISTS idx_audit_events_ip_timestamp ON audit_events(ip_address, timestamp);

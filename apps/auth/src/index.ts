@@ -352,6 +352,9 @@ export default {
           ctx.waitUntil(getAuditEmitter().emit(loginEvent));
 
           // If new user, emit account created event
+          // Note: In rare race conditions with concurrent logins for the same new user,
+          // duplicate ACCOUNT_CREATED events may be emitted. This is acceptable as the
+          // events will have different requestIds for correlation.
           if (isNewUser) {
             const accountEvent = createAccountCreatedEvent(
               user.id,
