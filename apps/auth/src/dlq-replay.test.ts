@@ -312,7 +312,8 @@ describe('DLQ Replay Service', () => {
       expect(updateCall).toContain('UPDATE webhook_dlq');
       expect(updateCall).toContain("SET status = 'pending'");
       expect(updateCall).toContain("WHERE status = 'replaying'");
-      expect(updateCall).toContain('timestamp < ?');
+      expect(updateCall).toContain('replaying_started_at < ?');
+      expect(updateCall).toContain('LIMIT ?');
     });
 
     it('should use default timeout of 30 minutes', async () => {
@@ -328,8 +329,8 @@ describe('DLQ Replay Service', () => {
 
       await replayService.resetStaleReplayingEntries();
 
-      // Verify bind was called with a cutoff time
-      expect(bindMock).toHaveBeenCalledWith(expect.any(String));
+      // Verify bind was called with cutoff time and batch size
+      expect(bindMock).toHaveBeenCalledWith(expect.any(String), 100);
     });
 
     it('should handle no stale entries', async () => {

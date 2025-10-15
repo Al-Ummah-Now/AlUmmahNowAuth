@@ -24,6 +24,7 @@ const cleanupSchema = v.object({
 
 const resetStaleSchema = v.object({
   staleTimeout: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(1440))), // Max 24 hours in minutes
+  batchSize: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(1000))), // Max 1000 entries
 });
 
 /**
@@ -278,11 +279,34 @@ export async function handleDLQCleanup(
  */
 export async function handleDLQResetStale(
   request: Request,
-  env: Env
+  env: Env,
+  ctx: ExecutionContext
 ): Promise<Response> {
   // Verify admin authentication
   if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
     return new Response('Unauthorized', { status: 401 });
+  }
+
+  // Rate limiting: 10 reset requests per hour per admin
+  const clientIP = getClientIP(request);
+  const rateLimitKey = `admin:dlq:reset-stale:${clientIP}`;
+  const rateLimit = await checkRateLimit(
+    env.AUTH_STORAGE,
+    rateLimitKey,
+    10, // limit
+    3600 // 1 hour in seconds
+  );
+
+  if (!rateLimit.allowed) {
+    const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+    return Response.json({
+      error: 'Too Many Requests',
+      details: `Rate limit exceeded. Try again in ${Math.ceil(retryAfter / 60)} minutes.`,
+      retryAfter,
+    }, {
+      status: 429,
+      headers: { 'Retry-After': String(retryAfter) },
+    });
   }
 
   // Determine if running in development mode
@@ -303,6 +327,16 @@ export async function handleDLQResetStale(
     const replayService = new DLQReplayService(env.AUTH_DB);
     const result = await replayService.resetStaleReplayingEntries({
       staleTimeout: parsed.output.staleTimeout,
+      batchSize: parsed.output.batchSize,
+    });
+
+    // Log audit event for the reset operation
+    console.log('[AUDIT] DLQ stale entries reset', {
+      adminIP: clientIP,
+      resetCount: result.reset,
+      staleTimeout: parsed.output.staleTimeout ?? 30,
+      batchSize: parsed.output.batchSize ?? 100,
+      timestamp: new Date().toISOString(),
     });
 
     return Response.json({
@@ -346,7 +380,7 @@ export async function routeAdminDLQ(
   }
 
   if (url.pathname === '/admin/dlq/reset-stale' && request.method === 'POST') {
-    return handleDLQResetStale(request, env);
+    return handleDLQResetStale(request, env, ctx);
   }
 
   // Not an admin DLQ route

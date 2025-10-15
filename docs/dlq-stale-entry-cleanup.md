@@ -6,7 +6,14 @@ When the DLQ replay process marks entries as `'replaying'` and then encounters a
 
 ## Solution
 
-A new cleanup method `resetStaleReplayingEntries()` has been added to the `DLQReplayService` class to identify and reset stale `'replaying'` entries back to `'pending'` status.
+A comprehensive cleanup solution has been implemented with the following components:
+
+1. **Database Migration**: New `replaying_started_at` column tracks when entries enter 'replaying' status
+2. **State Tracking**: Automatic timestamp management when entries transition to/from 'replaying'
+3. **Cleanup Method**: `resetStaleReplayingEntries()` identifies and resets truly stale entries
+4. **Rate Limiting**: Protection against abuse (10 requests/hour per admin)
+5. **Audit Logging**: All reset operations are logged for compliance
+6. **Query Batching**: Limits database impact (max 100 entries per operation)
 
 ## Implementation
 
@@ -20,15 +27,19 @@ A new cleanup method `resetStaleReplayingEntries()` has been added to the `DLQRe
  * for longer than the specified timeout. This can happen when a replay process
  * crashes, times out, or fails before marking entries as completed/failed.
  *
+ * Uses replaying_started_at timestamp to accurately detect stale entries.
+ *
  * @param options.staleTimeout - Timeout in minutes after which a 'replaying' entry is considered stale (default: 30 minutes)
+ * @param options.batchSize - Maximum number of entries to reset at once (default: 100)
  * @returns Object containing the count of reset entries
  */
 async resetStaleReplayingEntries(options: {
   staleTimeout?: number;  // Timeout in minutes (default: 30)
+  batchSize?: number;     // Max entries to reset (default: 100)
 } = {}): Promise<{ reset: number }>
 ```
 
-**Location**: `apps/auth/src/dlq-replay.ts:256-290`
+**Location**: `apps/auth/src/dlq-replay.ts:270-313`
 
 ### Admin API Endpoint
 
@@ -39,7 +50,8 @@ async resetStaleReplayingEntries(options: {
 **Request Body**:
 ```json
 {
-  "staleTimeout": 30  // Optional, timeout in minutes (default: 30, max: 1440)
+  "staleTimeout": 30,  // Optional, timeout in minutes (default: 30, max: 1440)
+  "batchSize": 100     // Optional, max entries to reset (default: 100, max: 1000)
 }
 ```
 
@@ -51,7 +63,9 @@ async resetStaleReplayingEntries(options: {
 }
 ```
 
-**Location**: `apps/auth/src/admin-dlq-routes.ts:276-319`
+**Location**: `apps/auth/src/admin-dlq-routes.ts:280-353`
+
+**Rate Limiting**: 10 requests per hour per admin IP
 
 ## Usage
 

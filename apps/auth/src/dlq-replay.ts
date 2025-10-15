@@ -19,6 +19,7 @@ interface DLQRow {
   retry_count: number;
   status: string;
   replayed_at: string | null;
+  replaying_started_at: string | null;
   created_at: string;
 }
 
@@ -31,6 +32,7 @@ export interface DLQEntry {
   retryCount: number;
   status: 'pending' | 'replaying' | 'completed' | 'failed';
   replayedAt?: string;
+  replayingStartedAt?: string;
   createdAt: string;
 }
 
@@ -104,6 +106,7 @@ export class DLQReplayService {
       retryCount: row.retry_count,
       status: row.status as DLQEntry['status'],
       replayedAt: row.replayed_at ?? undefined,
+      replayingStartedAt: row.replaying_started_at ?? undefined,
       createdAt: row.created_at,
     }));
 
@@ -218,6 +221,17 @@ export class DLQReplayService {
     let query = `UPDATE webhook_dlq SET status = ?`;
     const bindings: any[] = [status];
 
+    // When marking as replaying, set the replaying_started_at timestamp
+    if (status === 'replaying') {
+      query += ', replaying_started_at = ?';
+      bindings.push(new Date().toISOString());
+    }
+
+    // When moving out of replaying status, clear the replaying_started_at
+    if (status !== 'replaying') {
+      query += ', replaying_started_at = NULL';
+    }
+
     if (replayedAt) {
       query += ', replayed_at = ?';
       bindings.push(replayedAt);
@@ -260,30 +274,39 @@ export class DLQReplayService {
    * for longer than the specified timeout. This can happen when a replay process
    * crashes, times out, or fails before marking entries as completed/failed.
    *
+   * Uses replaying_started_at timestamp to accurately detect stale entries.
+   *
    * @param options.staleTimeout - Timeout in minutes after which a 'replaying' entry is considered stale (default: 30 minutes)
+   * @param options.batchSize - Maximum number of entries to reset at once (default: 100)
    * @returns Object containing the count of reset entries
    */
   async resetStaleReplayingEntries(options: {
     staleTimeout?: number;  // Timeout in minutes (default: 30)
+    batchSize?: number;     // Max entries to reset (default: 100)
   } = {}): Promise<{ reset: number }> {
     const timeoutMinutes = options.staleTimeout ?? 30; // Default 30 minutes
+    const batchSize = options.batchSize ?? 100; // Default batch size
     const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000).toISOString();
 
     // Find replaying entries that have been in that state for longer than the timeout
-    // We check against 'timestamp' which represents when the original failure occurred
-    // since 'replayed_at' is only set upon successful completion
+    // We check against 'replaying_started_at' which tracks when the entry entered 'replaying' status
+    // Also handles entries where replaying_started_at is NULL (legacy data before migration)
     const query = `
       UPDATE webhook_dlq
-      SET status = 'pending'
-      WHERE status = 'replaying'
-        AND timestamp < ?
+      SET status = 'pending', replaying_started_at = NULL
+      WHERE id IN (
+        SELECT id FROM webhook_dlq
+        WHERE status = 'replaying'
+          AND (replaying_started_at < ? OR replaying_started_at IS NULL)
+        LIMIT ?
+      )
     `;
 
-    const result = await this.db.prepare(query).bind(cutoff).run();
+    const result = await this.db.prepare(query).bind(cutoff, batchSize).run();
 
     const resetCount = result.meta.changes;
     if (resetCount > 0) {
-      console.log(`Reset ${resetCount} stale 'replaying' entries back to 'pending'`);
+      console.log(`Reset ${resetCount} stale 'replaying' entries back to 'pending' (timeout: ${timeoutMinutes}min, batch: ${batchSize})`);
     }
 
     return { reset: resetCount };
