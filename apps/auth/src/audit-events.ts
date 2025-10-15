@@ -75,8 +75,8 @@ export interface AuditEvent {
   /** Whether the action was successful */
   success: boolean;
 
-  /** Error message if action failed */
-  errorMessage?: string;
+  /** Error message if action failed (null for successful actions) */
+  errorMessage: string | null;
 }
 
 /**
@@ -146,6 +146,20 @@ export function createAuditEvent(
     errorMessage?: string;
   }
 ): AuditEvent {
+  const metadata = options.metadata ?? {};
+
+  // Validate metadata size (10MB limit)
+  const metadataStr = JSON.stringify(metadata);
+  const metadataSize = new TextEncoder().encode(metadataStr).length;
+  const maxSize = 10 * 1024 * 1024; // 10MB
+
+  if (metadataSize > maxSize) {
+    throw new Error(
+      `Event metadata too large: ${metadataSize} bytes (max: ${maxSize} bytes). ` +
+      `Consider reducing metadata or splitting into multiple events.`
+    );
+  }
+
   return {
     timestamp: new Date().toISOString(),
     eventType,
@@ -154,9 +168,9 @@ export function createAuditEvent(
     ipAddress: options.ipAddress ?? null,
     userAgent: options.userAgent ?? null,
     requestId: options.requestId ?? null,
-    metadata: options.metadata ?? {},
+    metadata,
     success: options.success,
-    errorMessage: options.errorMessage,
+    errorMessage: options.errorMessage ?? null,
   };
 }
 
