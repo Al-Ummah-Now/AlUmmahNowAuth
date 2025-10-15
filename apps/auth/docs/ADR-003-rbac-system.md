@@ -3,6 +3,12 @@
 ## Status
 Accepted
 
+## ⚠️ Security Implementation Required
+**CRITICAL**: Before implementing this RBAC system, you MUST review and implement all security measures documented in:
+- **[rbac-security-implementation.md](./rbac-security-implementation.md)** - Addresses 5 critical P0 security vulnerabilities
+
+All P0 security issues from code review have been documented with implementation requirements.
+
 ## Context
 The Al Ummah Now platform currently has a simple binary role system (`admin` vs `user`) stored in the users table. As the platform grows, we need a more sophisticated permission system that can:
 
@@ -164,10 +170,13 @@ POST   /api/permissions/bulk-check // Check multiple permissions
 
 ### 9. **Security Considerations**
 
+⚠️ **See [rbac-security-implementation.md](./rbac-security-implementation.md) for complete security implementation requirements.**
+
 #### Permission Escalation Prevention
-- Users cannot grant permissions they don't have
+- Users cannot grant permissions they don't have (IMPLEMENTATION REQUIRED - see security guide)
 - Role changes require higher privilege than the role being granted
 - Super admin actions require additional authentication
+- All permission grant operations must validate granter has the permission being granted
 
 #### Audit Integration
 All RBAC operations are logged:
@@ -176,11 +185,13 @@ All RBAC operations are logged:
 - User role changes
 - Permission check failures for sensitive resources
 
-#### Session Invalidation
+#### Cache Invalidation (CRITICAL)
 When permissions change:
-1. Invalidate user's cached permissions in KV
+1. Increment cache version to atomically invalidate all cached permissions (REQUIRED - see security guide)
 2. Invalidate active sessions (force re-auth)
 3. Log security event
+
+⚠️ **Cache race conditions can allow revoked permissions to remain active. MUST implement versioned caching.**
 
 ### 10. **Performance Optimizations**
 

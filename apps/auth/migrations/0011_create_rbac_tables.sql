@@ -1,6 +1,11 @@
 -- Migration number: 0011 	 2025-01-13T00:00:00.000Z
 -- Role-Based Access Control (RBAC) System Tables
 -- This migration creates the complete RBAC infrastructure
+--
+-- DEPENDENCIES:
+-- - Migration 0003: Requires 'role' column in user table (VARCHAR, values: 'admin', 'user')
+-- - This migration will work alongside the existing role column for backward compatibility
+-- - Existing role data will be migrated to the new RBAC system (see lines 246-266)
 
 -- 1. Roles table: Defines available roles in the system
 CREATE TABLE IF NOT EXISTS roles (
