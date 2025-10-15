@@ -10,6 +10,8 @@ import { logger } from "./logger";
 import { getUserSession, createSession, deleteSession, createSessionCookie, clearSessionCookie } from "./session";
 import { getAuthClient, subjects as clientSubjects } from "./auth-client";
 import { checkRateLimit, getClientIP } from "./rate-limit";
+import { AdminRBACRoutes } from "./admin-rbac-routes";
+import { RBACRoutes } from "./rbac-routes";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -108,6 +110,26 @@ export default {
       hasAuthStorage: !!env.AUTH_STORAGE,
       hasAuthDB: !!env.AUTH_DB,
     });
+
+    // Initialize RBAC route handlers
+    const adminRBACRoutes = new AdminRBACRoutes(env.AUTH_DB, env.AUTH_STORAGE);
+    const rbacRoutes = new RBACRoutes(env.AUTH_DB, env.AUTH_STORAGE);
+
+    // Handle admin RBAC routes
+    if (url.pathname.startsWith('/admin/roles')) {
+      const response = await adminRBACRoutes.handle(request, env, ctx);
+      if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
+
+    // Handle user-facing RBAC routes
+    if (url.pathname.startsWith('/api/users/') || url.pathname.startsWith('/api/permissions')) {
+      const response = await rbacRoutes.handle(request, env, ctx);
+      if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
 
     // Handle logout
     if (url.pathname === '/logout') {

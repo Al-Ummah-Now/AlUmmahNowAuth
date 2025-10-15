@@ -1,7 +1,7 @@
 // Test setup file - runs before all tests
 import { env } from "cloudflare:test";
 
-// Create the user table schema for testing
+// Create the database schema for testing
 export async function setupDatabase() {
   // Migration 0001: Create user table
   await env.AUTH_DB.prepare(`
@@ -13,6 +13,86 @@ export async function setupDatabase() {
       password_reset_required BOOLEAN DEFAULT FALSE
     )
   `).run();
+
+  // Migration 0011: Create RBAC tables
+  // 1. Roles table
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      parent_role_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
+      is_system BOOLEAN DEFAULT FALSE,
+      metadata TEXT DEFAULT '{}',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by TEXT REFERENCES user(id),
+      updated_by TEXT REFERENCES user(id)
+    )
+  `).run();
+
+  // 2. Permissions table
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS permissions (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      name TEXT UNIQUE NOT NULL,
+      resource TEXT NOT NULL,
+      action TEXT NOT NULL,
+      scope TEXT DEFAULT '*',
+      description TEXT,
+      is_system BOOLEAN DEFAULT FALSE,
+      metadata TEXT DEFAULT '{}',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  // 3. Role-Permission mapping
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+      granted_by TEXT REFERENCES user(id),
+      granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(role_id, permission_id)
+    )
+  `).run();
+
+  // 4. User-Role mapping
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS user_roles (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      granted_by TEXT REFERENCES user(id),
+      granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      expires_at TIMESTAMP,
+      is_active BOOLEAN DEFAULT TRUE,
+      UNIQUE(user_id, role_id)
+    )
+  `).run();
+
+  // 5. Direct user permissions
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS user_permissions (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+      is_grant BOOLEAN DEFAULT TRUE,
+      granted_by TEXT REFERENCES user(id),
+      granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      expires_at TIMESTAMP,
+      reason TEXT,
+      UNIQUE(user_id, permission_id)
+    )
+  `).run();
+
+  // Create indexes
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id, is_active)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id)`).run();
+  await env.AUTH_DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_permissions_name ON permissions(name)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_permissions_resource ON permissions(resource, action, scope)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id)`).run();
 }
 
 // Run setup automatically when this module is imported
