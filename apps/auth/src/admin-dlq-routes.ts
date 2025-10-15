@@ -22,6 +22,10 @@ const cleanupSchema = v.object({
   statusFilter: v.optional(v.string()),
 });
 
+const resetStaleSchema = v.object({
+  staleTimeout: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(1440))), // Max 24 hours in minutes
+});
+
 /**
  * Verify admin authentication
  *
@@ -270,6 +274,51 @@ export async function handleDLQCleanup(
 }
 
 /**
+ * Handle DLQ reset stale replaying entries requests
+ */
+export async function handleDLQResetStale(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  // Verify admin authentication
+  if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  // Determine if running in development mode
+  const url = new URL(request.url);
+  const isDevelopment = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
+  try {
+    const body = await request.json();
+    const parsed = v.safeParse(resetStaleSchema, body);
+
+    if (!parsed.success) {
+      return Response.json({
+        error: 'Invalid request',
+        details: v.flatten(parsed.issues),
+      }, { status: 400 });
+    }
+
+    const replayService = new DLQReplayService(env.AUTH_DB);
+    const result = await replayService.resetStaleReplayingEntries({
+      staleTimeout: parsed.output.staleTimeout,
+    });
+
+    return Response.json({
+      success: true,
+      reset: result.reset,
+    });
+  } catch (error) {
+    console.error('DLQ reset stale entries error:', error);
+    return Response.json({
+      error: 'Internal server error',
+      ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
+    }, { status: 500 });
+  }
+}
+
+/**
  * Route admin DLQ requests
  */
 export async function routeAdminDLQ(
@@ -294,6 +343,10 @@ export async function routeAdminDLQ(
 
   if (url.pathname === '/admin/dlq/cleanup' && request.method === 'POST') {
     return handleDLQCleanup(request, env);
+  }
+
+  if (url.pathname === '/admin/dlq/reset-stale' && request.method === 'POST') {
+    return handleDLQResetStale(request, env);
   }
 
   // Not an admin DLQ route

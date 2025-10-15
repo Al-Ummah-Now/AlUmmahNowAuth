@@ -254,6 +254,42 @@ export class DLQReplayService {
   }
 
   /**
+   * Reset stale 'replaying' entries back to 'pending' status
+   *
+   * This method identifies DLQ entries that have been stuck in 'replaying' status
+   * for longer than the specified timeout. This can happen when a replay process
+   * crashes, times out, or fails before marking entries as completed/failed.
+   *
+   * @param options.staleTimeout - Timeout in minutes after which a 'replaying' entry is considered stale (default: 30 minutes)
+   * @returns Object containing the count of reset entries
+   */
+  async resetStaleReplayingEntries(options: {
+    staleTimeout?: number;  // Timeout in minutes (default: 30)
+  } = {}): Promise<{ reset: number }> {
+    const timeoutMinutes = options.staleTimeout ?? 30; // Default 30 minutes
+    const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000).toISOString();
+
+    // Find replaying entries that have been in that state for longer than the timeout
+    // We check against 'timestamp' which represents when the original failure occurred
+    // since 'replayed_at' is only set upon successful completion
+    const query = `
+      UPDATE webhook_dlq
+      SET status = 'pending'
+      WHERE status = 'replaying'
+        AND timestamp < ?
+    `;
+
+    const result = await this.db.prepare(query).bind(cutoff).run();
+
+    const resetCount = result.meta.changes;
+    if (resetCount > 0) {
+      console.log(`Reset ${resetCount} stale 'replaying' entries back to 'pending'`);
+    }
+
+    return { reset: resetCount };
+  }
+
+  /**
    * Get DLQ statistics
    */
   async getStatistics(): Promise<{

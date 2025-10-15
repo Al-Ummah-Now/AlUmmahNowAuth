@@ -290,4 +290,104 @@ describe('DLQ Replay Service', () => {
       expect(stats.newestEntry).toBeFalsy();
     });
   });
+
+  describe('resetStaleReplayingEntries', () => {
+    it('should reset stale replaying entries to pending', async () => {
+      mockDb.prepare.mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          run: vi.fn().mockResolvedValue({
+            meta: { changes: 3 }
+          })
+        })
+      });
+
+      const result = await replayService.resetStaleReplayingEntries({
+        staleTimeout: 30, // 30 minutes
+      });
+
+      expect(result.reset).toBe(3);
+
+      // Verify UPDATE query was executed
+      const updateCall = mockDb.prepare.mock.calls[0][0];
+      expect(updateCall).toContain('UPDATE webhook_dlq');
+      expect(updateCall).toContain("SET status = 'pending'");
+      expect(updateCall).toContain("WHERE status = 'replaying'");
+      expect(updateCall).toContain('timestamp < ?');
+    });
+
+    it('should use default timeout of 30 minutes', async () => {
+      const bindMock = vi.fn().mockReturnValue({
+        run: vi.fn().mockResolvedValue({
+          meta: { changes: 0 }
+        })
+      });
+
+      mockDb.prepare.mockReturnValue({
+        bind: bindMock,
+      });
+
+      await replayService.resetStaleReplayingEntries();
+
+      // Verify bind was called with a cutoff time
+      expect(bindMock).toHaveBeenCalledWith(expect.any(String));
+    });
+
+    it('should handle no stale entries', async () => {
+      mockDb.prepare.mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          run: vi.fn().mockResolvedValue({
+            meta: { changes: 0 }
+          })
+        })
+      });
+
+      const result = await replayService.resetStaleReplayingEntries({
+        staleTimeout: 30,
+      });
+
+      expect(result.reset).toBe(0);
+    });
+
+    it('should accept custom timeout', async () => {
+      mockDb.prepare.mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          run: vi.fn().mockResolvedValue({
+            meta: { changes: 1 }
+          })
+        })
+      });
+
+      const result = await replayService.resetStaleReplayingEntries({
+        staleTimeout: 60, // 60 minutes
+      });
+
+      expect(result.reset).toBe(1);
+    });
+
+    it('should only reset replaying entries older than timeout', async () => {
+      const bindMock = vi.fn().mockReturnValue({
+        run: vi.fn().mockResolvedValue({
+          meta: { changes: 2 }
+        })
+      });
+
+      mockDb.prepare.mockReturnValue({
+        bind: bindMock,
+      });
+
+      const staleTimeout = 15; // 15 minutes
+      await replayService.resetStaleReplayingEntries({
+        staleTimeout,
+      });
+
+      // Verify cutoff time is approximately 15 minutes ago
+      const cutoffTime = bindMock.mock.calls[0][0];
+      const expectedCutoff = new Date(Date.now() - staleTimeout * 60 * 1000);
+      const actualCutoff = new Date(cutoffTime);
+
+      // Allow 1 second tolerance for test execution time
+      const timeDiff = Math.abs(expectedCutoff.getTime() - actualCutoff.getTime());
+      expect(timeDiff).toBeLessThan(1000);
+    });
+  });
 });
