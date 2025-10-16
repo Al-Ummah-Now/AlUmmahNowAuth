@@ -25,6 +25,7 @@ export function createTestEvent(index: number): AuditEvent {
       method: 'email_code',
     },
     success: true,
+    errorMessage: null,
   };
 }
 
@@ -50,6 +51,7 @@ export function createLargeEvent(sizeMB: number): AuditEvent {
     requestId: 'req-large',
     metadata: { data },
     success: true,
+    errorMessage: null,
   };
 }
 
@@ -70,6 +72,7 @@ export function createCircularEvent(): AuditEvent {
     requestId: null,
     metadata: circular,
     success: true,
+    errorMessage: null,
   };
 }
 
@@ -172,6 +175,11 @@ export class MockD1Database implements D1Database {
 
   async exec(query: string): Promise<D1ExecResult> {
     return { count: 0, duration: 0 };
+  }
+
+  withSession(constraintOrBookmark?: string): D1DatabaseSession {
+    // Return a mock session object
+    return this as any as D1DatabaseSession;
   }
 
   // Test helper methods
