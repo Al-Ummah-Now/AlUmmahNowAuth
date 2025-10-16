@@ -13,6 +13,9 @@ export enum AuditEventType {
   LOGIN_SUCCESS = 'auth.login.success',
   LOGIN_FAILED = 'auth.login.failed',
   LOGOUT = 'auth.logout',
+  SESSION_EXPIRED = 'auth.session.expired',
+  PASSWORD_RESET_REQUESTED = 'auth.password.reset_requested',
+  PASSWORD_RESET_COMPLETED = 'auth.password.reset_completed',
 
   // Token Events
   TOKEN_ISSUED = 'auth.token.issued',
@@ -29,8 +32,35 @@ export enum AuditEventType {
   AUTHORIZATION_GRANTED = 'auth.authorization.granted',
   AUTHORIZATION_DENIED = 'auth.authorization.denied',
 
+  // Role management events
+  ROLE_CREATED = 'rbac.role.created',
+  ROLE_UPDATED = 'rbac.role.updated',
+  ROLE_DELETED = 'rbac.role.deleted',
+  ROLE_ASSIGNED = 'rbac.role.assigned',
+  ROLE_REMOVED = 'rbac.role.removed',
+
+  // Permission management events
+  PERMISSION_CREATED = 'rbac.permission.created',
+  PERMISSION_DELETED = 'rbac.permission.deleted',
+  PERMISSION_GRANTED_TO_ROLE = 'rbac.permission.granted_to_role',
+  PERMISSION_REVOKED_FROM_ROLE = 'rbac.permission.revoked_from_role',
+  PERMISSION_GRANTED_TO_USER = 'rbac.permission.granted_to_user',
+  PERMISSION_REVOKED_FROM_USER = 'rbac.permission.revoked_from_user',
+  PERMISSION_CHECK_FAILED = 'rbac.permission.check_failed',
+
+  // User management events
+  USER_CREATED = 'user.created',
+  USER_UPDATED = 'user.updated',
+  USER_DELETED = 'user.deleted',
+  USER_SUSPENDED = 'user.suspended',
+  USER_REACTIVATED = 'user.reactivated',
+
   // Security Events
+  SECURITY_ALERT = 'security.alert',
   RATE_LIMIT_EXCEEDED = 'security.rate_limit.exceeded',
+  INVALID_TOKEN = 'security.token.invalid',
+  UNAUTHORIZED_ACCESS = 'security.access.unauthorized',
+  PRIVILEGE_ESCALATION_ATTEMPT = 'security.privilege.escalation_attempt',
   SUSPICIOUS_ACTIVITY = 'security.suspicious_activity',
 }
 
@@ -38,6 +68,7 @@ export enum AuditEventType {
  * Severity levels for audit events
  */
 export enum AuditEventSeverity {
+  DEBUG = 'debug',
   INFO = 'info',
   WARNING = 'warning',
   ERROR = 'error',
@@ -135,16 +166,16 @@ export interface RateLimitEventMetadata {
  */
 export function createAuditEvent(
   eventType: AuditEventType,
+  severity: AuditEventSeverity,
   options: {
-    severity: AuditEventSeverity;
     userId?: string | null;
     ipAddress?: string | null;
     userAgent?: string | null;
     requestId?: string | null;
     metadata?: Record<string, any>;
-    success: boolean;
-    errorMessage?: string;
-  }
+    success?: boolean;
+    errorMessage?: string | null;
+  } = {}
 ): AuditEvent {
   const metadata = options.metadata ?? {};
 
@@ -163,13 +194,13 @@ export function createAuditEvent(
   return {
     timestamp: new Date().toISOString(),
     eventType,
-    severity: options.severity,
+    severity,
     userId: options.userId ?? null,
     ipAddress: options.ipAddress ?? null,
     userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+    requestId: options.requestId ?? crypto.randomUUID(),
     metadata,
-    success: options.success,
+    success: options.success ?? true,
     errorMessage: options.errorMessage ?? null,
   };
 }
@@ -189,12 +220,11 @@ export function createLoginSuccessEvent(
     method?: LoginEventMetadata['method'];
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.LOGIN_SUCCESS, {
-    severity: AuditEventSeverity.INFO,
+  return createAuditEvent(AuditEventType.LOGIN_SUCCESS, AuditEventSeverity.INFO, {
     userId,
-    ipAddress: options.ipAddress ?? null,
-    userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+    ipAddress: options.ipAddress,
+    userAgent: options.userAgent,
+    requestId: options.requestId,
     success: true,
     metadata: {
       email,
@@ -213,12 +243,11 @@ export function createLoginFailedEvent(
     requestId?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.LOGIN_FAILED, {
-    severity: AuditEventSeverity.WARNING,
+  return createAuditEvent(AuditEventType.LOGIN_FAILED, AuditEventSeverity.WARNING, {
     userId: null,
-    ipAddress: options.ipAddress ?? null,
-    userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+    ipAddress: options.ipAddress,
+    userAgent: options.userAgent,
+    requestId: options.requestId,
     success: false,
     errorMessage: failureReason,
     metadata: {
@@ -237,12 +266,11 @@ export function createLogoutEvent(
     requestId?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.LOGOUT, {
-    severity: AuditEventSeverity.INFO,
+  return createAuditEvent(AuditEventType.LOGOUT, AuditEventSeverity.INFO, {
     userId,
-    ipAddress: options.ipAddress ?? null,
-    userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+    ipAddress: options.ipAddress,
+    userAgent: options.userAgent,
+    requestId: options.requestId,
     success: true,
     metadata: {},
   });
@@ -260,12 +288,11 @@ export function createTokenIssuedEvent(
     expiresIn?: number;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.TOKEN_ISSUED, {
-    severity: AuditEventSeverity.INFO,
+  return createAuditEvent(AuditEventType.TOKEN_ISSUED, AuditEventSeverity.INFO, {
     userId,
-    ipAddress: options.ipAddress ?? null,
-    userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+    ipAddress: options.ipAddress,
+    userAgent: options.userAgent,
+    requestId: options.requestId,
     success: true,
     metadata: {
       tokenType: options.tokenType ?? 'access',
@@ -286,12 +313,11 @@ export function createTokenRefreshEvent(
     expiresIn?: number;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.TOKEN_REFRESH, {
-    severity: AuditEventSeverity.INFO,
+  return createAuditEvent(AuditEventType.TOKEN_REFRESH, AuditEventSeverity.INFO, {
     userId,
-    ipAddress: options.ipAddress ?? null,
-    userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+    ipAddress: options.ipAddress,
+    userAgent: options.userAgent,
+    requestId: options.requestId,
     success: true,
     metadata: {
       tokenType: 'refresh',
@@ -314,12 +340,11 @@ export function createRateLimitExceededEvent(
     userId?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.RATE_LIMIT_EXCEEDED, {
-    severity: AuditEventSeverity.WARNING,
-    userId: options.userId ?? null,
-    ipAddress: options.ipAddress ?? null,
-    userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+  return createAuditEvent(AuditEventType.RATE_LIMIT_EXCEEDED, AuditEventSeverity.WARNING, {
+    userId: options.userId,
+    ipAddress: options.ipAddress,
+    userAgent: options.userAgent,
+    requestId: options.requestId,
     success: false,
     errorMessage: `Rate limit exceeded for ${endpoint}`,
     metadata: {
@@ -342,12 +367,11 @@ export function createAccountCreatedEvent(
     initiatedBy?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.ACCOUNT_CREATED, {
-    severity: AuditEventSeverity.INFO,
+  return createAuditEvent(AuditEventType.ACCOUNT_CREATED, AuditEventSeverity.INFO, {
     userId,
-    ipAddress: options.ipAddress ?? null,
-    userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+    ipAddress: options.ipAddress,
+    userAgent: options.userAgent,
+    requestId: options.requestId,
     success: true,
     metadata: {
       email,
@@ -368,17 +392,64 @@ export function createAccountUpdatedEvent(
     initiatedBy?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.ACCOUNT_UPDATED, {
-    severity: AuditEventSeverity.INFO,
+  return createAuditEvent(AuditEventType.ACCOUNT_UPDATED, AuditEventSeverity.INFO, {
     userId,
-    ipAddress: options.ipAddress ?? null,
-    userAgent: options.userAgent ?? null,
-    requestId: options.requestId ?? null,
+    ipAddress: options.ipAddress,
+    userAgent: options.userAgent,
+    requestId: options.requestId,
     success: true,
     metadata: {
       email,
       changedFields,
       initiatedBy: options.initiatedBy,
     } satisfies AccountEventMetadata,
+  });
+}
+
+export function createSecurityAlertEvent(
+  alertType: string,
+  details: Record<string, any>,
+  userId: string | null,
+  ipAddress: string | null
+): AuditEvent {
+  return createAuditEvent(AuditEventType.SECURITY_ALERT, AuditEventSeverity.CRITICAL, {
+    userId,
+    ipAddress,
+    metadata: { alertType, ...details },
+    success: false,
+  });
+}
+
+export function createRoleManagementEvent(
+  eventType: AuditEventType,
+  roleId: string,
+  roleName: string,
+  performedBy: string,
+  details: Record<string, any> = {}
+): AuditEvent {
+  return createAuditEvent(eventType, AuditEventSeverity.INFO, {
+    userId: performedBy,
+    metadata: {
+      roleId,
+      roleName,
+      ...details,
+    },
+  });
+}
+
+export function createPermissionManagementEvent(
+  eventType: AuditEventType,
+  permissionId: string,
+  permissionName: string,
+  performedBy: string,
+  details: Record<string, any> = {}
+): AuditEvent {
+  return createAuditEvent(eventType, AuditEventSeverity.INFO, {
+    userId: performedBy,
+    metadata: {
+      permissionId,
+      permissionName,
+      ...details,
+    },
   });
 }
