@@ -47,7 +47,7 @@ export class RBACRoutes {
 
   constructor(db: D1Database, kv: KVNamespace) {
     this.permissionService = new PermissionService(db, kv);
-    this.roleService = new RoleService(db, this.permissionService);
+    this.roleService = new RoleService(db, kv);
   }
 
   /**
@@ -214,15 +214,15 @@ export class RBACRoutes {
       const validated = v.parse(RoleAssignmentSchema, body);
 
       // Get role details for validation
-      const role = await this.roleService.getRoleById(validated.roleId);
+      const role = await this.roleService.getRole(validated.roleId);
       if (!role) {
         return createAuthErrorResponse('Role not found', 404);
       }
 
       // CRITICAL SECURITY CHECK: Check if the granter has all permissions the role would grant
-      const rolePerms = await this.roleService.getRoleWithPermissions(validated.roleId);
+      const rolePerms = await this.roleService.getRolePermissions(validated.roleId);
       if (rolePerms) {
-        for (const perm of rolePerms.permissions) {
+        for (const perm of rolePerms) {
           const canGrant = await verifyGranterPermission(
             authContext.user.id,
             perm.name,
@@ -358,7 +358,7 @@ export class RBACRoutes {
       v.parse(UserIdSchema, { userId });
 
       // Get role details for audit log
-      const role = await this.roleService.getRoleById(roleId);
+      const role = await this.roleService.getRole(roleId);
       if (!role) {
         return createAuthErrorResponse('Role not found', 404);
       }

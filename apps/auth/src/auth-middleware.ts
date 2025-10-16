@@ -140,11 +140,21 @@ export async function verifyPermission(
   });
 
   // Load all user permissions for context
-  const permissions = await permissionService.getUserPermissions(authContext.user.id);
+  const effectivePermissions = await permissionService.getUserPermissions(authContext.user.id);
+
+  // Combine all permission names from permissions, directGrants, excluding directDenies
+  const allPermissions = [
+    ...effectivePermissions.permissions,
+    ...effectivePermissions.directGrants,
+  ];
+
+  const permissionNames = allPermissions
+    .map(p => p.name)
+    .filter(name => !effectivePermissions.directDenies.some(d => d.name === name));
 
   return {
     ...authContext,
-    permissions: permissions.map(p => p.name),
+    permissions: permissionNames,
   };
 }
 

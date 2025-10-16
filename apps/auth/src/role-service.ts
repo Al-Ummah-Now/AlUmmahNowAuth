@@ -20,6 +20,7 @@ import {
   Permission,
   PermissionGrantCheck,
   UserRole,
+  UserRoleWithDetails,
   SYSTEM_ROLES,
   isSystemRoleName
 } from './rbac-types';
@@ -55,7 +56,7 @@ export class RoleService {
     // P0-1: Use parameterized query
     const role = await this.db.prepare(
       `SELECT is_system FROM roles WHERE id = ?`
-    ).bind(roleId).first<{ is_system: boolean }>();
+    ).bind(roleId).first<{ is_system: number | boolean }>();
 
     return role?.is_system === true || role?.is_system === 1;
   }
@@ -73,7 +74,7 @@ export class RoleService {
     // P0-1: Use parameterized query
     const role = await this.db.prepare(
       `SELECT is_system FROM roles WHERE name = ?`
-    ).bind(roleName).first<{ is_system: boolean }>();
+    ).bind(roleName).first<{ is_system: number | boolean }>();
 
     return role?.is_system === true || role?.is_system === 1;
   }
@@ -552,9 +553,9 @@ export class RoleService {
    * P0-1: SQL Injection Prevention - uses parameterized query
    *
    * @param userId - User ID
-   * @returns Array of user's active roles
+   * @returns Array of user's active roles with role details
    */
-  async getUserRoles(userId: string): Promise<UserRole[]> {
+  async getUserRoles(userId: string): Promise<UserRoleWithDetails[]> {
     // P0-1: ALWAYS use parameterized queries
     const result = await this.db.prepare(`
       SELECT
@@ -577,6 +578,7 @@ export class RoleService {
     `).bind(userId).all<any>();
 
     return (result.results || []).map(row => ({
+      id: row.id,
       userId: row.user_id,
       roleId: row.role_id,
       grantedBy: row.granted_by,

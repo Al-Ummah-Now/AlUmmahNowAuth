@@ -1,5 +1,6 @@
 import { PermissionService } from './permission-service';
-import { RoleService, CreateRoleSchema, UpdateRoleSchema } from './role-service';
+import { RoleService } from './role-service';
+import { RoleData } from './rbac-types';
 import { verifyAdminAuth, verifyGranterPermission, AuthContext, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter-enhanced';
@@ -26,6 +27,20 @@ const GrantPermissionSchema = v.object({
   permissionId: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
 });
 
+const CreateRoleSchema = v.object({
+  name: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+  description: v.optional(v.string()),
+  parent_role_id: v.optional(v.string()),
+  metadata: v.optional(v.record(v.string(), v.any())),
+});
+
+const UpdateRoleSchema = v.object({
+  name: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(100))),
+  description: v.optional(v.string()),
+  parent_role_id: v.optional(v.string()),
+  metadata: v.optional(v.record(v.string(), v.any())),
+});
+
 /**
  * Admin RBAC Routes Handler
  * Handles all admin routes for role and permission management
@@ -36,7 +51,7 @@ export class AdminRBACRoutes {
 
   constructor(db: D1Database, kv: KVNamespace) {
     this.permissionService = new PermissionService(db, kv);
-    this.roleService = new RoleService(db, this.permissionService);
+    this.roleService = new RoleService(db, kv);
   }
 
   /**
@@ -200,13 +215,16 @@ export class AdminRBACRoutes {
       v.parse(RoleIdSchema, { id: roleId });
 
       // Get role with permissions
-      const role = await this.roleService.getRoleWithPermissions(roleId);
+      const role = await this.roleService.getRole(roleId);
 
       if (!role) {
         return createAuthErrorResponse('Role not found', 404);
       }
 
-      return new Response(JSON.stringify(role), {
+      // Get role permissions
+      const permissions = await this.roleService.getRolePermissions(roleId);
+
+      return new Response(JSON.stringify({ ...role, permissions }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -349,7 +367,7 @@ export class AdminRBACRoutes {
       v.parse(RoleIdSchema, { id: roleId });
 
       // Get role info for audit log
-      const role = await this.roleService.getRoleById(roleId);
+      const role = await this.roleService.getRole(roleId);
       if (!role) {
         return createAuthErrorResponse('Role not found', 404);
       }
@@ -480,8 +498,9 @@ export class AdminRBACRoutes {
       }
 
       // Grant the permission
-      await this.roleService.grantPermissionToRole(
+      await this.roleService.modifyRolePermissions(
         roleId,
+        'grant',
         validated.permissionId,
         authContext.user.id
       );
@@ -574,8 +593,9 @@ export class AdminRBACRoutes {
       }
 
       // Revoke the permission
-      await this.roleService.revokePermissionFromRole(
+      await this.roleService.modifyRolePermissions(
         roleId,
+        'revoke',
         permissionId,
         authContext.user.id
       );

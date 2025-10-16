@@ -63,6 +63,26 @@ export interface UserRole {
 }
 
 /**
+ * User-Role assignment with role details (for getUserRoles API responses)
+ * Uses camelCase for consistency with TypeScript conventions
+ */
+export interface UserRoleWithDetails {
+  id: string;
+  userId: string;
+  roleId: string;
+  grantedBy: string;
+  grantedAt: Date;
+  expiresAt?: Date;
+  isActive: boolean;
+  role: {
+    id: string;
+    name: string;
+    description?: string;
+    is_system: boolean;
+  };
+}
+
+/**
  * Direct user permissions (overrides role permissions)
  */
 export interface UserPermission {
