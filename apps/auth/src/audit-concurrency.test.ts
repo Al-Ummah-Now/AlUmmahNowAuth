@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { WebhookSink, D1Sink, AuditEmitter } from './audit-emitter';
+import { WebhookSink, D1Sink, AuditEmitter } from './audit-emitter-enhanced';
 import { createLoginSuccessEvent } from './audit-events';
 import {
   createTestEvents,
