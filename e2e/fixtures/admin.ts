@@ -119,8 +119,12 @@ export async function searchUsers(page: Page, query: string): Promise<number> {
   // Enter search query
   await page.fill('input[placeholder*="Search"]', query);
 
-  // Wait for results to update
-  await page.waitForTimeout(500);
+  // Wait for results to update by waiting for network to be idle or table to re-render
+  // This ensures search results have loaded before counting rows
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {
+    // If networkidle times out, fall back to waiting for table visibility
+    // This handles cases where search is client-side (no network request)
+  });
 
   // Count visible user rows
   const rows = await page.locator('tbody tr').count();

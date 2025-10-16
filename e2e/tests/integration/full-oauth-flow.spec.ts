@@ -13,7 +13,7 @@ test.describe('Full OAuth Flow', () => {
   test('should complete full OAuth authorization code flow', async ({
     page,
   }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Step 1: Navigate to profile app (client)
     await page.goto(TEST_URLS.profileApp);
@@ -76,7 +76,7 @@ test.describe('Full OAuth Flow', () => {
   });
 
   test('should maintain session across page reloads', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login
     await login(page, testUser.email);
@@ -93,7 +93,7 @@ test.describe('Full OAuth Flow', () => {
   });
 
   test('should work across multiple browser tabs', async ({ context }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Create first tab and login
     const page1 = await context.newPage();

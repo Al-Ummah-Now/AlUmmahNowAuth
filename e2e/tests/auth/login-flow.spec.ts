@@ -11,7 +11,7 @@ import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
 test.describe('Email-Based Login Flow', () => {
   test('should complete full login flow successfully', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Navigate to profile app
     await page.goto(TEST_URLS.profileApp);

@@ -19,17 +19,18 @@ export function generateTestEmail(prefix: string = 'test'): string {
 }
 
 /**
- * Predefined test users
+ * Test user generators
+ * All functions generate unique emails to prevent parallel test collisions
  */
 export const TEST_USERS = {
-  admin: {
-    email: 'admin-e2e-test@example.com',
+  admin: () => ({
+    email: generateTestEmail('admin'),
     role: 'admin' as const,
-  },
-  user: {
-    email: 'user-e2e-test@example.com',
+  }),
+  user: () => ({
+    email: generateTestEmail('user'),
     role: 'user' as const,
-  },
+  }),
   newUser: () => ({
     email: generateTestEmail('new-user'),
     role: 'user' as const,

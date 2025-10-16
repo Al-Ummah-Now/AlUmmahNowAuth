@@ -11,8 +11,8 @@ import { TEST_USERS, generateTestEmail } from '../../utils/test-data';
 
 test.describe('Admin User Creation', () => {
   test.beforeEach(async ({ page }) => {
-    // Login as admin
-    await login(page, TEST_USERS.admin.email);
+    // Login as admin - generate unique admin for each test
+    await login(page, TEST_USERS.admin().email);
   });
 
   test('should create a new user with role "user"', async ({ page }) => {

@@ -68,28 +68,3 @@ export function setupEmailInterception(page: Page): {
     },
   };
 }
-
-/**
- * Wait for email to be sent and return the login code
- *
- * @param page - Playwright page object
- * @param timeout - Maximum time to wait in milliseconds
- * @returns Login code from the email
- */
-export async function waitForLoginCode(
-  page: Page,
-  timeout: number = 10000
-): Promise<string> {
-  const startTime = Date.now();
-  const interceptor = setupEmailInterception(page);
-
-  while (Date.now() - startTime < timeout) {
-    const code = interceptor.getLastLoginCode();
-    if (code) {
-      return code;
-    }
-    await page.waitForTimeout(100);
-  }
-
-  throw new Error('Timeout waiting for login code email');
-}

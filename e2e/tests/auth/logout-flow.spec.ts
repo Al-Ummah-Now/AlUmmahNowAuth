@@ -10,7 +10,7 @@ import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
 test.describe('Logout Flow', () => {
   test('should successfully logout from profile app', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login first
     await login(page, testUser.email);
@@ -32,7 +32,7 @@ test.describe('Logout Flow', () => {
   });
 
   test('should clear session cookie on logout', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login
     await login(page, testUser.email);
@@ -60,7 +60,7 @@ test.describe('Logout Flow', () => {
   });
 
   test('should redirect to homepage after logout', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login
     await login(page, testUser.email);
@@ -76,7 +76,7 @@ test.describe('Logout Flow', () => {
   });
 
   test('should require re-authentication after logout', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login
     await login(page, testUser.email);

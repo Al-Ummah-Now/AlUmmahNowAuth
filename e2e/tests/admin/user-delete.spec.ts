@@ -12,7 +12,7 @@ import { TEST_USERS, generateTestEmail } from '../../utils/test-data';
 test.describe('Admin User Deletion', () => {
   test.beforeEach(async ({ page }) => {
     // Login as admin
-    await login(page, TEST_USERS.admin.email);
+    await login(page, TEST_USERS.admin().email);
   });
 
   test('should delete a user successfully', async ({ page }) => {

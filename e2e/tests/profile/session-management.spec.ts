@@ -10,7 +10,7 @@ import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
 test.describe('Session Management', () => {
   test('should persist session across page reloads', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login
     await login(page, testUser.email);
@@ -29,7 +29,7 @@ test.describe('Session Management', () => {
   test('should persist session across browser restarts', async ({
     browser,
   }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Create context with persistent storage
     const context = await browser.newContext({
@@ -62,7 +62,7 @@ test.describe('Session Management', () => {
   test('should maintain session when navigating between apps', async ({
     page,
   }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login on profile app
     await login(page, testUser.email);
@@ -82,7 +82,7 @@ test.describe('Session Management', () => {
   });
 
   test('should have correct session cookie attributes', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login
     await login(page, testUser.email);
@@ -102,7 +102,7 @@ test.describe('Session Management', () => {
   });
 
   test('should clear session on explicit logout', async ({ page }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login
     await login(page, testUser.email);
@@ -120,7 +120,7 @@ test.describe('Session Management', () => {
   test('should not share session with incognito/different context', async ({
     browser,
   }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login in first context
     const context1 = await browser.newContext();
@@ -176,7 +176,7 @@ test.describe('Session Management', () => {
     page,
     context,
   }) => {
-    const testUser = TEST_USERS.user;
+    const testUser = TEST_USERS.user();
 
     // Login
     await login(page, testUser.email);

@@ -163,6 +163,16 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.RESEND_API_KEY }}" ]; then
+            echo "❌ ERROR: RESEND_API_KEY secret is not configured"
+            echo "Please add RESEND_API_KEY to repository secrets"
+            echo "Go to: Settings > Secrets and variables > Actions > New repository secret"
+            exit 1
+          fi
+          echo "✅ Required secrets are configured"
+
       - name: Apply local database migrations
         working-directory: apps/auth
         run: pnpm run migrations:local
@@ -173,7 +183,7 @@ jobs:
           pnpm dev &
           echo $! > ../../.auth-server.pid
         env:
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'test-key' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
 
       - name: Start Admin Dashboard (background)
         working-directory: apps/admin

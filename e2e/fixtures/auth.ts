@@ -32,12 +32,13 @@ export async function login(page: Page, email: string): Promise<void> {
   await page.fill('input[type="email"]', email);
   await page.click('button[type="submit"]');
 
-  // Wait for code to be sent
-  await page.waitForTimeout(1000);
+  // Wait for code input field to appear (indicates email was sent)
+  await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+
   const loginCode = emailInterceptor.getLastLoginCode();
 
   if (!loginCode) {
-    throw new Error('Failed to capture login code from email');
+    throw new Error('Failed to capture login code from email. Check that email interception is working correctly.');
   }
 
   // Enter login code
