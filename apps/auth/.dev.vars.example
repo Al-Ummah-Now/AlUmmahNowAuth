@@ -1,8 +1,3 @@
-# Local development environment variables
-# Copy this file to .dev.vars and customize for your local setup
-
-# Profile app URL for redirects
+# Local development environment variables for E2E testing
+# Copy this file to .dev.vars and wrangler will use it automatically
 PROFILE_APP_URL=http://localhost:8788
-
-# Resend API key for sending emails (get from https://resend.com)
-# RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
