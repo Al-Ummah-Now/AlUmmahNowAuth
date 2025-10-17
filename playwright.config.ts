@@ -100,15 +100,15 @@ export default defineConfig({
   webServer: process.env.SKIP_WEB_SERVER ? undefined : [
     {
       command: 'cd apps/auth && pnpm dev',
-      url: 'http://localhost:8787',
+      port: 8787,
       reuseExistingServer: !process.env.CI,
       timeout: 30 * 1000,
       stdout: 'pipe',
       stderr: 'pipe',
     },
     {
-      command: 'cd apps/admin && pnpm dev',
-      url: 'http://localhost:5175',
+      command: 'cd apps/admin && pnpm dev:wrangler',
+      port: 5175,
       reuseExistingServer: !process.env.CI,
       timeout: 30 * 1000,
       stdout: 'pipe',
@@ -116,7 +116,7 @@ export default defineConfig({
     },
     {
       command: 'cd apps/profile && pnpm dev',
-      url: 'http://localhost:8788',
+      port: 8788,
       reuseExistingServer: !process.env.CI,
       timeout: 30 * 1000,
       stdout: 'pipe',

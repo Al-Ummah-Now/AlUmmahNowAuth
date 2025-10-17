@@ -6,7 +6,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev --persist-to=../../.wrangler/state",
+    "dev": "wrangler dev --port 8787 --persist-to=../../.wrangler/state",
     "dev:inspect": "wrangler dev --inspector --persist-to=../../.wrangler/state",
     "tail": "wrangler tail --format pretty",
     "deploy": "wrangler deploy",
