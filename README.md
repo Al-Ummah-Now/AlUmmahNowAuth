@@ -19,6 +19,7 @@
 - **🔄 Password Reset**: Admin-initiated password reset functionality
 - **🚀 CI/CD**: Automated deployments with preview environments
 - **📊 Monitoring**: Built-in observability and logging
+- **🔍 Audit Logging**: Comprehensive security event tracking with multiple sinks
 - **🎨 Modern UI**: Dark theme with Slate/Blue color scheme
 
 ## 🏗️ Architecture
@@ -263,6 +264,7 @@ This project follows a structured roadmap toward v1.0 release (March 31, 2025). 
 - **[Testing Guide](./TESTING.md)** - Testing infrastructure and practices
 - **[CI/CD Documentation](./CICD.md)** - Deployment and automation
 - **[User Management Guide](./USER_MANAGEMENT.md)** - User administration
+- **[Audit Logging](./AUDIT_LOGGING.md)** - Security event tracking and monitoring
 - **[Security Policy](./SECURITY.md)** - Vulnerability reporting
 - **[Contributing Guidelines](./CONTRIBUTING.md)** - How to contribute
 - **[Project Roadmap](./ROADMAP.md)** - Feature roadmap and milestones

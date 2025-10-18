@@ -1,7 +1,10 @@
 import { logger } from './logger';
 import * as v from 'valibot';
 
-export async function getOrCreateUser(env: Env, email: string): Promise<{ id: string; role: string }> {
+// Overloaded signatures for backward compatibility
+export async function getOrCreateUser(env: Env, email: string, returnIsNew: true): Promise<{ id: string; role: string; isNew: boolean }>;
+export async function getOrCreateUser(env: Env, email: string, returnIsNew?: false): Promise<{ id: string; role: string }>;
+export async function getOrCreateUser(env: Env, email: string, returnIsNew: boolean = false): Promise<{ id: string; role: string } | { id: string; role: string; isNew: boolean }> {
     logger.debug('getOrCreateUser called', { email });
 
     // First check if user already exists
@@ -13,7 +16,7 @@ export async function getOrCreateUser(env: Env, email: string): Promise<{ id: st
 
     if (existingUser) {
       logger.info('Existing user found', { userId: existingUser.id, email, role: existingUser.role });
-      return existingUser;
+      return returnIsNew ? { ...existingUser, isNew: false } : existingUser;
     }
 
     logger.info('Creating new user', { email });
@@ -32,7 +35,7 @@ export async function getOrCreateUser(env: Env, email: string): Promise<{ id: st
       }
 
       logger.info('User created successfully', { userId: result.id, email, role: result.role });
-      return result;
+      return returnIsNew ? { ...result, isNew: true } : result;
     } catch (error) {
       // Check if this is a UNIQUE constraint violation (race condition)
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -48,7 +51,7 @@ export async function getOrCreateUser(env: Env, email: string): Promise<{ id: st
 
         if (concurrentUser) {
           logger.info('User fetched after race condition', { userId: concurrentUser.id, email, role: concurrentUser.role });
-          return concurrentUser;
+          return returnIsNew ? { ...concurrentUser, isNew: false } : concurrentUser;
         }
       }
 

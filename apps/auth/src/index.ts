@@ -10,6 +10,17 @@ import { logger } from "./logger";
 import { getUserSession, createSession, deleteSession, createSessionCookie, clearSessionCookie } from "./session";
 import { getAuthClient, subjects as clientSubjects } from "./auth-client";
 import { checkRateLimit, getClientIP } from "./rate-limit";
+import { AdminRBACRoutes } from "./admin-rbac-routes";
+import { RBACRoutes } from "./rbac-routes";
+import { initializeAuditEmitter, getAuditEmitter } from "./audit-emitter";
+import {
+  createLoginSuccessEvent,
+  createLoginFailedEvent,
+  createLogoutEvent,
+  createRateLimitExceededEvent,
+  createAccountCreatedEvent,
+} from "./audit-events";
+import { routeAdminDLQ } from "./admin-dlq-routes";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -101,6 +112,15 @@ export default {
     // Initialize request context to prevent stale timer usage
     logger.initialRequest(requestId);
 
+    // Initialize audit emitter
+    initializeAuditEmitter({
+      enableStdout: true,
+      webhookUrl: env.AUDIT_WEBHOOK_URL,
+      webhookSecret: env.AUDIT_WEBHOOK_SECRET,
+      db: env.AUTH_DB,
+      ctx,
+    });
+
     // Log all incoming requests
     logger.logRequest(request, {
       requestId,
@@ -109,13 +129,48 @@ export default {
       hasAuthDB: !!env.AUTH_DB,
     });
 
+    // Initialize RBAC route handlers
+    const adminRBACRoutes = new AdminRBACRoutes(env.AUTH_DB, env.AUTH_STORAGE);
+    const rbacRoutes = new RBACRoutes(env.AUTH_DB, env.AUTH_STORAGE);
+
+    // Handle admin RBAC routes
+    if (url.pathname.startsWith('/admin/roles')) {
+      const response = await adminRBACRoutes.handle(request, env, ctx);
+      if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
+
+    // Handle user-facing RBAC routes
+    if (url.pathname.startsWith('/api/users/') || url.pathname.startsWith('/api/permissions')) {
+      const response = await rbacRoutes.handle(request, env, ctx);
+      if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
+
     // Handle logout
     if (url.pathname === '/logout') {
       logger.debug('Handling logout request');
 
+      // Get user session before deleting it
+      const session = await getUserSession(request, env.AUTH_STORAGE);
+      const userId = session?.user?.id;
+
       // Delete session from KV
       await deleteSession(request, env.AUTH_STORAGE);
       logger.info('User logged out');
+
+      // Emit logout audit event
+      if (userId) {
+        const clientIP = getClientIP(request);
+        const auditEvent = createLogoutEvent(userId, {
+          ipAddress: clientIP,
+          userAgent: request.headers.get('User-Agent') ?? undefined,
+          requestId,
+        });
+        ctx.waitUntil(getAuditEmitter().emit(auditEvent));
+      }
 
       // Finalize request before returning
       ctx.waitUntil(logger.finalizeRequest());
@@ -205,7 +260,7 @@ export default {
       const response = Response.redirect(`${url.origin}/?error=callback_not_supported`, 302);
       return addSecurityHeaders(response, isProduction);
     }
-    
+
     // Test endpoint to retrieve email verification code (E2E tests only)
     if (url.pathname.startsWith('/test/email/') && !isProduction) {
       const email = decodeURIComponent(url.pathname.split('/test/email/')[1]);
@@ -276,6 +331,16 @@ export default {
       }
     }
 
+    // Handle admin DLQ management routes
+    if (url.pathname.startsWith('/admin/dlq')) {
+      logger.debug('Handling admin DLQ request', { pathname: url.pathname });
+      const dlqResponse = await routeAdminDLQ(request, env, ctx);
+      if (dlqResponse) {
+        ctx.waitUntil(logger.finalizeRequest());
+        return addSecurityHeaders(dlqResponse, isProduction);
+      }
+    }
+
     // The real OpenAuth server code starts here:
     logger.debug('Initializing OpenAuth issuer', {
       hasStorage: !!env.AUTH_STORAGE,
@@ -315,6 +380,21 @@ export default {
                   email,
                   retryAfter,
                 });
+
+                // Emit rate limit exceeded audit event
+                const auditEvent = createRateLimitExceededEvent(
+                  '/sendCode',
+                  5,
+                  300,
+                  retryAfter,
+                  {
+                    ipAddress: clientIP,
+                    userAgent: request.headers.get('User-Agent') ?? undefined,
+                    requestId,
+                  }
+                );
+                ctx.waitUntil(getAuditEmitter().emit(auditEvent));
+
                 throw new Error(`Too many login attempts. Please try again in ${Math.ceil(retryAfter / 60)} minutes.`);
               }
 
@@ -369,16 +449,62 @@ export default {
             "https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png",
         },
       },
-      success: async (ctx, value) => {
+      success: async (oauthCtx, value) => {
         logger.info('Authentication successful', { email: value.email });
         try {
-          const user = await getOrCreateUser(env, value.email);
-          return ctx.subject("user", {
+          const user = await getOrCreateUser(env, value.email, true);
+          const isNewUser = user.isNew; // Track if this is a new account
+
+          // Emit login success audit event
+          const clientIP = getClientIP(request);
+          const loginEvent = createLoginSuccessEvent(
+            value.email,
+            user.id,
+            {
+              ipAddress: clientIP,
+              userAgent: request.headers.get('User-Agent') ?? undefined,
+              requestId,
+            }
+          );
+          ctx.waitUntil(getAuditEmitter().emit(loginEvent));
+
+          // If new user, emit account created event
+          // Note: In rare race conditions with concurrent logins for the same new user,
+          // duplicate ACCOUNT_CREATED events may be emitted. This is acceptable as the
+          // events will have different requestIds for correlation.
+          if (isNewUser) {
+            const accountEvent = createAccountCreatedEvent(
+              user.id,
+              value.email,
+              user.role,
+              {
+                ipAddress: clientIP,
+                userAgent: request.headers.get('User-Agent') ?? undefined,
+                requestId,
+              }
+            );
+            ctx.waitUntil(getAuditEmitter().emit(accountEvent));
+          }
+
+          return oauthCtx.subject("user", {
             id: user.id,
             email: value.email,
             role: user.role,
           });
         } catch (error) {
+          // Emit login failed audit event
+          const clientIP = getClientIP(request);
+          const failedEvent = createLoginFailedEvent(
+            value.email,
+            error instanceof Error ? error.message : String(error),
+            {
+              ipAddress: clientIP,
+              userAgent: request.headers.get('User-Agent') ?? undefined,
+              requestId,
+            }
+          );
+          ctx.waitUntil(getAuditEmitter().emit(failedEvent));
+
           throw error;
         }
       },
