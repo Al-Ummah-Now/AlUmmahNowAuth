@@ -1,70 +1,49 @@
 /**
  * Email Interceptor for E2E Tests
  *
- * Captures email sending requests and extracts login codes for testing.
+ * Retrieves email verification codes from the auth server's test endpoint.
  */
 
 import { Page } from '@playwright/test';
-
-/**
- * Captured email data
- */
-export interface CapturedEmail {
-  to: string;
-  from: string;
-  subject: string;
-  body: string;
-  code?: string; // Extracted login code
-}
+import { TEST_URLS } from './test-data';
 
 /**
  * Set up email interception for a page
  *
- * This intercepts requests to the Resend API and captures the email content.
+ * This retrieves email codes from the auth server's test endpoint.
  *
  * @param page - Playwright page object
- * @returns Function to get captured emails
+ * @returns Function to get the last login code
  */
 export function setupEmailInterception(page: Page): {
-  getCapturedEmails: () => CapturedEmail[];
-  getLastLoginCode: () => string | null;
+  getLastLoginCode: (email?: string) => Promise<string | null>;
 } {
-  const capturedEmails: CapturedEmail[] = [];
-
-  // Intercept requests to Resend API
-  page.route('https://api.resend.com/emails', async (route) => {
-    const request = route.request();
-    const postData = request.postDataJSON();
-
-    // Extract email data
-    const email: CapturedEmail = {
-      to: postData.to,
-      from: postData.from,
-      subject: postData.subject,
-      body: postData.html || postData.text,
-    };
-
-    // Extract login code from email body
-    const codeMatch = email.body.match(/(?:code is|code:)\s*(\d{6})/i);
-    if (codeMatch) {
-      email.code = codeMatch[1];
-    }
-
-    capturedEmails.push(email);
-
-    // Complete the request successfully (mock response)
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ id: 'mock-email-id' }),
-    });
-  });
+  let lastEmail: string | null = null;
 
   return {
-    getCapturedEmails: () => capturedEmails,
-    getLastLoginCode: () => {
-      const lastEmail = capturedEmails[capturedEmails.length - 1];
-      return lastEmail?.code || null;
+    getLastLoginCode: async (email?: string): Promise<string | null> => {
+      const emailToCheck = email || lastEmail;
+      if (!emailToCheck) {
+        return null;
+      }
+
+      lastEmail = emailToCheck;
+
+      try {
+        // Call the test endpoint to retrieve the verification code
+        const response = await page.request.get(`${TEST_URLS.authServer}/test/email/${encodeURIComponent(emailToCheck)}`);
+
+        if (!response.ok()) {
+          console.error(`Failed to retrieve email code for ${emailToCheck}: ${response.status()}`);
+          return null;
+        }
+
+        const data = await response.json();
+        return data.code || null;
+      } catch (error) {
+        console.error(`Error retrieving email code for ${emailToCheck}:`, error);
+        return null;
+      }
     },
   };
 }

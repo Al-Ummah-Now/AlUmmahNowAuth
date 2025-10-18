@@ -31,7 +31,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
 
   // Parallel workers
-  workers: process.env.CI ? 2 : 4,
+  // Reduced from 4 to 2 to mitigate SQLITE_BUSY errors from database contention
+  workers: process.env.CI ? 1 : 2,
 
   // Reporter to use
   reporter: [

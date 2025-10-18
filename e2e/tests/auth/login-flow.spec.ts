@@ -18,7 +18,7 @@ test.describe('Email-Based Login Flow', () => {
 
     // Verify logged out state
     await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('button:has-text("Sign In")')).toBeVisible();
+    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible();
 
     // Perform login
     await login(page, testUser.email);
@@ -38,7 +38,7 @@ test.describe('Email-Based Login Flow', () => {
 
     // Verify logged out view is visible
     await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('button:has-text("Sign In")')).toBeVisible();
+    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible();
 
     // Verify logged in view is not visible
     await expect(page.locator('#loggedInView')).not.toBeVisible();
@@ -47,8 +47,8 @@ test.describe('Email-Based Login Flow', () => {
   test('should redirect to auth server when clicking login', async ({ page }) => {
     await page.goto(TEST_URLS.profileApp);
 
-    // Click login button
-    await page.click('button:has-text("Sign In")');
+    // Click login button (use specific selector to avoid multiple matches)
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
 
     // Wait for redirect to auth server
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer), {
@@ -61,7 +61,7 @@ test.describe('Email-Based Login Flow', () => {
 
   test('should handle invalid email format', async ({ page }) => {
     await page.goto(TEST_URLS.profileApp);
-    await page.click('button:has-text("Sign In")');
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
 
     // Wait for auth server page
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));

@@ -1,5 +1,5 @@
 import { issuer } from "@openauthjs/openauth";
-import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
+import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
 import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { createSubjects } from "@openauthjs/openauth/subject";
@@ -206,6 +206,76 @@ export default {
       return addSecurityHeaders(response, isProduction);
     }
     
+    // Test endpoint to retrieve email verification code (E2E tests only)
+    if (url.pathname.startsWith('/test/email/') && !isProduction) {
+      const email = decodeURIComponent(url.pathname.split('/test/email/')[1]);
+      logger.debug('Test endpoint: retrieving email code', { email });
+
+      try {
+        const testKey = `test:email:${email}`;
+        const stored = await env.AUTH_STORAGE.get(testKey);
+
+        if (!stored) {
+          ctx.waitUntil(logger.finalizeRequest());
+          return new Response(JSON.stringify({ error: 'No email found for this address' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const data = JSON.parse(stored);
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ code: data.code, emailId: data.emailId }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        logger.error('Error retrieving test email', { email, error });
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Internal server error' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // Test endpoint to promote user to admin (E2E tests only)
+    if (url.pathname.startsWith('/test/promote/') && !isProduction && request.method === 'POST') {
+      const email = decodeURIComponent(url.pathname.split('/test/promote/')[1]);
+      logger.debug('Test endpoint: promoting user to admin', { email });
+
+      try {
+        // Update user role to admin
+        const result = await env.AUTH_DB.prepare(
+          `UPDATE user SET role = 'admin' WHERE email = ? RETURNING id, email, role`
+        )
+          .bind(email)
+          .first<{ id: string; email: string; role: string }>();
+
+        if (!result) {
+          ctx.waitUntil(logger.finalizeRequest());
+          return new Response(JSON.stringify({ error: 'User not found' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        logger.info('User promoted to admin (E2E test)', { userId: result.id, email: result.email });
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ success: true, user: result }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        logger.error('Error promoting user to admin', { email, error });
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Internal server error' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     // The real OpenAuth server code starts here:
     logger.debug('Initializing OpenAuth issuer', {
       hasStorage: !!env.AUTH_STORAGE,
@@ -214,7 +284,7 @@ export default {
 
     // Handle OpenAuth issuer and apply security headers
     const issuerResponse = await issuer({
-      storage: CloudflareStorage({
+      storage: CloudflarePatchedStorage({
         namespace: env.AUTH_STORAGE,
       }),
       subjects,
@@ -225,13 +295,16 @@ export default {
               // https://resend.com/docs/send-with-cloudflare-workers
               logger.info('Sending login code', { email, codeLength: code.length });
 
-              // Rate limiting: 5 attempts per 5 minutes per IP
+              // Rate limiting: 5 attempts per 5 minutes per IP (production)
+              // or 100 attempts per 5 minutes for localhost (E2E tests)
               const clientIP = getClientIP(request);
               const rateLimitKey = `login:${clientIP}`;
+              const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+              const limit = isLocalhost ? 100 : 5; // Higher limit for local development/testing
               const rateLimit = await checkRateLimit(
                 env.AUTH_STORAGE,
                 rateLimitKey,
-                5, // limit
+                limit,
                 300 // 5 minutes in seconds
               );
 
@@ -259,8 +332,19 @@ export default {
                 }
 
                 logger.debug('Using RESEND_API_KEY from environment');
-                await SendEmail(apiKey, "login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
-                logger.info('Login code sent successfully', { email });
+                const emailResult = await SendEmail(apiKey, "login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
+                logger.info('Login code sent successfully', { email, emailId: emailResult.emailId });
+
+                // For E2E tests, store the email ID in KV so tests can retrieve it
+                if (isLocalhost && emailResult.emailId) {
+                  const testKey = `test:email:${email}`;
+                  await env.AUTH_STORAGE.put(testKey, JSON.stringify({
+                    emailId: emailResult.emailId,
+                    code,
+                    timestamp: Date.now()
+                  }), { expirationTtl: 300 }); // 5 minute TTL
+                  logger.debug('Stored email ID for E2E test', { email, emailId: emailResult.emailId });
+                }
               } catch (error) {
                 logger.error('Failed to send login code', {
                   email,

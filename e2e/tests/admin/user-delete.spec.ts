@@ -5,14 +5,14 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { login } from '../../fixtures/auth';
+import { loginAdmin } from '../../fixtures/admin';
 import { createUser, deleteUser, navigateToAdmin } from '../../fixtures/admin';
-import { TEST_USERS, generateTestEmail } from '../../utils/test-data';
+import { TEST_USERS, TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 test.describe('Admin User Deletion', () => {
   test.beforeEach(async ({ page }) => {
     // Login as admin
-    await login(page, TEST_USERS.admin().email);
+    await loginAdmin(page, TEST_USERS.admin().email);
   });
 
   test('should delete a user successfully', async ({ page }) => {
@@ -35,7 +35,7 @@ test.describe('Admin User Deletion', () => {
     await createUser(page, { email: userEmail, role: 'user' });
 
     // Click delete button
-    await navigateToAdmin(page);
+    // Already on /users page from previous action
     const userRow = page.locator(`tr:has-text("${userEmail}")`);
     await userRow.locator('button:has-text("Delete")').click();
 
@@ -52,7 +52,7 @@ test.describe('Admin User Deletion', () => {
     await createUser(page, { email: userEmail, role: 'user' });
 
     // Click delete button
-    await navigateToAdmin(page);
+    // Already on /users page from previous action
     const userRow = page.locator(`tr:has-text("${userEmail}")`);
     await userRow.locator('button:has-text("Delete")').click();
 
@@ -64,6 +64,7 @@ test.describe('Admin User Deletion', () => {
   });
 
   test('should update user count after deletion', async ({ page }) => {
+    // Navigate to dashboard to get initial count
     await navigateToAdmin(page);
 
     // Get initial user count
@@ -78,7 +79,7 @@ test.describe('Admin User Deletion', () => {
     await createUser(page, { email: userEmail, role: 'user' });
     await deleteUser(page, userEmail);
 
-    // Navigate to dashboard
+    // Navigate back to dashboard
     await page.click('a:has-text("Dashboard")');
 
     // Get updated count
@@ -109,7 +110,8 @@ test.describe('Admin User Deletion', () => {
   test('should handle deletion of non-existent user gracefully', async ({
     page,
   }) => {
-    await navigateToAdmin(page);
+    // Navigate to users page
+    await page.goto(`${TEST_URLS.adminDashboard}/users`);
 
     // Try to find and delete a user that doesn't exist
     const nonExistentEmail = 'non-existent-' + Date.now() + '@test.local';
@@ -153,7 +155,7 @@ test.describe('Admin User Deletion', () => {
     await deleteUser(page, user3Email);
 
     // Verify all users are gone
-    await navigateToAdmin(page);
+    // Already on /users page from previous action
     await expect(page.locator(`tr:has-text("${user1Email}")`)).not.toBeVisible();
     await expect(page.locator(`tr:has-text("${user2Email}")`)).not.toBeVisible();
     await expect(page.locator(`tr:has-text("${user3Email}")`)).not.toBeVisible();

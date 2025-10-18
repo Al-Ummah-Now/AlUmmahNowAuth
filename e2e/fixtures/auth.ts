@@ -8,6 +8,71 @@ import { Page, expect } from '@playwright/test';
 import { TEST_URLS } from '../utils/test-data';
 import { setupEmailInterception } from '../utils/email-interceptor';
 
+// Store registered users to avoid re-registration
+const registeredUsers = new Set<string>();
+
+// Test password for all E2E test users
+const TEST_PASSWORD = 'TestPassword123!';
+
+/**
+ * Register a new user
+ *
+ * @param page - Playwright page object
+ * @param email - User email address
+ * @returns Promise that resolves when registration is complete
+ */
+export async function register(page: Page, email: string): Promise<void> {
+  // Skip if already registered in this test session
+  if (registeredUsers.has(email)) {
+    return;
+  }
+
+  // Set up email interception to capture verification code
+  const emailInterceptor = setupEmailInterception(page);
+
+  // Navigate to profile app
+  await page.goto(TEST_URLS.profileApp);
+
+  // Click Sign In to go to auth page (use specific selector to avoid multiple matches)
+  await page.locator('#loggedOutView button:has-text("Sign In")').click();
+
+  // Wait for redirect to auth server
+  await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
+  // Click "Register" link
+  await page.click('a:has-text("Register")');
+
+  // Fill registration form
+  await page.fill('input[type="email"]', email);
+
+  // Fill password fields (there are typically two: password and repeat password)
+  const passwordFields = page.locator('input[type="password"]');
+  await passwordFields.nth(0).fill(TEST_PASSWORD);
+  await passwordFields.nth(1).fill(TEST_PASSWORD); // Repeat password
+
+  // Submit registration
+  await page.click('button:has-text("Continue")');
+
+  // Wait for verification code input
+  await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+
+  const verificationCode = await emailInterceptor.getLastLoginCode(email);
+
+  if (!verificationCode) {
+    throw new Error('Failed to capture verification code from email. Check that email interception is working correctly.');
+  }
+
+  // Enter verification code
+  await page.fill('input[name="code"]', verificationCode);
+  await page.click('button:has-text("Continue")');
+
+  // Wait for successful registration (redirect to profile app)
+  await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
+
+  // Mark as registered
+  registeredUsers.add(email);
+}
+
 /**
  * Perform complete login flow
  *
@@ -16,36 +81,35 @@ import { setupEmailInterception } from '../utils/email-interceptor';
  * @returns Promise that resolves when login is complete
  */
 export async function login(page: Page, email: string): Promise<void> {
-  // Set up email interception to capture login code
-  const emailInterceptor = setupEmailInterception(page);
+  // Register user first if not already registered
+  await register(page, email);
 
   // Navigate to profile app
   await page.goto(TEST_URLS.profileApp);
 
-  // Click login button
-  await page.click('button:has-text("Sign In")');
+  // Check if already logged in (registration logs user in automatically)
+  const loggedInView = page.locator('#loggedInView');
+  const isAlreadyLoggedIn = await loggedInView.isVisible();
+
+  if (isAlreadyLoggedIn) {
+    // User is already logged in from registration, no need to log in again
+    return;
+  }
+
+  // Click login button (using more specific selector to avoid multiple matches)
+  await page.locator('#loggedOutView button:has-text("Sign In")').click();
 
   // Wait for redirect to auth server
   await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
-  // Enter email address
+  // Enter email address and password
   await page.fill('input[type="email"]', email);
-  await page.click('button[type="submit"]');
+  await page.fill('input[type="password"]', TEST_PASSWORD);
 
-  // Wait for code input field to appear (indicates email was sent)
-  await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+  // Click Continue to submit login
+  await page.click('button:has-text("Continue")');
 
-  const loginCode = emailInterceptor.getLastLoginCode();
-
-  if (!loginCode) {
-    throw new Error('Failed to capture login code from email. Check that email interception is working correctly.');
-  }
-
-  // Enter login code
-  await page.fill('input[name="code"]', loginCode);
-  await page.click('button[type="submit"]');
-
-  // Wait for redirect back to profile app
+  // Wait for redirect back to profile app (successful login)
   await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
 
   // Verify login succeeded

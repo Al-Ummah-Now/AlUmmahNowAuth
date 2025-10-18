@@ -5,14 +5,13 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { login } from '../../fixtures/auth';
-import { createUser, navigateToAdmin, userExists } from '../../fixtures/admin';
-import { TEST_USERS, generateTestEmail } from '../../utils/test-data';
+import { loginAdmin, createUser, navigateToAdmin, userExists } from '../../fixtures/admin';
+import { TEST_USERS, TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 test.describe('Admin User Creation', () => {
   test.beforeEach(async ({ page }) => {
     // Login as admin - generate unique admin for each test
-    await login(page, TEST_USERS.admin().email);
+    await loginAdmin(page, TEST_USERS.admin().email);
   });
 
   test('should create a new user with role "user"', async ({ page }) => {
@@ -38,15 +37,15 @@ test.describe('Admin User Creation', () => {
     // Create user
     await createUser(page, newAdmin);
 
-    // Verify user appears in list with admin role
-    await navigateToAdmin(page);
+    // Verify user appears in list with admin role (createUser navigates to /users)
     const userRow = page.locator(`tr:has-text("${newAdmin.email}")`);
     await expect(userRow).toBeVisible();
     await expect(userRow.locator('text=/admin/i')).toBeVisible();
   });
 
   test('should show validation error for invalid email', async ({ page }) => {
-    await navigateToAdmin(page);
+    // Navigate to users page
+    await page.goto(`${TEST_URLS.adminDashboard}/users`);
 
     // Click create user button
     await page.click('button:has-text("Create User")');
@@ -55,14 +54,14 @@ test.describe('Admin User Creation', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
     // Enter invalid email
-    await page.fill('input[name="email"]', 'not-an-email');
-    await page.selectOption('select[name="role"]', 'user');
+    await page.fill('input[id="email"]', 'not-an-email');
+    await page.selectOption('select[id="role"]', 'user');
 
     // Try to submit
-    await page.click('button[type="submit"]:has-text("Create")');
+    await page.click('button:has-text("Create User")');
 
     // Verify validation error
-    await expect(page.locator('input[name="email"]:invalid')).toBeVisible();
+    await expect(page.locator('input[id="email"]:invalid')).toBeVisible();
   });
 
   test('should show error when creating duplicate user', async ({ page }) => {
@@ -72,13 +71,13 @@ test.describe('Admin User Creation', () => {
     await createUser(page, { email: duplicateEmail, role: 'user' });
 
     // Try to create user with same email
-    await navigateToAdmin(page);
+    await page.goto(`${TEST_URLS.adminDashboard}/users`);
     await page.click('button:has-text("Create User")');
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
-    await page.fill('input[name="email"]', duplicateEmail);
-    await page.selectOption('select[name="role"]', 'user');
-    await page.click('button[type="submit"]:has-text("Create")');
+    await page.fill('input[id="email"]', duplicateEmail);
+    await page.selectOption('select[id="role"]', 'user');
+    await page.click('button:has-text("Create User")');
 
     // Verify error message
     await expect(
@@ -105,7 +104,8 @@ test.describe('Admin User Creation', () => {
   });
 
   test('should close dialog when clicking cancel', async ({ page }) => {
-    await navigateToAdmin(page);
+    // Navigate to users page
+    await page.goto(`${TEST_URLS.adminDashboard}/users`);
 
     // Click create user button
     await page.click('button:has-text("Create User")');
