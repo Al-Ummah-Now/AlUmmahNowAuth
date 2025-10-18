@@ -20,7 +20,7 @@ export default async function SendEmail(
   subject: string,
   html: string,
   maxRetries: number = 3
-): Promise<{ success: boolean; error?: any }> {
+): Promise<{ success: boolean; emailId?: string; error?: any }> {
   // Validate email addresses
   try {
     v.parse(EmailSchema, from);
@@ -59,7 +59,7 @@ export default async function SendEmail(
         }
       } else {
         console.log("Email sent successfully:", data);
-        return { success: true };
+        return { success: true, emailId: data.id };
       }
     } catch (error) {
       lastError = error;

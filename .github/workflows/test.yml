@@ -108,3 +108,151 @@ jobs:
           done
 
           echo "✅ All migration files are valid"
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-reports
+          path: |
+            apps/*/coverage/
+          retention-days: 30
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    name: E2E Tests
+    needs: [lint-and-type-check]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.RESEND_API_KEY }}" ]; then
+            echo "❌ ERROR: RESEND_API_KEY secret is not configured"
+            echo "Please add RESEND_API_KEY to repository secrets"
+            echo "Go to: Settings > Secrets and variables > Actions > New repository secret"
+            exit 1
+          fi
+          echo "✅ Required secrets are configured"
+
+      - name: Apply local database migrations
+        working-directory: apps/auth
+        run: pnpm run migrations:local
+
+      - name: Start Auth Server (background)
+        working-directory: apps/auth
+        run: |
+          pnpm dev &
+          echo $! > ../../.auth-server.pid
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+      - name: Start Admin Dashboard (background)
+        working-directory: apps/admin
+        run: |
+          pnpm dev &
+          echo $! > ../../.admin-dashboard.pid
+
+      - name: Start Profile App (background)
+        working-directory: apps/profile
+        run: |
+          pnpm dev &
+          echo $! > ../../.profile-app.pid
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for services to start..."
+          timeout=60
+          elapsed=0
+
+          while [ $elapsed -lt $timeout ]; do
+            if curl -f http://localhost:8787 > /dev/null 2>&1 && \
+               curl -f http://localhost:5175 > /dev/null 2>&1 && \
+               curl -f http://localhost:8788 > /dev/null 2>&1; then
+              echo "All services are ready!"
+              exit 0
+            fi
+            sleep 2
+            elapsed=$((elapsed + 2))
+            echo "Waiting... ($elapsed/$timeout seconds)"
+          done
+
+          echo "Timeout waiting for services to start"
+          exit 1
+
+      - name: Run E2E tests
+        run: pnpm exec playwright test
+        env:
+          CI: true
+          SKIP_WEB_SERVER: true
+
+      - name: Upload E2E test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results
+          path: |
+            e2e-report/
+            e2e-results.json
+            e2e-results.xml
+            test-results/
+          retention-days: 30
+
+      - name: Upload E2E test videos
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-test-videos
+          path: test-results/**/*.webm
+          retention-days: 7
+
+      - name: Stop services
+        if: always()
+        run: |
+          if [ -f .auth-server.pid ]; then
+            kill $(cat .auth-server.pid) || true
+          fi
+          if [ -f .admin-dashboard.pid ]; then
+            kill $(cat .admin-dashboard.pid) || true
+          fi
+          if [ -f .profile-app.pid ]; then
+            kill $(cat .profile-app.pid) || true
+          fi
