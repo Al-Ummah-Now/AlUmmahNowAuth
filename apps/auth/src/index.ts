@@ -21,6 +21,8 @@ import {
   createAccountCreatedEvent,
 } from "./audit-events";
 import { routeAdminDLQ } from "./admin-dlq-routes";
+import { TokenRoutes } from "./routes/token-routes";
+import { handleTokenCron } from "./cron/token-cron";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -341,6 +343,16 @@ export default {
       }
     }
 
+    // Handle OAuth 2.0 token endpoints
+    if (url.pathname.startsWith('/token')) {
+      logger.debug('Handling OAuth 2.0 token request', { pathname: url.pathname, method: request.method });
+      const tokenResponse = await TokenRoutes.handle(request, env, ctx);
+      if (tokenResponse.status !== 404) {
+        ctx.waitUntil(logger.finalizeRequest());
+        return addSecurityHeaders(tokenResponse, isProduction);
+      }
+    }
+
     // The real OpenAuth server code starts here:
     logger.debug('Initializing OpenAuth issuer', {
       hasStorage: !!env.AUTH_STORAGE,
@@ -512,6 +524,28 @@ export default {
 
     // Apply security headers to all OpenAuth responses
     return addSecurityHeaders(issuerResponse, isProduction);
+  },
+
+  /**
+   * Scheduled handler for cron triggers
+   *
+   * Configure cron triggers in wrangler.toml:
+   * ```
+   * [triggers]
+   * crons = ["0 * * * *"]  // Every hour - cleanup expired tokens
+   * ```
+   */
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    // Determine which cron job to run based on schedule
+    // For now, we'll run all token maintenance tasks
+    const cronName = event.cron || 'token-maintenance';
+
+    try {
+      await handleTokenCron(env, cronName);
+    } catch (error) {
+      console.error('Scheduled token cron failed', error);
+      // Don't throw - let other scheduled tasks continue
+    }
   },
 } satisfies ExportedHandler<Env>;
 
