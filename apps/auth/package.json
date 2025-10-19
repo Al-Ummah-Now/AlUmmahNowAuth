@@ -23,6 +23,7 @@
   "dependencies": {
     "@openauthjs/openauth": "0.4.3",
     "@types/node": "^24.7.2",
+    "jose": "^6.1.0",
     "resend": "^6.1.2",
     "valibot": "^1.0.0"
   },
