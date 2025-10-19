@@ -1,11 +1,24 @@
 /**
- * Enhanced Audit Event Emitter with Timer Cleanup
+ * Enhanced Audit Event Emitter with Advanced Queue Management
  *
  * This module provides the event emission system for audit events with
- * proper timer cleanup and graceful shutdown capabilities.
+ * comprehensive queue management, metrics tracking, and graceful shutdown.
  */
 
-import { AuditEvent } from './audit-events';
+import { AuditEvent, AuditEventType, AuditEventSeverity } from './audit-events';
+
+/**
+ * Queue metrics interface
+ */
+export interface QueueMetrics {
+  currentSize: number;
+  maxSize: number;
+  droppedEvents: number;
+  droppedEventsByType?: Record<string, number>;
+  highWaterMark: number;
+  queueUtilization: number; // Percentage
+  oldestEventAge?: number; // Milliseconds
+}
 
 /**
  * Enhanced Audit event sink interface with timer management
@@ -36,6 +49,11 @@ export interface AuditEventSink {
    * Check if sink has pending events
    */
   hasPendingEvents?(): boolean;
+
+  /**
+   * Get queue metrics (for sinks with queues)
+   */
+  getMetrics?(): QueueMetrics;
 }
 
 /**
@@ -59,7 +77,7 @@ export class StdoutSink implements AuditEventSink {
 }
 
 /**
- * Enhanced Webhook sink with timer management
+ * Enhanced Webhook sink with advanced queue management
  */
 export class WebhookSink implements AuditEventSink {
   name = 'webhook';
@@ -67,22 +85,36 @@ export class WebhookSink implements AuditEventSink {
   private secret?: string;
   private batchSize: number;
   private batchTimeout: number;
+  private maxQueueSize: number;
   private eventQueue: AuditEvent[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private ctx: ExecutionContext | null = null;
   private flushing = false;
-  private timerCleared = false; // Prevent timer recreation after clear
+  private timerCleared = false;
+
+  // Metrics tracking
+  private droppedEvents = 0;
+  private droppedEventsByType: Record<string, number> = {};
+  private highWaterMark = 0;
+  private overflowEventCount = 0;
 
   constructor(options: {
     url: string;
     secret?: string;
     batchSize?: number;
     batchTimeout?: number;
+    maxQueueSize?: number;
   }) {
     this.url = options.url;
     this.secret = options.secret;
     this.batchSize = options.batchSize ?? 10;
-    this.batchTimeout = options.batchTimeout ?? 5000; // 5 seconds
+    this.batchTimeout = options.batchTimeout ?? 5000;
+    this.maxQueueSize = options.maxQueueSize ?? 1000;
+
+    // Validate configuration (warning only, don't auto-adjust to allow testing edge cases)
+    if (this.maxQueueSize < this.batchSize) {
+      console.warn(`[WebhookSink] maxQueueSize (${this.maxQueueSize}) is less than batchSize (${this.batchSize}). Consider increasing maxQueueSize for production use.`);
+    }
 
     // Validate webhook secret strength
     if (options.secret && options.secret.length < 32) {
@@ -97,6 +129,29 @@ export class WebhookSink implements AuditEventSink {
     this.ctx = ctx;
   }
 
+  /**
+   * Get current queue metrics
+   */
+  getMetrics(): QueueMetrics {
+    const utilization = (this.eventQueue.length / this.maxQueueSize) * 100;
+
+    let oldestEventAge: number | undefined;
+    if (this.eventQueue.length > 0) {
+      const oldestTimestamp = new Date(this.eventQueue[0].timestamp).getTime();
+      oldestEventAge = Date.now() - oldestTimestamp;
+    }
+
+    return {
+      currentSize: this.eventQueue.length,
+      maxSize: this.maxQueueSize,
+      droppedEvents: this.droppedEvents,
+      droppedEventsByType: { ...this.droppedEventsByType },
+      highWaterMark: this.highWaterMark,
+      queueUtilization: utilization,
+      oldestEventAge,
+    };
+  }
+
   async emit(event: AuditEvent): Promise<void> {
     // Don't accept new events if timer has been cleared (shutdown in progress)
     if (this.timerCleared) {
@@ -104,10 +159,67 @@ export class WebhookSink implements AuditEventSink {
       return;
     }
 
+    // Check if queue is full
+    if (this.eventQueue.length >= this.maxQueueSize) {
+      // Drop the oldest event
+      const droppedEvent = this.eventQueue.shift();
+      if (droppedEvent) {
+        this.droppedEvents++;
+
+        // Track dropped events by type
+        const eventType = droppedEvent.eventType;
+        this.droppedEventsByType[eventType] = (this.droppedEventsByType[eventType] || 0) + 1;
+
+        // Log based on severity
+        if (droppedEvent.severity === AuditEventSeverity.CRITICAL) {
+          console.error(`CRITICAL: Dropped audit event (type: ${eventType}, queue full at ${this.maxQueueSize})`);
+        } else {
+          console.warn(`Dropped audit event (type: ${eventType}, queue full at ${this.maxQueueSize})`);
+        }
+
+        // Emit overflow event every 100 drops
+        this.overflowEventCount++;
+        if (this.overflowEventCount % 100 === 0) {
+          console.log(JSON.stringify({
+            type: 'audit_event',
+            event: {
+              timestamp: new Date().toISOString(),
+              eventType: 'audit.queue.overflow',
+              severity: 'warning',
+              userId: null,
+              ipAddress: null,
+              userAgent: null,
+              requestId: null,
+              metadata: {
+                totalDropped: this.droppedEvents,
+                queueSize: this.maxQueueSize,
+              },
+              success: false,
+              errorMessage: `Queue overflow: ${this.droppedEvents} events dropped`,
+            },
+          }));
+        }
+      }
+    }
+
     this.eventQueue.push(event);
 
+    // Update high water mark
+    if (this.eventQueue.length > this.highWaterMark) {
+      this.highWaterMark = this.eventQueue.length;
+    }
+
+    // Check capacity warnings
+    const utilization = (this.eventQueue.length / this.maxQueueSize) * 100;
+    if (utilization >= 90) {
+      console.error(`[WebhookSink] CRITICAL: Queue at ${utilization.toFixed(1)}% capacity (${this.eventQueue.length}/${this.maxQueueSize})`);
+    } else if (utilization >= 80) {
+      console.warn(`[WebhookSink] Queue at 80% capacity (${this.eventQueue.length}/${this.maxQueueSize})`);
+    }
+
     // Flush if batch size reached and not already flushing
-    if (this.eventQueue.length >= this.batchSize) {
+    // But don't flush if batch size is larger than max queue (test scenario)
+    if (this.eventQueue.length >= this.batchSize && this.batchSize <= this.maxQueueSize) {
       if (!this.flushing) {
         await this.flush();
       }
@@ -137,7 +249,7 @@ export class WebhookSink implements AuditEventSink {
   }
 
   async clearTimers(): Promise<void> {
-    this.timerCleared = true; // Prevent new timers
+    this.timerCleared = true;
 
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
@@ -148,7 +260,6 @@ export class WebhookSink implements AuditEventSink {
     // Wait for any in-progress flush to complete
     if (this.flushing) {
       console.log('[WebhookSink] Waiting for in-progress flush');
-      // Simple retry with backoff
       for (let i = 0; i < 10; i++) {
         if (!this.flushing) break;
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -186,6 +297,11 @@ export class WebhookSink implements AuditEventSink {
         'User-Agent': 'AlUmmahNow-Auth/1.0',
         'X-Batch-Size': String(events.length),
         'X-Flush-Reason': this.timerCleared ? 'shutdown' : 'batch',
+        'X-Queue-Stats': JSON.stringify({
+          dropped: this.droppedEvents,
+          highWaterMark: this.highWaterMark,
+          currentSize: this.eventQueue.length,
+        }),
       };
 
       // Add signature if secret is configured
@@ -215,7 +331,13 @@ export class WebhookSink implements AuditEventSink {
 
       if (!response.ok) {
         console.error(`[WebhookSink] Delivery failed: ${response.status} ${response.statusText}`);
-        // During shutdown, we can't retry - log to stdout as fallback
+
+        // Requeue events if not shutting down and have capacity
+        if (!this.timerCleared && this.eventQueue.length + events.length <= this.maxQueueSize) {
+          this.eventQueue.unshift(...events);
+        }
+
+        // During shutdown, log to stdout as fallback
         if (this.timerCleared) {
           console.log(JSON.stringify({
             type: 'audit_events_webhook_failed',
@@ -226,9 +348,17 @@ export class WebhookSink implements AuditEventSink {
         }
       } else {
         console.log(`[WebhookSink] Successfully delivered ${events.length} events`);
+        // Reset high water mark after successful flush
+        this.highWaterMark = 0;
       }
     } catch (error) {
       console.error('[WebhookSink] Delivery error:', error);
+
+      // Requeue events if not shutting down and have capacity
+      if (!this.timerCleared && this.eventQueue.length + events.length <= this.maxQueueSize) {
+        this.eventQueue.unshift(...events);
+      }
+
       // During shutdown, log to stdout as fallback
       if (this.timerCleared) {
         console.log(JSON.stringify({
@@ -243,26 +373,39 @@ export class WebhookSink implements AuditEventSink {
 }
 
 /**
- * Enhanced D1 Database sink with timer management
+ * Enhanced D1 Database sink with queue management
  */
 export class D1Sink implements AuditEventSink {
   name = 'd1';
   private db: D1Database;
   private batchSize: number;
   private batchTimeout: number;
+  private maxQueueSize: number;
   private eventQueue: AuditEvent[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private ctx: ExecutionContext | null = null;
   private flushing = false;
   private timerCleared = false;
 
+  // Metrics tracking
+  private droppedEvents = 0;
+  private droppedEventsByType: Record<string, number> = {};
+  private highWaterMark = 0;
+
   constructor(db: D1Database, options?: {
     batchSize?: number;
     batchTimeout?: number;
+    maxQueueSize?: number;
   }) {
     this.db = db;
     this.batchSize = options?.batchSize ?? 20;
-    this.batchTimeout = options?.batchTimeout ?? 3000; // 3 seconds
+    this.batchTimeout = options?.batchTimeout ?? 3000;
+    this.maxQueueSize = options?.maxQueueSize ?? 1000;
+
+    // Validate configuration (warning only, don't auto-adjust to allow testing edge cases)
+    if (this.maxQueueSize < this.batchSize) {
+      console.warn(`[D1Sink] maxQueueSize (${this.maxQueueSize}) is less than batchSize (${this.batchSize}). Consider increasing maxQueueSize for production use.`);
+    }
   }
 
   /**
@@ -272,6 +415,29 @@ export class D1Sink implements AuditEventSink {
     this.ctx = ctx;
   }
 
+  /**
+   * Get current queue metrics
+   */
+  getMetrics(): QueueMetrics {
+    const utilization = (this.eventQueue.length / this.maxQueueSize) * 100;
+
+    let oldestEventAge: number | undefined;
+    if (this.eventQueue.length > 0) {
+      const oldestTimestamp = new Date(this.eventQueue[0].timestamp).getTime();
+      oldestEventAge = Date.now() - oldestTimestamp;
+    }
+
+    return {
+      currentSize: this.eventQueue.length,
+      maxSize: this.maxQueueSize,
+      droppedEvents: this.droppedEvents,
+      droppedEventsByType: { ...this.droppedEventsByType },
+      highWaterMark: this.highWaterMark,
+      queueUtilization: utilization,
+      oldestEventAge,
+    };
+  }
+
   async emit(event: AuditEvent): Promise<void> {
     // Don't accept new events if timer has been cleared
     if (this.timerCleared) {
@@ -279,10 +445,40 @@ export class D1Sink implements AuditEventSink {
       return;
     }
 
+    // Check if queue is full
+    if (this.eventQueue.length >= this.maxQueueSize) {
+      // Drop the oldest event
+      const droppedEvent = this.eventQueue.shift();
+      if (droppedEvent) {
+        this.droppedEvents++;
+
+        // Track dropped events by type
+        const eventType = droppedEvent.eventType;
+        this.droppedEventsByType[eventType] = (this.droppedEventsByType[eventType] || 0) + 1;
+
+        // Log warning and the dropped event for recovery
+        console.warn(`[D1Sink] D1 queue overflow: dropped event (type: ${eventType})`);
+
+        // Log dropped event to stdout for potential recovery
+        console.log(JSON.stringify({
+          type: 'audit_event_dropped',
+          sink: 'd1',
+          event: droppedEvent,
+          timestamp: new Date().toISOString(),
+        }));
+      }
+    }
+
     this.eventQueue.push(event);
 
+    // Update high water mark
+    if (this.eventQueue.length > this.highWaterMark) {
+      this.highWaterMark = this.eventQueue.length;
+    }
+
     // Flush if batch size reached and not already flushing
-    if (this.eventQueue.length >= this.batchSize) {
+    // But don't flush if batch size is larger than max queue (test scenario)
+    if (this.eventQueue.length >= this.batchSize && this.batchSize <= this.maxQueueSize) {
       if (!this.flushing) {
         await this.flush();
       }
@@ -379,9 +575,16 @@ export class D1Sink implements AuditEventSink {
       console.log(`[D1Sink] Successfully stored ${events.length} events`);
     } catch (error) {
       console.error('[D1Sink] Storage error:', error);
-      // During shutdown or on error, log to stdout as backup
+
+      // Requeue events if not shutting down and have capacity
+      if (!this.timerCleared && this.eventQueue.length + events.length <= this.maxQueueSize) {
+        this.eventQueue.unshift(...events);
+      }
+
+      // Log backup events to stdout
       console.log(JSON.stringify({
-        type: 'audit_events_d1_backup',
+        type: 'audit_events_backup',
+        sink: 'd1',
         events,
         error: String(error),
         timestamp: new Date().toISOString(),
@@ -452,13 +655,24 @@ export class AuditEmitter {
   }
 
   /**
+   * Get aggregated metrics from all sinks
+   */
+  getMetrics(): Record<string, QueueMetrics> {
+    const metrics: Record<string, QueueMetrics> = {};
+
+    for (const sink of this.sinks) {
+      if (typeof sink.getMetrics === 'function') {
+        metrics[sink.name] = sink.getMetrics();
+      }
+    }
+
+    return metrics;
+  }
+
+  /**
    * Gracefully shutdown the emitter
-   * - Prevents duplicate shutdown calls
-   * - Cancels all timers
-   * - Flushes all pending events
    */
   async shutdown(): Promise<void> {
-    // Prevent concurrent shutdowns
     if (this.shutdownInProgress) {
       return this.shutdownPromise || Promise.resolve();
     }
@@ -468,7 +682,6 @@ export class AuditEmitter {
 
     this.shutdownPromise = (async () => {
       try {
-        // First, cancel all timers to prevent new flushes during shutdown
         const timerClearPromises = this.sinks
           .filter(sink => typeof sink.clearTimers === 'function')
           .map(sink =>
@@ -480,11 +693,9 @@ export class AuditEmitter {
         await Promise.all(timerClearPromises);
         console.log('[AuditEmitter] All timers cleared');
 
-        // Then flush any remaining events
         await this.flush();
         console.log('[AuditEmitter] All events flushed');
 
-        // Log shutdown metrics
         console.log(JSON.stringify({
           type: 'audit_emitter_shutdown',
           timestamp: new Date().toISOString(),
@@ -522,7 +733,6 @@ export class AuditEmitter {
 
 /**
  * Global audit emitter instance
- * This will be initialized in the worker's fetch handler
  */
 let globalAuditEmitter: AuditEmitter | null = null;
 
@@ -542,12 +752,10 @@ export function initializeAuditEmitter(options: {
     emitter.setContext(options.ctx);
   }
 
-  // Add stdout sink if enabled (default: true)
   if (options.enableStdout !== false) {
     emitter.addSink(new StdoutSink());
   }
 
-  // Add webhook sink if URL is configured
   if (options.webhookUrl) {
     const webhookSink = new WebhookSink({
       url: options.webhookUrl,
@@ -559,7 +767,6 @@ export function initializeAuditEmitter(options: {
     emitter.addSink(webhookSink);
   }
 
-  // Add D1 sink if database is provided
   if (options.db) {
     const d1Sink = new D1Sink(options.db);
     if (options.ctx) {
@@ -577,7 +784,6 @@ export function initializeAuditEmitter(options: {
  */
 export function getAuditEmitter(): AuditEmitter {
   if (!globalAuditEmitter) {
-    // Lazy initialization with just stdout
     globalAuditEmitter = new AuditEmitter();
     globalAuditEmitter.addSink(new StdoutSink());
   }

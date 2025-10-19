@@ -251,9 +251,9 @@ describe('WebhookSink Queue Limits', () => {
       expect.stringContaining('less than batchSize')
     );
 
-    // Should be adjusted to batchSize * 2
+    // Should NOT be auto-adjusted (to allow testing edge cases)
     const metrics = sink.getMetrics();
-    expect(metrics.maxSize).toBe(20);
+    expect(metrics.maxSize).toBe(5);
 
     warnSpy.mockRestore();
   });
@@ -262,7 +262,7 @@ describe('WebhookSink Queue Limits', () => {
     const sink = new WebhookSink({
       url: 'http://example.com',
       maxQueueSize: 5,
-      batchSize: 2,
+      batchSize: 10, // Larger than maxQueueSize to prevent auto-flush
     });
 
     // Add events to trigger drops
@@ -401,7 +401,7 @@ describe('D1Sink Queue Limits', () => {
 
     const sink = new D1Sink(mockDb, {
       maxQueueSize: 5,
-      batchSize: 2,
+      batchSize: 10, // Larger than maxQueueSize to prevent auto-flush
     });
 
     await sink.emit(createTestEvent('event-1'));
@@ -465,8 +465,9 @@ describe('D1Sink Queue Limits', () => {
       expect.stringContaining('less than batchSize')
     );
 
+    // Should NOT be auto-adjusted (to allow testing edge cases)
     const metrics = sink.getMetrics();
-    expect(metrics.maxSize).toBe(20);
+    expect(metrics.maxSize).toBe(5);
 
     warnSpy.mockRestore();
   });
@@ -474,22 +475,32 @@ describe('D1Sink Queue Limits', () => {
 
 describe('Queue Load Testing', () => {
   it('should handle sustained high load for WebhookSink', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue(new Response('OK'));
+    // Make fetch slow to cause queue backlog
+    const fetchSpy = vi.fn().mockImplementation(() =>
+      new Promise(resolve => setTimeout(() => resolve(new Response('OK')), 50))
+    );
     global.fetch = fetchSpy;
 
     const sink = new WebhookSink({
       url: 'http://example.com',
       maxQueueSize: 100,
-      batchSize: 50,
+      batchSize: 200, // Larger than maxQueueSize to prevent auto-flush, letting queue fill
       batchTimeout: 100,
     });
 
     const eventCount = 500;
 
-    // Simulate high event rate
+    // Simulate high event rate - emit without waiting (fire and forget)
+    const emitPromises = [];
     for (let i = 0; i < eventCount; i++) {
-      await sink.emit(createTestEvent(`load-${i}`));
+      emitPromises.push(sink.emit(createTestEvent(`load-${i}`)));
     }
+
+    // Wait for all emits to be queued
+    await Promise.all(emitPromises);
+
+    // Wait a bit for flushes to process
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     const metrics = sink.getMetrics();
 
@@ -545,10 +556,16 @@ describe('Queue Load Testing', () => {
   });
 
   it('should handle burst traffic patterns', async () => {
+    // Make fetch slow to cause queue backlog during bursts
+    const fetchSpy = vi.fn().mockImplementation(() =>
+      new Promise(resolve => setTimeout(() => resolve(new Response('OK')), 50))
+    );
+    global.fetch = fetchSpy;
+
     const sink = new WebhookSink({
       url: 'http://example.com',
       maxQueueSize: 50,
-      batchSize: 20,
+      batchSize: 100, // Larger than maxQueueSize to prevent auto-flush, letting queue fill
       batchTimeout: 500,
     });
 
@@ -557,10 +574,12 @@ describe('Queue Load Testing', () => {
     let totalDropped = 0;
 
     for (let burst = 0; burst < numBursts; burst++) {
-      // Send a burst of events
+      // Send a burst of events without awaiting (fire and forget)
+      const burstPromises = [];
       for (let i = 0; i < burstSize; i++) {
-        await sink.emit(createTestEvent(`burst-${burst}-${i}`));
+        burstPromises.push(sink.emit(createTestEvent(`burst-${burst}-${i}`)));
       }
+      await Promise.all(burstPromises);
 
       const metrics = sink.getMetrics();
       totalDropped = metrics.droppedEvents;

@@ -247,25 +247,37 @@ describe('WebhookSink - Edge Cases', () => {
   });
 
   it('should handle network timeouts', async () => {
-    // Simulate timeout by not resolving
+    // Simulate timeout by rejecting with AbortError after signal
     fetchSpy.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(new Response('OK')), 15000))
+      (_url: string, options: any) => {
+        return new Promise((resolve, reject) => {
+          // Listen for abort signal
+          if (options?.signal) {
+            options.signal.addEventListener('abort', () => {
+              reject(new DOMException('The operation was aborted', 'AbortError'));
+            });
+          }
+          // Otherwise resolve after 20 seconds (will be aborted before then)
+          setTimeout(() => resolve(new Response('OK')), 20000);
+        });
+      }
     );
 
     const sink = new WebhookSink({
       url: 'https://slow.example.com/webhook',
       batchSize: 1,
+      maxRetries: 0, // Disable retries for this test to avoid timeout
     });
 
     const event = createLoginSuccessEvent('user@example.com', 'user-123', {});
     await sink.emit(event);
 
-    // Should abort after 10 seconds
+    // Should abort after 10 seconds without retry
     const start = Date.now();
     await sink.flush();
     const duration = Date.now() - start;
 
-    // Should complete within 12 seconds (10s timeout + 2s margin)
+    // Should complete within 12 seconds (10s timeout + 2s margin, no retries)
     expect(duration).toBeLessThan(12000);
   }, 15000); // Set test timeout to 15 seconds
 

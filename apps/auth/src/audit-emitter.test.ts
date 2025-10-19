@@ -142,7 +142,7 @@ describe('Audit Emitter', () => {
     it('should add webhook sink when URL is provided', () => {
       const emitter = initializeAuditEmitter({
         webhookUrl: 'https://example.com/audit',
-        webhookSecret: 'secret',
+        webhookSecret: 'test-secret-that-is-32-characters-long-for-security',
       });
 
       const sinks = emitter.getSinks();
@@ -162,10 +162,12 @@ describe('Audit Emitter', () => {
     });
 
     it('should have stdout sink by default', () => {
-      const emitter = getAuditEmitter();
+      // Reset global emitter first by calling initializeAuditEmitter with stdout enabled
+      const emitter = initializeAuditEmitter({ enableStdout: true });
       const sinks = emitter.getSinks();
 
       expect(sinks.length).toBeGreaterThanOrEqual(1);
+      expect(sinks.some(s => s.name === 'stdout')).toBe(true);
     });
   });
 
@@ -177,7 +179,7 @@ describe('Audit Emitter', () => {
 
       const sink = new WebhookSink({
         url: 'https://example.com/audit',
-        secret: 'test-secret',
+        secret: 'test-secret-that-is-32-characters-long-for-security',
         batchSize: 1, // Immediate flush
       });
 

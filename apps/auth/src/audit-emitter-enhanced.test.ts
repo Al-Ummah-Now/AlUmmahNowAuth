@@ -268,10 +268,15 @@ describe('Enhanced Audit Emitter', () => {
         // Clear timers (triggers shutdown flush)
         await sink.clearTimers();
 
-        // Should log to stdout as fallback
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('audit_events_d1_backup')
+        // Should log to stdout as fallback with JSON backup
+        expect(consoleSpy).toHaveBeenCalled();
+        const logCall = consoleSpy.mock.calls.find((call: any[]) =>
+          typeof call[0] === 'string' && call[0].includes('audit_events_backup')
         );
+        expect(logCall).toBeDefined();
+        const logData = JSON.parse(logCall[0]);
+        expect(logData.type).toBe('audit_events_backup');
+        expect(logData.sink).toBe('d1');
       });
     });
 
@@ -357,10 +362,10 @@ describe('Enhanced Audit Emitter', () => {
         // Should not throw
         await expect(emitter.shutdown()).resolves.not.toThrow();
 
-        // Should log error
+        // Should log error with correct format: "[AuditEmitter] Failed to clear timers for {name}:", Error
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-          expect.stringContaining('Failed to clear timers'),
-          expect.any(String)
+          '[AuditEmitter] Failed to clear timers for failing-sink:',
+          expect.any(Error)
         );
       });
     });
@@ -557,10 +562,10 @@ describe('Enhanced Audit Emitter', () => {
         expect.stringContaining('audit_event')
       );
 
-      // Error should be logged
+      // Error should be logged with correct format: "Sink {name} failed to emit event:", Error
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('failed to emit'),
-        expect.any(String)
+        'Sink failing failed to emit event:',
+        expect.any(Error)
       );
     });
 
@@ -593,10 +598,15 @@ describe('Enhanced Audit Emitter', () => {
         expect.any(Error)
       );
 
-      // Should fallback to stdout
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('audit_events_d1_backup')
+      // Should fallback to stdout with JSON backup containing the exact format
+      expect(consoleSpy).toHaveBeenCalled();
+      const logCall = consoleSpy.mock.calls.find((call: any[]) =>
+        typeof call[0] === 'string' && call[0].includes('audit_events_backup')
       );
+      expect(logCall).toBeDefined();
+      const logData = JSON.parse(logCall[0]);
+      expect(logData.type).toBe('audit_events_backup');
+      expect(logData.sink).toBe('d1');
     });
   });
 

@@ -217,17 +217,18 @@ export class RoleService {
    * @returns Created role
    */
   async createRole(data: RoleData, createdBy: string): Promise<Role> {
+    // P0-4: CRITICAL - Check if trying to create a system role name FIRST
+    // This must be checked before existence to prevent bypassing security with existing system roles
+    if (isSystemRoleName(data.name)) {
+      throw new Error(
+        `Cannot create role with system role name: ${data.name}`
+      );
+    }
+
     // Check if role name already exists
     const existing = await this.getRoleByName(data.name);
     if (existing) {
       throw new Error(`Role already exists: ${data.name}`);
-    }
-
-    // Check if trying to create a system role name
-    if (isSystemRoleName(data.name)) {
-      throw new Error(
-        `Security violation: Cannot create role with system role name: ${data.name}`
-      );
     }
 
     const id = crypto.randomUUID();
