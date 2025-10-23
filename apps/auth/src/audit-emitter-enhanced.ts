@@ -111,9 +111,9 @@ export class WebhookSink implements AuditEventSink {
     this.batchTimeout = options.batchTimeout ?? 5000;
     this.maxQueueSize = options.maxQueueSize ?? 1000;
 
-    // Validate configuration (warning only, don't auto-adjust to allow testing edge cases)
-    if (this.maxQueueSize < this.batchSize) {
-      console.warn(`[WebhookSink] maxQueueSize (${this.maxQueueSize}) is less than batchSize (${this.batchSize}). Consider increasing maxQueueSize for production use.`);
+    // Validate configuration - prevent misconfiguration
+    if (this.maxQueueSize < this.batchSize * 2) {
+      throw new Error(`[WebhookSink] Invalid configuration: maxQueueSize (${this.maxQueueSize}) must be at least twice the batchSize (${this.batchSize * 2}). This prevents immediate queue overflow.`);
     }
 
     // Validate webhook secret strength
@@ -402,9 +402,9 @@ export class D1Sink implements AuditEventSink {
     this.batchTimeout = options?.batchTimeout ?? 3000;
     this.maxQueueSize = options?.maxQueueSize ?? 1000;
 
-    // Validate configuration (warning only, don't auto-adjust to allow testing edge cases)
-    if (this.maxQueueSize < this.batchSize) {
-      console.warn(`[D1Sink] maxQueueSize (${this.maxQueueSize}) is less than batchSize (${this.batchSize}). Consider increasing maxQueueSize for production use.`);
+    // Validate configuration - prevent misconfiguration
+    if (this.maxQueueSize < this.batchSize * 2) {
+      throw new Error(`[D1Sink] Invalid configuration: maxQueueSize (${this.maxQueueSize}) must be at least twice the batchSize (${this.batchSize * 2}). This prevents immediate queue overflow.`);
     }
   }
 

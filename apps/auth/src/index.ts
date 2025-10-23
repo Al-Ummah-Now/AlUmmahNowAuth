@@ -301,6 +301,28 @@ export default {
       const email = decodeURIComponent(url.pathname.split('/test/promote/')[1]);
       logger.debug('Test endpoint: promoting user to admin', { email });
 
+      // Additional security: require TEST_PROMOTE_SECRET header
+      const providedSecret = request.headers.get('X-Test-Secret');
+      const expectedSecret = env.TEST_PROMOTE_SECRET;
+
+      if (!expectedSecret) {
+        logger.error('TEST_PROMOTE_SECRET not configured');
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Test endpoint not properly configured' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (providedSecret !== expectedSecret) {
+        logger.warn('Invalid test secret provided for /test/promote', { email });
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
       try {
         // Update user role to admin
         const result = await env.AUTH_DB.prepare(

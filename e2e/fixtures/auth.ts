@@ -12,6 +12,8 @@ import { setupEmailInterception } from '../utils/email-interceptor';
 const registeredUsers = new Set<string>();
 
 // Test password for all E2E test users
+// SECURITY WARNING: This password is used ONLY for local E2E tests and should NEVER be used in production.
+// In production, always use strong, unique passwords for each user.
 const TEST_PASSWORD = 'TestPassword123!';
 
 /**

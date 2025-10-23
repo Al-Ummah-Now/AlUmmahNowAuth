@@ -18,9 +18,7 @@ import { TokenError } from '../types/errors';
  */
 const ACCESS_TOKEN_LIFETIME = 15 * 60; // 15 minutes in seconds
 const REFRESH_TOKEN_LIFETIME = 7 * 24 * 60 * 60; // 7 days in seconds
-const GRACE_PERIOD_MS = 2 * 60 * 1000; // 2 minutes in milliseconds
 const MAX_ROTATION_COUNT = 100; // Prevent infinite rotation chains
-const ISSUER = 'https://auth.alummahnow.com'; // TODO: Make this configurable via env
 
 /**
  * User data structure expected by TokenService
@@ -58,10 +56,11 @@ export class TokenService {
 		const privateKeyObject = await importJWK(privateKey, 'RS256');
 
 		const now = Math.floor(Date.now() / 1000);
+		const issuer = env.OPENAUTH_ISSUER;
 
 		// Build the access token payload
 		const payload: AccessTokenPayload = {
-			iss: ISSUER,
+			iss: issuer,
 			sub: user.id,
 			aud: clientId,
 			exp: now + ACCESS_TOKEN_LIFETIME,
@@ -80,7 +79,7 @@ export class TokenService {
 			.setIssuedAt(now)
 			.setExpirationTime(now + ACCESS_TOKEN_LIFETIME)
 			.setNotBefore(now)
-			.setIssuer(ISSUER)
+			.setIssuer(issuer)
 			.setSubject(user.id)
 			.setAudience(clientId)
 			.setJti(payload.jti)
@@ -211,7 +210,7 @@ export class TokenService {
 
 			// Verify the token signature and claims
 			const { payload } = await jwtVerify(token, publicKey, {
-				issuer: ISSUER,
+				issuer: env.OPENAUTH_ISSUER,
 				clockTolerance: 10, // Allow 10 seconds clock skew
 			});
 
