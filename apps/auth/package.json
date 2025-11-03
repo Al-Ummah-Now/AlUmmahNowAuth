@@ -22,8 +22,8 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "0.4.3",
-    "@types/node": "^24.9.1",
-    "resend": "^6.2.2",
+    "@types/node": "^24.10.0",
+    "resend": "^6.4.0",
     "valibot": "^1.0.0"
   },
   "devDependencies": {
