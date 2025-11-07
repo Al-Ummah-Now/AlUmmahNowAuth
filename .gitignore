@@ -202,3 +202,10 @@ apps/admin/.react-router/
 /.auth-server.pid
 /.admin-dashboard.pid
 /.profile-app.pid
+
+# Test results directories
+apps/admin/test-results/
+apps/auth/test-results/
+
+# Old backup files
+apps/auth/src/audit-emitter-enhanced-old.ts

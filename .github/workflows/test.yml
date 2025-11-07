@@ -128,7 +128,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Run unit tests
+      - name: Run unit tests (all apps including audit-consumer)
         run: pnpm test
 
       - name: Upload coverage reports
@@ -197,6 +197,12 @@ jobs:
           pnpm dev &
           echo $! > ../../.profile-app.pid
 
+      - name: Start Audit Consumer (background)
+        working-directory: apps/audit-consumer
+        run: |
+          pnpm dev &
+          echo $! > ../../.audit-consumer.pid
+
       - name: Wait for services to be ready
         run: |
           echo "Waiting for services to start..."
@@ -204,10 +210,19 @@ jobs:
           elapsed=0
 
           while [ $elapsed -lt $timeout ]; do
-            if curl -f http://localhost:8787 > /dev/null 2>&1 && \
-               curl -f http://localhost:5175 > /dev/null 2>&1 && \
-               curl -f http://localhost:8788 > /dev/null 2>&1; then
-              echo "All services are ready!"
+            # Auth: 3301, Profile: 3302, Admin: 3303, Consumer: 3304
+            if curl -f http://localhost:3301/.well-known/oauth-authorization-server > /dev/null 2>&1 && \
+               curl -f http://localhost:3303 > /dev/null 2>&1 && \
+               curl -f http://localhost:3302 > /dev/null 2>&1; then
+              echo "Core services are ready!"
+
+              # Check audit consumer health (may not be ready immediately)
+              if curl -f http://localhost:3304/health > /dev/null 2>&1; then
+                echo "Audit consumer is ready!"
+              else
+                echo "Note: Audit consumer not responding yet (non-blocking)"
+              fi
+
               exit 0
             fi
             sleep 2
@@ -255,4 +270,7 @@ jobs:
           fi
           if [ -f .profile-app.pid ]; then
             kill $(cat .profile-app.pid) || true
+          fi
+          if [ -f .audit-consumer.pid ]; then
+            kill $(cat .audit-consumer.pid) || true
           fi

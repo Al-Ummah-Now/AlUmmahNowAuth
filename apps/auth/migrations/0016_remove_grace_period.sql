@@ -7,10 +7,9 @@
 DROP TABLE IF EXISTS pending_revocations;
 
 -- Step 2: Remove grace_period_expires column if it exists
--- Note: This column may not exist, so we use a safe approach
--- SQLite doesn't support DROP COLUMN directly in older versions, but D1 supports it
--- If the column doesn't exist, this will be a no-op
-ALTER TABLE refresh_tokens DROP COLUMN IF EXISTS grace_period_expires;
+-- Note: D1 (SQLite) doesn't support DROP COLUMN IF EXISTS
+-- We'll skip this step as the column may not exist
+-- ALTER TABLE refresh_tokens DROP COLUMN grace_period_expires;
 
 -- Step 3: Add token_family_id for tracking token families (reuse detection)
 -- This allows us to revoke entire families when reuse is detected

@@ -1,0 +1,22 @@
+name = "al-ummah-now-audit-consumer"
+main = "src/index.ts"
+compatibility_date = "2024-10-11"
+workers_dev = true
+
+# D1 Database binding for audit logs
+[[d1_databases]]
+binding = "AUDIT_DB"
+database_name = "al-ummah-now-d1"
+database_id = "YOUR_DATABASE_ID"  # Will be set via CLI or copied from auth app
+
+# Queue consumer configuration
+[[queues.consumers]]
+queue = "audit-events"
+max_batch_size = 50  # Process up to 50 events per batch
+max_batch_timeout = 5  # Wait max 5 seconds before processing batch
+max_retries = 3  # Retry failed batches up to 3 times
+dead_letter_queue = "audit-events-dlq"  # Failed messages go here after max retries
+
+# Observability
+[observability]
+enabled = true

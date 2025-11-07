@@ -13,7 +13,8 @@ import { defineConfig, devices } from '@playwright/test';
  * - Profile app: http://localhost:8788
  */
 export default defineConfig({
-  testDir: './e2e/tests',
+  testDir: './e2e',
+  testMatch: ['**/*.spec.ts'],
 
   // Test execution settings
   timeout: 30 * 1000, // 30 seconds per test

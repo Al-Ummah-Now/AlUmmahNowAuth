@@ -6,7 +6,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev --port 8787 --persist-to=../../.wrangler/state",
+    "dev": "wrangler dev --port 3301 --inspector-port 3311 --persist-to=../../.wrangler/state",
     "dev:inspect": "wrangler dev --inspector --persist-to=../../.wrangler/state",
     "tail": "wrangler tail --format pretty",
     "deploy": "wrangler deploy",
@@ -21,7 +21,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@openauthjs/openauth": "0.4.3",
+    "@openauthjs/openauth": "file:/tmp/openauth-fork/packages/openauth",
     "@types/node": "^24.8.1",
     "jose": "^6.1.0",
     "resend": "^6.1.2",

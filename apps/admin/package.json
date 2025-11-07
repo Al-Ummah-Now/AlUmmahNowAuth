@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
-    "dev": "react-router dev --port 5175",
+    "dev": "react-router dev --port 3303",
     "dev:wrangler": "wrangler dev --port 5175 --local --persist-to=../../.wrangler/state",
     "predeploy": "npm run build",
     "deploy": "wrangler deploy",

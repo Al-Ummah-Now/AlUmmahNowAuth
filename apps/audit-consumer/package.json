@@ -1,0 +1,30 @@
+{
+  "name": "audit-consumer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Al Ummah Now Audit Event Consumer - Processes audit events from queue",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev --port 3304",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --reporter=verbose",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "file:/tmp/openauth-fork/packages/openauth",
+    "@types/node": "^24.8.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.9.13",
+    "@cloudflare/workers-types": "^4.20251011.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.43.0"
+  }
+}

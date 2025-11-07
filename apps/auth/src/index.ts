@@ -3,6 +3,7 @@ import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
 import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { createSubjects } from "@openauthjs/openauth/subject";
+import { AuditService } from "@openauthjs/openauth/services/audit";
 import * as v from 'valibot';
 import SendEmail from "./email";
 import { getOrCreateUser, checkPasswordResetRequired, clearPasswordResetRequired } from "./users";
@@ -21,7 +22,6 @@ import {
   createAccountCreatedEvent,
 } from "./audit-events";
 import { routeAdminDLQ } from "./admin-dlq-routes";
-import { TokenRoutes } from "./routes/token-routes";
 import { handleTokenCron } from "./cron/token-cron";
 
 // This value should be shared between the OpenAuth server Worker and other
@@ -365,20 +365,19 @@ export default {
       }
     }
 
-    // Handle OAuth 2.0 token endpoints
-    if (url.pathname.startsWith('/token')) {
-      logger.debug('Handling OAuth 2.0 token request', { pathname: url.pathname, method: request.method });
-      const tokenResponse = await TokenRoutes.handle(request, env, ctx);
-      if (tokenResponse.status !== 404) {
-        ctx.waitUntil(logger.finalizeRequest());
-        return addSecurityHeaders(tokenResponse, isProduction);
-      }
-    }
+    // Note: Token endpoints (/token, /token/introspect, /token/revoke) are now
+    // handled by the forked OpenAuth issuer with built-in enterprise features
 
     // The real OpenAuth server code starts here:
     logger.debug('Initializing OpenAuth issuer', {
       hasStorage: !!env.AUTH_STORAGE,
       issuerEnv: env.OPENAUTH_ISSUER,
+    });
+
+    // Initialize OpenAuth audit service with queue for async processing
+    const auditService = new AuditService({
+      database: env.AUTH_DB,
+      queue: env.AUDIT_QUEUE, // Queue-based mode for better performance
     });
 
     // Handle OpenAuth issuer and apply security headers
@@ -387,6 +386,23 @@ export default {
         namespace: env.AUTH_STORAGE,
       }),
       subjects,
+      // Enable client authentication with D1 database
+      clientDb: env.AUTH_DB,
+      // Enable audit logging for token operations
+      audit: {
+        service: auditService,
+        hooks: {
+          onTokenGenerated: true,
+          onTokenRefreshed: true,
+          onTokenRevoked: true,
+          onTokenReused: true,
+        },
+      },
+      // Configure CORS for token endpoints
+      cors: {
+        origins: env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o: string) => o.trim()) : [],
+        credentials: true,
+      },
       providers: {
         password: PasswordProvider(
           PasswordUI({
