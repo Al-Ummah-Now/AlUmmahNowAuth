@@ -1,4 +1,4 @@
--- Migration number: 0011 	 2025-01-13T00:00:00.000Z
+-- Migration number: 0018 	 2025-01-13T00:00:00.000Z
 -- Role-Based Access Control (RBAC) System Tables
 -- This migration creates the complete RBAC infrastructure
 --
