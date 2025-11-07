@@ -97,6 +97,33 @@ AlUmmahNowAuth/
 - Node.js 20+
 - pnpm 9+
 - Cloudflare account with Workers and D1 access
+- **Bun** (for building the OpenAuth fork)
+
+### ⚠️ Important: OpenAuth Fork Setup
+
+This project uses a **forked version of OpenAuth** with enterprise features. The fork must be built locally before installation.
+
+**Required setup steps:**
+
+```bash
+# 1. Clone and build the OpenAuth fork
+cd /tmp
+git clone https://github.com/meywd/openauth.git openauth-fork
+cd openauth-fork
+git checkout feat/enterprise-features
+bun install
+cd packages/openauth
+bun run build
+
+# 2. Now you can install the project dependencies
+cd /path/to/AlUmmahNowAuth
+pnpm install
+```
+
+**Why this is needed:**
+- The project uses `file:/tmp/openauth-fork/packages/openauth` as a dependency
+- This is a temporary workaround until the fork is published to npm
+- See [docs/OPENAUTH_FORK_SETUP.md](./docs/OPENAUTH_FORK_SETUP.md) for details
 
 ### Installation
 

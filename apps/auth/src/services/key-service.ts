@@ -134,7 +134,7 @@ export class KeyService {
 
 		if (!result) {
 			// If no active key exists, generate a new one
-			const newKid = await this.generateAndStoreKey(env);
+			await this.generateAndStoreKey(env);
 			// Recursively call to get the newly created key
 			return this.getActiveSigningKey(env);
 		}

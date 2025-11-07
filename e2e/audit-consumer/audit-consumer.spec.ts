@@ -144,7 +144,7 @@ test.describe('Audit Consumer E2E Tests', () => {
 
         if (tokens.refresh_token) {
           // Step 2: Refresh the token
-          const refreshResponse = await request.post(`${AUTH_URL}/token`, {
+          await request.post(`${AUTH_URL}/token`, {
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
             },
@@ -193,9 +193,6 @@ test.describe('Audit Consumer E2E Tests', () => {
     test('consumer continues processing after transient errors', async ({ request }) => {
       // This test verifies that the consumer can handle transient errors
       // and continues processing subsequent batches
-
-      // Trigger multiple audit events
-      const email = `test-resilience-${Date.now()}@example.com`;
 
       // Make a request that generates an audit event
       await request.get(`${AUTH_URL}/password/authorize?client_id=test&redirect_uri=http://localhost:3000/callback&response_type=code&state=resilience`);

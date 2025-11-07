@@ -5,7 +5,7 @@
  * comprehensive queue management, metrics tracking, and graceful shutdown.
  */
 
-import { AuditEvent, AuditEventType, AuditEventSeverity } from './audit-events';
+import { AuditEvent, AuditEventSeverity } from './audit-events';
 
 /**
  * Queue metrics interface
