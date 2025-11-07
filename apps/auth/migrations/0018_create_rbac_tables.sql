@@ -8,6 +8,7 @@
 -- - Existing role data will be migrated to the new RBAC system (see lines 246-266)
 
 -- 1. Roles table: Defines available roles in the system
+-- Note: Foreign key constraints to user table removed to avoid migration ordering issues
 CREATE TABLE IF NOT EXISTS roles (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   name TEXT UNIQUE NOT NULL,
@@ -17,8 +18,8 @@ CREATE TABLE IF NOT EXISTS roles (
   metadata TEXT DEFAULT '{}', -- JSON for additional properties
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  created_by TEXT REFERENCES user(id),
-  updated_by TEXT REFERENCES user(id)
+  created_by TEXT, -- References user(id) but not enforced
+  updated_by TEXT  -- References user(id) but not enforced
 );
 
 -- 2. Permissions table: Defines available permissions
@@ -39,7 +40,7 @@ CREATE TABLE IF NOT EXISTS role_permissions (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-  granted_by TEXT REFERENCES user(id),
+  granted_by TEXT, -- References user(id) but not enforced
   granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(role_id, permission_id)
 );
@@ -47,9 +48,9 @@ CREATE TABLE IF NOT EXISTS role_permissions (
 -- 4. User-Role mapping: Which roles are assigned to which users
 CREATE TABLE IF NOT EXISTS user_roles (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-  user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL, -- References user(id) but not enforced
   role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-  granted_by TEXT REFERENCES user(id),
+  granted_by TEXT, -- References user(id) but not enforced
   granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   expires_at TIMESTAMP, -- For temporary role assignments
   is_active BOOLEAN DEFAULT TRUE,
@@ -59,10 +60,10 @@ CREATE TABLE IF NOT EXISTS user_roles (
 -- 5. Direct user permissions: Override roles with direct grants/denies
 CREATE TABLE IF NOT EXISTS user_permissions (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-  user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL, -- References user(id) but not enforced
   permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
   is_grant BOOLEAN DEFAULT TRUE, -- TRUE = grant, FALSE = deny (override)
-  granted_by TEXT REFERENCES user(id),
+  granted_by TEXT, -- References user(id) but not enforced
   granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   expires_at TIMESTAMP,
   reason TEXT, -- Why this direct permission was granted/denied
@@ -74,10 +75,10 @@ CREATE TABLE IF NOT EXISTS resource_permissions (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   resource_type TEXT NOT NULL,
   resource_id TEXT NOT NULL,
-  user_id TEXT REFERENCES user(id),
+  user_id TEXT, -- References user(id) but not enforced
   role_id TEXT REFERENCES roles(id),
   permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-  granted_by TEXT REFERENCES user(id),
+  granted_by TEXT, -- References user(id) but not enforced
   granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   expires_at TIMESTAMP,
   CHECK ((user_id IS NOT NULL AND role_id IS NULL) OR
