@@ -7,7 +7,7 @@ workers_dev = true
 [[d1_databases]]
 binding = "AUDIT_DB"
 database_name = "al-ummah-now-d1"
-database_id = "YOUR_DATABASE_ID"  # Will be set via CLI or copied from auth app
+database_id = "af76f007-e21e-43aa-88de-ebfefe46fb56"
 
 # Queue consumer configuration
 [[queues.consumers]]
