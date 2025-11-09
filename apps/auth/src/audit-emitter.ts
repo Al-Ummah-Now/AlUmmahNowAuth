@@ -566,6 +566,10 @@ export function initializeAuditEmitter(options: {
     maxRetries?: number;
     retryDelays?: number[];
   };
+  d1Config?: {
+    batchSize?: number;
+    batchTimeout?: number;
+  };
 }): AuditEmitter {
   const emitter = new AuditEmitter();
 
@@ -595,7 +599,7 @@ export function initializeAuditEmitter(options: {
 
   // Add D1 sink if database is provided
   if (options.db) {
-    const d1Sink = new D1Sink(options.db);
+    const d1Sink = new D1Sink(options.db, options.d1Config);
     if (options.ctx) {
       d1Sink.setContext(options.ctx);
     }

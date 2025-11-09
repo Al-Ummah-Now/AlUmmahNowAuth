@@ -114,13 +114,17 @@ export default {
     // Initialize request context to prevent stale timer usage
     logger.initialRequest(requestId);
 
-    // Initialize audit emitter
+    // Initialize audit emitter with batch size 1 for immediate D1 writes
     initializeAuditEmitter({
       enableStdout: true,
       webhookUrl: env.AUDIT_WEBHOOK_URL,
       webhookSecret: env.AUDIT_WEBHOOK_SECRET,
       db: env.AUTH_DB,
       ctx,
+      d1Config: {
+        batchSize: 1,  // Write events immediately to database
+        batchTimeout: 100,  // Very short timeout (not needed with batchSize=1)
+      },
     });
 
     // Log all incoming requests

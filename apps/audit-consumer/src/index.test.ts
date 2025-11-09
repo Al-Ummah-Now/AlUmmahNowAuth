@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuditEventMessage } from '@openauthjs/openauth/services/audit';
+import type { D1Database, MessageBatch } from '@cloudflare/workers-types';
 
 // Mock the OpenAuth audit consumer module
 vi.mock('@openauthjs/openauth/services/audit-consumer', () => ({
@@ -32,8 +33,9 @@ describe('Audit Consumer Worker', () => {
     const mockMessage = {
       id: 'msg-1',
       timestamp: new Date(),
+      attempts: 1,
       body: {
-        version: 1,
+        version: 1 as const,
         event: {
           token_id: 'tok_123',
           subject: 'user:abc',
@@ -51,6 +53,7 @@ describe('Audit Consumer Worker', () => {
       messages: [mockMessage],
       retryAll: vi.fn(),
       ackAll: vi.fn(),
+      queue: 'test-queue',
     };
   });
 
@@ -84,8 +87,9 @@ describe('Audit Consumer Worker', () => {
       const messages = Array.from({ length: 5 }, (_, i) => ({
         id: `msg-${i}`,
         timestamp: new Date(),
+        attempts: 1,
         body: {
-          version: 1,
+          version: 1 as const,
           event: {
             token_id: `tok_${i}`,
             subject: 'user:abc',
@@ -102,6 +106,7 @@ describe('Audit Consumer Worker', () => {
         messages,
         retryAll: vi.fn(),
         ackAll: vi.fn(),
+        queue: 'test-queue',
       };
 
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
@@ -116,8 +121,9 @@ describe('Audit Consumer Worker', () => {
       const messages = Array.from({ length: 50 }, (_, i) => ({
         id: `msg-${i}`,
         timestamp: new Date(),
+        attempts: 1,
         body: {
-          version: 1,
+          version: 1 as const,
           event: {
             token_id: `tok_${i}`,
             subject: 'user:abc',
@@ -134,6 +140,7 @@ describe('Audit Consumer Worker', () => {
         messages,
         retryAll: vi.fn(),
         ackAll: vi.fn(),
+        queue: 'test-queue',
       };
 
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
@@ -151,7 +158,7 @@ describe('Audit Consumer Worker', () => {
 
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await response.json() as { status: string; service: string; timestamp: number };
       expect(body).toMatchObject({
         status: 'healthy',
         service: 'audit-consumer',
@@ -165,7 +172,7 @@ describe('Audit Consumer Worker', () => {
 
       expect(response.status).toBe(200);
 
-      const body = await response.json();
+      const body = await response.json() as { service: string };
       expect(body.service).toBe('audit-consumer');
     });
 
@@ -193,8 +200,9 @@ describe('Audit Consumer Worker', () => {
       const message = {
         id: 'msg-1',
         timestamp: new Date(),
+        attempts: 1,
         body: {
-          version: 1,
+          version: 1 as const,
           event: {
             token_id: 'tok_123',
             subject: 'user:abc',
@@ -207,7 +215,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn() };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -218,8 +226,9 @@ describe('Audit Consumer Worker', () => {
       const message = {
         id: 'msg-1',
         timestamp: new Date(),
+        attempts: 1,
         body: {
-          version: 1,
+          version: 1 as const,
           event: {
             token_id: 'tok_123',
             subject: 'user:abc',
@@ -232,7 +241,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn() };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -243,8 +252,9 @@ describe('Audit Consumer Worker', () => {
       const message = {
         id: 'msg-1',
         timestamp: new Date(),
+        attempts: 1,
         body: {
-          version: 1,
+          version: 1 as const,
           event: {
             token_id: 'tok_123',
             subject: 'user:abc',
@@ -257,7 +267,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn() };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -268,8 +278,9 @@ describe('Audit Consumer Worker', () => {
       const message = {
         id: 'msg-1',
         timestamp: new Date(),
+        attempts: 1,
         body: {
-          version: 1,
+          version: 1 as const,
           event: {
             token_id: 'tok_123',
             subject: 'user:abc',
@@ -282,7 +293,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn() };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -295,8 +306,9 @@ describe('Audit Consumer Worker', () => {
       const message = {
         id: 'msg-1',
         timestamp: new Date(),
+        attempts: 1,
         body: {
-          version: 1,
+          version: 1 as const,
           event: {
             token_id: 'tok_123',
             subject: 'user:abc',
@@ -316,7 +328,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn() };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -327,8 +339,9 @@ describe('Audit Consumer Worker', () => {
       const message = {
         id: 'msg-1',
         timestamp: new Date(),
+        attempts: 1,
         body: {
-          version: 1,
+          version: 1 as const,
           event: {
             token_id: 'tok_123',
             subject: 'user:abc',
@@ -341,7 +354,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn() };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);

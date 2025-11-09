@@ -16,6 +16,7 @@
 
 import { handleAuditBatch } from "@openauthjs/openauth/services/audit-consumer";
 import type { AuditEventMessage } from "@openauthjs/openauth/services/audit";
+import type { ExportedHandler, MessageBatch as CloudflareMessageBatch } from "@cloudflare/workers-types";
 
 /**
  * Queue consumer handler
@@ -28,7 +29,7 @@ import type { AuditEventMessage } from "@openauthjs/openauth/services/audit";
  */
 export default {
   async queue(
-    batch: MessageBatch<AuditEventMessage>,
+    batch: CloudflareMessageBatch<AuditEventMessage>,
     env: Env
   ): Promise<void> {
     const startTime = Date.now();
@@ -40,7 +41,8 @@ export default {
 
     try {
       // Use OpenAuth's built-in batch handler
-      await handleAuditBatch(batch, env.AUDIT_DB, "token_usage");
+      // Cast to any to bridge the type mismatch between Cloudflare and OpenAuth MessageBatch types
+      await handleAuditBatch(batch as any, env.AUDIT_DB, "token_usage");
 
       const duration = Date.now() - startTime;
       console.log(
@@ -59,6 +61,7 @@ export default {
   /**
    * HTTP endpoint for health checks and metrics
    */
+  // @ts-expect-error - Type mismatch between Cloudflare Workers types versions
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
@@ -98,4 +101,4 @@ export default {
       headers: { "Content-Type": "text/plain" },
     });
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env, AuditEventMessage>;
