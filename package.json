@@ -29,8 +29,8 @@
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.9.14",
-    "@cloudflare/workers-types": "^4.20251014.0",
+    "@cloudflare/vitest-pool-workers": "^0.10.7",
+    "@cloudflare/workers-types": "^4.20251117.0",
     "@playwright/test": "^1.56.1",
     "playwright": "^1.56.1",
     "typescript": "5.9.3",
