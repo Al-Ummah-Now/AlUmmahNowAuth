@@ -46,7 +46,7 @@ export default defineConfig({
   // Shared settings for all projects
   use: {
     // Base URL for navigation
-    baseURL: 'http://localhost:8788', // Profile app is the main entry point
+    baseURL: 'http://localhost:3302', // Profile app is the main entry point
 
     // Collect trace on failure
     trace: 'on-first-retry',
@@ -102,7 +102,7 @@ export default defineConfig({
   webServer: process.env.SKIP_WEB_SERVER ? undefined : [
     {
       command: 'cd apps/auth && pnpm dev',
-      port: 8787,
+      port: 3301,
       reuseExistingServer: !process.env.CI,
       timeout: 30 * 1000,
       stdout: 'pipe',
@@ -118,7 +118,7 @@ export default defineConfig({
     },
     {
       command: 'cd apps/profile && pnpm dev',
-      port: 8788,
+      port: 3302,
       reuseExistingServer: !process.env.CI,
       timeout: 30 * 1000,
       stdout: 'pipe',

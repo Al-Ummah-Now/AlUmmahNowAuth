@@ -45,9 +45,9 @@ export const TEST_USERS = {
  * Test URLs
  */
 export const TEST_URLS = {
-  authServer: 'http://localhost:8787',
+  authServer: 'http://localhost:3301',
   adminDashboard: 'http://localhost:5175',
-  profileApp: 'http://localhost:8788',
+  profileApp: 'http://localhost:3302',
 };
 
 /**

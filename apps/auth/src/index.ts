@@ -6,6 +6,11 @@ import { createSubjects } from "@openauthjs/openauth/subject";
 import { AuditService } from "@openauthjs/openauth/services/audit";
 import * as v from 'valibot';
 import SendEmail from "./email";
+import {
+  getVerificationCodeTemplate,
+  getVerificationCodePlainText,
+  getVerificationCodeSubject,
+} from "./email-templates";
 import { getOrCreateUser, checkPasswordResetRequired, clearPasswordResetRequired } from "./users";
 import { logger } from "./logger";
 import { getUserSession, createSession, deleteSession, createSessionCookie, clearSessionCookie } from "./session";
@@ -466,7 +471,25 @@ export default {
                 }
 
                 logger.debug('Using RESEND_API_KEY from environment');
-                const emailResult = await SendEmail(apiKey, "login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
+
+                // Generate email content from professional template
+                const emailData = {
+                  code,
+                  email,
+                  expiryMinutes: 10,
+                };
+                const htmlContent = getVerificationCodeTemplate(emailData);
+                const textContent = getVerificationCodePlainText(emailData);
+                const subject = getVerificationCodeSubject();
+
+                const emailResult = await SendEmail({
+                  apiKey,
+                  from: "Al Ummah Now <login@alummahnow.net>",
+                  to: email,
+                  subject,
+                  html: htmlContent,
+                  text: textContent,
+                });
                 logger.info('Login code sent successfully', { email, emailId: emailResult.emailId });
 
                 // For E2E tests, store the email ID in KV so tests can retrieve it
