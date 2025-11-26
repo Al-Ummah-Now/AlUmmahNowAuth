@@ -24,7 +24,7 @@
     "@openauthjs/openauth": "0.4.3",
     "@types/node": "^24.9.1",
     "resend": "^6.2.2",
-    "valibot": "^1.0.0"
+    "valibot": "^1.2.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.14",
