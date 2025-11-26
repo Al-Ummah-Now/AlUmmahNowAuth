@@ -26,7 +26,7 @@ const MAX_ROTATION_COUNT = 100; // Prevent infinite rotation chains
 export interface TokenUser {
 	id: string;
 	email: string;
-	role: string;
+	roles: string[];
 }
 
 /**
@@ -68,7 +68,7 @@ export class TokenService {
 			nbf: now,
 			jti: crypto.randomUUID(),
 			email: user.email,
-			role: user.role,
+			roles: user.roles,
 			client_id: clientId,
 			scope,
 		};
@@ -670,19 +670,36 @@ export class TokenService {
 	 *
 	 * @param userId - The user ID
 	 * @param env - Cloudflare Workers environment
-	 * @returns User data
+	 * @returns User data with RBAC roles
 	 * @throws Error if user not found
 	 */
 	private static async getUserById(userId: string, env: Env): Promise<TokenUser> {
-		const user = await env.AUTH_DB.prepare(`SELECT id, email, role FROM user WHERE id = ?`)
+		const user = await env.AUTH_DB.prepare(`SELECT id, email FROM user WHERE id = ?`)
 			.bind(userId)
-			.first<TokenUser>();
+			.first<{ id: string; email: string }>();
 
 		if (!user) {
 			throw TokenError.databaseError('User not found', { userId });
 		}
 
-		return user;
+		// Fetch RBAC roles from user_roles table
+		const rolesResult = await env.AUTH_DB.prepare(`
+			SELECT r.name
+			FROM user_roles ur
+			JOIN roles r ON ur.role_id = r.id
+			WHERE ur.user_id = ?
+			  AND ur.is_active = 1
+			  AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+			ORDER BY r.name
+		`).bind(userId).all<{ name: string }>();
+
+		const roles = rolesResult.results?.map(r => r.name) || [];
+
+		return {
+			id: user.id,
+			email: user.email,
+			roles,
+		};
 	}
 
 	/**

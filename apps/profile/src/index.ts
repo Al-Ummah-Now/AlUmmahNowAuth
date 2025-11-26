@@ -7,7 +7,7 @@ const subjects = createSubjects({
   user: v.object({
     id: v.string(),
     email: v.pipe(v.string(), v.email()),
-    role: v.string(),
+    roles: v.array(v.string()),
   }),
 });
 
@@ -186,7 +186,7 @@ export default {
           user: {
             id: userInfo.properties.id,
             email: userInfo.properties.email,
-            role: userInfo.properties.role,
+            roles: userInfo.properties.roles,
           },
           tokens: {
             access: result.tokens.access,
@@ -527,11 +527,18 @@ export default {
                 document.getElementById('userEmail').textContent = currentUser.email;
 
                 const roleDiv = document.getElementById('userRole');
-                const roleBadge = document.createElement('span');
-                roleBadge.className = currentUser.role === 'admin' ? 'badge badge-admin' : 'badge badge-user';
-                roleBadge.textContent = currentUser.role.toUpperCase();
                 roleDiv.innerHTML = '';
-                roleDiv.appendChild(roleBadge);
+                const roles = currentUser.roles || [];
+                roles.forEach(role => {
+                    const roleBadge = document.createElement('span');
+                    roleBadge.className = role === 'admin' || role === 'super_admin' ? 'badge badge-admin' : 'badge badge-user';
+                    roleBadge.textContent = role.toUpperCase();
+                    roleBadge.style.marginRight = '8px';
+                    roleDiv.appendChild(roleBadge);
+                });
+                if (roles.length === 0) {
+                    roleDiv.textContent = 'No roles assigned';
+                }
 
                 // Update nav menu
                 navMenu.innerHTML = \`

@@ -59,7 +59,7 @@ export interface AccessTokenPayload {
 	nbf: number; // Not before
 	jti: string; // JWT ID
 	email: string;
-	role: string;
+	roles: string[]; // RBAC roles from user_roles table
 	client_id: string;
 	scope: string;
 }
@@ -91,10 +91,6 @@ declare global {
 		 */
 		CLIENT_SECRET_SALT: string;
 
-		/**
-		 * Comma-separated list of allowed CORS origins for token endpoints.
-		 * Example: "https://app.example.com,https://admin.example.com"
-		 */
-		ALLOWED_ORIGINS?: string;
+		// Note: ALLOWED_ORIGINS is declared in src/env.d.ts
 	}
 }

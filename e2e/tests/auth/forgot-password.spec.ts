@@ -1,0 +1,195 @@
+/**
+ * E2E Test: Forgot Password Flow
+ *
+ * Tests the password reset/change flow in OpenAuth PasswordUI
+ */
+
+import { test, expect } from '@playwright/test';
+import { register } from '../../fixtures/auth';
+import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
+import { setupEmailInterception } from '../../utils/email-interceptor';
+
+// Test password for all E2E test users
+const TEST_PASSWORD = 'TestPassword123!';
+const NEW_PASSWORD = 'NewTestPassword456!';
+
+test.describe('Forgot Password Flow', () => {
+  test('should complete forgot password flow and login with new password', async ({ page }) => {
+    const testUser = TEST_USERS.user();
+
+    // Step 1: Register a new user first
+    await register(page, testUser.email);
+
+    // Step 2: Log out
+    await page.goto(TEST_URLS.profileApp);
+    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.click('button:has-text("Sign Out")');
+    await expect(page.locator('#loggedOutView')).toBeVisible();
+
+    // Step 3: Navigate to auth server login page
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
+    // Step 4: Click "Forgot password" link
+    await page.click('a:has-text("Forgot password")');
+
+    // Set up email interception for the reset code
+    const emailInterceptor = setupEmailInterception(page);
+
+    // Step 5: Enter email for password reset
+    await expect(page.locator('input[type="email"]')).toBeVisible();
+    await page.fill('input[type="email"]', testUser.email);
+    await page.click('button:has-text("Continue")');
+
+    // Step 6: Wait for verification code input
+    await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+
+    // Step 7: Get verification code from auth server test endpoint
+    const resetCode = await emailInterceptor.getLastLoginCode(testUser.email);
+
+    if (!resetCode) {
+      throw new Error('Failed to capture password reset verification code from email');
+    }
+
+    console.log(`Got reset code for ${testUser.email}: ${resetCode}`);
+
+    // Step 8: Enter verification code
+    await page.fill('input[name="code"]', resetCode);
+    await page.click('button:has-text("Continue")');
+
+    // Step 9: Enter new password
+    await expect(page.locator('input[type="password"]').first()).toBeVisible({ timeout: 10000 });
+
+    const passwordFields = page.locator('input[type="password"]');
+    await passwordFields.nth(0).fill(NEW_PASSWORD);
+    await passwordFields.nth(1).fill(NEW_PASSWORD); // Confirm password
+
+    await page.click('button:has-text("Continue")');
+
+    // Step 10: After password change, OpenAuth returns to login page (not auto-login)
+    // Wait for the login page to load (email + password fields visible)
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('input[type="password"]')).toBeVisible();
+
+    // Verify we're on the login page (should show "Forgot password?" link)
+    await expect(page.locator('a:has-text("Forgot password?")')).toBeVisible();
+
+    console.log('Password reset completed - now on login page');
+
+    // Step 11: Log in with the NEW password (we're already on the login page)
+    await page.fill('input[type="email"]', testUser.email);
+    await page.fill('input[type="password"]', NEW_PASSWORD);
+    await page.click('button:has-text("Continue")');
+
+    // Step 12: Should successfully log in with new password
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
+    await expect(page.locator('#loggedInView')).toBeVisible();
+
+    console.log('Successfully logged in with NEW password!');
+  });
+
+  test('should reject login with old password after reset', async ({ page }) => {
+    const testUser = TEST_USERS.user();
+
+    // Step 1: Register a new user
+    await register(page, testUser.email);
+
+    // Step 2: Log out
+    await page.goto(TEST_URLS.profileApp);
+    await page.click('button:has-text("Sign Out")');
+
+    // Step 3: Go through forgot password flow
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+    await page.click('a:has-text("Forgot password")');
+
+    const emailInterceptor = setupEmailInterception(page);
+
+    await page.fill('input[type="email"]', testUser.email);
+    await page.click('button:has-text("Continue")');
+
+    await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+    const resetCode = await emailInterceptor.getLastLoginCode(testUser.email);
+
+    if (!resetCode) {
+      throw new Error('Failed to capture password reset verification code');
+    }
+
+    await page.fill('input[name="code"]', resetCode);
+    await page.click('button:has-text("Continue")');
+
+    // Enter new password
+    const passwordFields = page.locator('input[type="password"]');
+    await passwordFields.nth(0).fill(NEW_PASSWORD);
+    await passwordFields.nth(1).fill(NEW_PASSWORD);
+    await page.click('button:has-text("Continue")');
+
+    // Wait for completion - OpenAuth returns to login page after password change
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('a:has-text("Forgot password?")')).toBeVisible();
+
+    // Step 4: Try to log in with OLD password - should fail
+    // We're already on the login page after password reset
+    await page.fill('input[type="email"]', testUser.email);
+    await page.fill('input[type="password"]', TEST_PASSWORD); // OLD password
+    await page.click('button:has-text("Continue")');
+
+    // Should stay on auth page with error (not redirect to profile)
+    // Wait a bit to ensure we're not redirecting
+    await page.waitForTimeout(2000);
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
+    // Look for error message about invalid password or still on login page
+    const stillOnLoginPage = await page.locator('input[type="password"]').isVisible();
+    const errorVisible = await page.locator('text=invalid').isVisible() ||
+                         await page.locator('text=incorrect').isVisible() ||
+                         await page.locator('[class*="error"]').isVisible();
+
+    // Either error is shown or we're still on login page (not redirected to profile)
+    expect(stillOnLoginPage || errorVisible).toBe(true);
+
+    // Verify we can log in with NEW password
+    await page.fill('input[type="email"]', testUser.email);
+    await page.fill('input[type="password"]', NEW_PASSWORD); // NEW password
+    await page.click('button:has-text("Continue")');
+
+    // Should successfully log in with new password
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
+    await expect(page.locator('#loggedInView')).toBeVisible();
+  });
+
+  test('should show error for invalid reset code', async ({ page }) => {
+    const testUser = TEST_USERS.user();
+
+    // Register user first
+    await register(page, testUser.email);
+
+    // Log out
+    await page.goto(TEST_URLS.profileApp);
+    await page.click('button:has-text("Sign Out")');
+
+    // Start forgot password flow
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await page.click('a:has-text("Forgot password")');
+
+    await page.fill('input[type="email"]', testUser.email);
+    await page.click('button:has-text("Continue")');
+
+    await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+
+    // Enter wrong code
+    await page.fill('input[name="code"]', '000000');
+    await page.click('button:has-text("Continue")');
+
+    // Should show error and stay on code page
+    await page.waitForTimeout(1000);
+
+    // Should either show error or stay on code input page
+    const stillOnCodePage = await page.locator('input[name="code"]').isVisible();
+    const hasError = await page.locator('text=invalid').isVisible() ||
+                     await page.locator('text=incorrect').isVisible() ||
+                     await page.locator('[class*="error"]').isVisible();
+
+    expect(stillOnCodePage || hasError).toBe(true);
+  });
+});

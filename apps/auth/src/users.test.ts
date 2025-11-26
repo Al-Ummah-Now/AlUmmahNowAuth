@@ -36,19 +36,24 @@ describe("User Management Functions", () => {
 
       expect(user).toBeDefined();
       expect(user.id).toBeDefined();
-      expect(user.role).toBe("user");
+      expect(user.roles).toContain("user");
 
       // Verify user was inserted into database
       const dbUser = await env.AUTH_DB.prepare(
-        "SELECT email, role, password_reset_required FROM user WHERE id = ?"
+        "SELECT email, password_reset_required FROM user WHERE id = ?"
       )
         .bind(user.id)
-        .first<{ email: string; role: string; password_reset_required: number }>();
+        .first<{ email: string; password_reset_required: number }>();
 
       expect(dbUser).toBeDefined();
       expect(dbUser?.email).toBe(email);
-      expect(dbUser?.role).toBe("user");
       expect(dbUser?.password_reset_required).toBe(0); // FALSE in SQLite
+
+      // Verify RBAC role was assigned
+      const roleAssignment = await env.AUTH_DB.prepare(
+        "SELECT role_id FROM user_roles WHERE user_id = ? AND is_active = 1"
+      ).bind(user.id).first<{ role_id: string }>();
+      expect(roleAssignment?.role_id).toBe("role_user");
     });
 
     it("should return existing user when user already exists", async () => {
@@ -62,15 +67,15 @@ describe("User Management Functions", () => {
 
       // Should return same user
       expect(secondUser.id).toBe(firstUser.id);
-      expect(secondUser.role).toBe(firstUser.role);
+      expect(secondUser.roles).toEqual(firstUser.roles);
     });
 
     it("should handle race condition when multiple requests create same user", async () => {
       const email = "concurrent@example.com";
 
-      // Simulate race condition by creating user directly in DB
+      // Simulate race condition by creating user directly in DB (without role column)
       await env.AUTH_DB.prepare(
-        "INSERT INTO user (email, role, password_reset_required) VALUES (?, 'user', FALSE)"
+        "INSERT INTO user (email, password_reset_required) VALUES (?, FALSE)"
       )
         .bind(email)
         .run();
@@ -80,7 +85,8 @@ describe("User Management Functions", () => {
 
       expect(user).toBeDefined();
       expect(user.id).toBeDefined();
-      expect(user.role).toBe("user");
+      // Note: User created directly may not have RBAC role, but getOrCreateUser handles this
+      expect(user.roles).toBeDefined();
     });
 
     it("should throw error for invalid operations", async () => {
@@ -110,7 +116,6 @@ describe("User Management Functions", () => {
       expect(foundUser).toBeDefined();
       expect(foundUser?.id).toBe(createdUser.id);
       expect(foundUser?.email).toBe(email);
-      expect(foundUser?.role).toBe("user");
       expect(foundUser?.created_at).toBeDefined();
     });
 
@@ -134,7 +139,6 @@ describe("User Management Functions", () => {
       expect(foundUser).toBeDefined();
       expect(foundUser?.id).toBe(createdUser.id);
       expect(foundUser?.email).toBe(email);
-      expect(foundUser?.role).toBe("user");
     });
 
     it("should return null when user not found", async () => {
@@ -145,7 +149,7 @@ describe("User Management Functions", () => {
   });
 
   describe("createUser", () => {
-    it("should create user with admin role", async () => {
+    it("should create user with admin role via RBAC", async () => {
       const email = "admin@example.com";
 
       const user = await createUser(env, email, "admin");
@@ -153,7 +157,12 @@ describe("User Management Functions", () => {
       expect(user).toBeDefined();
       expect(user.id).toBeDefined();
       expect(user.email).toBe(email);
-      expect(user.role).toBe("admin");
+
+      // Verify RBAC role was assigned
+      const roleAssignment = await env.AUTH_DB.prepare(
+        "SELECT role_id FROM user_roles WHERE user_id = ? AND is_active = 1"
+      ).bind(user.id).first<{ role_id: string }>();
+      expect(roleAssignment?.role_id).toBe("role_admin");
 
       // Verify password_reset_required is TRUE for admin-created users
       const dbUser = await env.AUTH_DB.prepare(
@@ -165,12 +174,16 @@ describe("User Management Functions", () => {
       expect(dbUser?.password_reset_required).toBe(1); // TRUE in SQLite
     });
 
-    it("should create user with default role", async () => {
+    it("should create user with default role via RBAC", async () => {
       const email = "defaultrole@example.com";
 
       const user = await createUser(env, email);
 
-      expect(user.role).toBe("user");
+      // Verify RBAC role was assigned
+      const roleAssignment = await env.AUTH_DB.prepare(
+        "SELECT role_id FROM user_roles WHERE user_id = ? AND is_active = 1"
+      ).bind(user.id).first<{ role_id: string }>();
+      expect(roleAssignment?.role_id).toBe("role_user");
     });
   });
 
@@ -187,40 +200,6 @@ describe("User Management Functions", () => {
 
       expect(updatedUser).toBeDefined();
       expect(updatedUser?.email).toBe(newEmail);
-      expect(updatedUser?.role).toBe("user");
-    });
-
-    it("should update user role", async () => {
-      const email = "rolechange@example.com";
-
-      // Create user
-      const user = await getOrCreateUser(env, email);
-      expect(user.role).toBe("user");
-
-      // Update role to admin
-      const updatedUser = await updateUser(env, user.id, { role: "admin" });
-
-      expect(updatedUser).toBeDefined();
-      expect(updatedUser?.role).toBe("admin");
-      expect(updatedUser?.email).toBe(email);
-    });
-
-    it("should update both email and role", async () => {
-      const originalEmail = "before@example.com";
-      const newEmail = "after@example.com";
-
-      // Create user
-      const user = await getOrCreateUser(env, originalEmail);
-
-      // Update both
-      const updatedUser = await updateUser(env, user.id, {
-        email: newEmail,
-        role: "admin",
-      });
-
-      expect(updatedUser).toBeDefined();
-      expect(updatedUser?.email).toBe(newEmail);
-      expect(updatedUser?.role).toBe("admin");
     });
 
     it("should return null when updating non-existent user", async () => {

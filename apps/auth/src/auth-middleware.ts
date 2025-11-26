@@ -9,7 +9,7 @@ export interface AuthContext {
   user: {
     id: string;
     email: string;
-    role: string;
+    roles: string[];
   };
   permissions?: string[];
   isAdmin: boolean;
@@ -42,15 +42,16 @@ export async function verifyAuth(
     throw new Error('Session expired');
   }
 
+  const userRoles = session.user.roles || [];
   logger.debug('User authenticated', {
     userId: session.user.id,
     email: session.user.email,
-    role: session.user.role,
+    roles: userRoles,
   });
 
   return {
     user: session.user,
-    isAdmin: session.user.role === 'admin',
+    isAdmin: userRoles.includes('admin') || userRoles.includes('super_admin'),
   };
 }
 
@@ -64,10 +65,12 @@ export async function verifyAdminAuth(
 ): Promise<AuthContext> {
   const authContext = await verifyAuth(request, env);
 
-  // Check legacy admin role first (backward compatibility)
-  if (authContext.user.role === 'admin') {
-    logger.debug('Admin access granted via legacy role', {
+  // Check RBAC admin roles first
+  const userRoles = authContext.user.roles || [];
+  if (userRoles.includes('admin') || userRoles.includes('super_admin')) {
+    logger.debug('Admin access granted via RBAC role', {
       userId: authContext.user.id,
+      roles: userRoles,
     });
     return authContext;
   }
@@ -91,7 +94,7 @@ export async function verifyAdminAuth(
     if (!hasRoleManagement) {
       logger.warn('Admin access denied', {
         userId: authContext.user.id,
-        role: authContext.user.role,
+        roles: authContext.user.roles,
       });
       throw new Error('Admin access required');
     }

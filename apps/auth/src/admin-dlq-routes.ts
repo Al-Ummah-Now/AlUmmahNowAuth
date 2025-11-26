@@ -42,8 +42,9 @@ async function verifyAdminAuth(request: Request, storage: KVNamespace): Promise<
       return false;
     }
 
-    // Verify user has admin role
-    return session.user.role === 'admin';
+    // Verify user has admin role (RBAC)
+    const userRoles = session.user.roles || [];
+    return userRoles.includes('admin') || userRoles.includes('super_admin');
   } catch (error) {
     console.error('Admin auth verification failed:', error);
     return false;

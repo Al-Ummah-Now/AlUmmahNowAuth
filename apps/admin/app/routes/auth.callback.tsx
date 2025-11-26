@@ -119,13 +119,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
 
     const userInfo = verified.subject;
-    logger.info('Token verified', { email: userInfo.properties.email, role: userInfo.properties.role });
+    console.log('DEBUG: Full userInfo:', JSON.stringify(userInfo, null, 2));
+    console.log('DEBUG: userInfo.properties:', JSON.stringify(userInfo.properties, null, 2));
+    const userRoles = userInfo.properties.roles || [];
+    logger.info('Token verified', { email: userInfo.properties.email, roles: userRoles });
 
     // Verify user is admin
-    if (userInfo.properties.role !== "admin") {
+    const hasAdminAccess = userRoles.includes("admin") || userRoles.includes("super_admin");
+    if (!hasAdminAccess) {
       logger.warn('Non-admin user attempted to access admin dashboard', {
         email: userInfo.properties.email,
-        role: userInfo.properties.role
+        roles: userRoles
       });
       await logger.finalizeRequest();
       return redirect("/?error=admin_required");
@@ -138,7 +142,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         user: {
           id: userInfo.properties.id,
           email: userInfo.properties.email,
-          role: userInfo.properties.role,
+          roles: userRoles,
         },
         tokens: {
           access: result.tokens.access,

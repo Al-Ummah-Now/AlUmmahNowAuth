@@ -37,7 +37,7 @@ const subjects = createSubjects({
   user: v.object({
     id: v.string(),
     email: v.pipe(v.string(), v.email()),
-    role: v.string(),
+    roles: v.array(v.string()),
   }),
 });
 
@@ -333,14 +333,14 @@ export default {
       }
 
       try {
-        // Update user role to admin
-        const result = await env.AUTH_DB.prepare(
-          `UPDATE user SET role = 'admin' WHERE email = ? RETURNING id, email, role`
+        // First get the user
+        const user = await env.AUTH_DB.prepare(
+          `SELECT id, email FROM user WHERE email = ?`
         )
           .bind(email)
-          .first<{ id: string; email: string; role: string }>();
+          .first<{ id: string; email: string }>();
 
-        if (!result) {
+        if (!user) {
           ctx.waitUntil(logger.finalizeRequest());
           return new Response(JSON.stringify({ error: 'User not found' }), {
             status: 404,
@@ -348,9 +348,16 @@ export default {
           });
         }
 
-        logger.info('User promoted to admin (E2E test)', { userId: result.id, email: result.email });
+        // Assign admin role via RBAC (upsert to handle existing role assignments)
+        await env.AUTH_DB.prepare(
+          `INSERT INTO user_roles (user_id, role_id, granted_by, is_active)
+           VALUES (?, 'role_admin', 'system', 1)
+           ON CONFLICT(user_id, role_id) DO UPDATE SET is_active = 1, granted_by = 'system'`
+        ).bind(user.id).run();
+
+        logger.info('User promoted to admin (E2E test)', { userId: user.id, email: user.email });
         ctx.waitUntil(logger.finalizeRequest());
-        return new Response(JSON.stringify({ success: true, user: result }), {
+        return new Response(JSON.stringify({ success: true, user: { ...user, role: 'admin' } }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
@@ -476,7 +483,7 @@ export default {
                 const emailData = {
                   code,
                   email,
-                  expiryMinutes: 10,
+                  expiryMinutes: 1440, // 24 hours (matches OpenAuth's provider session TTL)
                 };
                 const htmlContent = getVerificationCodeTemplate(emailData);
                 const textContent = getVerificationCodePlainText(emailData);
@@ -532,6 +539,14 @@ export default {
           const user = await getOrCreateUser(env, value.email, true);
           const isNewUser = user.isNew; // Track if this is a new account
 
+          // Debug: Log the roles being returned
+          logger.info('User roles from RBAC', {
+            userId: user.id,
+            email: value.email,
+            roles: user.roles,
+            rolesCount: user.roles.length
+          });
+
           // Emit login success audit event
           const clientIP = getClientIP(request);
           const loginEvent = createLoginSuccessEvent(
@@ -553,7 +568,7 @@ export default {
             const accountEvent = createAccountCreatedEvent(
               user.id,
               value.email,
-              user.role,
+              user.roles.join(','),
               {
                 ipAddress: clientIP,
                 userAgent: request.headers.get('User-Agent') ?? undefined,
@@ -566,7 +581,7 @@ export default {
           return oauthCtx.subject("user", {
             id: user.id,
             email: value.email,
-            role: user.role,
+            roles: user.roles,
           });
         } catch (error) {
           // Emit login failed audit event

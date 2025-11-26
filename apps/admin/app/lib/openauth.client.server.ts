@@ -9,7 +9,7 @@ const subjects = createSubjects({
   user: v.object({
     id: v.string(),
     email: v.pipe(v.string(), v.email()),
-    role: v.string(),
+    roles: v.array(v.string()),
   }),
 });
 

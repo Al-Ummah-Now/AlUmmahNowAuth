@@ -4,7 +4,7 @@ export interface SessionData {
   user: {
     id: string;
     email: string;
-    role: string;
+    roles: string[];
   };
   tokens: {
     access: string;

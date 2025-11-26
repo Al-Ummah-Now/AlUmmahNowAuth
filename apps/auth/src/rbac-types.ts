@@ -211,7 +211,6 @@ export const SYSTEM_ROLES = [
   'super_admin',
   'admin',
   'moderator',
-  'content_creator',
   'user'
 ] as const;
 
