@@ -22,7 +22,7 @@
  * Issue: https://github.com/openauthjs/openauth/issues/XXX (to be filed)
  */
 
-import { joinKey, splitKey } from "@openauthjs/openauth/storage/storage";
+import { joinKey, splitKey, type StorageAdapter } from "@openauthjs/openauth/storage/storage";
 
 export interface CloudflarePatchedStorageOptions {
   namespace: KVNamespace;
@@ -31,15 +31,15 @@ export interface CloudflarePatchedStorageOptions {
 /**
  * Patched CloudflareStorage implementation with fixed TTL calculation
  */
-export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOptions) {
+export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOptions): StorageAdapter {
   return {
-    async get(key: string[]) {
+    async get(key: string[]): Promise<Record<string, any> | undefined> {
       const value = await options.namespace.get(joinKey(key), "json");
-      if (!value) return;
-      return value;
+      if (!value) return undefined;
+      return value as Record<string, any>;
     },
 
-    async set(key: string[], value: any, expiry?: Date) {
+    async set(key: string[], value: any, expiry?: Date): Promise<void> {
       // FIX: Use Math.ceil() and Math.max(60, ...) to ensure minimum 60s TTL
       const ttl = expiry
         ? Math.max(60, Math.ceil((expiry.getTime() - Date.now()) / 1000))
@@ -50,11 +50,11 @@ export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOption
       });
     },
 
-    async remove(key: string[]) {
+    async remove(key: string[]): Promise<void> {
       await options.namespace.delete(joinKey(key));
     },
 
-    async* scan(prefix: string[]) {
+    async *scan(prefix: string[]): AsyncGenerator<[string[], any]> {
       let cursor: string | undefined;
       while (true) {
         const result = await options.namespace.list({
@@ -65,14 +65,15 @@ export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOption
         for (const key of result.keys) {
           const value = await options.namespace.get(key.name, "json");
           if (value !== null) {
-            yield [splitKey(key.name), value];
+            yield [splitKey(key.name), value] as [string[], any];
           }
         }
 
         if (result.list_complete) {
           break;
         }
-        cursor = result.cursor;
+        // Type assertion needed because KV list result type is a union
+        cursor = (result as { cursor?: string }).cursor;
       }
     }
   };

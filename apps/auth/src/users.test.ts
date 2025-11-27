@@ -24,8 +24,34 @@ vi.mock("./logger", () => ({
 
 describe("User Management Functions", () => {
   beforeEach(async () => {
-    // Clean up database before each test
+    // Clean up database before each test (order matters for foreign keys)
+    // Must delete from child tables first
+    await env.AUTH_DB.prepare("DELETE FROM user_permissions").run();
+    await env.AUTH_DB.prepare("DELETE FROM user_roles").run();
+    await env.AUTH_DB.prepare("DELETE FROM role_permissions").run();
+    await env.AUTH_DB.prepare("DELETE FROM permissions").run();
+    await env.AUTH_DB.prepare("DELETE FROM roles").run();
     await env.AUTH_DB.prepare("DELETE FROM user").run();
+
+    // Re-seed system roles
+    const systemRoles = [
+      { id: 'role_super_admin', name: 'super_admin', description: 'Super administrator', is_system: 1 },
+      { id: 'role_admin', name: 'admin', description: 'Administrator', is_system: 1 },
+      { id: 'role_moderator', name: 'moderator', description: 'Moderator', is_system: 1 },
+      { id: 'role_user', name: 'user', description: 'Standard user', is_system: 1 },
+    ];
+    for (const role of systemRoles) {
+      await env.AUTH_DB.prepare(`
+        INSERT INTO roles (id, name, description, is_system)
+        VALUES (?, ?, ?, ?)
+      `).bind(role.id, role.name, role.description, role.is_system).run();
+    }
+
+    // Create system user (needed for granted_by foreign key in user_roles)
+    await env.AUTH_DB.prepare(`
+      INSERT INTO user (id, email, password_reset_required)
+      VALUES ('system', 'system@test.com', FALSE)
+    `).run();
   });
 
   describe("getOrCreateUser", () => {

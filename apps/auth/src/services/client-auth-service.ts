@@ -70,7 +70,7 @@ export async function hashClientSecret(secret: string, env: Env): Promise<string
 	const derivedKeyData = await crypto.subtle.exportKey('raw', derivedKey);
 
 	// Convert to base64 for storage
-	const uint8Array = new Uint8Array(derivedKeyData);
+	const uint8Array = new Uint8Array(derivedKeyData as ArrayBuffer);
 	const binaryString = Array.from(uint8Array)
 		.map((byte) => String.fromCharCode(byte))
 		.join('');

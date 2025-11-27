@@ -62,6 +62,16 @@ export enum AuditEventType {
   UNAUTHORIZED_ACCESS = 'security.access.unauthorized',
   PRIVILEGE_ESCALATION_ATTEMPT = 'security.privilege.escalation_attempt',
   SUSPICIOUS_ACTIVITY = 'security.suspicious_activity',
+
+  // OAuth Client Management Events
+  OAUTH_CLIENT_CREATED = 'oauth.client.created',
+  OAUTH_CLIENT_UPDATED = 'oauth.client.updated',
+  OAUTH_CLIENT_DELETED = 'oauth.client.deleted',
+  OAUTH_CLIENT_SECRET_ROTATED = 'oauth.client.secret_rotated',
+
+  // Admin Operations
+  USER_FORCE_LOGOUT = 'admin.user.force_logout',
+  USER_TOKENS_REVOKED = 'admin.user.tokens_revoked',
 }
 
 /**

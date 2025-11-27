@@ -98,6 +98,9 @@ export async function login(page: Page, email: string): Promise<void> {
     return;
   }
 
+  // Set up email interception for verification code
+  const emailInterceptor = setupEmailInterception(page);
+
   // Click login button (using more specific selector to avoid multiple matches)
   await page.locator('#loggedOutView button:has-text("Sign In")').click();
 
@@ -110,6 +113,24 @@ export async function login(page: Page, email: string): Promise<void> {
 
   // Click Continue to submit login
   await page.click('button:has-text("Continue")');
+
+  // Handle verification code if required
+  // Note: Verification code is typically only required for registration.
+  // For returning users (already registered), password flow may skip verification.
+  const codeInput = page.locator('input[name="code"]');
+  const needsVerificationCode = await codeInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+  if (needsVerificationCode) {
+    // Get verification code from intercepted email
+    const verificationCode = await emailInterceptor.getLastLoginCode(email);
+    if (!verificationCode) {
+      throw new Error('Failed to capture verification code from email during login');
+    }
+
+    // Enter verification code
+    await page.fill('input[name="code"]', verificationCode);
+    await page.click('button:has-text("Continue")');
+  }
 
   // Wait for redirect back to profile app (successful login)
   await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });

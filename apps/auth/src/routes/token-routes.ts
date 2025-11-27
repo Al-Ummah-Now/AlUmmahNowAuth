@@ -195,7 +195,7 @@ export class TokenRoutes {
 
 			if (!authResult.authenticated) {
 				// Return authentication error response
-				return authResult.response;
+				return (authResult as { authenticated: false; response: Response }).response;
 			}
 
 			// Client is authenticated - use authenticated client_id
@@ -413,7 +413,7 @@ export class TokenRoutes {
 
 			if (tokenTypeHint === 'refresh_token' || !tokenTypeHint) {
 				try {
-					await TokenService.revokeRefreshToken(token, env, 'user_requested', ipAddress, userAgent);
+					await TokenService.revokeRefreshToken(env, token, 'user_requested', ipAddress, userAgent);
 				} catch (error) {
 					// Per RFC 7009, we always return 200 even if token doesn't exist
 					// This prevents token scanning attacks

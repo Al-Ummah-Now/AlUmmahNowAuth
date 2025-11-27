@@ -172,8 +172,8 @@ export class RBACRoutes {
         await emitAuditEvent(
           createAuditEvent(
             AuditEventType.UNAUTHORIZED_ACCESS,
-            AuditEventSeverity.WARNING,
             {
+              severity: AuditEventSeverity.WARNING,
               userId: authContext.user.id,
               metadata: {
                 operation: 'assign_role',
@@ -339,8 +339,8 @@ export class RBACRoutes {
         await emitAuditEvent(
           createAuditEvent(
             AuditEventType.UNAUTHORIZED_ACCESS,
-            AuditEventSeverity.WARNING,
             {
+              severity: AuditEventSeverity.WARNING,
               userId: authContext.user.id,
               metadata: {
                 operation: 'remove_role',
@@ -511,8 +511,8 @@ export class RBACRoutes {
         await emitAuditEvent(
           createAuditEvent(
             AuditEventType.PERMISSION_CHECK_FAILED,
-            AuditEventSeverity.WARNING,
             {
+              severity: AuditEventSeverity.WARNING,
               userId: authContext.user.id,
               metadata: {
                 permission: validated.permission,

@@ -140,6 +140,58 @@ export default {
       });
     }
 
+    // Handle token revocation (E2E testing endpoint)
+    // Gets refresh token from session and calls auth server's revoke endpoint
+    if (url.pathname === '/revoke' && request.method === 'POST') {
+      const session = await getSession(request, env.AUTH_STORAGE);
+
+      if (!session || !session.tokens?.refresh) {
+        return new Response(JSON.stringify({ error: 'No session or refresh token found' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      try {
+        // Call auth server's revoke endpoint
+        const revokeResponse = await fetch(`${authServerUrl}/token/revoke`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            token: session.tokens.refresh,
+            token_type_hint: 'refresh_token',
+            client_id: 'profile-app',
+          }),
+        });
+
+        // Clear the local session after revocation
+        const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
+        if (sessionToken) {
+          await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          revoked: true,
+          authServerStatus: revokeResponse.status
+        }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': clearSessionCookie(isLocalhost),
+          },
+        });
+      } catch (error) {
+        console.error('Token revocation error:', error);
+        return new Response(JSON.stringify({ error: 'Failed to revoke token' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Handle OAuth callback
     if (url.pathname === '/callback') {
       const code = url.searchParams.get('code');

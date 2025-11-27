@@ -214,7 +214,7 @@ export class TokenService {
 				clockTolerance: 10, // Allow 10 seconds clock skew
 			});
 
-			return payload as AccessTokenPayload;
+			return payload as unknown as AccessTokenPayload;
 		} catch (error) {
 			if (error instanceof TokenError) {
 				throw error;

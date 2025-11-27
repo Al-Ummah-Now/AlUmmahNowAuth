@@ -26,7 +26,16 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
 
   // Upgrade the user to admin role via the test endpoint
   // This is only available in localhost (E2E testing)
+  // Requires TEST_PROMOTE_SECRET header for security
+  const testSecret = process.env.TEST_PROMOTE_SECRET;
+  if (!testSecret) {
+    throw new Error('TEST_PROMOTE_SECRET environment variable is required for admin promotion in E2E tests');
+  }
+
   const response = await page.request.post(`${TEST_URLS.authServer}/test/promote/${encodeURIComponent(email)}`, {
+    headers: {
+      'X-Test-Secret': testSecret,
+    },
     failOnStatusCode: false,
   });
 

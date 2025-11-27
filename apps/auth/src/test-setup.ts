@@ -93,6 +93,78 @@ export async function setupDatabase() {
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_permissions_resource ON permissions(resource, action, scope)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id)`).run();
 
+  // Migration 0009: Create audit_events table
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK(severity IN ('info', 'warning', 'error', 'critical')),
+      user_id TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      request_id TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      success INTEGER NOT NULL CHECK(success IN (0, 1)),
+      error_message TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp ON audit_events(timestamp)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_events_user_id ON audit_events(user_id)`).run();
+
+  // Migration 0015: Create oauth_clients table
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS oauth_clients (
+      id TEXT PRIMARY KEY,
+      client_id TEXT UNIQUE NOT NULL,
+      client_secret_hash TEXT,
+      client_type TEXT NOT NULL CHECK(client_type IN ('public', 'confidential')),
+      allowed_grants TEXT NOT NULL,
+      redirect_uris TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_oauth_clients_client_id ON oauth_clients(client_id)`).run();
+
+  // Migration 0012: Create refresh_tokens table
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      token_hash TEXT UNIQUE NOT NULL,
+      user_id TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      issued_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      expires_at INTEGER NOT NULL,
+      last_used_at INTEGER,
+      ip_address TEXT,
+      user_agent TEXT,
+      revoked INTEGER DEFAULT 0,
+      revoked_at INTEGER,
+      revoked_reason TEXT,
+      parent_token_id TEXT,
+      rotation_count INTEGER DEFAULT 0,
+      scope TEXT DEFAULT 'openid email profile',
+      token_family_id TEXT
+    )
+  `).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)`).run();
+
+  // Migration 0012: Create token_usage table
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      token_id TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('generated', 'refreshed', 'revoked', 'expired')),
+      timestamp INTEGER NOT NULL DEFAULT (unixepoch()),
+      ip_address TEXT,
+      user_agent TEXT,
+      metadata TEXT
+    )
+  `).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_token_id ON token_usage(token_id)`).run();
+
   // Seed system roles
   const systemRoles = [
     { id: 'role_super_admin', name: 'super_admin', description: 'Super administrator with full access', is_system: 1 },
