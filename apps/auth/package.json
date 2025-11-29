@@ -22,14 +22,14 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "file:/tmp/openauth-fork/packages/openauth",
-    "@types/node": "^24.8.1",
+    "@types/node": "^24.9.1",
     "jose": "^6.1.0",
-    "resend": "^6.1.2",
+    "resend": "^6.2.2",
     "valibot": "^1.0.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.9.13",
-    "@cloudflare/workers-types": "^4.20251011.0",
+    "@cloudflare/vitest-pool-workers": "^0.9.14",
+    "@cloudflare/workers-types": "^4.20251014.0",
     "@vitest/coverage-v8": "^3.2.4",
     "typescript": "5.9.3",
     "vitest": "^3.2.4",
