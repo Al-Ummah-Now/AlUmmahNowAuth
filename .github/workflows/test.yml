@@ -132,7 +132,7 @@ jobs:
         run: pnpm test
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: coverage-reports
@@ -225,7 +225,7 @@ jobs:
           SKIP_WEB_SERVER: true
 
       - name: Upload E2E test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: e2e-test-results
@@ -237,7 +237,7 @@ jobs:
           retention-days: 30
 
       - name: Upload E2E test videos
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure()
         with:
           name: e2e-test-videos
