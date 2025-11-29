@@ -27,11 +27,11 @@
     "valibot": "^1.2.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.10.3",
-    "@cloudflare/workers-types": "^4.20251014.0",
+    "@cloudflare/vitest-pool-workers": "^0.10.11",
+    "@cloudflare/workers-types": "^4.20251128.0",
     "@vitest/coverage-v8": "^4.0.14",
     "typescript": "5.9.3",
     "vitest": "^4.0.14",
-    "wrangler": "^4.45.3"
+    "wrangler": "^4.51.0"
   }
 }

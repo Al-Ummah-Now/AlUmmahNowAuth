@@ -29,10 +29,10 @@
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.9.14",
-    "@cloudflare/workers-types": "^4.20251014.0",
-    "@playwright/test": "^1.56.1",
-    "playwright": "^1.56.1",
+    "@cloudflare/vitest-pool-workers": "^0.10.11",
+    "@cloudflare/workers-types": "^4.20251128.0",
+    "@playwright/test": "^1.57.0",
+    "playwright": "^1.57.0",
     "typescript": "5.9.3",
     "vitest": "^3.2.4"
   }
