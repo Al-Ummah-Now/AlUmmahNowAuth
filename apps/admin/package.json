@@ -41,7 +41,7 @@
     "valibot": "^1.2.0"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.13.14",
+    "@cloudflare/vite-plugin": "^1.13.15",
     "@cloudflare/vitest-pool-workers": "^0.9.14",
     "@cloudflare/workers-types": "^4.20251014.0",
     "@react-router/dev": "^7.9.4",
