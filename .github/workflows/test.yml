@@ -157,8 +157,8 @@ jobs:
 
   e2e-tests:
     runs-on: ubuntu-latest
-    name: E2E Tests
-    needs: [lint-and-type-check]
+    name: E2E Tests (QA Environment)
+    needs: [lint-and-type-check, unit-tests]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -185,79 +185,87 @@ jobs:
 
       - name: Validate required secrets
         run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "❌ ERROR: CLOUDFLARE_API_TOKEN secret is not configured"
+            exit 1
+          fi
           if [ -z "${{ secrets.RESEND_API_KEY }}" ]; then
             echo "❌ ERROR: RESEND_API_KEY secret is not configured"
-            echo "Please add RESEND_API_KEY to repository secrets"
-            echo "Go to: Settings > Secrets and variables > Actions > New repository secret"
             exit 1
           fi
           echo "✅ Required secrets are configured"
 
-      - name: Apply local database migrations
+      - name: Apply QA database migrations
         working-directory: apps/auth
-        run: pnpm run migrations:local
-
-      - name: Start Auth Server (background)
-        working-directory: apps/auth
-        run: |
-          pnpm dev &
-          echo $! > ../../.auth-server.pid
+        run: pnpm run migrations:qa
         env:
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Start Admin Dashboard (background)
+      - name: Build Admin Dashboard
         working-directory: apps/admin
-        run: |
-          pnpm dev &
-          echo $! > ../../.admin-dashboard.pid
+        run: pnpm build
 
-      - name: Start Profile App (background)
+      - name: Deploy Auth Server to QA
+        working-directory: apps/auth
+        run: pnpm run deploy:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Set Auth Server QA secrets
+        working-directory: apps/auth
+        run: |
+          echo "${{ secrets.RESEND_API_KEY }}" | npx wrangler secret put RESEND_API_KEY --config wrangler.qa.json
+          echo "test-secret-for-e2e" | npx wrangler secret put TEST_PROMOTE_SECRET --config wrangler.qa.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Deploy Profile App to QA
         working-directory: apps/profile
-        run: |
-          pnpm dev &
-          echo $! > ../../.profile-app.pid
+        run: pnpm run deploy:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Start Audit Consumer (background)
+      - name: Deploy Admin Dashboard to QA
+        working-directory: apps/admin
+        run: npx wrangler deploy --config wrangler.qa.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Deploy Audit Consumer to QA
         working-directory: apps/audit-consumer
-        run: |
-          pnpm dev &
-          echo $! > ../../.audit-consumer.pid
+        run: pnpm run deploy:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Wait for services to be ready
+      - name: Wait for QA services to be ready
         run: |
-          echo "Waiting for services to start..."
-          timeout=60
+          echo "Waiting for QA services to be ready..."
+          timeout=120
           elapsed=0
 
           while [ $elapsed -lt $timeout ]; do
-            # Auth: 3301, Profile: 3302, Admin: 3303, Consumer: 3304
-            if curl -f http://localhost:3301/.well-known/oauth-authorization-server > /dev/null 2>&1 && \
-               curl -f http://localhost:3303 > /dev/null 2>&1 && \
-               curl -f http://localhost:3302 > /dev/null 2>&1; then
-              echo "Core services are ready!"
-
-              # Check audit consumer health (may not be ready immediately)
-              if curl -f http://localhost:3304/health > /dev/null 2>&1; then
-                echo "Audit consumer is ready!"
-              else
-                echo "Note: Audit consumer not responding yet (non-blocking)"
-              fi
-
+            if curl -f https://auth.qa.alummahnow.net/.well-known/oauth-authorization-server > /dev/null 2>&1 && \
+               curl -f https://profile.auth.qa.alummahnow.net > /dev/null 2>&1 && \
+               curl -f https://admin.auth.qa.alummahnow.net > /dev/null 2>&1; then
+              echo "✅ All QA services are ready!"
               exit 0
             fi
-            sleep 2
-            elapsed=$((elapsed + 2))
+            sleep 5
+            elapsed=$((elapsed + 5))
             echo "Waiting... ($elapsed/$timeout seconds)"
           done
 
-          echo "Timeout waiting for services to start"
+          echo "❌ Timeout waiting for QA services"
           exit 1
 
-      - name: Run E2E tests
+      - name: Run E2E tests against QA
         run: pnpm exec playwright test
         env:
           CI: true
           SKIP_WEB_SERVER: true
+          E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
 
       - name: Upload E2E test results
         uses: actions/upload-artifact@v5
@@ -278,19 +286,3 @@ jobs:
           name: e2e-test-videos
           path: test-results/**/*.webm
           retention-days: 7
-
-      - name: Stop services
-        if: always()
-        run: |
-          if [ -f .auth-server.pid ]; then
-            kill $(cat .auth-server.pid) || true
-          fi
-          if [ -f .admin-dashboard.pid ]; then
-            kill $(cat .admin-dashboard.pid) || true
-          fi
-          if [ -f .profile-app.pid ]; then
-            kill $(cat .profile-app.pid) || true
-          fi
-          if [ -f .audit-consumer.pid ]; then
-            kill $(cat .audit-consumer.pid) || true
-          fi

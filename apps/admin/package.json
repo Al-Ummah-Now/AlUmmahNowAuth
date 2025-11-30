@@ -10,6 +10,7 @@
     "dev:wrangler": "wrangler dev --port 5175 --local --persist-to=../../.wrangler/state",
     "predeploy": "npm run build",
     "deploy": "wrangler deploy",
+    "deploy:qa": "pnpm build && node scripts/patch-qa-config.js && wrangler deploy --config build/server/wrangler.json",
     "typecheck": "react-router typegen && tsc",
     "type-check": "react-router typegen && tsc",
     "test": "vitest run --passWithNoTests",

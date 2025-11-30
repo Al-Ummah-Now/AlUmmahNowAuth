@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "wrangler dev --port 3304",
     "deploy": "wrangler deploy",
+    "deploy:qa": "wrangler deploy --config wrangler.qa.jsonc",
     "types": "wrangler types",
     "type-check": "tsc --noEmit",
     "test": "vitest run",

@@ -54,8 +54,8 @@ export default defineConfig({
 
   // Shared settings for all projects
   use: {
-    // Base URL for navigation
-    baseURL: 'http://localhost:3302', // Profile app is the main entry point
+    // Base URL for navigation (uses env var for QA, defaults to localhost)
+    baseURL: process.env.E2E_PROFILE_URL || 'http://localhost:3302', // Profile app is the main entry point
 
     // Collect trace on failure
     trace: 'on-first-retry',
