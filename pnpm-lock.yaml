@@ -176,8 +176,8 @@ importers:
   apps/audit-consumer:
     dependencies:
       '@meywd/openauth':
-        specifier: 0.5.0
-        version: 0.5.0(arctic@2.3.4)(hono@4.9.9)
+        specifier: 0.5.1
+        version: 0.5.1(arctic@2.3.4)(hono@4.9.9)
       '@types/node':
         specifier: ^24.8.1
         version: 24.10.1
@@ -204,8 +204,8 @@ importers:
   apps/auth:
     dependencies:
       '@meywd/openauth':
-        specifier: 0.5.0
-        version: 0.5.0(arctic@2.3.4)(hono@4.9.9)
+        specifier: 0.5.1
+        version: 0.5.1(arctic@2.3.4)(hono@4.9.9)
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
@@ -240,9 +240,9 @@ importers:
 
   apps/profile:
     dependencies:
-      '@openauthjs/openauth':
-        specifier: 0.4.3
-        version: 0.4.3(arctic@2.3.4)(hono@4.9.9)
+      '@meywd/openauth':
+        specifier: 0.5.1
+        version: 0.5.1(arctic@2.3.4)(hono@4.9.9)
       valibot:
         specifier: ^1.2.0
         version: 1.2.0(typescript@5.9.3)
@@ -1030,6 +1030,12 @@ packages:
 
   '@meywd/openauth@0.5.0':
     resolution: {integrity: sha512-bqGfeFASXVD7GYD37TmJMdrLZCtRRcQstZm91LKiLY85/3PmPXd6PxIg/khWGdIBgW1tWlqczIUEOxFtvaN+2A==, tarball: https://npm.pkg.github.com/download/@meywd/openauth/0.5.0/6ba1585d4b49a0a3e2cd61836e040a0307e16d88}
+    peerDependencies:
+      arctic: ^2.2.2
+      hono: ^4.0.0
+
+  '@meywd/openauth@0.5.1':
+    resolution: {integrity: sha512-4szzRv8N3hgQydOCSlpp11lUDVgmS+m/kYCsFl/F41y0NtU71a2vb4Ovdf7bH/R5apJ1o3fAl6UxA6lHz9mFEw==, tarball: https://npm.pkg.github.com/download/@meywd/openauth/0.5.1/ae68ba163b6f10e87add613c21ca636627425324}
     peerDependencies:
       arctic: ^2.2.2
       hono: ^4.0.0
@@ -4366,6 +4372,14 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@meywd/openauth@0.5.0(arctic@2.3.4)(hono@4.9.9)':
+    dependencies:
+      '@standard-schema/spec': 1.0.0-beta.3
+      arctic: 2.3.4
+      aws4fetch: 1.0.20
+      hono: 4.9.9
+      jose: 5.9.6
+
+  '@meywd/openauth@0.5.1(arctic@2.3.4)(hono@4.9.9)':
     dependencies:
       '@standard-schema/spec': 1.0.0-beta.3
       arctic: 2.3.4

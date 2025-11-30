@@ -8,13 +8,13 @@
     "dev": "wrangler dev --port 3302 --inspector-port 3312",
     "deploy": "wrangler deploy",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --reporter=verbose",
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@openauthjs/openauth": "0.4.3",
+    "@meywd/openauth": "0.5.1",
     "valibot": "^1.2.0"
   },
   "devDependencies": {

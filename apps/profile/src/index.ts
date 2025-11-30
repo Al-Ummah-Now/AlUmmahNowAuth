@@ -1,5 +1,5 @@
-import { createClient } from "@openauthjs/openauth/client";
-import { createSubjects } from "@openauthjs/openauth/subject";
+import { createClient } from "@meywd/openauth/client";
+import { createSubjects } from "@meywd/openauth/subject";
 import * as v from "valibot";
 
 // Define subjects matching the auth server
