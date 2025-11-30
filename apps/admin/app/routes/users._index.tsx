@@ -25,7 +25,6 @@ import {
   assignRoleToUser,
   removeRoleFromUser,
   isErrorResponse,
-  type Role,
 } from "../lib/rbac-api.server";
 
 export const meta: MetaFunction = () => {
@@ -225,7 +224,7 @@ export default function Users() {
 
   const handleCreateUser = async () => {
     // TODO: Implement user creation API call with selected roles
-    console.log("Creating user:", { email: newUserEmail, roles: selectedRoles });
+    console.info("Creating user:", { email: newUserEmail, roles: selectedRoles });
     setCreateDialogOpen(false);
     setNewUserEmail("");
     setSelectedRoles([]);

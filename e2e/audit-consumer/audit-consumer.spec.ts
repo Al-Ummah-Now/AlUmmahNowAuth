@@ -10,7 +10,6 @@
  */
 
 import { test, expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
 
 const AUTH_URL = process.env.AUTH_SERVER_URL || 'http://localhost:3301';
 const CONSUMER_URL = process.env.CONSUMER_URL || 'http://localhost:3304';

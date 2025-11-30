@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Button } from "../components/ui/button";
 import { getUserStats, getRoleStats, getUsersByRole } from "../lib/db.server";
 import { requireAuth } from "../lib/auth.server";
-import { getAuthServerUrl, getAppUrl, config } from "../lib/config";
+import { getAuthServerUrl, getAppUrl } from "../lib/config";
 import { getOpenAuthClient } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 
@@ -17,7 +17,7 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_DB: D1Database; AUTH_STORAGE: KVNamespace; AUTH_SERVER_URL?: string };
+  const env = context?.cloudflare?.env as { AUTH_DB: D1Database; AUTH_STORAGE: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
@@ -51,7 +51,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     user = await requireAuth(request, env, true);
     isAuthenticated = true;
     logger.logAuth('User authenticated', { userId: user.id, email: user.email });
-  } catch (error) {
+  } catch (_error) {
     // Not authenticated - show welcome page
     isAuthenticated = false;
     logger.debug('User not authenticated');

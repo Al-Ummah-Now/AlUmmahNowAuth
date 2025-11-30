@@ -15,9 +15,7 @@ import { env } from 'cloudflare:test';
 import './test-setup'; // Setup database schema
 import { PermissionService } from './permission-service';
 import {
-  Permission,
   PermissionData,
-  EffectivePermissions,
 } from './rbac-types';
 
 describe('PermissionService', () => {

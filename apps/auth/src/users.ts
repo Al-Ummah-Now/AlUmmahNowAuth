@@ -163,7 +163,7 @@ const UpdateUserSchema = v.object({
  * @param userId - The ID of the user whose sessions should be invalidated
  * @returns Number of sessions invalidated
  */
-async function invalidateUserSessions(storage: KVNamespace, userId: string): Promise<number> {
+async function _invalidateUserSessions(storage: KVNamespace, userId: string): Promise<number> {
   logger.info('Invalidating all sessions for user', { userId });
 
   try {
@@ -202,7 +202,7 @@ async function invalidateUserSessions(storage: KVNamespace, userId: string): Pro
 
       // Check if there are more results
       hasMore = !listResult.list_complete;
-      cursor = hasMore ? (listResult as any).cursor : undefined;
+      cursor = hasMore ? (listResult as { cursor?: string }).cursor : undefined;
     }
 
     logger.info('Sessions invalidation complete', { userId, invalidatedCount });

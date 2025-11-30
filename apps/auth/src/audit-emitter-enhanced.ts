@@ -64,7 +64,7 @@ export class StdoutSink implements AuditEventSink {
 
   async emit(event: AuditEvent): Promise<void> {
     // Output as structured JSON for parsing by log aggregators
-    console.log(JSON.stringify({
+    console.info(JSON.stringify({
       type: 'audit_event',
       event,
     }));
@@ -180,7 +180,7 @@ export class WebhookSink implements AuditEventSink {
         // Emit overflow event every 100 drops
         this.overflowEventCount++;
         if (this.overflowEventCount % 100 === 0) {
-          console.log(JSON.stringify({
+          console.warn(JSON.stringify({
             type: 'audit_event',
             event: {
               timestamp: new Date().toISOString(),
@@ -254,12 +254,12 @@ export class WebhookSink implements AuditEventSink {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
-      console.log('[WebhookSink] Timer cleared');
+      console.debug('[WebhookSink] Timer cleared');
     }
 
     // Wait for any in-progress flush to complete
     if (this.flushing) {
-      console.log('[WebhookSink] Waiting for in-progress flush');
+      console.debug('[WebhookSink] Waiting for in-progress flush');
       for (let i = 0; i < 10; i++) {
         if (!this.flushing) break;
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -268,7 +268,7 @@ export class WebhookSink implements AuditEventSink {
 
     // Final flush of remaining events
     if (this.eventQueue.length > 0) {
-      console.log(`[WebhookSink] Flushing ${this.eventQueue.length} remaining events`);
+      console.debug(`[WebhookSink] Flushing ${this.eventQueue.length} remaining events`);
       await this.flush();
     }
   }
@@ -339,7 +339,7 @@ export class WebhookSink implements AuditEventSink {
 
         // During shutdown, log to stdout as fallback
         if (this.timerCleared) {
-          console.log(JSON.stringify({
+          console.debug(JSON.stringify({
             type: 'audit_events_webhook_failed',
             events,
             error: `HTTP ${response.status}`,
@@ -347,7 +347,7 @@ export class WebhookSink implements AuditEventSink {
           }));
         }
       } else {
-        console.log(`[WebhookSink] Successfully delivered ${events.length} events`);
+        console.debug(`[WebhookSink] Successfully delivered ${events.length} events`);
         // Reset high water mark after successful flush
         this.highWaterMark = 0;
       }
@@ -361,7 +361,7 @@ export class WebhookSink implements AuditEventSink {
 
       // During shutdown, log to stdout as fallback
       if (this.timerCleared) {
-        console.log(JSON.stringify({
+        console.error(JSON.stringify({
           type: 'audit_events_webhook_error',
           events,
           error: String(error),
@@ -460,7 +460,7 @@ export class D1Sink implements AuditEventSink {
         console.warn(`[D1Sink] D1 queue overflow: dropped event (type: ${eventType})`);
 
         // Log dropped event to stdout for potential recovery
-        console.log(JSON.stringify({
+        console.warn(JSON.stringify({
           type: 'audit_event_dropped',
           sink: 'd1',
           event: droppedEvent,
@@ -513,12 +513,12 @@ export class D1Sink implements AuditEventSink {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
-      console.log('[D1Sink] Timer cleared');
+      console.debug('[D1Sink] Timer cleared');
     }
 
     // Wait for any in-progress flush
     if (this.flushing) {
-      console.log('[D1Sink] Waiting for in-progress flush');
+      console.debug('[D1Sink] Waiting for in-progress flush');
       for (let i = 0; i < 10; i++) {
         if (!this.flushing) break;
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -527,7 +527,7 @@ export class D1Sink implements AuditEventSink {
 
     // Final flush
     if (this.eventQueue.length > 0) {
-      console.log(`[D1Sink] Flushing ${this.eventQueue.length} remaining events`);
+      console.debug(`[D1Sink] Flushing ${this.eventQueue.length} remaining events`);
       await this.flush();
     }
   }
@@ -572,7 +572,7 @@ export class D1Sink implements AuditEventSink {
       );
 
       await this.db.batch(statements);
-      console.log(`[D1Sink] Successfully stored ${events.length} events`);
+      console.debug(`[D1Sink] Successfully stored ${events.length} events`);
     } catch (error) {
       console.error('[D1Sink] Storage error:', error);
 
@@ -582,7 +582,7 @@ export class D1Sink implements AuditEventSink {
       }
 
       // Log backup events to stdout
-      console.log(JSON.stringify({
+      console.error(JSON.stringify({
         type: 'audit_events_backup',
         sink: 'd1',
         events,
@@ -618,7 +618,7 @@ export class AuditEmitter {
     // Propagate to sinks that support it
     this.sinks.forEach(sink => {
       if ('setContext' in sink && typeof sink.setContext === 'function') {
-        (sink as any).setContext(ctx);
+        (sink as { setContext: (ctx: ExecutionContext) => void }).setContext(ctx);
       }
     });
   }
@@ -678,7 +678,7 @@ export class AuditEmitter {
     }
 
     this.shutdownInProgress = true;
-    console.log('[AuditEmitter] Initiating graceful shutdown');
+    console.debug('[AuditEmitter] Initiating graceful shutdown');
 
     this.shutdownPromise = (async () => {
       try {
@@ -691,12 +691,12 @@ export class AuditEmitter {
           );
 
         await Promise.all(timerClearPromises);
-        console.log('[AuditEmitter] All timers cleared');
+        console.debug('[AuditEmitter] All timers cleared');
 
         await this.flush();
-        console.log('[AuditEmitter] All events flushed');
+        console.debug('[AuditEmitter] All events flushed');
 
-        console.log(JSON.stringify({
+        console.debug(JSON.stringify({
           type: 'audit_emitter_shutdown',
           timestamp: new Date().toISOString(),
           sinkCount: this.sinks.length,

@@ -12,7 +12,6 @@ import {
   WebhookSink,
   D1Sink,
   initializeAuditEmitter,
-  getAuditEmitter,
   AuditEventSink,
 } from './audit-emitter-enhanced';
 import {
@@ -190,7 +189,7 @@ describe('Enhanced Audit Emitter', () => {
 
         // Check headers in fetch call
         expect(fetchSpy).toHaveBeenCalled();
-        const [url, options] = fetchSpy.mock.calls[0];
+        const [_url, options] = fetchSpy.mock.calls[0];
         expect(options.headers['X-Flush-Reason']).toBe('shutdown');
       });
 

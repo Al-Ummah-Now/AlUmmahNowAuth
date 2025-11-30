@@ -38,7 +38,7 @@ export class TokenCleanupService {
 
 		const duration = Date.now() - startTime;
 
-		console.log('Token cleanup completed', {
+		console.info('Token cleanup completed', {
 			expiredTokensDeleted,
 			oldAnalyticsDeleted,
 			duration,

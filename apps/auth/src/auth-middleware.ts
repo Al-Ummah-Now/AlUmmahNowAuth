@@ -231,13 +231,13 @@ export function createAuthErrorResponse(
 /**
  * Wrap a route handler with authentication
  */
-export function withAuth<T extends any[], R>(
+export function withAuth<T extends unknown[], R>(
   handler: (authContext: AuthContext, ...args: T) => Promise<R>
 ) {
   return async (request: Request, env: Env, ...args: T): Promise<R | Response> => {
     try {
       const authContext = await verifyAuth(request, env);
-      return await handler(authContext, ...[request, env, ...args] as any);
+      return await handler(authContext, ...[request, env, ...args] as T);
     } catch (error) {
       logger.error('Authentication error', {
         error: error instanceof Error ? error.message : String(error),
@@ -253,13 +253,13 @@ export function withAuth<T extends any[], R>(
 /**
  * Wrap a route handler with admin authentication
  */
-export function withAdminAuth<T extends any[], R>(
+export function withAdminAuth<T extends unknown[], R>(
   handler: (authContext: AuthContext, ...args: T) => Promise<R>
 ) {
   return async (request: Request, env: Env, ...args: T): Promise<R | Response> => {
     try {
       const authContext = await verifyAdminAuth(request, env);
-      return await handler(authContext, ...[request, env, ...args] as any);
+      return await handler(authContext, ...[request, env, ...args] as T);
     } catch (error) {
       logger.error('Admin authentication error', {
         error: error instanceof Error ? error.message : String(error),
@@ -275,14 +275,14 @@ export function withAdminAuth<T extends any[], R>(
 /**
  * Wrap a route handler with permission check
  */
-export function withPermission<T extends any[], R>(
+export function withPermission<T extends unknown[], R>(
   permission: string,
   handler: (authContext: AuthContext, ...args: T) => Promise<R>
 ) {
   return async (request: Request, env: Env, ...args: T): Promise<R | Response> => {
     try {
       const authContext = await verifyPermission(request, env, permission);
-      return await handler(authContext, ...[request, env, ...args] as any);
+      return await handler(authContext, ...[request, env, ...args] as T);
     } catch (error) {
       logger.error('Permission check error', {
         permission,

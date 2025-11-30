@@ -9,13 +9,10 @@ import {
   AuditEmitter,
   StdoutSink,
   WebhookSink,
-  D1Sink,
   initializeAuditEmitter,
   getAuditEmitter,
 } from './audit-emitter';
 import {
-  AuditEventType,
-  AuditEventSeverity,
   createLoginSuccessEvent,
 } from './audit-events';
 

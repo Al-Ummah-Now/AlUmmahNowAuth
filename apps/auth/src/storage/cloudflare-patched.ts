@@ -33,13 +33,13 @@ export interface CloudflarePatchedStorageOptions {
  */
 export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOptions): StorageAdapter {
   return {
-    async get(key: string[]): Promise<Record<string, any> | undefined> {
+    async get(key: string[]): Promise<Record<string, unknown> | undefined> {
       const value = await options.namespace.get(joinKey(key), "json");
       if (!value) return undefined;
-      return value as Record<string, any>;
+      return value as Record<string, unknown>;
     },
 
-    async set(key: string[], value: any, expiry?: Date): Promise<void> {
+    async set(key: string[], value: unknown, expiry?: Date): Promise<void> {
       // FIX: Use Math.ceil() and Math.max(60, ...) to ensure minimum 60s TTL
       const ttl = expiry
         ? Math.max(60, Math.ceil((expiry.getTime() - Date.now()) / 1000))
@@ -54,7 +54,7 @@ export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOption
       await options.namespace.delete(joinKey(key));
     },
 
-    async *scan(prefix: string[]): AsyncGenerator<[string[], any]> {
+    async *scan(prefix: string[]): AsyncGenerator<[string[], unknown]> {
       let cursor: string | undefined;
       while (true) {
         const result = await options.namespace.list({
@@ -65,7 +65,7 @@ export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOption
         for (const key of result.keys) {
           const value = await options.namespace.get(key.name, "json");
           if (value !== null) {
-            yield [splitKey(key.name), value] as [string[], any];
+            yield [splitKey(key.name), value] as [string[], unknown];
           }
         }
 

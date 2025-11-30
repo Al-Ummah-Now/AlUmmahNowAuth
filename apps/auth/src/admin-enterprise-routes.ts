@@ -8,12 +8,11 @@
  * - Service health metrics
  */
 
-import { verifyAdminAuth, createAuthErrorResponse, AuthContext } from './auth-middleware';
+import { verifyAdminAuth, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter-enhanced';
 import { AuditEventType, AuditEventSeverity, createSecurityAlertEvent } from './audit-events';
 import { checkRateLimit, getClientIP } from './rate-limit';
-import { TokenService } from './services/token-service';
 import * as v from 'valibot';
 
 // ============================================================================
@@ -76,12 +75,6 @@ interface OAuthClient {
   created_at: number;
 }
 
-interface UserTokenStats {
-  user_id: string;
-  active_tokens: number;
-  revoked_tokens: number;
-}
-
 // ============================================================================
 // Route Handler Class
 // ============================================================================
@@ -92,7 +85,7 @@ export class AdminEnterpriseRoutes {
   /**
    * Route handler for admin enterprise endpoints
    */
-  async handle(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async handle(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const method = request.method;
     const path = url.pathname;
@@ -106,7 +99,7 @@ export class AdminEnterpriseRoutes {
     if (path === '/admin/audit-logs/stats' && method === 'GET') {
       return this.getAuditStats(request, env);
     }
-    if (path.match(/^\/admin\/audit-logs\/user\/[^\/]+$/) && method === 'GET') {
+    if (path.match(/^\/admin\/audit-logs\/user\/[^/]+$/) && method === 'GET') {
       const userId = path.split('/').pop()!;
       return this.getUserAuditTrail(userId, request, url, env);
     }
@@ -120,19 +113,19 @@ export class AdminEnterpriseRoutes {
     if (path === '/admin/clients' && method === 'POST') {
       return this.createClient(request, env);
     }
-    if (path.match(/^\/admin\/clients\/[^\/]+$/) && method === 'GET') {
+    if (path.match(/^\/admin\/clients\/[^/]+$/) && method === 'GET') {
       const clientId = path.split('/').pop()!;
       return this.getClient(clientId, request, env);
     }
-    if (path.match(/^\/admin\/clients\/[^\/]+$/) && method === 'PUT') {
+    if (path.match(/^\/admin\/clients\/[^/]+$/) && method === 'PUT') {
       const clientId = path.split('/').pop()!;
       return this.updateClient(clientId, request, env);
     }
-    if (path.match(/^\/admin\/clients\/[^\/]+$/) && method === 'DELETE') {
+    if (path.match(/^\/admin\/clients\/[^/]+$/) && method === 'DELETE') {
       const clientId = path.split('/').pop()!;
       return this.deleteClient(clientId, request, env);
     }
-    if (path.match(/^\/admin\/clients\/[^\/]+\/rotate-secret$/) && method === 'POST') {
+    if (path.match(/^\/admin\/clients\/[^/]+\/rotate-secret$/) && method === 'POST') {
       const clientId = path.split('/')[3];
       return this.rotateClientSecret(clientId, request, env);
     }
@@ -143,11 +136,11 @@ export class AdminEnterpriseRoutes {
     if (path === '/admin/users/tokens/revoke' && method === 'POST') {
       return this.revokeUserTokens(request, env);
     }
-    if (path.match(/^\/admin\/users\/[^\/]+\/tokens$/) && method === 'GET') {
+    if (path.match(/^\/admin\/users\/[^/]+\/tokens$/) && method === 'GET') {
       const userId = path.split('/')[3];
       return this.getUserTokens(userId, request, env);
     }
-    if (path.match(/^\/admin\/users\/[^\/]+\/tokens$/) && method === 'DELETE') {
+    if (path.match(/^\/admin\/users\/[^/]+\/tokens$/) && method === 'DELETE') {
       const userId = path.split('/')[3];
       return this.revokeAllUserTokens(userId, request, env);
     }
@@ -185,8 +178,8 @@ export class AdminEnterpriseRoutes {
       const offset = (page - 1) * limit;
 
       // Build dynamic query
-      let whereConditions: string[] = [];
-      let bindParams: any[] = [];
+      const whereConditions: string[] = [];
+      const bindParams: unknown[] = [];
 
       if (params.event_type) {
         whereConditions.push('event_type = ?');
@@ -467,7 +460,7 @@ export class AdminEnterpriseRoutes {
       });
 
       // Return client info (and secret ONLY on creation for confidential clients)
-      const response: any = {
+      const response: Record<string, unknown> = {
         id,
         client_id: validated.client_id,
         client_type: validated.client_type,
@@ -550,7 +543,7 @@ export class AdminEnterpriseRoutes {
 
       // Build update query dynamically
       const updates: string[] = [];
-      const bindParams: any[] = [];
+      const bindParams: unknown[] = [];
 
       if (validated.allowed_grants) {
         updates.push('allowed_grants = ?');

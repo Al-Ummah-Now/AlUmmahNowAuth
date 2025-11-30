@@ -18,7 +18,7 @@ export interface Permission {
   scope: string; // The boundary (own, team, all, *)
   description?: string;
   is_system: boolean; // System permissions cannot be deleted
-  metadata?: Record<string, any>; // Additional properties as JSON
+  metadata?: Record<string, unknown>; // Additional properties as JSON
   created_at: Date;
 }
 
@@ -31,7 +31,7 @@ export interface Role {
   description?: string;
   parent_role_id?: string; // For role inheritance
   is_system: boolean; // System roles cannot be modified/deleted
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
   created_by?: string;
@@ -121,7 +121,7 @@ export interface PermissionCheck {
     id: string;
     ownerId?: string;
   };
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 /**
@@ -139,7 +139,7 @@ export interface RoleData {
   name: string;
   description?: string;
   parent_role_id?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -151,7 +151,7 @@ export interface PermissionData {
   action: string;
   scope: string;
   description?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -197,7 +197,7 @@ export interface PermissionPolicy {
   name: string;
   description?: string;
   policy_type: 'condition' | 'time_based' | 'attribute_based';
-  conditions: Record<string, any>; // JSON policy definition
+  conditions: Record<string, unknown>; // JSON policy definition
   priority: number;
   is_active: boolean;
   created_at: Date;

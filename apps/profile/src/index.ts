@@ -38,7 +38,11 @@ async function getSession(request: Request, storage: KVNamespace) {
     if (!sessionData) return null;
 
     // Parse session data with error handling
-    let session: any;
+    let session: {
+      expiresAt?: string;
+      user?: { id: string; email: string; roles: string[] };
+      tokens?: { access: string; refresh: string };
+    };
     try {
       session = JSON.parse(sessionData);
     } catch (parseError) {
@@ -60,7 +64,11 @@ async function getSession(request: Request, storage: KVNamespace) {
   }
 }
 
-async function createSession(storage: KVNamespace, sessionData: any) {
+async function createSession(storage: KVNamespace, sessionData: {
+  user: { id: string; email: string; roles: string[] };
+  tokens: { access: string; refresh: string };
+  expiresAt: string;
+}) {
   const sessionToken = crypto.randomUUID();
 
   await storage.put(
@@ -116,7 +124,7 @@ function getAppUrl(request: Request, env: Env): string {
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
     const authServerUrl = getAuthServerUrl(request, env);
@@ -211,7 +219,7 @@ export default {
         const appUrl = getAppUrl(request, env);
         const redirectUri = `${appUrl}/callback`;
 
-        console.log('Exchanging code for tokens', { authServerUrl, appUrl, redirectUri });
+        console.info('Exchanging code for tokens', { authServerUrl, appUrl, redirectUri });
         const result = await client.exchange(code, redirectUri);
 
         if (result.err !== false) {

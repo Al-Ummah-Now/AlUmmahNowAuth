@@ -10,7 +10,7 @@
 
 import { generateKeyPair, exportJWK } from 'jose';
 import { encrypt, decrypt } from './encryption';
-import type { JwtKeyRecord, KeyStatus } from '../types/jwt';
+import type { JwtKeyRecord } from '../types/jwt';
 
 /**
  * Public key cache with TTL to reduce database lookups
@@ -120,7 +120,7 @@ export class KeyService {
 	 * @returns Object containing the kid and decrypted private key as JWK
 	 * @throws Error if decryption fails
 	 */
-	static async getActiveSigningKey(env: Env): Promise<{ kid: string; privateKey: any }> {
+	static async getActiveSigningKey(env: Env): Promise<{ kid: string; privateKey: JsonWebKey }> {
 		// Find the current active key that hasn't expired
 		const stmt = env.AUTH_DB.prepare(
 			`SELECT * FROM jwt_keys
@@ -159,7 +159,7 @@ export class KeyService {
 	 * @returns Public key as JWK object
 	 * @throws Error if key not found
 	 */
-	static async getVerificationKey(kid: string, env: Env): Promise<any> {
+	static async getVerificationKey(kid: string, env: Env): Promise<JsonWebKey> {
 		// Check cache first
 		const cachedKey = publicKeyCache.get(kid);
 		if (cachedKey) {

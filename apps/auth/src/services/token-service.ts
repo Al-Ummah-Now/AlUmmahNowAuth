@@ -74,7 +74,7 @@ export class TokenService {
 		};
 
 		// Sign and generate the JWT
-		const jwt = await new SignJWT(payload as any)
+		const jwt = await new SignJWT(payload)
 			.setProtectedHeader({ alg: 'RS256', kid })
 			.setIssuedAt(now)
 			.setExpirationTime(now + ACCESS_TOKEN_LIFETIME)

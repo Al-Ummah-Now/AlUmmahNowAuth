@@ -275,7 +275,7 @@ describe("User Management Functions", () => {
       const email = "resetcheck@example.com";
 
       // Create user via admin (password_reset_required = TRUE)
-      const user = await createUser(env, email, "user");
+      await createUser(env, email, "user");
 
       // Check status (SQLite returns 1 for TRUE)
       const resetRequired = await checkPasswordResetRequired(env, email);

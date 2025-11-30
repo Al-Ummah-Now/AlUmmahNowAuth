@@ -15,7 +15,7 @@ import { env } from 'cloudflare:test';
 import './test-setup'; // Setup database schema
 import { RoleService } from './role-service';
 import { PermissionService } from './permission-service';
-import { Role, RoleData } from './rbac-types';
+import { RoleData } from './rbac-types';
 
 describe('RoleService', () => {
   let roleService: RoleService;
@@ -604,7 +604,7 @@ describe('RoleService', () => {
 
       it('should prevent deletion of roles with child roles', async () => {
         // Create child role
-        const childRole = await roleService.createRole(
+        await roleService.createRole(
           {
             name: 'child_role',
             description: 'Child role',
@@ -884,7 +884,7 @@ describe('RoleService', () => {
       });
 
       it('should prevent renaming to existing role name', async () => {
-        const role1 = await roleService.createRole(
+        await roleService.createRole(
           { name: 'role_one' },
           'admin-user'
         );
@@ -955,7 +955,7 @@ describe('RoleService', () => {
 
   describe('User Role Assignment', () => {
     let roleId: string;
-    let permissionId: string;
+    let _permissionId: string;
     let adminUserId: string;
 
     beforeEach(async () => {

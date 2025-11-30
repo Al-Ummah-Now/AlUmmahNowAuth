@@ -1,6 +1,7 @@
 {
   "name": "al-ummah-now-workspace",
   "version": "1.0.0",
+  "type": "module",
   "private": true,
   "description": "Al Ummah Now Authentication and Admin System",
   "scripts": {
@@ -19,6 +20,8 @@
     "deploy:admin": "pnpm --filter admin run deploy",
     "deploy:profile": "pnpm --filter profile run deploy",
     "deploy:consumer": "pnpm --filter audit-consumer run deploy",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "type-check": "pnpm --filter \"./apps/*\" type-check",
     "test": "pnpm --filter \"./apps/*\" test",
     "test:unit": "pnpm --filter \"./apps/*\" test:unit",
@@ -34,11 +37,17 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.10.11",
     "@cloudflare/workers-types": "^4.20251128.0",
+    "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.57.0",
     "@types/node": "^24.10.1",
     "dotenv": "^17.2.3",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
     "playwright": "^1.57.0",
     "typescript": "5.9.3",
+    "typescript-eslint": "^8.48.0",
     "vitest": "^3.2.4"
   }
 }

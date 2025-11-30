@@ -8,7 +8,7 @@
  * 4. Rotate client secret
  * 5. Delete client
  */
-import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { issuer } from "@openauthjs/openauth";
 import { createClient } from "@openauthjs/openauth/client";

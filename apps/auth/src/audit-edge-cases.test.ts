@@ -11,8 +11,6 @@ import {
   createLoginSuccessEvent,
   createLoginFailedEvent,
   createLogoutEvent,
-  createRateLimitExceededEvent,
-  createAccountCreatedEvent,
   AuditEventType,
   AuditEventSeverity,
 } from './audit-events';

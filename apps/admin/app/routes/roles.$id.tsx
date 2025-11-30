@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { Link, useLoaderData, useFetcher, useNavigate, redirect } from "react-router";
+import { Link, useLoaderData, useFetcher } from "react-router";
 import { ArrowLeft, Save, Plus, X, Shield, Users, Key, Settings, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -257,7 +257,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 export default function RoleDetail() {
   const { role, allPermissions, usersWithRole } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
-  const navigate = useNavigate();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [addPermissionOpen, setAddPermissionOpen] = useState(false);
   const [roleName, setRoleName] = useState(role.name);

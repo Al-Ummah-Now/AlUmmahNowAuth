@@ -27,14 +27,6 @@ interface OAuth2ErrorResponse {
 }
 
 /**
- * Token introspection request
- */
-interface IntrospectionRequest {
-	token: string;
-	token_type_hint?: 'access_token' | 'refresh_token';
-}
-
-/**
  * Token introspection response (RFC 7662)
  */
 interface IntrospectionResponse {
@@ -50,14 +42,6 @@ interface IntrospectionResponse {
 	aud?: string | string[];
 	iss?: string;
 	jti?: string;
-}
-
-/**
- * Token revocation request
- */
-interface RevocationRequest {
-	token: string;
-	token_type_hint?: 'access_token' | 'refresh_token';
 }
 
 /**
@@ -284,7 +268,7 @@ export class TokenRoutes {
 	private static async handleIntrospection(
 		request: Request,
 		env: Env,
-		ctx: ExecutionContext
+		_ctx: ExecutionContext
 	): Promise<Response> {
 		try {
 			// Parse form data
@@ -329,7 +313,7 @@ export class TokenRoutes {
 						status: 200,
 						headers: { 'Content-Type': 'application/json' },
 					});
-				} catch (error) {
+				} catch (_error) {
 					// If hint was access_token and it failed, return inactive
 					if (tokenTypeHint === 'access_token') {
 						return new Response(JSON.stringify({ active: false }), {
@@ -358,7 +342,7 @@ export class TokenRoutes {
 						status: 200,
 						headers: { 'Content-Type': 'application/json' },
 					});
-				} catch (error) {
+				} catch (_error) {
 					// Token is not valid
 				}
 			}
@@ -383,7 +367,7 @@ export class TokenRoutes {
 	 * @param ctx - Execution context
 	 * @returns Success response (always 200, per RFC 7009)
 	 */
-	private static async handleRevocation(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+	private static async handleRevocation(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
 		try {
 			// Parse form data
 			const contentType = request.headers.get('Content-Type') || '';
@@ -414,7 +398,7 @@ export class TokenRoutes {
 			if (tokenTypeHint === 'refresh_token' || !tokenTypeHint) {
 				try {
 					await TokenService.revokeRefreshToken(env, token, 'user_requested', ipAddress, userAgent);
-				} catch (error) {
+				} catch (_error) {
 					// Per RFC 7009, we always return 200 even if token doesn't exist
 					// This prevents token scanning attacks
 				}
@@ -422,7 +406,7 @@ export class TokenRoutes {
 
 			// RFC 7009: Always return 200 OK
 			return new Response(null, { status: 200 });
-		} catch (error) {
+		} catch (_error) {
 			// Even on error, per RFC 7009, return 200 to prevent information leakage
 			return new Response(null, { status: 200 });
 		}

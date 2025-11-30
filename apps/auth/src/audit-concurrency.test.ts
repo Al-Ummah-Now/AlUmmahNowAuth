@@ -7,14 +7,12 @@
  * Test IDs: CON-01 through CON-08
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { WebhookSink, D1Sink, AuditEmitter } from './audit-emitter-enhanced';
-import { createLoginSuccessEvent } from './audit-events';
 import {
   createTestEvents,
   createMockWebhookServer,
   createMockD1Database,
-  createMockExecutionContext,
 } from './__mocks__/audit-helpers';
 
 describe('Audit Logging - Concurrency Tests', () => {

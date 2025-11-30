@@ -2,8 +2,6 @@
  * @fileoverview JWT-related type definitions for token management
  */
 
-import type { JWK } from 'jose';
-
 /**
  * Represents the possible statuses for a JWT key
  * - 'active': Used for signing new tokens
@@ -62,6 +60,8 @@ export interface AccessTokenPayload {
 	roles: string[]; // RBAC roles from user_roles table
 	client_id: string;
 	scope: string;
+	// Index signature for jose JWTPayload compatibility
+	[key: string]: unknown;
 }
 
 /**

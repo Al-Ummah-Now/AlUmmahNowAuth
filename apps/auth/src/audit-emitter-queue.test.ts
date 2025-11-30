@@ -8,7 +8,6 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   WebhookSink,
   D1Sink,
-  QueueMetrics,
 } from './audit-emitter-enhanced';
 import {
   AuditEventType,

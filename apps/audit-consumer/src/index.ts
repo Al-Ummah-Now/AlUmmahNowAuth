@@ -35,17 +35,17 @@ export default {
     const startTime = Date.now();
     const messageCount = batch.messages.length;
 
-    console.log(
+    console.info(
       `AuditConsumer: Processing batch of ${messageCount} audit events`
     );
 
     try {
       // Use OpenAuth's built-in batch handler
-      // Cast to any to bridge the type mismatch between Cloudflare and OpenAuth MessageBatch types
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Type mismatch between Cloudflare and OpenAuth MessageBatch types
       await handleAuditBatch(batch as any, env.AUDIT_DB, "token_usage");
 
       const duration = Date.now() - startTime;
-      console.log(
+      console.info(
         `AuditConsumer: Successfully processed ${messageCount} events in ${duration}ms`
       );
     } catch (error) {
@@ -62,7 +62,7 @@ export default {
    * HTTP endpoint for health checks and metrics
    */
   // @ts-expect-error - Type mismatch between Cloudflare Workers types versions
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, _env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     // Health check endpoint

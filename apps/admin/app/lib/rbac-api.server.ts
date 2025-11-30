@@ -19,7 +19,7 @@ export interface Permission {
   scope: string;
   description?: string;
   is_system: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string | number | boolean | null>;
   created_at: string;
 }
 
@@ -32,7 +32,7 @@ export interface Role {
   description?: string;
   parent_role_id?: string;
   is_system: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string | number | boolean | null>;
   created_at: string;
   updated_at: string;
   created_by?: string;
@@ -72,7 +72,7 @@ export interface RoleData {
   name: string;
   description?: string;
   parent_role_id?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string | number | boolean | null>;
 }
 
 /**
@@ -156,8 +156,8 @@ async function authRequest<T>(
 /**
  * Type guard to check if response is an error
  */
-export function isErrorResponse(response: any): response is ErrorResponse {
-  return response && typeof response.error === 'string';
+export function isErrorResponse(response: unknown): response is ErrorResponse {
+  return typeof response === 'object' && response !== null && 'error' in response && typeof (response as ErrorResponse).error === 'string';
 }
 
 // ============================================================================

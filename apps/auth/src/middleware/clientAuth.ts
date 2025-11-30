@@ -81,7 +81,7 @@ export function createClientAuthMiddleware() {
 	return async (
 		request: Request,
 		env: Env,
-		ctx: ExecutionContext
+		_ctx: ExecutionContext
 	): Promise<{ authenticated: false; response: Response } | { authenticated: true; client: OAuthClient }> => {
 		let clientId: string | null = null;
 		let clientSecret: string | null = null;

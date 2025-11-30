@@ -12,7 +12,7 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
-  [key: string]: any;
+  [key: string]: string | number | boolean | string[] | null | undefined | Error | unknown;
 }
 
 class Logger {
@@ -146,7 +146,7 @@ class Logger {
         console.debug(formattedMessage);
         break;
       case 'info':
-        console.log(formattedMessage);
+        console.info(formattedMessage);
         break;
       case 'warn':
         console.warn(formattedMessage);

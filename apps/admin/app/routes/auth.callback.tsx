@@ -119,8 +119,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
 
     const userInfo = verified.subject;
-    console.log('DEBUG: Full userInfo:', JSON.stringify(userInfo, null, 2));
-    console.log('DEBUG: userInfo.properties:', JSON.stringify(userInfo.properties, null, 2));
+    console.debug('DEBUG: Full userInfo:', JSON.stringify(userInfo, null, 2));
+    console.debug('DEBUG: userInfo.properties:', JSON.stringify(userInfo.properties, null, 2));
     const userRoles = userInfo.properties.roles || [];
     logger.info('Token verified', { email: userInfo.properties.email, roles: userRoles });
 

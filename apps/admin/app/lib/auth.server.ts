@@ -33,7 +33,7 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
     }
 
     // Parse session data with error handling
-    let session: any;
+    let session: { user?: { id: string; email: string; roles?: string[] }; expiresAt?: string };
     try {
       session = JSON.parse(sessionData);
     } catch (parseError) {

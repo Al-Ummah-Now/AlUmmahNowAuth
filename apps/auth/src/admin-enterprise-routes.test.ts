@@ -8,7 +8,7 @@
  * - Health and metrics endpoints
  */
 
-import { describe, it, expect, beforeEach, vi, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { env } from 'cloudflare:test';
 import './test-setup';
 import { AdminEnterpriseRoutes } from './admin-enterprise-routes';

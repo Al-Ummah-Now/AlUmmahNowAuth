@@ -29,7 +29,7 @@ export interface SendEmailOptions {
  */
 export default async function SendEmail(
   options: SendEmailOptions
-): Promise<{ success: boolean; emailId?: string; error?: any }>;
+): Promise<{ success: boolean; emailId?: string; error?: unknown }>;
 
 /**
  * Send email with retry logic and validation (legacy signature)
@@ -49,7 +49,7 @@ export default async function SendEmail(
   subject: string,
   html: string,
   maxRetries?: number
-): Promise<{ success: boolean; emailId?: string; error?: any }>;
+): Promise<{ success: boolean; emailId?: string; error?: unknown }>;
 
 export default async function SendEmail(
   apiKeyOrOptions: string | SendEmailOptions,
@@ -58,7 +58,7 @@ export default async function SendEmail(
   subject?: string,
   html?: string,
   maxRetries: number = 3
-): Promise<{ success: boolean; emailId?: string; error?: any }> {
+): Promise<{ success: boolean; emailId?: string; error?: unknown }> {
   // Handle both signatures
   let options: SendEmailOptions;
   if (typeof apiKeyOrOptions === 'string') {
@@ -89,15 +89,15 @@ export default async function SendEmail(
   }
 
   const resend = new Resend(options.apiKey);
-  let lastError: any = null;
+  let _lastError: unknown = null;
   let attempt = 0;
 
   while (attempt < maxRetries) {
     attempt++;
     try {
-      console.log(`Attempting to send email (attempt ${attempt}/${maxRetries})`, { to: options.to, subject: options.subject });
+      console.debug(`Attempting to send email (attempt ${attempt}/${maxRetries})`, { to: options.to, subject: options.subject });
 
-      const emailPayload: any = {
+      const emailPayload: Parameters<typeof resend.emails.send>[0] = {
         from: options.from,
         to: options.to,
         subject: options.subject,
@@ -112,28 +112,28 @@ export default async function SendEmail(
       const { data, error } = await resend.emails.send(emailPayload);
 
       if (error) {
-        lastError = error;
+        _lastError = error;
         console.error(`Error sending email (attempt ${attempt}/${maxRetries}):`, error);
 
         // If we haven't exhausted retries, wait before retry with exponential backoff
         if (attempt < maxRetries) {
           const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5s
-          console.log(`Retrying in ${backoffMs}ms...`);
+          console.info(`Retrying in ${backoffMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue;
         }
       } else {
-        console.log("Email sent successfully:", data);
+        console.info("Email sent successfully:", data);
         return { success: true, emailId: data.id };
       }
     } catch (error) {
-      lastError = error;
+      _lastError = error;
       console.error(`Exception sending email (attempt ${attempt}/${maxRetries}):`, error);
 
       // If we haven't exhausted retries, wait before retry
       if (attempt < maxRetries) {
         const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`Retrying in ${backoffMs}ms...`);
+        console.info(`Retrying in ${backoffMs}ms...`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
         continue;
       }

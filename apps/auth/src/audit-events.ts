@@ -111,7 +111,7 @@ export interface AuditEvent {
   requestId: string | null;
 
   /** Event-specific metadata */
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 
   /** Whether the action was successful */
   success: boolean;
@@ -182,7 +182,7 @@ export function createAuditEvent(
     ipAddress?: string | null;
     userAgent?: string | null;
     requestId?: string | null;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
     success?: boolean;
     errorMessage?: string | null;
   }
@@ -427,7 +427,7 @@ export function createAccountUpdatedEvent(
 
 export function createSecurityAlertEvent(
   alertType: string,
-  details: Record<string, any>,
+  details: Record<string, unknown>,
   userId: string | null,
   ipAddress: string | null
 ): AuditEvent {
@@ -445,7 +445,7 @@ export function createRoleManagementEvent(
   roleId: string,
   roleName: string,
   performedBy: string,
-  details: Record<string, any> = {}
+  details: Record<string, unknown> = {}
 ): AuditEvent {
   return createAuditEvent(eventType, {
     severity: AuditEventSeverity.INFO,
@@ -463,7 +463,7 @@ export function createPermissionManagementEvent(
   permissionId: string,
   permissionName: string,
   performedBy: string,
-  details: Record<string, any> = {}
+  details: Record<string, unknown> = {}
 ): AuditEvent {
   return createAuditEvent(eventType, {
     severity: AuditEventSeverity.INFO,

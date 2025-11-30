@@ -59,10 +59,10 @@ export const TokenErrorStatus: Record<TokenErrorCode, number> = {
 export class TokenError extends Error {
 	public readonly code: TokenErrorCode;
 	public readonly statusCode: number;
-	public readonly details?: Record<string, any>;
+	public readonly details?: Record<string, unknown>;
 	public readonly timestamp: number;
 
-	constructor(code: TokenErrorCode, message: string, details?: Record<string, any>) {
+	constructor(code: TokenErrorCode, message: string, details?: Record<string, unknown>) {
 		super(message);
 		this.name = 'TokenError';
 		this.code = code;
@@ -71,8 +71,11 @@ export class TokenError extends Error {
 		this.timestamp = Date.now();
 
 		// Maintains proper stack trace for where our error was thrown (only available on V8)
-		if (Error.captureStackTrace) {
-			Error.captureStackTrace(this, TokenError);
+		const ErrorWithCaptureStackTrace = Error as typeof Error & {
+			captureStackTrace?: (target: object, constructor: unknown) => void;
+		};
+		if (typeof ErrorWithCaptureStackTrace.captureStackTrace === 'function') {
+			ErrorWithCaptureStackTrace.captureStackTrace(this, TokenError);
 		}
 	}
 
@@ -84,7 +87,7 @@ export class TokenError extends Error {
 		error_description: string;
 		code: string;
 		timestamp: number;
-		details?: Record<string, any>;
+		details?: Record<string, unknown>;
 	} {
 		return {
 			error: this.code.toLowerCase(),
@@ -98,21 +101,21 @@ export class TokenError extends Error {
 	/**
 	 * Helper to create an invalid token error
 	 */
-	static invalidToken(message: string = 'Invalid token', details?: Record<string, any>): TokenError {
+	static invalidToken(message: string = 'Invalid token', details?: Record<string, unknown>): TokenError {
 		return new TokenError(TokenErrorCode.INVALID_TOKEN, message, details);
 	}
 
 	/**
 	 * Helper to create a token expired error
 	 */
-	static tokenExpired(message: string = 'Token has expired', details?: Record<string, any>): TokenError {
+	static tokenExpired(message: string = 'Token has expired', details?: Record<string, unknown>): TokenError {
 		return new TokenError(TokenErrorCode.TOKEN_EXPIRED, message, details);
 	}
 
 	/**
 	 * Helper to create a token revoked error
 	 */
-	static tokenRevoked(message: string = 'Token has been revoked', details?: Record<string, any>): TokenError {
+	static tokenRevoked(message: string = 'Token has been revoked', details?: Record<string, unknown>): TokenError {
 		return new TokenError(TokenErrorCode.TOKEN_REVOKED, message, details);
 	}
 
@@ -121,7 +124,7 @@ export class TokenError extends Error {
 	 */
 	static tokenReuseDetected(
 		message: string = 'Token reuse detected - all tokens in chain have been revoked',
-		details?: Record<string, any>
+		details?: Record<string, unknown>
 	): TokenError {
 		return new TokenError(TokenErrorCode.TOKEN_REUSE_DETECTED, message, details);
 	}
@@ -131,7 +134,7 @@ export class TokenError extends Error {
 	 */
 	static concurrentRefresh(
 		message: string = 'Concurrent refresh detected - please retry',
-		details?: Record<string, any>
+		details?: Record<string, unknown>
 	): TokenError {
 		return new TokenError(TokenErrorCode.CONCURRENT_REFRESH, message, details);
 	}
@@ -141,7 +144,7 @@ export class TokenError extends Error {
 	 */
 	static maxRotationExceeded(
 		message: string = 'Maximum rotation count exceeded',
-		details?: Record<string, any>
+		details?: Record<string, unknown>
 	): TokenError {
 		return new TokenError(TokenErrorCode.MAX_ROTATION_EXCEEDED, message, details);
 	}
@@ -149,21 +152,21 @@ export class TokenError extends Error {
 	/**
 	 * Helper to create a client ID mismatch error
 	 */
-	static clientIdMismatch(message: string = 'Client ID mismatch', details?: Record<string, any>): TokenError {
+	static clientIdMismatch(message: string = 'Client ID mismatch', details?: Record<string, unknown>): TokenError {
 		return new TokenError(TokenErrorCode.CLIENT_ID_MISMATCH, message, details);
 	}
 
 	/**
 	 * Helper to create a signature invalid error
 	 */
-	static signatureInvalid(message: string = 'Token signature is invalid', details?: Record<string, any>): TokenError {
+	static signatureInvalid(message: string = 'Token signature is invalid', details?: Record<string, unknown>): TokenError {
 		return new TokenError(TokenErrorCode.SIGNATURE_INVALID, message, details);
 	}
 
 	/**
 	 * Helper to create a database error
 	 */
-	static databaseError(message: string = 'Database operation failed', details?: Record<string, any>): TokenError {
+	static databaseError(message: string = 'Database operation failed', details?: Record<string, unknown>): TokenError {
 		return new TokenError(TokenErrorCode.DATABASE_ERROR, message, details);
 	}
 }

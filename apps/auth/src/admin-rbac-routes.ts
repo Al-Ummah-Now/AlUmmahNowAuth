@@ -1,12 +1,10 @@
 import { PermissionService } from './permission-service';
 import { RoleService } from './role-service';
-import { RoleData } from './rbac-types';
-import { verifyAdminAuth, verifyGranterPermission, AuthContext, createAuthErrorResponse } from './auth-middleware';
+import { verifyAdminAuth, verifyGranterPermission, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter-enhanced';
 import {
   AuditEventType,
-  AuditEventSeverity,
   createRoleManagementEvent,
   createPermissionManagementEvent,
   createSecurityAlertEvent
@@ -69,25 +67,25 @@ export class AdminRBACRoutes {
     if (path === '/admin/roles' && method === 'GET') {
       return this.listRoles(request, env, ctx);
     }
-    if (path.match(/^\/admin\/roles\/[^\/]+$/) && method === 'GET') {
+    if (path.match(/^\/admin\/roles\/[^/]+$/) && method === 'GET') {
       const roleId = path.split('/').pop()!;
       return this.getRoleDetails(roleId, request, env, ctx);
     }
-    if (path.match(/^\/admin\/roles\/[^\/]+$/) && method === 'PUT') {
+    if (path.match(/^\/admin\/roles\/[^/]+$/) && method === 'PUT') {
       const roleId = path.split('/').pop()!;
       return this.updateRole(roleId, request, env, ctx);
     }
-    if (path.match(/^\/admin\/roles\/[^\/]+$/) && method === 'DELETE') {
+    if (path.match(/^\/admin\/roles\/[^/]+$/) && method === 'DELETE') {
       const roleId = path.split('/').pop()!;
       return this.deleteRole(roleId, request, env, ctx);
     }
 
     // Match permission management routes
-    if (path.match(/^\/admin\/roles\/[^\/]+\/permissions$/) && method === 'POST') {
+    if (path.match(/^\/admin\/roles\/[^/]+\/permissions$/) && method === 'POST') {
       const roleId = path.split('/')[3];
       return this.grantPermissionToRole(roleId, request, env, ctx);
     }
-    if (path.match(/^\/admin\/roles\/[^\/]+\/permissions\/[^\/]+$/) && method === 'DELETE') {
+    if (path.match(/^\/admin\/roles\/[^/]+\/permissions\/[^/]+$/) && method === 'DELETE') {
       const parts = path.split('/');
       const roleId = parts[3];
       const permissionId = parts[5];
@@ -100,7 +98,7 @@ export class AdminRBACRoutes {
   /**
    * POST /admin/roles - Create a new role
    */
-  private async createRole(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  private async createRole(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     try {
       // Verify admin authentication
       const authContext = await verifyAdminAuth(request, env);
@@ -174,7 +172,7 @@ export class AdminRBACRoutes {
   /**
    * GET /admin/roles - List all roles
    */
-  private async listRoles(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  private async listRoles(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     try {
       // Verify admin authentication
       await verifyAdminAuth(request, env);
@@ -205,7 +203,7 @@ export class AdminRBACRoutes {
     roleId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify admin authentication
@@ -252,7 +250,7 @@ export class AdminRBACRoutes {
     roleId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify admin authentication
@@ -335,7 +333,7 @@ export class AdminRBACRoutes {
     roleId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify admin authentication
@@ -419,7 +417,7 @@ export class AdminRBACRoutes {
     roleId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify admin authentication
@@ -552,7 +550,7 @@ export class AdminRBACRoutes {
     permissionId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify admin authentication

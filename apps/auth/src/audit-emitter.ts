@@ -36,14 +36,14 @@ export class StdoutSink implements AuditEventSink {
   async emit(event: AuditEvent): Promise<void> {
     // Output as structured JSON for parsing by log aggregators
     try {
-      console.log(JSON.stringify({
+      console.info(JSON.stringify({
         type: 'audit_event',
         event,
       }));
     } catch (error) {
       // Handle circular references or other JSON serialization errors
       console.error('Failed to stringify audit event:', error);
-      console.log(JSON.stringify({
+      console.info(JSON.stringify({
         type: 'audit_event',
         event: {
           ...event,
@@ -196,7 +196,7 @@ export class WebhookSink implements AuditEventSink {
         }
 
         this.deliveryMetrics.successfulDeliveries++;
-        console.log(`Webhook delivery successful: ${events.length} events delivered`);
+        console.info(`Webhook delivery successful: ${events.length} events delivered`);
 
       } catch (error) {
         this.deliveryMetrics.failedDeliveries++;
@@ -247,7 +247,7 @@ export class WebhookSink implements AuditEventSink {
       // Success - return the response
       if (response.ok) {
         const duration = Date.now() - startTime;
-        console.log(`Webhook delivery succeeded on attempt ${attemptNumber} (${duration}ms)`);
+        console.debug(`Webhook delivery succeeded on attempt ${attemptNumber} (${duration}ms)`);
         return response;
       }
 
@@ -260,7 +260,7 @@ export class WebhookSink implements AuditEventSink {
       // Server error (5xx) - retry if attempts remain
       if (attemptNumber < this.maxRetries) {
         const delay = this.getRetryDelay(attemptNumber);
-        console.log(`Webhook delivery failed with ${response.status}, retrying in ${delay}ms (attempt ${attemptNumber}/${this.maxRetries})`);
+        console.debug(`Webhook delivery failed with ${response.status}, retrying in ${delay}ms (attempt ${attemptNumber}/${this.maxRetries})`);
 
         await this.sleep(delay);
         return this.fetchWithRetry(url, options, attemptNumber + 1);
@@ -279,7 +279,7 @@ export class WebhookSink implements AuditEventSink {
       // Retry if attempts remain
       if (attemptNumber < this.maxRetries) {
         const delay = this.getRetryDelay(attemptNumber);
-        console.log(`Retrying in ${delay}ms (attempt ${attemptNumber}/${this.maxRetries})`);
+        console.debug(`Retrying in ${delay}ms (attempt ${attemptNumber}/${this.maxRetries})`);
 
         await this.sleep(delay);
         return this.fetchWithRetry(url, options, attemptNumber + 1);
@@ -331,7 +331,7 @@ export class WebhookSink implements AuditEventSink {
       this.deliveryMetrics.dlqWrites++;
 
       // Log only non-sensitive metadata
-      console.log(`Stored ${events.length} events to DLQ`, {
+      console.info(`Stored ${events.length} events to DLQ`, {
         dlqId: result.meta.last_row_id,
         eventTypes: events.map(e => e.eventType),
         timestamp: new Date().toISOString(),
@@ -459,7 +459,7 @@ export class D1Sink implements AuditEventSink {
         if (!result.success) {
           console.error(`D1 batch statement ${index} failed:`, result.error);
           // Log the failed event to stdout as backup
-          console.log(JSON.stringify({
+          console.error(JSON.stringify({
             type: 'audit_event_backup',
             event: events[index],
             error: result.error,
@@ -470,7 +470,7 @@ export class D1Sink implements AuditEventSink {
       console.error('D1 audit event storage error:', error);
       // Events are lost if D1 write fails - consider fallback to stdout
       // In production, you might want to write to stdout as backup
-      console.log(JSON.stringify({
+      console.error(JSON.stringify({
         type: 'audit_events_backup',
         events,
         error: String(error),
@@ -503,7 +503,7 @@ export class AuditEmitter {
     // Propagate to sinks that support it
     this.sinks.forEach(sink => {
       if ('setContext' in sink && typeof sink.setContext === 'function') {
-        (sink as any).setContext(ctx);
+        (sink as { setContext: (ctx: ExecutionContext) => void }).setContext(ctx);
       }
     });
   }

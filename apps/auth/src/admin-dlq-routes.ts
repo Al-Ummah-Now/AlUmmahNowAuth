@@ -57,7 +57,7 @@ async function verifyAdminAuth(request: Request, storage: KVNamespace): Promise<
 export async function handleDLQReplay(
   request: Request,
   env: Env,
-  ctx: ExecutionContext
+  _ctx: ExecutionContext
 ): Promise<Response> {
   // Verify admin authentication
   if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
@@ -281,7 +281,7 @@ export async function handleDLQCleanup(
 export async function handleDLQResetStale(
   request: Request,
   env: Env,
-  ctx: ExecutionContext
+  _ctx: ExecutionContext
 ): Promise<Response> {
   // Verify admin authentication
   if (!(await verifyAdminAuth(request, env.AUTH_STORAGE))) {
@@ -332,7 +332,7 @@ export async function handleDLQResetStale(
     });
 
     // Log audit event for the reset operation
-    console.log('[AUDIT] DLQ stale entries reset', {
+    console.info('[AUDIT] DLQ stale entries reset', {
       adminIP: clientIP,
       resetCount: result.reset,
       staleTimeout: parsed.output.staleTimeout ?? 30,

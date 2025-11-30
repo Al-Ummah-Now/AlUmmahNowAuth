@@ -11,10 +11,10 @@ import {
   getVerificationCodePlainText,
   getVerificationCodeSubject,
 } from "./email-templates";
-import { getOrCreateUser, checkPasswordResetRequired, clearPasswordResetRequired } from "./users";
+import { getOrCreateUser } from "./users";
 import { logger } from "./logger";
-import { getUserSession, createSession, deleteSession, createSessionCookie, clearSessionCookie } from "./session";
-import { getAuthClient, subjects as clientSubjects } from "./auth-client";
+import { getUserSession, deleteSession, clearSessionCookie } from "./session";
+import { subjects as _clientSubjects } from "./auth-client";
 import { checkRateLimit, getClientIP } from "./rate-limit";
 import { AdminRBACRoutes } from "./admin-rbac-routes";
 import { RBACRoutes } from "./rbac-routes";
@@ -106,7 +106,6 @@ function addSecurityHeaders(response: Response, isProduction: boolean = true): R
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    const startTime = Date.now();
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
 
@@ -734,7 +733,7 @@ export default {
    * crons = ["0 * * * *"]  // Every hour - cleanup expired tokens
    * ```
    */
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
     // Determine which cron job to run based on schedule
     // For now, we'll run all token maintenance tasks
     const cronName = event.cron || 'token-maintenance';
