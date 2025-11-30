@@ -1,6 +1,6 @@
 // OpenAuth client for admin dashboard
-import { createClient } from "@openauthjs/openauth/client";
-import { createSubjects } from "@openauthjs/openauth/subject";
+import { createClient } from "@meywd/openauth/client";
+import { createSubjects } from "@meywd/openauth/subject";
 import * as v from "valibot";
 import { getAuthServerUrl } from "./config";
 

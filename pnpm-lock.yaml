@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@meywd/openauth':
+        specifier: ^0.5.0
+        version: 0.5.0(arctic@2.3.4)(hono@4.9.9)
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.10.11
@@ -171,9 +175,9 @@ importers:
 
   apps/audit-consumer:
     dependencies:
-      '@openauthjs/openauth':
-        specifier: file:/tmp/openauth-fork/packages/openauth
-        version: file:../../../tmp/openauth-fork/packages/openauth(arctic@2.3.4)(hono@4.9.9)
+      '@meywd/openauth':
+        specifier: 0.5.0
+        version: 0.5.0(arctic@2.3.4)(hono@4.9.9)
       '@types/node':
         specifier: ^24.8.1
         version: 24.10.1
@@ -199,9 +203,9 @@ importers:
 
   apps/auth:
     dependencies:
-      '@openauthjs/openauth':
-        specifier: file:/tmp/openauth-fork/packages/openauth
-        version: file:../../../tmp/openauth-fork/packages/openauth(arctic@2.3.4)(hono@4.9.9)
+      '@meywd/openauth':
+        specifier: 0.5.0
+        version: 0.5.0(arctic@2.3.4)(hono@4.9.9)
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
@@ -1024,6 +1028,12 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
+  '@meywd/openauth@0.5.0':
+    resolution: {integrity: sha512-bqGfeFASXVD7GYD37TmJMdrLZCtRRcQstZm91LKiLY85/3PmPXd6PxIg/khWGdIBgW1tWlqczIUEOxFtvaN+2A==, tarball: https://npm.pkg.github.com/download/@meywd/openauth/0.5.0/6ba1585d4b49a0a3e2cd61836e040a0307e16d88}
+    peerDependencies:
+      arctic: ^2.2.2
+      hono: ^4.0.0
+
   '@mjackson/node-fetch-server@0.2.0':
     resolution: {integrity: sha512-EMlH1e30yzmTpGLQjlFmaDAjyOeZhng1/XCd7DExR8PNAnG/G1tyruZxEoUe11ClnwGhGrtsdnyyUx1frSzjng==}
 
@@ -1041,12 +1051,6 @@ packages:
 
   '@openauthjs/openauth@0.4.3':
     resolution: {integrity: sha512-RlnjqvHzqcbFVymEwhlUEuac4utA5h4nhSK/i2szZuQmxTIqbGUxZ+nM+avM+VV4Ing+/ZaNLKILoXS3yrkOOw==}
-    peerDependencies:
-      arctic: ^2.2.2
-      hono: ^4.0.0
-
-  '@openauthjs/openauth@file:../../../tmp/openauth-fork/packages/openauth':
-    resolution: {directory: ../../../tmp/openauth-fork/packages/openauth, type: directory}
     peerDependencies:
       arctic: ^2.2.2
       hono: ^4.0.0
@@ -4361,6 +4365,14 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@meywd/openauth@0.5.0(arctic@2.3.4)(hono@4.9.9)':
+    dependencies:
+      '@standard-schema/spec': 1.0.0-beta.3
+      arctic: 2.3.4
+      aws4fetch: 1.0.20
+      hono: 4.9.9
+      jose: 5.9.6
+
   '@mjackson/node-fetch-server@0.2.0': {}
 
   '@npmcli/git@4.1.0':
@@ -4393,14 +4405,6 @@ snapshots:
       which: 3.0.1
 
   '@openauthjs/openauth@0.4.3(arctic@2.3.4)(hono@4.9.9)':
-    dependencies:
-      '@standard-schema/spec': 1.0.0-beta.3
-      arctic: 2.3.4
-      aws4fetch: 1.0.20
-      hono: 4.9.9
-      jose: 5.9.6
-
-  '@openauthjs/openauth@file:../../../tmp/openauth-fork/packages/openauth(arctic@2.3.4)(hono@4.9.9)':
     dependencies:
       '@standard-schema/spec': 1.0.0-beta.3
       arctic: 2.3.4

@@ -10,11 +10,11 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { issuer } from "@openauthjs/openauth";
-import { createClient } from "@openauthjs/openauth/client";
-import { MemoryStorage } from "@openauthjs/openauth/storage/memory";
-import { createSubjects } from "@openauthjs/openauth/subject";
-import type { Provider } from "@openauthjs/openauth/provider/provider";
+import { issuer } from "@meywd/openauth";
+import { createClient } from "@meywd/openauth/client";
+import { MemoryStorage } from "@meywd/openauth/storage/memory";
+import { createSubjects } from "@meywd/openauth/subject";
+import type { Provider } from "@meywd/openauth/provider/provider";
 import * as v from "valibot";
 import "./test-setup";
 

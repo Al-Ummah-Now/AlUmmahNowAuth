@@ -1,9 +1,9 @@
-import { issuer } from "@openauthjs/openauth";
+import { issuer } from "@meywd/openauth";
 import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
-import { PasswordProvider } from "@openauthjs/openauth/provider/password";
-import { PasswordUI } from "@openauthjs/openauth/ui/password";
-import { createSubjects } from "@openauthjs/openauth/subject";
-import { AuditService } from "@openauthjs/openauth/services/audit";
+import { PasswordProvider } from "@meywd/openauth/provider/password";
+import { PasswordUI } from "@meywd/openauth/ui/password";
+import { createSubjects } from "@meywd/openauth/subject";
+import { AuditService } from "@meywd/openauth/services/audit";
 import * as v from 'valibot';
 import SendEmail from "./email";
 import {

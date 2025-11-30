@@ -14,8 +14,8 @@
  * @packageDocumentation
  */
 
-import { handleAuditBatch } from "@openauthjs/openauth/services/audit-consumer";
-import type { AuditEventMessage } from "@openauthjs/openauth/services/audit";
+import { handleAuditBatch } from "@meywd/openauth/services/audit-consumer";
+import type { AuditEventMessage } from "@meywd/openauth/services/audit";
 import type { ExportedHandler, MessageBatch as CloudflareMessageBatch } from "@cloudflare/workers-types";
 
 /**
