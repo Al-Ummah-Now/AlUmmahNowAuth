@@ -310,7 +310,7 @@ describe('WebhookSink Queue Limits', () => {
   });
 
   it('should emit overflow audit event every 100 drops', async () => {
-    const logSpy = vi.spyOn(console, 'log');
+    const warnSpy = vi.spyOn(console, 'warn');
 
     const sink = new WebhookSink({
       url: 'http://example.com',
@@ -327,8 +327,8 @@ describe('WebhookSink Queue Limits', () => {
       await sink.emit(createTestEvent(`event-${i}`));
     }
 
-    // Should have logged an overflow event
-    const overflowEventLogged = logSpy.mock.calls.some(call => {
+    // Should have logged an overflow event (implementation uses console.warn)
+    const overflowEventLogged = warnSpy.mock.calls.some(call => {
       try {
         const parsed = JSON.parse(call[0]);
         return parsed.event?.eventType === 'audit.queue.overflow';
@@ -339,7 +339,7 @@ describe('WebhookSink Queue Limits', () => {
 
     expect(overflowEventLogged).toBe(true);
 
-    logSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it('should calculate oldest event age', async () => {
@@ -400,7 +400,6 @@ describe('D1Sink Queue Limits', () => {
   });
 
   it('should log dropped events to stdout for D1', async () => {
-    const logSpy = vi.spyOn(console, 'log');
     const warnSpy = vi.spyOn(console, 'warn');
 
     const sink = new D1Sink(mockDb, {
@@ -422,8 +421,8 @@ describe('D1Sink Queue Limits', () => {
       expect.stringContaining('D1 queue overflow')
     );
 
-    // Should log the dropped event for recovery
-    const droppedEventLogged = logSpy.mock.calls.some(call => {
+    // Should log the dropped event for recovery (implementation uses console.warn)
+    const droppedEventLogged = warnSpy.mock.calls.some(call => {
       try {
         const parsed = JSON.parse(call[0]);
         return parsed.type === 'audit_event_dropped' && parsed.sink === 'd1';
@@ -434,7 +433,6 @@ describe('D1Sink Queue Limits', () => {
 
     expect(droppedEventLogged).toBe(true);
 
-    logSpy.mockRestore();
     warnSpy.mockRestore();
   });
 
@@ -467,7 +465,7 @@ describe('D1Sink Queue Limits', () => {
   });
 
   it('should backup failed D1 writes to stdout', async () => {
-    const logSpy = vi.spyOn(console, 'log');
+    const errorSpy = vi.spyOn(console, 'error');
     mockDb.batch.mockRejectedValueOnce(new Error('D1 error'));
 
     const sink = new D1Sink(mockDb, {
@@ -480,8 +478,8 @@ describe('D1Sink Queue Limits', () => {
 
     await sink.flush();
 
-    // Should log backup events
-    const backupLogged = logSpy.mock.calls.some(call => {
+    // Should log backup events (implementation uses console.error)
+    const backupLogged = errorSpy.mock.calls.some(call => {
       try {
         const parsed = JSON.parse(call[0]);
         return parsed.type === 'audit_events_backup' && parsed.sink === 'd1';
@@ -492,7 +490,7 @@ describe('D1Sink Queue Limits', () => {
 
     expect(backupLogged).toBe(true);
 
-    logSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   it('should validate D1 configuration', () => {

@@ -321,7 +321,7 @@ describe('Audit Logging - Concurrency Tests', () => {
 
   describe('CON-06: Concurrent emits to multiple sinks', () => {
     it('should emit to all sinks concurrently without interference', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
       const mockDb = createMockD1Database();
       const mockServer = createMockWebhookServer();
       mockServer.addResponse(200);

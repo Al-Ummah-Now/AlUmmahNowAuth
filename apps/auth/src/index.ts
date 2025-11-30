@@ -30,6 +30,46 @@ import {
 import { routeAdminDLQ } from "./admin-dlq-routes";
 import { handleTokenCron } from "./cron/token-cron";
 
+/**
+ * Check if an origin matches allowed origins (supports wildcards like *.example.com)
+ */
+function matchOrigin(origin: string, allowedOrigins: string[]): boolean {
+  for (const allowed of allowedOrigins) {
+    if (allowed.startsWith('*.')) {
+      // Wildcard match: *.example.com matches sub.example.com
+      const domain = allowed.slice(2); // Remove "*."
+      try {
+        const originHost = new URL(origin).hostname;
+        if (originHost.endsWith(domain) && originHost !== domain) {
+          return true;
+        }
+      } catch {
+        continue;
+      }
+    } else if (allowed === origin) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get allowed origins from env, supporting wildcards
+ */
+function getAllowedOrigins(env: Env, requestOrigin?: string | null): string[] {
+  const origins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o: string) => o.trim()) : [];
+
+  // If request origin matches a wildcard pattern, include it explicitly
+  if (requestOrigin && matchOrigin(requestOrigin, origins)) {
+    // Return the actual origin for CORS header (wildcards don't work in headers)
+    if (!origins.includes(requestOrigin)) {
+      return [...origins.filter(o => !o.startsWith('*.')), requestOrigin];
+    }
+  }
+
+  return origins.filter(o => !o.startsWith('*.'));
+}
+
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
 // consistent.
@@ -532,9 +572,9 @@ export default {
           onTokenReused: true,
         },
       },
-      // Configure CORS for token endpoints
+      // Configure CORS for token endpoints (supports wildcards like *.alummahnow.net)
       cors: {
-        origins: env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o: string) => o.trim()) : [],
+        origins: getAllowedOrigins(env, request.headers.get('Origin')),
         credentials: true,
       },
       providers: {

@@ -55,12 +55,14 @@ describe('Enhanced Audit Emitter', () => {
   let consoleSpy: MockedFunction<any>;
   let consoleErrorSpy: MockedFunction<any>;
   let consoleWarnSpy: MockedFunction<any>;
+  let consoleDebugSpy: MockedFunction<any>;
   let fetchSpy: MockedFunction<any>;
 
   beforeEach(() => {
-    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
     fetchSpy = vi.fn().mockResolvedValue(new Response('OK', { status: 200 }));
     global.fetch = fetchSpy;
     vi.clearAllTimers();
@@ -70,6 +72,7 @@ describe('Enhanced Audit Emitter', () => {
     consoleSpy.mockRestore();
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
+    consoleDebugSpy.mockRestore();
     vi.clearAllTimers();
   });
 
@@ -208,8 +211,8 @@ describe('Enhanced Audit Emitter', () => {
         // Clear timers (triggers shutdown flush)
         await sink.clearTimers();
 
-        // Should log to stdout as fallback
-        expect(consoleSpy).toHaveBeenCalledWith(
+        // Should log to stdout as fallback (implementation uses console.debug)
+        expect(consoleDebugSpy).toHaveBeenCalledWith(
           expect.stringContaining('audit_events_webhook_failed')
         );
       });
@@ -267,9 +270,9 @@ describe('Enhanced Audit Emitter', () => {
         // Clear timers (triggers shutdown flush)
         await sink.clearTimers();
 
-        // Should log to stdout as fallback with JSON backup
-        expect(consoleSpy).toHaveBeenCalled();
-        const logCall = consoleSpy.mock.calls.find((call: any[]) =>
+        // Should log to stdout as fallback with JSON backup (implementation uses console.error)
+        expect(consoleErrorSpy).toHaveBeenCalled();
+        const logCall = consoleErrorSpy.mock.calls.find((call: any[]) =>
           typeof call[0] === 'string' && call[0].includes('audit_events_backup')
         );
         expect(logCall).toBeDefined();
@@ -339,7 +342,8 @@ describe('Enhanced Audit Emitter', () => {
 
         await emitter.shutdown();
 
-        expect(consoleSpy).toHaveBeenCalledWith(
+        // Implementation uses console.debug for shutdown metrics
+        expect(consoleDebugSpy).toHaveBeenCalledWith(
           expect.stringContaining('audit_emitter_shutdown')
         );
       });
@@ -597,9 +601,8 @@ describe('Enhanced Audit Emitter', () => {
         expect.any(Error)
       );
 
-      // Should fallback to stdout with JSON backup containing the exact format
-      expect(consoleSpy).toHaveBeenCalled();
-      const logCall = consoleSpy.mock.calls.find((call: any[]) =>
+      // Should fallback to stdout with JSON backup (implementation uses console.error)
+      const logCall = consoleErrorSpy.mock.calls.find((call: any[]) =>
         typeof call[0] === 'string' && call[0].includes('audit_events_backup')
       );
       expect(logCall).toBeDefined();

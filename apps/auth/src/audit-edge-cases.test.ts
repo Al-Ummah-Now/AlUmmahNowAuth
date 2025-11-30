@@ -130,7 +130,7 @@ describe('StdoutSink - Edge Cases', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -387,7 +387,6 @@ describe('D1Sink - Edge Cases', () => {
     };
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const sink = new D1Sink(mockDb as any, { batchSize: 3 });
 
@@ -403,13 +402,12 @@ describe('D1Sink - Edge Cases', () => {
       'Constraint violation'
     );
 
-    // Should backup failed event to stdout
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    // Should backup failed event to stdout (implementation uses console.error)
+    expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('audit_event_backup')
     );
 
     consoleSpy.mockRestore();
-    consoleLogSpy.mockRestore();
   });
 
   it('should handle empty event queue flush', async () => {

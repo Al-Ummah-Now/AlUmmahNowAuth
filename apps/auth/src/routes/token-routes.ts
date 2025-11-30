@@ -18,6 +18,28 @@ import { TokenError } from '../types/errors';
 import { createClientAuthMiddleware } from '../middleware/clientAuth';
 
 /**
+ * Check if an origin matches allowed origins (supports wildcards like *.example.com)
+ */
+function matchOrigin(origin: string, allowedOrigins: string[]): boolean {
+	for (const allowed of allowedOrigins) {
+		if (allowed.startsWith('*.')) {
+			const domain = allowed.slice(2);
+			try {
+				const originHost = new URL(origin).hostname;
+				if (originHost.endsWith(domain) && originHost !== domain) {
+					return true;
+				}
+			} catch {
+				continue;
+			}
+		} else if (allowed === origin) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
  * OAuth 2.0 error response format
  */
 interface OAuth2ErrorResponse {
@@ -95,12 +117,12 @@ export class TokenRoutes {
 	private static addCorsHeaders(response: Response, request: Request, env: Env): Response {
 		const headers = new Headers(response.headers);
 
-		// Get allowed origins from environment
+		// Get allowed origins from environment (supports wildcards like *.alummahnow.net)
 		const allowedOrigins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : [];
 		const origin = request.headers.get('Origin');
 
-		// Only allow whitelisted origins
-		if (origin && allowedOrigins.includes(origin)) {
+		// Only allow whitelisted origins (including wildcard matches)
+		if (origin && matchOrigin(origin, allowedOrigins)) {
 			headers.set('Access-Control-Allow-Origin', origin);
 			headers.set('Vary', 'Origin'); // Important for proper caching
 		}
@@ -132,8 +154,8 @@ export class TokenRoutes {
 			'Access-Control-Max-Age': '86400',
 		};
 
-		// Only allow whitelisted origins
-		if (origin && allowedOrigins.includes(origin)) {
+		// Only allow whitelisted origins (including wildcard matches)
+		if (origin && matchOrigin(origin, allowedOrigins)) {
 			headers['Access-Control-Allow-Origin'] = origin;
 			headers['Vary'] = 'Origin'; // Important for proper caching
 		}

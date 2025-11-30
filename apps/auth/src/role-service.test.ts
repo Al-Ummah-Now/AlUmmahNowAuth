@@ -972,7 +972,7 @@ describe('RoleService', () => {
         action: 'test',
         scope: 'all',
       });
-      permissionId = perm.id;
+      _permissionId = perm.id;
 
       await permissionService.grantPermissionToRole(roleId, perm.id, 'admin-user');
 
@@ -1213,7 +1213,7 @@ describe('RoleService', () => {
 
   describe('Audit Logging', () => {
     it('should log role creation', async () => {
-      const consoleSpy = vi.spyOn(console, 'log');
+      const consoleSpy = vi.spyOn(console, 'info');
 
       await roleService.createRole({ name: 'audit_role' }, 'admin-user');
 
@@ -1223,7 +1223,7 @@ describe('RoleService', () => {
     });
 
     it('should log role assignment', async () => {
-      const consoleSpy = vi.spyOn(console, 'log');
+      const consoleSpy = vi.spyOn(console, 'info');
 
       const role = await roleService.createRole({ name: 'log_role' }, 'admin');
 
@@ -1249,7 +1249,7 @@ describe('RoleService', () => {
     });
 
     it('should log role removal', async () => {
-      const consoleSpy = vi.spyOn(console, 'log');
+      const consoleSpy = vi.spyOn(console, 'info');
 
       const role = await roleService.createRole({ name: 'remove_role' }, 'admin');
 

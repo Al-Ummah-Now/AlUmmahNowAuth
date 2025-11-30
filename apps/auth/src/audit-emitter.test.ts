@@ -13,13 +13,14 @@ import {
   getAuditEmitter,
 } from './audit-emitter';
 import {
+  AuditEventType,
   createLoginSuccessEvent,
 } from './audit-events';
 
 describe('Audit Emitter', () => {
   describe('StdoutSink', () => {
     it('should output events to console as JSON', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
       const sink = new StdoutSink();
 
       const event = createLoginSuccessEvent('user@example.com', 'user-123', {});
@@ -52,7 +53,7 @@ describe('Audit Emitter', () => {
     });
 
     it('should emit events to all sinks', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
       const sink1 = new StdoutSink();
       const sink2 = new StdoutSink();
@@ -71,7 +72,7 @@ describe('Audit Emitter', () => {
 
     it('should handle sink errors gracefully', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
       // Create a sink that throws an error
       const failingSink = {
@@ -95,10 +96,10 @@ describe('Audit Emitter', () => {
       expect(consoleSpy).toHaveBeenCalled();
 
       // Working sink should still emit
-      expect(consoleLogSpy).toHaveBeenCalled();
+      expect(consoleInfoSpy).toHaveBeenCalled();
 
       consoleSpy.mockRestore();
-      consoleLogSpy.mockRestore();
+      consoleInfoSpy.mockRestore();
     });
 
     it('should flush all sinks', async () => {
@@ -199,7 +200,7 @@ describe('Audit Emitter', () => {
 
   describe('Integration', () => {
     it('should emit events end-to-end', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
       // Initialize emitter
       const emitter = initializeAuditEmitter({
