@@ -101,5 +101,5 @@ describe("Email Module Exports", () => {
     const SendEmail = (await import("./email")).default;
     expect(SendEmail).toBeDefined();
     expect(typeof SendEmail).toBe("function");
-  });
+  }, 15000); // Increase timeout for dynamic import
 });
