@@ -26,6 +26,7 @@
     ]
   },
   "vars": {
+    "ENVIRONMENT": "qa",
     "PROFILE_APP_URL": "https://profile.auth.qa.alummahnow.net/",
     "ALLOWED_ORIGINS": "https://profile.auth.qa.alummahnow.net,https://admin.auth.qa.alummahnow.net",
     "OPENAUTH_ISSUER": "https://auth.qa.alummahnow.net",

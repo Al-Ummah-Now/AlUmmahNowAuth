@@ -151,8 +151,11 @@ export default {
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
 
-    // Determine if running in production
-    const isProduction = url.hostname !== 'localhost' && url.hostname !== '127.0.0.1';
+    // Determine if running in production (test endpoints disabled in production)
+    // Use ENVIRONMENT env var if set, otherwise fall back to hostname check
+    const isProduction = env.ENVIRONMENT
+      ? env.ENVIRONMENT === 'production'
+      : (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1');
 
     // Initialize D1 logging (optional - set to false to disable)
     logger.setDatabase(env.AUTH_DB, true);

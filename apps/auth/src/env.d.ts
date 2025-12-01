@@ -31,6 +31,8 @@ declare global {
     TEST_PROMOTE_SECRET?: string;
     ACCESS_TOKEN_EXPIRY?: number;
     REFRESH_TOKEN_EXPIRY?: number;
+    // Environment identifier: "production", "qa", or "development"
+    ENVIRONMENT?: string;
   }
 }
 
