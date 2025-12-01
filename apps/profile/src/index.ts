@@ -16,6 +16,7 @@ interface Env {
   AUTH_DB: D1Database;
   AUTH_SERVER_URL?: string;
   APP_URL?: string;
+  ADMIN_URL?: string;
   CF_WEB_ANALYTICS_TOKEN?: string;
 }
 
@@ -278,6 +279,7 @@ export default {
       const isLoggedIn = session !== null;
       const userData = session ? JSON.stringify(session.user) : 'null';
       const appUrl = getAppUrl(request, env);
+      const adminUrl = env.ADMIN_URL || '';
 
       const html = `<!DOCTYPE html>
 <html lang="en">
@@ -574,6 +576,7 @@ export default {
         const isLoggedIn = ${isLoggedIn};
         const authServerUrl = '${authServerUrl}';
         const appUrl = '${appUrl}';
+        const adminUrl = '${adminUrl}';
 
         function updateUI() {
             const navMenu = document.getElementById('navMenu');
@@ -601,8 +604,10 @@ export default {
                     roleDiv.textContent = 'No roles assigned';
                 }
 
-                // Update nav menu
+                // Update nav menu - show admin link for admin users
+                const isAdmin = roles.some(r => r === 'admin' || r === 'super_admin');
                 navMenu.innerHTML = \`
+                    \${isAdmin && adminUrl ? \`<a href="\${adminUrl}" class="btn btn-primary" style="margin-right: 10px;">⚙️ Admin Dashboard</a>\` : ''}
                     <button onclick="handleLogout()" class="btn btn-secondary">
                         🚪 Sign Out
                     </button>
