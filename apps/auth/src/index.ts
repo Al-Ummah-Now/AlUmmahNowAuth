@@ -550,6 +550,83 @@ export default {
       }
     }
 
+    // Rate limiting for token endpoints
+    // Token endpoints are more sensitive and require stricter rate limits
+    if (url.pathname === '/token' ||
+        url.pathname === '/token/introspect' ||
+        url.pathname === '/token/revoke') {
+
+      const clientIP = getClientIP(request);
+      const rateLimitKey = `token:${url.pathname}:${clientIP}`;
+
+      // Token endpoints: 10 requests per minute (stricter than general auth endpoints)
+      // This helps prevent:
+      // - Brute force token generation attempts
+      // - Token introspection enumeration attacks
+      // - DoS on token endpoints
+      const rateLimit = await checkRateLimit(
+        env.AUTH_STORAGE,
+        rateLimitKey,
+        10,  // 10 requests per window
+        60   // 60 seconds (1 minute)
+      );
+
+      if (!rateLimit.allowed) {
+        const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+        logger.warn('Rate limit exceeded for token endpoint', {
+          clientIP,
+          endpoint: url.pathname,
+          retryAfter,
+        });
+
+        // Emit rate limit exceeded audit event
+        const auditEvent = createRateLimitExceededEvent(
+          url.pathname,
+          10,
+          60,
+          retryAfter,
+          {
+            ipAddress: clientIP,
+            userAgent: request.headers.get('User-Agent') ?? undefined,
+            requestId,
+          }
+        );
+        ctx.waitUntil(getAuditEmitter().emit(auditEvent));
+
+        // Track rate limit in analytics
+        trackEvent(env, {
+          event: 'rate_limit_hit',
+          ipAddress: clientIP,
+          userAgent: request.headers.get('User-Agent') ?? undefined,
+        });
+
+        ctx.waitUntil(logger.finalizeRequest());
+        const response = new Response(
+          JSON.stringify({
+            error: 'rate_limit_exceeded',
+            error_description: `Too many requests. Please try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+          }),
+          {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'Retry-After': String(retryAfter),
+              'X-RateLimit-Limit': '10',
+              'X-RateLimit-Remaining': String(rateLimit.remaining),
+              'X-RateLimit-Reset': String(rateLimit.resetAt),
+            },
+          }
+        );
+        return addSecurityHeaders(response, isProduction);
+      }
+
+      logger.debug('Rate limit check passed for token endpoint', {
+        clientIP,
+        endpoint: url.pathname,
+        remaining: rateLimit.remaining,
+      });
+    }
+
     // Note: Token endpoints (/token, /token/introspect, /token/revoke) are now
     // handled by the forked OpenAuth issuer with built-in enterprise features
 
@@ -834,7 +911,7 @@ export default {
     try {
       await handleTokenCron(env, cronName);
     } catch (error) {
-      console.error('Scheduled token cron failed', error);
+      logger.error('Scheduled token cron failed', { cronName, error });
       // Don't throw - let other scheduled tasks continue
     }
   },

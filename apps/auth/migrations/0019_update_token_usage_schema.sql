@@ -1,6 +1,6 @@
 -- Migration number: 0019
 -- Description: Update token_usage table schema to match OpenAuth audit consumer requirements
--- Date: 2025-11-08
+-- Date: 2025-01-30T00:00:00.000Z
 
 -- Step 1: Create new table with correct schema
 CREATE TABLE IF NOT EXISTS token_usage_new (

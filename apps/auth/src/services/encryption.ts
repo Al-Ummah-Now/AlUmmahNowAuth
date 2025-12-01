@@ -9,6 +9,8 @@
  * - IV is prepended to ciphertext for use during decryption
  */
 
+import { logger } from '../logger';
+
 const ALGORITHM = 'AES-GCM';
 const IV_LENGTH = 12; // 96 bits is recommended for AES-GCM
 
@@ -54,7 +56,7 @@ async function getMasterKey(masterKeyBase64: string): Promise<CryptoKey> {
 		);
 		return masterCryptoKey;
 	} catch (error) {
-		console.error('Failed to import master encryption key:', error);
+		logger.error('Failed to import master encryption key', { error });
 		throw new Error(
 			'Could not import master encryption key. Check if it is a valid Base64-encoded 256-bit key.'
 		);

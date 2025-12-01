@@ -14,6 +14,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { requireSecret } from '../utils/secrets';
+import { logger } from '../logger';
 
 /**
  * OAuth 2.0 client record from database
@@ -115,7 +116,7 @@ export async function verifyClientSecret(secret: string, hash: string, env: Env)
 
 		return result === 0;
 	} catch (error) {
-		console.error('Error verifying client secret:', error);
+		logger.error('Error verifying client secret', { error });
 		return false;
 	}
 }
@@ -140,7 +141,7 @@ export async function getOAuthClient(clientId: string, db: D1Database): Promise<
 
 		return result;
 	} catch (error) {
-		console.error('Error retrieving OAuth client:', error);
+		logger.error('Error retrieving OAuth client', { error });
 		return null;
 	}
 }

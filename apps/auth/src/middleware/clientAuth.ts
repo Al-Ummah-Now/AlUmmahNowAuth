@@ -19,6 +19,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { getOAuthClient, verifyClientSecret, type OAuthClient } from '../services/client-auth-service';
+import { logger } from '../logger';
 
 /**
  * OAuth 2.0 error response for client authentication failures
@@ -60,7 +61,7 @@ function parseBasicAuth(authHeader: string): { client_id: string; client_secret:
 
 		return { client_id, client_secret };
 	} catch (error) {
-		console.error('Error parsing Basic Auth header:', error);
+		logger.error('Error parsing Basic Auth header', { error });
 		return null;
 	}
 }
@@ -108,7 +109,7 @@ export function createClientAuthMiddleware() {
 					clientSecret = formData.get('client_secret') as string | null;
 				}
 			} catch (error) {
-				console.error('Error parsing request body for client credentials:', error);
+				logger.error('Error parsing request body for client credentials', { error });
 			}
 		}
 
@@ -178,7 +179,7 @@ export function createClientAuthMiddleware() {
 
 			// Verify client_secret
 			if (!client.client_secret_hash) {
-				console.error('Confidential client has no secret hash stored', { client_id: clientId });
+				logger.error('Confidential client has no secret hash stored', { client_id: clientId });
 				const errorResponse: OAuth2ErrorResponse = {
 					error: 'invalid_client',
 					error_description: 'Client authentication failed: server misconfiguration',

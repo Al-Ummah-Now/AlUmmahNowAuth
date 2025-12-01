@@ -4,6 +4,8 @@
  * Tracks auth events like logins, token refreshes, errors, etc.
  */
 
+import { logger } from '../logger';
+
 type EventType =
   | 'login_attempt'
   | 'login_success'
@@ -60,7 +62,7 @@ export function trackEvent(env: Env, event: AnalyticsEvent): void {
     });
   } catch (error) {
     // Don't let analytics errors affect the main flow
-    console.error('Analytics write error:', error);
+    logger.error('Analytics write error', { error });
   }
 }
 
@@ -96,6 +98,6 @@ export function trackRequestTiming(
       ],
     });
   } catch (error) {
-    console.error('Analytics write error:', error);
+    logger.error('Analytics write error', { error });
   }
 }

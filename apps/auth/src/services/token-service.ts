@@ -16,9 +16,23 @@ import { TokenError } from '../types/errors';
 /**
  * Configuration constants for token lifetimes
  */
-const ACCESS_TOKEN_LIFETIME = 15 * 60; // 15 minutes in seconds
-const REFRESH_TOKEN_LIFETIME = 7 * 24 * 60 * 60; // 7 days in seconds
+const DEFAULT_ACCESS_TOKEN_LIFETIME = 15 * 60; // 15 minutes in seconds
+const DEFAULT_REFRESH_TOKEN_LIFETIME = 7 * 24 * 60 * 60; // 7 days in seconds
 const MAX_ROTATION_COUNT = 100; // Prevent infinite rotation chains
+
+/**
+ * Get access token lifetime from env or use default
+ */
+function getAccessTokenLifetime(env: Env): number {
+	return env.ACCESS_TOKEN_EXPIRY ?? DEFAULT_ACCESS_TOKEN_LIFETIME;
+}
+
+/**
+ * Get refresh token lifetime from env or use default
+ */
+function getRefreshTokenLifetime(env: Env): number {
+	return env.REFRESH_TOKEN_EXPIRY ?? DEFAULT_REFRESH_TOKEN_LIFETIME;
+}
 
 /**
  * User data structure expected by TokenService
@@ -57,13 +71,14 @@ export class TokenService {
 
 		const now = Math.floor(Date.now() / 1000);
 		const issuer = env.OPENAUTH_ISSUER;
+		const accessTokenLifetime = getAccessTokenLifetime(env);
 
 		// Build the access token payload
 		const payload: AccessTokenPayload = {
 			iss: issuer,
 			sub: user.id,
 			aud: clientId,
-			exp: now + ACCESS_TOKEN_LIFETIME,
+			exp: now + accessTokenLifetime,
 			iat: now,
 			nbf: now,
 			jti: crypto.randomUUID(),
@@ -77,7 +92,7 @@ export class TokenService {
 		const jwt = await new SignJWT(payload)
 			.setProtectedHeader({ alg: 'RS256', kid })
 			.setIssuedAt(now)
-			.setExpirationTime(now + ACCESS_TOKEN_LIFETIME)
+			.setExpirationTime(now + accessTokenLifetime)
 			.setNotBefore(now)
 			.setIssuer(issuer)
 			.setSubject(user.id)
@@ -125,7 +140,8 @@ export class TokenService {
 		const tokenHash = hashArray.map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
 		const now = Math.floor(Date.now() / 1000);
-		const expiresAt = now + REFRESH_TOKEN_LIFETIME;
+		const refreshTokenLifetime = getRefreshTokenLifetime(env);
+		const expiresAt = now + refreshTokenLifetime;
 
 		// Determine rotation count and token family
 		let rotationCount = 0;
@@ -315,7 +331,7 @@ export class TokenService {
 		return {
 			access_token: accessToken,
 			token_type: 'Bearer',
-			expires_in: ACCESS_TOKEN_LIFETIME,
+			expires_in: getAccessTokenLifetime(env),
 			refresh_token: refreshToken,
 			scope,
 		};
@@ -418,7 +434,8 @@ export class TokenService {
 		const newToken = Array.from(newTokenBytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 		const newTokenHash = await this.hashToken(newToken);
 
-		const expiresAt = now + REFRESH_TOKEN_LIFETIME;
+		const refreshTokenLifetime = getRefreshTokenLifetime(env);
+		const expiresAt = now + refreshTokenLifetime;
 		const newRotationCount = tokenRecord.rotation_count + 1;
 		const familyId = tokenRecord.token_family_id || tokenRecord.id;
 
@@ -479,7 +496,7 @@ export class TokenService {
 		return {
 			access_token: newAccessToken,
 			token_type: 'Bearer',
-			expires_in: ACCESS_TOKEN_LIFETIME,
+			expires_in: getAccessTokenLifetime(env),
 			refresh_token: newToken,
 			scope: tokenRecord.scope,
 		};

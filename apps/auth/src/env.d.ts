@@ -29,6 +29,8 @@ declare global {
     AUDIT_QUEUE: Queue;
     AUTH_ANALYTICS?: AnalyticsEngineDataset;
     TEST_PROMOTE_SECRET?: string;
+    ACCESS_TOKEN_EXPIRY?: number;
+    REFRESH_TOKEN_EXPIRY?: number;
   }
 }
 

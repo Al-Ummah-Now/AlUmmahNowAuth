@@ -9,6 +9,7 @@
  */
 
 import { TokenCleanupService } from '../services/token-cleanup';
+import { logger } from '../logger';
 
 /**
  * Main cron handler for token management tasks
@@ -22,13 +23,13 @@ import { TokenCleanupService } from '../services/token-cleanup';
  */
 export async function handleTokenCron(env: Env, cronName: string): Promise<void> {
 	const startTime = Date.now();
-	console.info(`Starting token cron job: ${cronName}`);
+	logger.info('Starting token cron job', { cronName });
 
 	try {
 		// Run cleanup
 		if (cronName === 'token-cleanup' || cronName === 'token-maintenance') {
 			const cleanupResult = await TokenCleanupService.runCleanup(env);
-			console.info('Token cleanup completed', {
+			logger.info('Token cleanup completed', {
 				expiredTokensDeleted: cleanupResult.expiredTokensDeleted,
 				oldAnalyticsDeleted: cleanupResult.oldAnalyticsDeleted,
 				duration: cleanupResult.duration,
@@ -36,9 +37,9 @@ export async function handleTokenCron(env: Env, cronName: string): Promise<void>
 		}
 
 		const duration = Date.now() - startTime;
-		console.info(`Token cron job completed: ${cronName} (${duration}ms)`);
+		logger.info('Token cron job completed', { cronName, duration });
 	} catch (error) {
-		console.error(`Token cron job failed: ${cronName}`, error);
+		logger.error('Token cron job failed', { cronName, error });
 		throw error;
 	}
 }

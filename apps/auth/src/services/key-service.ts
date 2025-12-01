@@ -14,13 +14,29 @@ import type { JwtKeyRecord } from '../types/jwt';
 import { requireSecret } from '../utils/secrets';
 
 /**
- * Public key cache with TTL to reduce database lookups
+ * Public key cache with TTL and LRU eviction to reduce database lookups
  */
 class PublicKeyCache {
 	private cache = new Map<string, { key: string; expiresAt: number }>();
 	private TTL = 5 * 60 * 1000; // 5 minutes
+	private MAX_SIZE = 10; // Maximum number of keys to cache
 
 	set(kid: string, key: string) {
+		// If key already exists, delete it first to update its position
+		if (this.cache.has(kid)) {
+			this.cache.delete(kid);
+		}
+
+		// If cache is at max size, remove the least recently used entry
+		if (this.cache.size >= this.MAX_SIZE) {
+			// First key in Map is the least recently used (oldest)
+			const firstKey = this.cache.keys().next().value;
+			if (firstKey !== undefined) {
+				this.cache.delete(firstKey);
+			}
+		}
+
+		// Add new entry (will be most recently used)
 		this.cache.set(kid, {
 			key,
 			expiresAt: Date.now() + this.TTL,
@@ -33,6 +49,11 @@ class PublicKeyCache {
 			this.cache.delete(kid);
 			return null;
 		}
+
+		// Update access order by deleting and re-adding
+		this.cache.delete(kid);
+		this.cache.set(kid, entry);
+
 		return entry.key;
 	}
 

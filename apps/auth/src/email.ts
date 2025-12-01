@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import * as v from 'valibot';
+import { logger } from './logger';
 
 const EmailSchema = v.pipe(v.string(), v.email());
 
@@ -84,7 +85,7 @@ export default async function SendEmail(
     v.parse(EmailSchema, fromEmail);
     v.parse(EmailSchema, toEmail);
   } catch (validationError) {
-    console.error("Invalid email address:", validationError);
+    logger.error("Invalid email address", { error: validationError });
     throw new Error(`Invalid email address: ${validationError instanceof Error ? validationError.message : String(validationError)}`);
   }
 
@@ -95,7 +96,7 @@ export default async function SendEmail(
   while (attempt < maxRetries) {
     attempt++;
     try {
-      console.debug(`Attempting to send email (attempt ${attempt}/${maxRetries})`, { to: options.to, subject: options.subject });
+      logger.debug('Attempting to send email', { attempt, maxRetries, to: options.to, subject: options.subject });
 
       const emailPayload: Parameters<typeof resend.emails.send>[0] = {
         from: options.from,
@@ -113,27 +114,27 @@ export default async function SendEmail(
 
       if (error) {
         _lastError = error;
-        console.error(`Error sending email (attempt ${attempt}/${maxRetries}):`, error);
+        logger.error('Error sending email', { attempt, maxRetries, error });
 
         // If we haven't exhausted retries, wait before retry with exponential backoff
         if (attempt < maxRetries) {
           const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5s
-          console.info(`Retrying in ${backoffMs}ms...`);
+          logger.info('Retrying email send', { backoffMs });
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue;
         }
       } else {
-        console.info("Email sent successfully:", data);
+        logger.info("Email sent successfully", { emailId: data.id });
         return { success: true, emailId: data.id };
       }
     } catch (error) {
       _lastError = error;
-      console.error(`Exception sending email (attempt ${attempt}/${maxRetries}):`, error);
+      logger.error('Exception sending email', { attempt, maxRetries, error });
 
       // If we haven't exhausted retries, wait before retry
       if (attempt < maxRetries) {
         const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.info(`Retrying in ${backoffMs}ms...`);
+        logger.info('Retrying email send', { backoffMs });
         await new Promise(resolve => setTimeout(resolve, backoffMs));
         continue;
       }
@@ -141,6 +142,6 @@ export default async function SendEmail(
   }
 
   // All retries exhausted
-  console.error(`Failed to send email after ${maxRetries} attempts`);
+  logger.error('Failed to send email after all retries', { maxRetries });
   throw new Error(`Unable to send email after ${maxRetries} attempts. Please try again later.`);
 };

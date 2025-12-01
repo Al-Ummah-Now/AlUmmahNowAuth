@@ -8,6 +8,7 @@ import * as v from 'valibot';
 import { DLQReplayService } from './dlq-replay';
 import { getUserSession } from './session';
 import { checkRateLimit, getClientIP } from './rate-limit';
+import { logger } from './logger';
 
 const replaySchema = v.object({
   batchSize: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(100))),
@@ -46,7 +47,7 @@ async function verifyAdminAuth(request: Request, storage: KVNamespace): Promise<
     const userRoles = session.user.roles || [];
     return userRoles.includes('admin') || userRoles.includes('super_admin');
   } catch (error) {
-    console.error('Admin auth verification failed:', error);
+    logger.error('Admin auth verification failed', { error });
     return false;
   }
 }
@@ -116,7 +117,7 @@ export async function handleDLQReplay(
       result,
     });
   } catch (error) {
-    console.error('DLQ replay error:', error);
+    logger.error('DLQ replay error', { error });
     return Response.json({
       error: 'Internal server error',
       ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
@@ -191,7 +192,7 @@ export async function handleDLQList(
 
     return Response.json(result);
   } catch (error) {
-    console.error('DLQ list error:', error);
+    logger.error('DLQ list error', { error });
     return Response.json({
       error: 'Internal server error',
       ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
@@ -221,7 +222,7 @@ export async function handleDLQStats(
 
     return Response.json(stats);
   } catch (error) {
-    console.error('DLQ stats error:', error);
+    logger.error('DLQ stats error', { error });
     return Response.json({
       error: 'Internal server error',
       ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
@@ -267,7 +268,7 @@ export async function handleDLQCleanup(
       deleted: result.deleted,
     });
   } catch (error) {
-    console.error('DLQ cleanup error:', error);
+    logger.error('DLQ cleanup error', { error });
     return Response.json({
       error: 'Internal server error',
       ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
@@ -332,7 +333,7 @@ export async function handleDLQResetStale(
     });
 
     // Log audit event for the reset operation
-    console.info('[AUDIT] DLQ stale entries reset', {
+    logger.info('DLQ stale entries reset', {
       adminIP: clientIP,
       resetCount: result.reset,
       staleTimeout: parsed.output.staleTimeout ?? 30,
@@ -345,7 +346,7 @@ export async function handleDLQResetStale(
       reset: result.reset,
     });
   } catch (error) {
-    console.error('DLQ reset stale entries error:', error);
+    logger.error('DLQ reset stale entries error', { error });
     return Response.json({
       error: 'Internal server error',
       ...(isDevelopment && { message: error instanceof Error ? error.message : String(error) }),
