@@ -203,10 +203,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Build Admin Dashboard
-        working-directory: apps/admin
-        run: pnpm build
-
       - name: Deploy Auth Server to QA
         working-directory: apps/auth
         run: pnpm run deploy:qa
@@ -232,7 +228,7 @@ jobs:
 
       - name: Deploy Admin Dashboard to QA
         working-directory: apps/admin
-        run: npx wrangler deploy --config wrangler.qa.json
+        run: pnpm run deploy:qa
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
