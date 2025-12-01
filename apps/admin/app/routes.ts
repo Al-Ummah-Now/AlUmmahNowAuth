@@ -5,6 +5,7 @@ export default [
   route("users", "routes/users._index.tsx"),
   route("roles", "routes/roles._index.tsx"),
   route("roles/:id", "routes/roles.$id.tsx"),
+  route("clients", "routes/clients.tsx"),
   route("audit", "routes/audit.tsx"),
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),

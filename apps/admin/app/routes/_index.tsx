@@ -1,6 +1,6 @@
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData } from "react-router";
-import { Users, ShieldCheck, Activity, Database, LogOut, Shield, FileText } from "lucide-react";
+import { Users, ShieldCheck, Activity, Database, LogOut, Shield, FileText, Key } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { getUserStats, getRoleStats, getUsersByRole } from "../lib/db.server";
@@ -435,16 +435,16 @@ export default function Index() {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2 mb-2">
-                <ShieldCheck className="h-5 w-5 text-[rgb(var(--color-primary))]" />
-                <CardTitle>Authentication</CardTitle>
+                <Key className="h-5 w-5 text-[rgb(var(--color-primary))]" />
+                <CardTitle>OAuth Clients</CardTitle>
               </div>
               <CardDescription>
-                Manage authentication settings and providers
+                Manage OAuth client applications
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full" disabled>
-                Coming Soon
+              <Button asChild className="w-full">
+                <Link to="/clients">Manage Clients</Link>
               </Button>
             </CardContent>
           </Card>
