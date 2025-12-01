@@ -140,7 +140,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // Parse metadata JSON strings
     const events = (data.data || []).map((event: AuditEvent) => ({
       ...event,
-      success: event.success === 1,
+      // Handle both integer (1/0) and boolean values from D1
+      success: event.success === 1 || event.success === true,
       metadata: typeof event.metadata === "string"
         ? JSON.parse(event.metadata || "{}")
         : event.metadata || {},
@@ -171,7 +172,7 @@ export default function AuditLogs() {
 
   // Local state for filter form
   const [eventTypeFilter, setEventTypeFilter] = useState(filters.event_type || "");
-  const [severityFilter, setSeverityFilter] = useState(filters.severity || "");
+  const [severityFilter, setSeverityFilter] = useState(filters.severity || "all");
   const [searchQuery, setSearchQuery] = useState(filters.search || "");
   const [startDate, setStartDate] = useState(filters.start_date || "");
   const [endDate, setEndDate] = useState(filters.end_date || "");
@@ -179,7 +180,7 @@ export default function AuditLogs() {
   const applyFilters = () => {
     const params = new URLSearchParams();
     if (eventTypeFilter) params.set("event_type", eventTypeFilter);
-    if (severityFilter) params.set("severity", severityFilter);
+    if (severityFilter && severityFilter !== "all") params.set("severity", severityFilter);
     if (searchQuery) params.set("search", searchQuery);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
@@ -189,7 +190,7 @@ export default function AuditLogs() {
 
   const clearFilters = () => {
     setEventTypeFilter("");
-    setSeverityFilter("");
+    setSeverityFilter("all");
     setSearchQuery("");
     setStartDate("");
     setEndDate("");
@@ -223,7 +224,7 @@ export default function AuditLogs() {
     }
   };
 
-  const hasActiveFilters = eventTypeFilter || severityFilter || searchQuery || startDate || endDate;
+  const hasActiveFilters = eventTypeFilter || (severityFilter && severityFilter !== "all") || searchQuery || startDate || endDate;
 
   return (
     <div className="min-h-screen bg-[rgb(var(--color-background))]">
@@ -302,7 +303,7 @@ export default function AuditLogs() {
                         <SelectValue placeholder="All severities" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All severities</SelectItem>
+                        <SelectItem value="all">All severities</SelectItem>
                         <SelectItem value="debug">Debug</SelectItem>
                         <SelectItem value="info">Info</SelectItem>
                         <SelectItem value="warning">Warning</SelectItem>
@@ -367,7 +368,7 @@ export default function AuditLogs() {
                     Event: {eventTypeFilter}
                   </Badge>
                 )}
-                {severityFilter && (
+                {severityFilter && severityFilter !== "all" && (
                   <Badge variant="outline">
                     Severity: {severityFilter}
                   </Badge>
