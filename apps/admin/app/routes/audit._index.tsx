@@ -132,7 +132,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       throw new Error(`Failed to fetch audit logs: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      data?: AuditEvent[];
+      pagination?: { page: number; limit: number; total: number; pages: number };
+    };
 
     // Parse metadata JSON strings
     const events = (data.data || []).map((event: AuditEvent) => ({
