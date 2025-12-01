@@ -16,6 +16,7 @@
 import { TokenService } from '../services/token-service';
 import { TokenError } from '../types/errors';
 import { createClientAuthMiddleware } from '../middleware/clientAuth';
+import { trackEvent } from '../utils/analytics';
 
 /**
  * Check if an origin matches allowed origins (supports wildcards like *.example.com)
@@ -251,6 +252,15 @@ export class TokenRoutes {
 					userAgent
 				);
 
+				// Track token refresh in analytics
+				trackEvent(env, {
+					event: 'token_refresh',
+					clientId,
+					ipAddress,
+					userAgent,
+					success: true,
+				});
+
 				return new Response(JSON.stringify(tokenPair), {
 					status: 200,
 					headers: {
@@ -420,6 +430,14 @@ export class TokenRoutes {
 			if (tokenTypeHint === 'refresh_token' || !tokenTypeHint) {
 				try {
 					await TokenService.revokeRefreshToken(env, token, 'user_requested', ipAddress, userAgent);
+
+					// Track token revoke in analytics
+					trackEvent(env, {
+						event: 'token_revoke',
+						ipAddress,
+						userAgent,
+						success: true,
+					});
 				} catch (_error) {
 					// Per RFC 7009, we always return 200 even if token doesn't exist
 					// This prevents token scanning attacks

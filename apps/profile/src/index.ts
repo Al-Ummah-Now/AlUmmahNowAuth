@@ -16,6 +16,7 @@ interface Env {
   AUTH_DB: D1Database;
   AUTH_SERVER_URL?: string;
   APP_URL?: string;
+  CF_WEB_ANALYTICS_TOKEN?: string;
 }
 
 // Session management helpers
@@ -654,6 +655,7 @@ export default {
             checkForErrors();
         });
     </script>
+    ${env.CF_WEB_ANALYTICS_TOKEN ? `<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "${env.CF_WEB_ANALYTICS_TOKEN}"}'></script>` : ''}
 </body>
 </html>`;
 

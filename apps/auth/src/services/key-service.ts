@@ -11,6 +11,7 @@
 import { generateKeyPair, exportJWK } from 'jose';
 import { encrypt, decrypt } from './encryption';
 import type { JwtKeyRecord } from '../types/jwt';
+import { requireSecret } from '../utils/secrets';
 
 /**
  * Public key cache with TTL to reduce database lookups
@@ -70,9 +71,10 @@ export class KeyService {
 		}
 
 		// Encrypt private key before storage
+		const masterKey = await requireSecret(env.KEY_ENCRYPTION_MASTER_KEY, 'KEY_ENCRYPTION_MASTER_KEY');
 		const encryptedPrivateKey = await encrypt(
 			JSON.stringify(privateJwk),
-			env.KEY_ENCRYPTION_MASTER_KEY
+			masterKey
 		);
 
 		// Prepare key record
@@ -140,9 +142,10 @@ export class KeyService {
 		}
 
 		// Decrypt the private key
+		const masterKey = await requireSecret(env.KEY_ENCRYPTION_MASTER_KEY, 'KEY_ENCRYPTION_MASTER_KEY');
 		const decryptedPrivateKey = await decrypt(
 			result.private_key_encrypted,
-			env.KEY_ENCRYPTION_MASTER_KEY
+			masterKey
 		);
 
 		return {

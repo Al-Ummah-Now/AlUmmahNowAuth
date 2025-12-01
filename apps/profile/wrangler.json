@@ -20,7 +20,8 @@
   ],
   "vars": {
     "AUTH_SERVER_URL": "https://auth.alummahnow.net",
-    "APP_URL": "https://profile.auth.alummahnow.net"
+    "APP_URL": "https://profile.auth.alummahnow.net",
+    "CF_WEB_ANALYTICS_TOKEN": ""
   },
   "observability": {
     "enabled": true

@@ -13,6 +13,8 @@
 
 /// <reference types="@cloudflare/workers-types" />
 
+import { requireSecret } from '../utils/secrets';
+
 /**
  * OAuth 2.0 client record from database
  */
@@ -38,13 +40,11 @@ export interface OAuthClient {
  * @throws Error if CLIENT_SECRET_SALT is not configured
  */
 export async function hashClientSecret(secret: string, env: Env): Promise<string> {
-	if (!env.CLIENT_SECRET_SALT) {
-		throw new Error('CLIENT_SECRET_SALT not configured');
-	}
+	const salt = await requireSecret(env.CLIENT_SECRET_SALT, 'CLIENT_SECRET_SALT');
 
 	const encoder = new TextEncoder();
 	const secretData = encoder.encode(secret);
-	const saltData = encoder.encode(env.CLIENT_SECRET_SALT);
+	const saltData = encoder.encode(salt);
 
 	// Import the secret as a key for PBKDF2
 	const keyMaterial = await crypto.subtle.importKey('raw', secretData, { name: 'PBKDF2' }, false, [

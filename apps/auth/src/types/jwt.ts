@@ -75,21 +75,33 @@ export interface TokenPair {
 	scope: string;
 }
 
-// Extend the existing Env interface to include JWT-related secrets
+// Type for Cloudflare Secrets Store binding (production)
+interface SecretsStoreBinding {
+	get(): Promise<string>;
+}
+
+// Union type: string (local dev via .dev.vars) or Secrets Store binding (production)
+type SecretBinding = string | SecretsStoreBinding;
+
+/**
+ * Global augmentation: Extend the existing Env interface to include JWT-related secrets.
+ * This declaration is intended to MERGE with other Env interface definitions (e.g., in worker-configuration.d.ts),
+ * not to replace them. If you add or modify Env properties elsewhere, ensure they are compatible.
+ */
 declare global {
 	interface Env {
 		/**
 		 * Base64-encoded 256-bit master key for encrypting private keys at rest.
-		 * MUST be configured as a Cloudflare Worker Secret.
+		 * Can be a plain string (local dev) or Secrets Store binding (production).
 		 */
-		KEY_ENCRYPTION_MASTER_KEY: string;
+		KEY_ENCRYPTION_MASTER_KEY: SecretBinding;
 
 		/**
 		 * Salt for PBKDF2 client secret hashing.
-		 * MUST be configured as a Cloudflare Worker Secret.
+		 * Can be a plain string (local dev) or Secrets Store binding (production).
 		 * Used for OAuth 2.0 confidential client authentication (RFC 6749 Section 2.3).
 		 */
-		CLIENT_SECRET_SALT: string;
+		CLIENT_SECRET_SALT: SecretBinding;
 
 		// Note: ALLOWED_ORIGINS is declared in src/env.d.ts
 	}

@@ -37,6 +37,12 @@
   "observability": {
     "enabled": true
   },
+  "analytics_engine_datasets": [
+    {
+      "binding": "AUTH_ANALYTICS",
+      "dataset": "auth_events"
+    }
+  ],
   "secrets_store": [
     {
       "binding": "CLIENT_SECRET_SALT",
@@ -47,6 +53,11 @@
       "binding": "KEY_ENCRYPTION_MASTER_KEY",
       "store_id": "f8eddc9944d041919ed8dc7d08d32308",
 		  "secret_name": "KEY_ENCRYPTION_MASTER_KEY"
+    },
+    {
+      "binding": "RESEND_API_KEY",
+      "store_id": "f8eddc9944d041919ed8dc7d08d32308",
+		  "secret_name": "RESEND_API_KEY"
     }
   ],
   "compatibility_flags": ["nodejs_compat"],

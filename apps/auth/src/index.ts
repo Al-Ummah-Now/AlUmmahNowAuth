@@ -29,6 +29,8 @@ import {
 } from "./audit-events";
 import { routeAdminDLQ } from "./admin-dlq-routes";
 import { handleTokenCron } from "./cron/token-cron";
+import { requireSecret } from "./utils/secrets";
+import { trackEvent, trackRequestTiming } from "./utils/analytics";
 
 /**
  * Check if an origin matches allowed origins (supports wildcards like *.example.com)
@@ -234,6 +236,15 @@ export default {
           requestId,
         });
         ctx.waitUntil(getAuditEmitter().emit(auditEvent));
+
+        // Track logout in analytics
+        trackEvent(env, {
+          event: 'logout',
+          userId,
+          ipAddress: clientIP,
+          userAgent: request.headers.get('User-Agent') ?? undefined,
+          success: true,
+        });
       }
 
       // Finalize request before returning
@@ -619,6 +630,14 @@ export default {
                 );
                 ctx.waitUntil(getAuditEmitter().emit(auditEvent));
 
+                // Track rate limit in analytics
+                trackEvent(env, {
+                  event: 'rate_limit_hit',
+                  email,
+                  ipAddress: clientIP,
+                  userAgent: request.headers.get('User-Agent') ?? undefined,
+                });
+
                 throw new Error(`Too many login attempts. Please try again in ${Math.ceil(retryAfter / 60)} minutes.`);
               }
 
@@ -628,12 +647,16 @@ export default {
                 remaining: rateLimit.remaining,
               });
 
-              try {
-                const apiKey = env.RESEND_API_KEY;
+              // Track login attempt in analytics
+              trackEvent(env, {
+                event: 'login_attempt',
+                email,
+                ipAddress: clientIP,
+                userAgent: request.headers.get('User-Agent') ?? undefined,
+              });
 
-                if (!apiKey) {
-                  throw new Error('RESEND_API_KEY not configured');
-                }
+              try {
+                const apiKey = await requireSecret(env.RESEND_API_KEY, 'RESEND_API_KEY');
 
                 logger.debug('Using RESEND_API_KEY from environment');
 
@@ -718,6 +741,16 @@ export default {
           );
           ctx.waitUntil(getAuditEmitter().emit(loginEvent));
 
+          // Track login success in analytics
+          trackEvent(env, {
+            event: 'login_success',
+            userId: user.id,
+            email: value.email,
+            ipAddress: clientIP,
+            userAgent: request.headers.get('User-Agent') ?? undefined,
+            success: true,
+          });
+
           // If new user, emit account created event
           // Note: In rare race conditions with concurrent logins for the same new user,
           // duplicate ACCOUNT_CREATED events may be emitted. This is acceptable as the
@@ -734,6 +767,16 @@ export default {
               }
             );
             ctx.waitUntil(getAuditEmitter().emit(accountEvent));
+
+            // Track new registration in analytics
+            trackEvent(env, {
+              event: 'register',
+              userId: user.id,
+              email: value.email,
+              ipAddress: clientIP,
+              userAgent: request.headers.get('User-Agent') ?? undefined,
+              success: true,
+            });
           }
 
           return oauthCtx.subject("user", {
@@ -754,6 +797,16 @@ export default {
             }
           );
           ctx.waitUntil(getAuditEmitter().emit(failedEvent));
+
+          // Track login failed in analytics
+          trackEvent(env, {
+            event: 'login_failed',
+            email: value.email,
+            ipAddress: clientIP,
+            userAgent: request.headers.get('User-Agent') ?? undefined,
+            errorCode: error instanceof Error ? error.message : 'unknown',
+            success: false,
+          });
 
           throw error;
         }
