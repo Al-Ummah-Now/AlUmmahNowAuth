@@ -151,12 +151,14 @@ export async function setupDatabase() {
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)`).run();
 
-  // Migration 0012: Create token_usage table
+  // Migration 0019: Create token_usage table (updated schema)
   await env.AUTH_DB.prepare(`
     CREATE TABLE IF NOT EXISTS token_usage (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       token_id TEXT NOT NULL,
-      action TEXT NOT NULL CHECK (action IN ('generated', 'refreshed', 'revoked', 'expired')),
+      subject TEXT NOT NULL,
+      event_type TEXT NOT NULL CHECK (event_type IN ('generated', 'refreshed', 'revoked', 'reused')),
+      client_id TEXT,
       timestamp INTEGER NOT NULL DEFAULT (unixepoch()),
       ip_address TEXT,
       user_agent TEXT,
@@ -164,6 +166,10 @@ export async function setupDatabase() {
     )
   `).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_token_id ON token_usage(token_id)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_subject ON token_usage(subject)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_client_id ON token_usage(client_id)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_event_type ON token_usage(event_type)`).run();
 
   // Seed system roles
   const systemRoles = [

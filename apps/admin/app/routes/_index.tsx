@@ -1,6 +1,6 @@
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData } from "react-router";
-import { Users, ShieldCheck, Activity, Database, LogOut, Shield } from "lucide-react";
+import { Users, ShieldCheck, Activity, Database, LogOut, Shield, FileText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { getUserStats, getRoleStats, getUsersByRole } from "../lib/db.server";
@@ -380,7 +380,7 @@ export default function Index() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid gap-4 md:grid-cols-3 mb-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2 mb-2">
@@ -411,6 +411,23 @@ export default function Index() {
             <CardContent>
               <Button asChild className="w-full">
                 <Link to="/roles">Manage Roles</Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="h-5 w-5 text-[rgb(var(--color-primary))]" />
+                <CardTitle>Audit Logs</CardTitle>
+              </div>
+              <CardDescription>
+                View system audit logs and security events
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild className="w-full">
+                <Link to="/audit">View Audit Logs</Link>
               </Button>
             </CardContent>
           </Card>

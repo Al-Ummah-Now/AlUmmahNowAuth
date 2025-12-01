@@ -29,6 +29,17 @@ const AuditLogQuerySchema = v.object({
   end_date: v.optional(v.string()),
 });
 
+const TokenAuditQuerySchema = v.object({
+  page: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1))),
+  limit: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(100))),
+  user_id: v.optional(v.string()),
+  action: v.optional(v.picklist(['generated', 'refreshed', 'revoked', 'reused'])),
+  client_id: v.optional(v.string()),
+  from: v.optional(v.string()),
+  to: v.optional(v.string()),
+  search: v.optional(v.string()),
+});
+
 const CreateClientSchema = v.object({
   client_id: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
   client_type: v.picklist(['public', 'confidential']),
@@ -75,12 +86,52 @@ interface OAuthClient {
   created_at: number;
 }
 
+interface TokenUsageRecord {
+  id: string;
+  token_id: string;
+  subject: string;
+  event_type: string;
+  client_id: string | null;
+  timestamp: number;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata: string | null;
+}
+
 // ============================================================================
 // Route Handler Class
 // ============================================================================
 
 export class AdminEnterpriseRoutes {
   constructor(private db: D1Database, private kv: KVNamespace) {}
+
+  /**
+   * Add CORS headers to response for admin dashboard
+   */
+  private addCorsHeaders(response: Response, env: Env, request: Request): Response {
+    const origin = request.headers.get('Origin');
+    const allowedOrigins = env.ALLOWED_ORIGINS
+      ? env.ALLOWED_ORIGINS.split(',').map((o: string) => o.trim())
+      : [];
+
+    // Check if origin is allowed
+    if (origin && allowedOrigins.includes(origin)) {
+      const headers = new Headers(response.headers);
+      headers.set('Access-Control-Allow-Origin', origin);
+      headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie');
+      headers.set('Access-Control-Allow-Credentials', 'true');
+      headers.set('Access-Control-Max-Age', '86400');
+
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
+
+    return response;
+  }
 
   /**
    * Route handler for admin enterprise endpoints
@@ -90,18 +141,40 @@ export class AdminEnterpriseRoutes {
     const method = request.method;
     const path = url.pathname;
 
+    // Handle OPTIONS preflight requests
+    if (method === 'OPTIONS') {
+      const response = new Response(null, {
+        status: 204,
+        headers: {
+          'Content-Length': '0',
+        },
+      });
+      return this.addCorsHeaders(response, env, request);
+    }
+
+    // ========================================================================
+    // Token Audit Routes
+    // ========================================================================
+    if (path === '/admin/audit' && method === 'GET') {
+      const response = await this.getTokenAudit(request, url, env);
+      return this.addCorsHeaders(response, env, request);
+    }
+
     // ========================================================================
     // Audit Log Routes
     // ========================================================================
     if (path === '/admin/audit-logs' && method === 'GET') {
-      return this.getAuditLogs(request, url, env);
+      const response = await this.getAuditLogs(request, url, env);
+      return this.addCorsHeaders(response, env, request);
     }
     if (path === '/admin/audit-logs/stats' && method === 'GET') {
-      return this.getAuditStats(request, env);
+      const response = await this.getAuditStats(request, env);
+      return this.addCorsHeaders(response, env, request);
     }
     if (path.match(/^\/admin\/audit-logs\/user\/[^/]+$/) && method === 'GET') {
       const userId = path.split('/').pop()!;
-      return this.getUserAuditTrail(userId, request, url, env);
+      const response = await this.getUserAuditTrail(userId, request, url, env);
+      return this.addCorsHeaders(response, env, request);
     }
 
     // ========================================================================
@@ -156,6 +229,129 @@ export class AdminEnterpriseRoutes {
     }
 
     return new Response('Not Found', { status: 404 });
+  }
+
+  // ==========================================================================
+  // Token Audit Handlers
+  // ==========================================================================
+
+  /**
+   * GET /admin/audit - List token usage audit logs with filtering and pagination
+   */
+  private async getTokenAudit(request: Request, url: URL, env: Env): Promise<Response> {
+    try {
+      await verifyAdminAuth(request, env);
+
+      // Parse query parameters
+      const queryParams = Object.fromEntries(url.searchParams);
+      const params = v.parse(TokenAuditQuerySchema, queryParams);
+
+      const page = params.page || 1;
+      const limit = params.limit || 50;
+      const offset = (page - 1) * limit;
+
+      // Build dynamic query
+      const whereConditions: string[] = [];
+      const bindParams: unknown[] = [];
+
+      // Extract user_id from subject field (format: "user:123abc")
+      if (params.user_id) {
+        whereConditions.push("subject = ?");
+        bindParams.push(`user:${params.user_id}`);
+      }
+
+      if (params.action) {
+        whereConditions.push('event_type = ?');
+        bindParams.push(params.action);
+      }
+
+      if (params.client_id) {
+        whereConditions.push('client_id = ?');
+        bindParams.push(params.client_id);
+      }
+
+      if (params.from) {
+        // Convert ISO date to Unix timestamp
+        const fromTimestamp = Math.floor(new Date(params.from).getTime() / 1000);
+        whereConditions.push('timestamp >= ?');
+        bindParams.push(fromTimestamp);
+      }
+
+      if (params.to) {
+        // Convert ISO date to Unix timestamp
+        const toTimestamp = Math.floor(new Date(params.to).getTime() / 1000);
+        whereConditions.push('timestamp <= ?');
+        bindParams.push(toTimestamp);
+      }
+
+      if (params.search) {
+        // Search in subject, client_id, and ip_address
+        whereConditions.push('(subject LIKE ? OR client_id LIKE ? OR ip_address LIKE ?)');
+        const searchPattern = `%${params.search}%`;
+        bindParams.push(searchPattern, searchPattern, searchPattern);
+      }
+
+      const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+      // Count total matching records
+      const countQuery = `SELECT COUNT(*) as total FROM token_usage ${whereClause}`;
+      const countResult = await this.db.prepare(countQuery).bind(...bindParams).first<{ total: number }>();
+      const total = countResult?.total || 0;
+
+      // Fetch paginated results
+      const dataQuery = `
+        SELECT * FROM token_usage
+        ${whereClause}
+        ORDER BY timestamp DESC
+        LIMIT ? OFFSET ?
+      `;
+      const result = await this.db.prepare(dataQuery).bind(...bindParams, limit, offset).all<TokenUsageRecord>();
+
+      // Transform results to match API spec
+      const transformedData = (result.results || []).map(record => {
+        // Extract user_id from subject (format: "user:123abc")
+        const userId = record.subject.startsWith('user:')
+          ? record.subject.substring(5)
+          : record.subject;
+
+        return {
+          id: record.id,
+          user_id: userId,
+          client_id: record.client_id,
+          token_type: 'refresh', // All entries in token_usage are refresh token events
+          action: record.event_type,
+          ip_address: record.ip_address,
+          user_agent: record.user_agent,
+          created_at: new Date(record.timestamp * 1000).toISOString(),
+        };
+      });
+
+      return new Response(JSON.stringify({
+        data: transformedData,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (error) {
+      logger.error('Failed to fetch token audit logs', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      if (error instanceof v.ValiError) {
+        return createAuthErrorResponse('Invalid query parameters: ' + error.message, 400);
+      }
+
+      return createAuthErrorResponse(
+        error instanceof Error ? error.message : 'Failed to fetch token audit logs',
+        error instanceof Error && error.message.includes('required') ? 401 : 500
+      );
+    }
   }
 
   // ==========================================================================

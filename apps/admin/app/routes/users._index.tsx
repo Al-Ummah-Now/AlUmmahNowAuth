@@ -278,6 +278,12 @@ export default function Users() {
               </Link>
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/roles">Roles</Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/audit">Audit Logs</Link>
+              </Button>
               <Button variant="ghost" size="icon" asChild>
                 <Link to="/logout">
                   <LogOut className="h-5 w-5" />

@@ -63,6 +63,144 @@ describe('AdminEnterpriseRoutes', () => {
   });
 
   // ==========================================================================
+  // Token Audit Tests
+  // ==========================================================================
+
+  describe('Token Audit', () => {
+    beforeEach(async () => {
+      // Seed token usage records
+      const now = Math.floor(Date.now() / 1000);
+      const records = [
+        {
+          id: 'token-audit-1',
+          token_id: 'token-123',
+          subject: 'user:user-123',
+          event_type: 'generated',
+          client_id: 'client-web',
+          timestamp: now - 3600,
+          ip_address: '192.168.1.1',
+          user_agent: 'Mozilla/5.0',
+        },
+        {
+          id: 'token-audit-2',
+          token_id: 'token-456',
+          subject: 'user:user-456',
+          event_type: 'refreshed',
+          client_id: 'client-mobile',
+          timestamp: now - 1800,
+          ip_address: '192.168.1.2',
+          user_agent: 'MobileApp/1.0',
+        },
+        {
+          id: 'token-audit-3',
+          token_id: 'token-789',
+          subject: 'user:user-123',
+          event_type: 'revoked',
+          client_id: 'client-web',
+          timestamp: now - 900,
+          ip_address: '192.168.1.1',
+          user_agent: 'Mozilla/5.0',
+        },
+      ];
+
+      for (const record of records) {
+        await env.AUTH_DB.prepare(`
+          INSERT INTO token_usage (id, token_id, subject, event_type, client_id, timestamp, ip_address, user_agent)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          record.id,
+          record.token_id,
+          record.subject,
+          record.event_type,
+          record.client_id,
+          record.timestamp,
+          record.ip_address,
+          record.user_agent
+        ).run();
+      }
+    });
+
+    it('GET /admin/audit should return paginated token audit logs', async () => {
+      const request = new Request('http://localhost/admin/audit', { method: 'GET' });
+      const response = await routes.handle(request, mockEnv, mockCtx);
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.data).toHaveLength(3);
+      expect(data.pagination).toBeDefined();
+      expect(data.pagination.total).toBe(3);
+      expect(data.data[0]).toHaveProperty('user_id');
+      expect(data.data[0]).toHaveProperty('client_id');
+      expect(data.data[0]).toHaveProperty('action');
+      expect(data.data[0]).toHaveProperty('created_at');
+    });
+
+    it('GET /admin/audit should filter by user_id', async () => {
+      const request = new Request('http://localhost/admin/audit?user_id=user-123', { method: 'GET' });
+      const response = await routes.handle(request, mockEnv, mockCtx);
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.data).toHaveLength(2);
+      data.data.forEach((record: any) => {
+        expect(record.user_id).toBe('user-123');
+      });
+    });
+
+    it('GET /admin/audit should filter by action', async () => {
+      const request = new Request('http://localhost/admin/audit?action=generated', { method: 'GET' });
+      const response = await routes.handle(request, mockEnv, mockCtx);
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].action).toBe('generated');
+    });
+
+    it('GET /admin/audit should filter by client_id', async () => {
+      const request = new Request('http://localhost/admin/audit?client_id=client-mobile', { method: 'GET' });
+      const response = await routes.handle(request, mockEnv, mockCtx);
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].client_id).toBe('client-mobile');
+    });
+
+    it('GET /admin/audit should search across subject, client_id, and ip_address', async () => {
+      const request = new Request('http://localhost/admin/audit?search=192.168.1.2', { method: 'GET' });
+      const response = await routes.handle(request, mockEnv, mockCtx);
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].ip_address).toBe('192.168.1.2');
+    });
+
+    it('GET /admin/audit should respect pagination limit', async () => {
+      const request = new Request('http://localhost/admin/audit?limit=2', { method: 'GET' });
+      const response = await routes.handle(request, mockEnv, mockCtx);
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      expect(data.data).toHaveLength(2);
+      expect(data.pagination.limit).toBe(2);
+      expect(data.pagination.totalPages).toBe(2);
+    });
+
+    it('GET /admin/audit should transform subject to user_id', async () => {
+      const request = new Request('http://localhost/admin/audit', { method: 'GET' });
+      const response = await routes.handle(request, mockEnv, mockCtx);
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as any;
+      // Check that user_id is extracted from subject (user:user-123 -> user-123)
+      expect(data.data[0].user_id).not.toContain('user:');
+      expect(['user-123', 'user-456']).toContain(data.data[0].user_id);
+    });
+  });
+
+  // ==========================================================================
   // Audit Log Tests
   // ==========================================================================
 

@@ -196,7 +196,8 @@ export default {
     }
 
     // Handle admin enterprise routes (audit logs, client management, token management, health)
-    if (url.pathname.startsWith('/admin/audit-logs') ||
+    if (url.pathname === '/admin/audit' ||
+        url.pathname.startsWith('/admin/audit-logs') ||
         url.pathname.startsWith('/admin/clients') ||
         url.pathname.startsWith('/admin/users') ||
         url.pathname === '/admin/health' ||
