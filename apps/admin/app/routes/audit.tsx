@@ -29,7 +29,7 @@ interface AuditEvent {
   user_agent: string | null;
   request_id: string | null;
   metadata: string;
-  success: number;
+  success: number | boolean;  // D1 may return integer or boolean
   error_message: string | null;
   created_at: string;
 }
