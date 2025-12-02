@@ -31,6 +31,7 @@ import { routeAdminDLQ } from "./admin-dlq-routes";
 import { handleTokenCron } from "./cron/token-cron";
 import { requireSecret } from "./utils/secrets";
 import { trackEvent, trackRequestTiming as _trackRequestTiming } from "./utils/analytics";
+import adminSessionRoutes from "./routes/admin-session-routes";
 
 /**
  * Check if an origin matches allowed origins (supports wildcards like *.example.com)
@@ -206,6 +207,14 @@ export default {
         url.pathname === '/admin/health' ||
         url.pathname === '/admin/metrics') {
       const response = await adminEnterpriseRoutes.handle(request, env, ctx);
+      if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
+
+    // Handle admin session management routes
+    if (url.pathname.startsWith('/admin/sessions') || url.pathname.match(/^\/admin\/users\/[^/]+\/sessions/)) {
+      const response = await adminSessionRoutes.fetch(request, env, ctx);
       if (response.status !== 404) {
         return addSecurityHeaders(response, isProduction);
       }

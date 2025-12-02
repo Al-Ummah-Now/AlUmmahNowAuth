@@ -79,6 +79,10 @@ export enum AuditEventType {
   // Admin Operations
   USER_FORCE_LOGOUT = 'admin.user.force_logout',
   USER_TOKENS_REVOKED = 'admin.user.tokens_revoked',
+  ADMIN_SESSION_TERMINATED = 'admin.session.terminated',
+  ADMIN_SESSIONS_TERMINATED_ALL = 'admin.sessions.terminated_all',
+  ADMIN_FORCE_LOGOUT = 'admin.force_logout',
+  ADMIN_SESSION_VIEWED = 'admin.session.viewed',
 }
 
 /**
