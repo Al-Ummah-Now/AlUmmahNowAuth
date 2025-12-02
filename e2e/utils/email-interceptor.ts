@@ -1,47 +1,56 @@
 /**
  * Email Interceptor for E2E Tests
  *
- * Retrieves email verification codes from the auth server's test endpoint.
+ * Retrieves email verification codes using the Resend API.
+ * This allows E2E tests to verify actual email delivery and extract codes.
  */
 
-import { Page } from '@playwright/test';
-import { TEST_URLS } from './test-data';
+import { ResendTestClient } from './resend-client';
+
+// Resend API key from environment
+const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.E2E_RESEND_API_KEY;
 
 /**
- * Set up email interception for a page
+ * Set up email interception using Resend API
  *
- * This retrieves email codes from the auth server's test endpoint.
- *
- * @param page - Playwright page object
  * @returns Function to get the last login code
  */
-export function setupEmailInterception(page: Page): {
-  getLastLoginCode: (email?: string) => Promise<string | null>;
+export function setupEmailInterception(): {
+  getLastLoginCode: (email: string) => Promise<string | null>;
 } {
-  let lastEmail: string | null = null;
+  if (!RESEND_API_KEY) {
+    console.warn('RESEND_API_KEY not set - email interception will not work');
+  }
+
+  const resendClient = RESEND_API_KEY ? new ResendTestClient(RESEND_API_KEY) : null;
 
   return {
-    getLastLoginCode: async (email?: string): Promise<string | null> => {
-      const emailToCheck = email || lastEmail;
-      if (!emailToCheck) {
+    getLastLoginCode: async (email: string): Promise<string | null> => {
+      if (!resendClient) {
+        console.error('Resend client not initialized - RESEND_API_KEY is missing');
         return null;
       }
 
-      lastEmail = emailToCheck;
-
       try {
-        // Call the test endpoint to retrieve the verification code
-        const response = await page.request.get(`${TEST_URLS.authServer}/test/email/${encodeURIComponent(emailToCheck)}`);
+        // Get the verification email from Resend
+        const emailHtml = await resendClient.getVerificationEmail(email);
 
-        if (!response.ok()) {
-          console.error(`Failed to retrieve email code for ${emailToCheck}: ${response.status()}`);
+        if (!emailHtml) {
+          console.error(`No verification email found for ${email}`);
           return null;
         }
 
-        const data = await response.json();
-        return data.code || null;
+        // Extract the verification code from the email
+        const code = resendClient.extractVerificationCode(emailHtml);
+
+        if (!code) {
+          console.error(`Could not extract verification code from email for ${email}`);
+          return null;
+        }
+
+        return code;
       } catch (error) {
-        console.error(`Error retrieving email code for ${emailToCheck}:`, error);
+        console.error(`Error getting verification code for ${email}:`, error);
         return null;
       }
     },

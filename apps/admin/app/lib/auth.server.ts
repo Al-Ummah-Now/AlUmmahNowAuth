@@ -33,7 +33,7 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
     }
 
     // Parse session data with error handling
-    let session: any;
+    let session: { user?: { id: string; email: string; roles?: string[] }; expiresAt?: string };
     try {
       session = JSON.parse(sessionData);
     } catch (parseError) {
@@ -85,8 +85,12 @@ export async function requireAuth(
     throw redirectToLogin(request);
   }
 
-  if (requireAdmin && user.role !== "admin") {
-    throw new Response("Forbidden: Admin access required", { status: 403 });
+  if (requireAdmin) {
+    const roles = user.roles || [];
+    const hasAdminAccess = roles.includes("admin") || roles.includes("super_admin");
+    if (!hasAdminAccess) {
+      throw new Response("Forbidden: Admin access required", { status: 403 });
+    }
   }
 
   

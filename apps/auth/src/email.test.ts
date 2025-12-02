@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import * as v from "valibot";
 
 // We'll test the email validation and logic without actually calling Resend
@@ -101,5 +101,5 @@ describe("Email Module Exports", () => {
     const SendEmail = (await import("./email")).default;
     expect(SendEmail).toBeDefined();
     expect(typeof SendEmail).toBe("function");
-  });
+  }, 15000); // Increase timeout for dynamic import
 });

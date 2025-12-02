@@ -71,7 +71,7 @@ describe("Session Management Functions", () => {
         user: {
           id: "user-123",
           email: "test@example.com",
-          role: "user",
+          roles: ["user"],
         },
         tokens: {
           access: "access-token-xyz",
@@ -100,7 +100,7 @@ describe("Session Management Functions", () => {
         user: {
           id: "user-456",
           email: "another@example.com",
-          role: "admin",
+          roles: ["admin"],
         },
         tokens: {
           access: "access-token-123",
@@ -121,7 +121,7 @@ describe("Session Management Functions", () => {
         user: {
           id: "user-789",
           email: "retrieve@example.com",
-          role: "moderator",
+          roles: ["moderator"],
         },
         tokens: {
           access: "access-token-retrieve",
@@ -145,7 +145,7 @@ describe("Session Management Functions", () => {
       expect(retrievedSession).toBeDefined();
       expect(retrievedSession?.user.id).toBe("user-789");
       expect(retrievedSession?.user.email).toBe("retrieve@example.com");
-      expect(retrievedSession?.user.role).toBe("moderator");
+      expect(retrievedSession?.user.roles).toContain("moderator");
       expect(retrievedSession?.tokens.access).toBe("access-token-retrieve");
     });
 
@@ -174,7 +174,7 @@ describe("Session Management Functions", () => {
         user: {
           id: "user-expired",
           email: "expired@example.com",
-          role: "user",
+          roles: ["user"],
         },
         tokens: {
           access: "expired-access-token",
@@ -236,7 +236,7 @@ describe("Session Management Functions", () => {
         user: {
           id: "user-no-expiry",
           email: "noexpiry@example.com",
-          role: "user",
+          roles: ["user"],
         },
         tokens: {
           access: "access-token-no-expiry",
@@ -268,7 +268,7 @@ describe("Session Management Functions", () => {
         user: {
           id: "user-delete",
           email: "delete@example.com",
-          role: "user",
+          roles: ["user"],
         },
         tokens: {
           access: "access-token-delete",

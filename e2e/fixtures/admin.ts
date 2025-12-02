@@ -26,7 +26,16 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
 
   // Upgrade the user to admin role via the test endpoint
   // This is only available in localhost (E2E testing)
+  // Requires TEST_PROMOTE_SECRET header for security
+  const testSecret = process.env.TEST_PROMOTE_SECRET;
+  if (!testSecret) {
+    throw new Error('TEST_PROMOTE_SECRET environment variable is required for admin promotion in E2E tests');
+  }
+
   const response = await page.request.post(`${TEST_URLS.authServer}/test/promote/${encodeURIComponent(email)}`, {
+    headers: {
+      'X-Test-Secret': testSecret,
+    },
     failOnStatusCode: false,
   });
 
@@ -47,7 +56,7 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   }
 
   // Set up email interception to capture verification code
-  const emailInterceptor = setupEmailInterception(page);
+  setupEmailInterception(page);
 
   // Click "Admin Sign In" or "Sign In" link to start auth flow
   const signInLink = page.locator('a:has-text("Admin Sign In"), a:has-text("Sign In")').first();
@@ -251,4 +260,72 @@ export async function userExists(page: Page, email: string): Promise<boolean> {
   await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/users`));
   const userRow = page.locator(`tr:has-text("${email}")`);
   return await userRow.isVisible();
+}
+
+/**
+ * Navigate to audit logs page
+ *
+ * @param page - Playwright page object
+ */
+export async function navigateToAuditLogs(page: Page): Promise<void> {
+  await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+  await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/audit`));
+}
+
+/**
+ * Get count of audit events in the current view
+ *
+ * @param page - Playwright page object
+ * @returns Number of audit events visible
+ */
+export async function getAuditEventCount(page: Page): Promise<number> {
+  const tableRows = page.locator('tbody tr');
+  return await tableRows.count();
+}
+
+/**
+ * Apply filters to audit logs
+ *
+ * @param page - Playwright page object
+ * @param filters - Filter options
+ */
+export async function filterAuditLogs(
+  page: Page,
+  filters: {
+    eventType?: string;
+    severity?: 'debug' | 'info' | 'warning' | 'error' | 'critical';
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<void> {
+  // Ensure filters panel is visible
+  const showFiltersButton = page.locator('button:has-text("Show Filters")');
+  const isFiltersVisible = await showFiltersButton.isVisible();
+
+  if (isFiltersVisible) {
+    await showFiltersButton.click();
+  }
+
+  // Apply filters
+  if (filters.eventType) {
+    await page.fill('input[id="event_type"]', filters.eventType);
+  }
+  if (filters.severity) {
+    await page.locator('button[id="severity"]').click();
+    await page.locator(`[role="option"]:has-text("${filters.severity}")`).click();
+  }
+  if (filters.search) {
+    await page.fill('input[id="search"]', filters.search);
+  }
+  if (filters.startDate) {
+    await page.fill('input[id="start_date"]', filters.startDate);
+  }
+  if (filters.endDate) {
+    await page.fill('input[id="end_date"]', filters.endDate);
+  }
+
+  // Click apply
+  await page.click('button:has-text("Apply Filters")');
+  await page.waitForLoadState('networkidle');
 }

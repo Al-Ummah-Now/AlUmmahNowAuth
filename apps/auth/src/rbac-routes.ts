@@ -1,13 +1,12 @@
 import { PermissionService } from './permission-service';
 import { RoleService } from './role-service';
-import { verifyAuth, verifyPermission, AuthContext, createAuthErrorResponse, verifyGranterPermission } from './auth-middleware';
+import { verifyAuth, createAuthErrorResponse, verifyGranterPermission } from './auth-middleware';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter-enhanced';
 import {
   AuditEventType,
   AuditEventSeverity,
   createRoleManagementEvent,
-  createPermissionManagementEvent,
   createAuditEvent,
   createSecurityAlertEvent
 } from './audit-events';
@@ -59,15 +58,15 @@ export class RBACRoutes {
     const path = url.pathname;
 
     // User role management routes
-    if (path.match(/^\/api\/users\/[^\/]+\/roles$/) && method === 'GET') {
+    if (path.match(/^\/api\/users\/[^/]+\/roles$/) && method === 'GET') {
       const userId = path.split('/')[3];
       return this.getUserRoles(userId, request, env, ctx);
     }
-    if (path.match(/^\/api\/users\/[^\/]+\/roles$/) && method === 'POST') {
+    if (path.match(/^\/api\/users\/[^/]+\/roles$/) && method === 'POST') {
       const userId = path.split('/')[3];
       return this.assignRoleToUser(userId, request, env, ctx);
     }
-    if (path.match(/^\/api\/users\/[^\/]+\/roles\/[^\/]+$/) && method === 'DELETE') {
+    if (path.match(/^\/api\/users\/[^/]+\/roles\/[^/]+$/) && method === 'DELETE') {
       const parts = path.split('/');
       const userId = parts[3];
       const roleId = parts[5];
@@ -75,7 +74,7 @@ export class RBACRoutes {
     }
 
     // User permission routes
-    if (path.match(/^\/api\/users\/[^\/]+\/permissions$/) && method === 'GET') {
+    if (path.match(/^\/api\/users\/[^/]+\/permissions$/) && method === 'GET') {
       const userId = path.split('/')[3];
       return this.getUserPermissions(userId, request, env, ctx);
     }
@@ -103,7 +102,7 @@ export class RBACRoutes {
     userId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify authentication
@@ -156,7 +155,7 @@ export class RBACRoutes {
     userId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify authentication and permission
@@ -172,8 +171,8 @@ export class RBACRoutes {
         await emitAuditEvent(
           createAuditEvent(
             AuditEventType.UNAUTHORIZED_ACCESS,
-            AuditEventSeverity.WARNING,
             {
+              severity: AuditEventSeverity.WARNING,
               userId: authContext.user.id,
               metadata: {
                 operation: 'assign_role',
@@ -323,7 +322,7 @@ export class RBACRoutes {
     roleId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify authentication and permission
@@ -339,8 +338,8 @@ export class RBACRoutes {
         await emitAuditEvent(
           createAuditEvent(
             AuditEventType.UNAUTHORIZED_ACCESS,
-            AuditEventSeverity.WARNING,
             {
+              severity: AuditEventSeverity.WARNING,
               userId: authContext.user.id,
               metadata: {
                 operation: 'remove_role',
@@ -413,7 +412,7 @@ export class RBACRoutes {
     userId: string,
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify authentication
@@ -489,7 +488,7 @@ export class RBACRoutes {
   private async checkPermission(
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify authentication
@@ -511,8 +510,8 @@ export class RBACRoutes {
         await emitAuditEvent(
           createAuditEvent(
             AuditEventType.PERMISSION_CHECK_FAILED,
-            AuditEventSeverity.WARNING,
             {
+              severity: AuditEventSeverity.WARNING,
               userId: authContext.user.id,
               metadata: {
                 permission: validated.permission,
@@ -559,7 +558,7 @@ export class RBACRoutes {
   private async bulkCheckPermissions(
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify authentication
@@ -617,7 +616,7 @@ export class RBACRoutes {
   private async listPermissions(
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    _ctx: ExecutionContext
   ): Promise<Response> {
     try {
       // Verify authentication

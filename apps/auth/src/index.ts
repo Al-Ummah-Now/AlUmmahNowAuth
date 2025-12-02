@@ -1,17 +1,24 @@
-import { issuer } from "@openauthjs/openauth";
+import { issuer } from "@meywd/openauth";
 import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
-import { PasswordProvider } from "@openauthjs/openauth/provider/password";
-import { PasswordUI } from "@openauthjs/openauth/ui/password";
-import { createSubjects } from "@openauthjs/openauth/subject";
+import { PasswordProvider } from "@meywd/openauth/provider/password";
+import { PasswordUI } from "@meywd/openauth/ui/password";
+import { createSubjects } from "@meywd/openauth/subject";
+import { AuditService } from "@meywd/openauth/services/audit";
 import * as v from 'valibot';
 import SendEmail from "./email";
-import { getOrCreateUser, checkPasswordResetRequired, clearPasswordResetRequired } from "./users";
+import {
+  getVerificationCodeTemplate,
+  getVerificationCodePlainText,
+  getVerificationCodeSubject,
+} from "./email-templates";
+import { getOrCreateUser } from "./users";
 import { logger } from "./logger";
-import { getUserSession, createSession, deleteSession, createSessionCookie, clearSessionCookie } from "./session";
-import { getAuthClient, subjects as clientSubjects } from "./auth-client";
+import { getUserSession, deleteSession, clearSessionCookie } from "./session";
+import { subjects as _clientSubjects } from "./auth-client";
 import { checkRateLimit, getClientIP } from "./rate-limit";
 import { AdminRBACRoutes } from "./admin-rbac-routes";
 import { RBACRoutes } from "./rbac-routes";
+import { AdminEnterpriseRoutes } from "./admin-enterprise-routes";
 import { initializeAuditEmitter, getAuditEmitter } from "./audit-emitter";
 import {
   createLoginSuccessEvent,
@@ -21,6 +28,49 @@ import {
   createAccountCreatedEvent,
 } from "./audit-events";
 import { routeAdminDLQ } from "./admin-dlq-routes";
+import { handleTokenCron } from "./cron/token-cron";
+import { requireSecret } from "./utils/secrets";
+import { trackEvent, trackRequestTiming } from "./utils/analytics";
+
+/**
+ * Check if an origin matches allowed origins (supports wildcards like *.example.com)
+ */
+function matchOrigin(origin: string, allowedOrigins: string[]): boolean {
+  for (const allowed of allowedOrigins) {
+    if (allowed.startsWith('*.')) {
+      // Wildcard match: *.example.com matches sub.example.com
+      const domain = allowed.slice(2); // Remove "*."
+      try {
+        const originHost = new URL(origin).hostname;
+        if (originHost.endsWith(domain) && originHost !== domain) {
+          return true;
+        }
+      } catch {
+        continue;
+      }
+    } else if (allowed === origin) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get allowed origins from env, supporting wildcards
+ */
+function getAllowedOrigins(env: Env, requestOrigin?: string | null): string[] {
+  const origins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o: string) => o.trim()) : [];
+
+  // If request origin matches a wildcard pattern, include it explicitly
+  if (requestOrigin && matchOrigin(requestOrigin, origins)) {
+    // Return the actual origin for CORS header (wildcards don't work in headers)
+    if (!origins.includes(requestOrigin)) {
+      return [...origins.filter(o => !o.startsWith('*.')), requestOrigin];
+    }
+  }
+
+  return origins.filter(o => !o.startsWith('*.'));
+}
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -30,7 +80,7 @@ const subjects = createSubjects({
   user: v.object({
     id: v.string(),
     email: v.pipe(v.string(), v.email()),
-    role: v.string(),
+    roles: v.array(v.string()),
   }),
 });
 
@@ -98,12 +148,14 @@ function addSecurityHeaders(response: Response, isProduction: boolean = true): R
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    const startTime = Date.now();
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
 
-    // Determine if running in production
-    const isProduction = url.hostname !== 'localhost' && url.hostname !== '127.0.0.1';
+    // Determine if running in production (test endpoints disabled in production)
+    // Use ENVIRONMENT env var if set, otherwise fall back to hostname check
+    const isProduction = env.ENVIRONMENT
+      ? env.ENVIRONMENT === 'production'
+      : (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1');
 
     // Initialize D1 logging (optional - set to false to disable)
     logger.setDatabase(env.AUTH_DB, true);
@@ -112,13 +164,17 @@ export default {
     // Initialize request context to prevent stale timer usage
     logger.initialRequest(requestId);
 
-    // Initialize audit emitter
+    // Initialize audit emitter with batch size 1 for immediate D1 writes
     initializeAuditEmitter({
       enableStdout: true,
       webhookUrl: env.AUDIT_WEBHOOK_URL,
       webhookSecret: env.AUDIT_WEBHOOK_SECRET,
       db: env.AUTH_DB,
       ctx,
+      d1Config: {
+        batchSize: 1,  // Write events immediately to database
+        batchTimeout: 100,  // Very short timeout (not needed with batchSize=1)
+      },
     });
 
     // Log all incoming requests
@@ -132,10 +188,24 @@ export default {
     // Initialize RBAC route handlers
     const adminRBACRoutes = new AdminRBACRoutes(env.AUTH_DB, env.AUTH_STORAGE);
     const rbacRoutes = new RBACRoutes(env.AUTH_DB, env.AUTH_STORAGE);
+    const adminEnterpriseRoutes = new AdminEnterpriseRoutes(env.AUTH_DB, env.AUTH_STORAGE);
 
     // Handle admin RBAC routes
     if (url.pathname.startsWith('/admin/roles')) {
       const response = await adminRBACRoutes.handle(request, env, ctx);
+      if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
+
+    // Handle admin enterprise routes (audit logs, client management, token management, health)
+    if (url.pathname === '/admin/audit' ||
+        url.pathname.startsWith('/admin/audit-logs') ||
+        url.pathname.startsWith('/admin/clients') ||
+        url.pathname.startsWith('/admin/users') ||
+        url.pathname === '/admin/health' ||
+        url.pathname === '/admin/metrics') {
+      const response = await adminEnterpriseRoutes.handle(request, env, ctx);
       if (response.status !== 404) {
         return addSecurityHeaders(response, isProduction);
       }
@@ -170,6 +240,15 @@ export default {
           requestId,
         });
         ctx.waitUntil(getAuditEmitter().emit(auditEvent));
+
+        // Track logout in analytics
+        trackEvent(env, {
+          event: 'logout',
+          userId,
+          ipAddress: clientIP,
+          userAgent: request.headers.get('User-Agent') ?? undefined,
+          success: true,
+        });
       }
 
       // Finalize request before returning
@@ -299,15 +378,37 @@ export default {
       const email = decodeURIComponent(url.pathname.split('/test/promote/')[1]);
       logger.debug('Test endpoint: promoting user to admin', { email });
 
+      // Additional security: require TEST_PROMOTE_SECRET header
+      const providedSecret = request.headers.get('X-Test-Secret');
+      const expectedSecret = env.TEST_PROMOTE_SECRET;
+
+      if (!expectedSecret) {
+        logger.error('TEST_PROMOTE_SECRET not configured');
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Test endpoint not properly configured' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (providedSecret !== expectedSecret) {
+        logger.warn('Invalid test secret provided for /test/promote', { email });
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
       try {
-        // Update user role to admin
-        const result = await env.AUTH_DB.prepare(
-          `UPDATE user SET role = 'admin' WHERE email = ? RETURNING id, email, role`
+        // First get the user
+        const user = await env.AUTH_DB.prepare(
+          `SELECT id, email FROM user WHERE email = ?`
         )
           .bind(email)
-          .first<{ id: string; email: string; role: string }>();
+          .first<{ id: string; email: string }>();
 
-        if (!result) {
+        if (!user) {
           ctx.waitUntil(logger.finalizeRequest());
           return new Response(JSON.stringify({ error: 'User not found' }), {
             status: 404,
@@ -315,14 +416,126 @@ export default {
           });
         }
 
-        logger.info('User promoted to admin (E2E test)', { userId: result.id, email: result.email });
+        // Assign admin role via RBAC (upsert to handle existing role assignments)
+        await env.AUTH_DB.prepare(
+          `INSERT INTO user_roles (user_id, role_id, granted_by, is_active)
+           VALUES (?, 'role_admin', 'system', 1)
+           ON CONFLICT(user_id, role_id) DO UPDATE SET is_active = 1, granted_by = 'system'`
+        ).bind(user.id).run();
+
+        logger.info('User promoted to admin (E2E test)', { userId: user.id, email: user.email });
         ctx.waitUntil(logger.finalizeRequest());
-        return new Response(JSON.stringify({ success: true, user: result }), {
+        return new Response(JSON.stringify({ success: true, user: { ...user, role: 'admin' } }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
       } catch (error) {
         logger.error('Error promoting user to admin', { email, error });
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Internal server error' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // Test endpoint to get refresh tokens for E2E testing (localhost only)
+    // Returns existing refresh tokens from the database for a user
+    if (url.pathname.startsWith('/test/tokens/') && !isProduction && request.method === 'POST') {
+      const email = decodeURIComponent(url.pathname.split('/test/tokens/')[1]);
+      logger.debug('Test endpoint: getting tokens for user', { email });
+
+      // Require TEST_PROMOTE_SECRET header for security
+      const providedSecret = request.headers.get('X-Test-Secret');
+      const expectedSecret = env.TEST_PROMOTE_SECRET;
+
+      if (!expectedSecret) {
+        logger.error('TEST_PROMOTE_SECRET not configured');
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Test endpoint not properly configured' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (providedSecret !== expectedSecret) {
+        logger.warn('Invalid test secret provided for /test/tokens', { email });
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        // Get the user from database
+        const user = await env.AUTH_DB.prepare(
+          `SELECT id, email FROM user WHERE email = ?`
+        )
+          .bind(email)
+          .first<{ id: string; email: string }>();
+
+        if (!user) {
+          ctx.waitUntil(logger.finalizeRequest());
+          return new Response(JSON.stringify({ error: 'User not found' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Get the most recent active refresh token for this user
+        const refreshTokenRecord = await env.AUTH_DB.prepare(
+          `SELECT id, token_hash, client_id, scope, expires_at, issued_at
+           FROM refresh_tokens
+           WHERE user_id = ?
+           AND revoked = 0
+           AND expires_at > ?
+           ORDER BY issued_at DESC
+           LIMIT 1`
+        )
+          .bind(user.id, Math.floor(Date.now() / 1000))
+          .first<{
+            id: string;
+            token_hash: string;
+            client_id: string;
+            scope: string;
+            expires_at: number;
+            issued_at: number;
+          }>();
+
+        if (!refreshTokenRecord) {
+          ctx.waitUntil(logger.finalizeRequest());
+          return new Response(JSON.stringify({
+            error: 'No active refresh token found',
+            hint: 'User needs to login first to create a refresh token'
+          }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Note: We can't return the actual refresh token since we only store the hash
+        // Instead, return the token hash which can be used for introspection/revocation testing
+        logger.info('Token info retrieved for E2E test', { userId: user.id, email: user.email });
+        ctx.waitUntil(logger.finalizeRequest());
+        return new Response(JSON.stringify({
+          success: true,
+          user: { id: user.id, email: user.email },
+          token_info: {
+            id: refreshTokenRecord.id,
+            token_hash: refreshTokenRecord.token_hash,
+            client_id: refreshTokenRecord.client_id,
+            scope: refreshTokenRecord.scope,
+            expires_at: refreshTokenRecord.expires_at,
+            issued_at: refreshTokenRecord.issued_at,
+          },
+          note: 'Refresh token hash returned - actual token not available (only hash stored)'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        logger.error('Error getting tokens', { email, error });
         ctx.waitUntil(logger.finalizeRequest());
         return new Response(JSON.stringify({ error: 'Internal server error' }), {
           status: 500,
@@ -341,10 +554,96 @@ export default {
       }
     }
 
+    // Rate limiting for token endpoints
+    // Token endpoints are more sensitive and require stricter rate limits
+    if (url.pathname === '/token' ||
+        url.pathname === '/token/introspect' ||
+        url.pathname === '/token/revoke') {
+
+      const clientIP = getClientIP(request);
+      const rateLimitKey = `token:${url.pathname}:${clientIP}`;
+
+      // Token endpoints: 10 requests per minute (stricter than general auth endpoints)
+      // This helps prevent:
+      // - Brute force token generation attempts
+      // - Token introspection enumeration attacks
+      // - DoS on token endpoints
+      const rateLimit = await checkRateLimit(
+        env.AUTH_STORAGE,
+        rateLimitKey,
+        10,  // 10 requests per window
+        60   // 60 seconds (1 minute)
+      );
+
+      if (!rateLimit.allowed) {
+        const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+        logger.warn('Rate limit exceeded for token endpoint', {
+          clientIP,
+          endpoint: url.pathname,
+          retryAfter,
+        });
+
+        // Emit rate limit exceeded audit event
+        const auditEvent = createRateLimitExceededEvent(
+          url.pathname,
+          10,
+          60,
+          retryAfter,
+          {
+            ipAddress: clientIP,
+            userAgent: request.headers.get('User-Agent') ?? undefined,
+            requestId,
+          }
+        );
+        ctx.waitUntil(getAuditEmitter().emit(auditEvent));
+
+        // Track rate limit in analytics
+        trackEvent(env, {
+          event: 'rate_limit_hit',
+          ipAddress: clientIP,
+          userAgent: request.headers.get('User-Agent') ?? undefined,
+        });
+
+        ctx.waitUntil(logger.finalizeRequest());
+        const response = new Response(
+          JSON.stringify({
+            error: 'rate_limit_exceeded',
+            error_description: `Too many requests. Please try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+          }),
+          {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'Retry-After': String(retryAfter),
+              'X-RateLimit-Limit': '10',
+              'X-RateLimit-Remaining': String(rateLimit.remaining),
+              'X-RateLimit-Reset': String(rateLimit.resetAt),
+            },
+          }
+        );
+        return addSecurityHeaders(response, isProduction);
+      }
+
+      logger.debug('Rate limit check passed for token endpoint', {
+        clientIP,
+        endpoint: url.pathname,
+        remaining: rateLimit.remaining,
+      });
+    }
+
+    // Note: Token endpoints (/token, /token/introspect, /token/revoke) are now
+    // handled by the forked OpenAuth issuer with built-in enterprise features
+
     // The real OpenAuth server code starts here:
     logger.debug('Initializing OpenAuth issuer', {
       hasStorage: !!env.AUTH_STORAGE,
       issuerEnv: env.OPENAUTH_ISSUER,
+    });
+
+    // Initialize OpenAuth audit service with queue for async processing
+    const auditService = new AuditService({
+      database: env.AUTH_DB,
+      queue: env.AUDIT_QUEUE, // Queue-based mode for better performance
     });
 
     // Handle OpenAuth issuer and apply security headers
@@ -353,6 +652,23 @@ export default {
         namespace: env.AUTH_STORAGE,
       }),
       subjects,
+      // Enable client authentication with D1 database
+      clientDb: env.AUTH_DB,
+      // Enable audit logging for token operations
+      audit: {
+        service: auditService,
+        hooks: {
+          onTokenGenerated: true,
+          onTokenRefreshed: true,
+          onTokenRevoked: true,
+          onTokenReused: true,
+        },
+      },
+      // Configure CORS for token endpoints (supports wildcards like *.alummahnow.net)
+      cors: {
+        origins: getAllowedOrigins(env, request.headers.get('Origin')),
+        credentials: true,
+      },
       providers: {
         password: PasswordProvider(
           PasswordUI({
@@ -395,6 +711,14 @@ export default {
                 );
                 ctx.waitUntil(getAuditEmitter().emit(auditEvent));
 
+                // Track rate limit in analytics
+                trackEvent(env, {
+                  event: 'rate_limit_hit',
+                  email,
+                  ipAddress: clientIP,
+                  userAgent: request.headers.get('User-Agent') ?? undefined,
+                });
+
                 throw new Error(`Too many login attempts. Please try again in ${Math.ceil(retryAfter / 60)} minutes.`);
               }
 
@@ -404,15 +728,37 @@ export default {
                 remaining: rateLimit.remaining,
               });
 
-              try {
-                const apiKey = env.RESEND_API_KEY;
+              // Track login attempt in analytics
+              trackEvent(env, {
+                event: 'login_attempt',
+                email,
+                ipAddress: clientIP,
+                userAgent: request.headers.get('User-Agent') ?? undefined,
+              });
 
-                if (!apiKey) {
-                  throw new Error('RESEND_API_KEY not configured');
-                }
+              try {
+                const apiKey = await requireSecret(env.RESEND_API_KEY, 'RESEND_API_KEY');
 
                 logger.debug('Using RESEND_API_KEY from environment');
-                const emailResult = await SendEmail(apiKey, "login@alummahnow.net", email, "Your login code", `Your login code is ${code}`);
+
+                // Generate email content from professional template
+                const emailData = {
+                  code,
+                  email,
+                  expiryMinutes: 1440, // 24 hours (matches OpenAuth's provider session TTL)
+                };
+                const htmlContent = getVerificationCodeTemplate(emailData);
+                const textContent = getVerificationCodePlainText(emailData);
+                const subject = getVerificationCodeSubject();
+
+                const emailResult = await SendEmail({
+                  apiKey,
+                  from: "Al Ummah Now <login@alummahnow.net>",
+                  to: email,
+                  subject,
+                  html: htmlContent,
+                  text: textContent,
+                });
                 logger.info('Login code sent successfully', { email, emailId: emailResult.emailId });
 
                 // For E2E tests, store the email ID in KV so tests can retrieve it
@@ -455,6 +801,14 @@ export default {
           const user = await getOrCreateUser(env, value.email, true);
           const isNewUser = user.isNew; // Track if this is a new account
 
+          // Debug: Log the roles being returned
+          logger.info('User roles from RBAC', {
+            userId: user.id,
+            email: value.email,
+            roles: user.roles,
+            rolesCount: user.roles.length
+          });
+
           // Emit login success audit event
           const clientIP = getClientIP(request);
           const loginEvent = createLoginSuccessEvent(
@@ -468,6 +822,16 @@ export default {
           );
           ctx.waitUntil(getAuditEmitter().emit(loginEvent));
 
+          // Track login success in analytics
+          trackEvent(env, {
+            event: 'login_success',
+            userId: user.id,
+            email: value.email,
+            ipAddress: clientIP,
+            userAgent: request.headers.get('User-Agent') ?? undefined,
+            success: true,
+          });
+
           // If new user, emit account created event
           // Note: In rare race conditions with concurrent logins for the same new user,
           // duplicate ACCOUNT_CREATED events may be emitted. This is acceptable as the
@@ -476,7 +840,7 @@ export default {
             const accountEvent = createAccountCreatedEvent(
               user.id,
               value.email,
-              user.role,
+              user.roles.join(','),
               {
                 ipAddress: clientIP,
                 userAgent: request.headers.get('User-Agent') ?? undefined,
@@ -484,12 +848,22 @@ export default {
               }
             );
             ctx.waitUntil(getAuditEmitter().emit(accountEvent));
+
+            // Track new registration in analytics
+            trackEvent(env, {
+              event: 'register',
+              userId: user.id,
+              email: value.email,
+              ipAddress: clientIP,
+              userAgent: request.headers.get('User-Agent') ?? undefined,
+              success: true,
+            });
           }
 
           return oauthCtx.subject("user", {
             id: user.id,
             email: value.email,
-            role: user.role,
+            roles: user.roles,
           });
         } catch (error) {
           // Emit login failed audit event
@@ -505,6 +879,16 @@ export default {
           );
           ctx.waitUntil(getAuditEmitter().emit(failedEvent));
 
+          // Track login failed in analytics
+          trackEvent(env, {
+            event: 'login_failed',
+            email: value.email,
+            ipAddress: clientIP,
+            userAgent: request.headers.get('User-Agent') ?? undefined,
+            errorCode: error instanceof Error ? error.message : 'unknown',
+            success: false,
+          });
+
           throw error;
         }
       },
@@ -512,6 +896,28 @@ export default {
 
     // Apply security headers to all OpenAuth responses
     return addSecurityHeaders(issuerResponse, isProduction);
+  },
+
+  /**
+   * Scheduled handler for cron triggers
+   *
+   * Configure cron triggers in wrangler.toml:
+   * ```
+   * [triggers]
+   * crons = ["0 * * * *"]  // Every hour - cleanup expired tokens
+   * ```
+   */
+  async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
+    // Determine which cron job to run based on schedule
+    // For now, we'll run all token maintenance tasks
+    const cronName = event.cron || 'token-maintenance';
+
+    try {
+      await handleTokenCron(env, cronName);
+    } catch (error) {
+      logger.error('Scheduled token cron failed', { cronName, error });
+      // Don't throw - let other scheduled tasks continue
+    }
   },
 } satisfies ExportedHandler<Env>;
 

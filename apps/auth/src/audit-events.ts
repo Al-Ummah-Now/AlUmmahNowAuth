@@ -62,6 +62,16 @@ export enum AuditEventType {
   UNAUTHORIZED_ACCESS = 'security.access.unauthorized',
   PRIVILEGE_ESCALATION_ATTEMPT = 'security.privilege.escalation_attempt',
   SUSPICIOUS_ACTIVITY = 'security.suspicious_activity',
+
+  // OAuth Client Management Events
+  OAUTH_CLIENT_CREATED = 'oauth.client.created',
+  OAUTH_CLIENT_UPDATED = 'oauth.client.updated',
+  OAUTH_CLIENT_DELETED = 'oauth.client.deleted',
+  OAUTH_CLIENT_SECRET_ROTATED = 'oauth.client.secret_rotated',
+
+  // Admin Operations
+  USER_FORCE_LOGOUT = 'admin.user.force_logout',
+  USER_TOKENS_REVOKED = 'admin.user.tokens_revoked',
 }
 
 /**
@@ -101,7 +111,7 @@ export interface AuditEvent {
   requestId: string | null;
 
   /** Event-specific metadata */
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 
   /** Whether the action was successful */
   success: boolean;
@@ -166,18 +176,19 @@ export interface RateLimitEventMetadata {
  */
 export function createAuditEvent(
   eventType: AuditEventType,
-  severity: AuditEventSeverity,
   options: {
+    severity: AuditEventSeverity;
     userId?: string | null;
     ipAddress?: string | null;
     userAgent?: string | null;
     requestId?: string | null;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
     success?: boolean;
     errorMessage?: string | null;
-  } = {}
+  }
 ): AuditEvent {
   const metadata = options.metadata ?? {};
+  const severity = options.severity;
 
   // Validate metadata size (10MB limit)
   const metadataStr = JSON.stringify(metadata);
@@ -220,7 +231,8 @@ export function createLoginSuccessEvent(
     method?: LoginEventMetadata['method'];
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.LOGIN_SUCCESS, AuditEventSeverity.INFO, {
+  return createAuditEvent(AuditEventType.LOGIN_SUCCESS, {
+    severity: AuditEventSeverity.INFO,
     userId,
     ipAddress: options.ipAddress,
     userAgent: options.userAgent,
@@ -243,7 +255,8 @@ export function createLoginFailedEvent(
     requestId?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.LOGIN_FAILED, AuditEventSeverity.WARNING, {
+  return createAuditEvent(AuditEventType.LOGIN_FAILED, {
+    severity: AuditEventSeverity.WARNING,
     userId: null,
     ipAddress: options.ipAddress,
     userAgent: options.userAgent,
@@ -266,7 +279,8 @@ export function createLogoutEvent(
     requestId?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.LOGOUT, AuditEventSeverity.INFO, {
+  return createAuditEvent(AuditEventType.LOGOUT, {
+    severity: AuditEventSeverity.INFO,
     userId,
     ipAddress: options.ipAddress,
     userAgent: options.userAgent,
@@ -288,7 +302,8 @@ export function createTokenIssuedEvent(
     expiresIn?: number;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.TOKEN_ISSUED, AuditEventSeverity.INFO, {
+  return createAuditEvent(AuditEventType.TOKEN_ISSUED, {
+    severity: AuditEventSeverity.INFO,
     userId,
     ipAddress: options.ipAddress,
     userAgent: options.userAgent,
@@ -313,7 +328,8 @@ export function createTokenRefreshEvent(
     expiresIn?: number;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.TOKEN_REFRESH, AuditEventSeverity.INFO, {
+  return createAuditEvent(AuditEventType.TOKEN_REFRESH, {
+    severity: AuditEventSeverity.INFO,
     userId,
     ipAddress: options.ipAddress,
     userAgent: options.userAgent,
@@ -340,7 +356,8 @@ export function createRateLimitExceededEvent(
     userId?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.RATE_LIMIT_EXCEEDED, AuditEventSeverity.WARNING, {
+  return createAuditEvent(AuditEventType.RATE_LIMIT_EXCEEDED, {
+    severity: AuditEventSeverity.WARNING,
     userId: options.userId,
     ipAddress: options.ipAddress,
     userAgent: options.userAgent,
@@ -367,7 +384,8 @@ export function createAccountCreatedEvent(
     initiatedBy?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.ACCOUNT_CREATED, AuditEventSeverity.INFO, {
+  return createAuditEvent(AuditEventType.ACCOUNT_CREATED, {
+    severity: AuditEventSeverity.INFO,
     userId,
     ipAddress: options.ipAddress,
     userAgent: options.userAgent,
@@ -392,7 +410,8 @@ export function createAccountUpdatedEvent(
     initiatedBy?: string;
   }
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.ACCOUNT_UPDATED, AuditEventSeverity.INFO, {
+  return createAuditEvent(AuditEventType.ACCOUNT_UPDATED, {
+    severity: AuditEventSeverity.INFO,
     userId,
     ipAddress: options.ipAddress,
     userAgent: options.userAgent,
@@ -408,11 +427,12 @@ export function createAccountUpdatedEvent(
 
 export function createSecurityAlertEvent(
   alertType: string,
-  details: Record<string, any>,
+  details: Record<string, unknown>,
   userId: string | null,
   ipAddress: string | null
 ): AuditEvent {
-  return createAuditEvent(AuditEventType.SECURITY_ALERT, AuditEventSeverity.CRITICAL, {
+  return createAuditEvent(AuditEventType.SECURITY_ALERT, {
+    severity: AuditEventSeverity.CRITICAL,
     userId,
     ipAddress,
     metadata: { alertType, ...details },
@@ -425,9 +445,10 @@ export function createRoleManagementEvent(
   roleId: string,
   roleName: string,
   performedBy: string,
-  details: Record<string, any> = {}
+  details: Record<string, unknown> = {}
 ): AuditEvent {
-  return createAuditEvent(eventType, AuditEventSeverity.INFO, {
+  return createAuditEvent(eventType, {
+    severity: AuditEventSeverity.INFO,
     userId: performedBy,
     metadata: {
       roleId,
@@ -442,9 +463,10 @@ export function createPermissionManagementEvent(
   permissionId: string,
   permissionName: string,
   performedBy: string,
-  details: Record<string, any> = {}
+  details: Record<string, unknown> = {}
 ): AuditEvent {
-  return createAuditEvent(eventType, AuditEventSeverity.INFO, {
+  return createAuditEvent(eventType, {
+    severity: AuditEventSeverity.INFO,
     userId: performedBy,
     metadata: {
       permissionId,

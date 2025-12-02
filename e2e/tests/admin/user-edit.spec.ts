@@ -6,7 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAdmin } from '../../fixtures/admin';
-import { createUser, editUser, navigateToAdmin } from '../../fixtures/admin';
+import { createUser, editUser } from '../../fixtures/admin';
 import { TEST_USERS, generateTestEmail } from '../../utils/test-data';
 
 test.describe('Admin User Editing', () => {

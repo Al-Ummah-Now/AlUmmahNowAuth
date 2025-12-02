@@ -9,20 +9,18 @@ import {
   AuditEmitter,
   StdoutSink,
   WebhookSink,
-  D1Sink,
   initializeAuditEmitter,
   getAuditEmitter,
 } from './audit-emitter';
 import {
   AuditEventType,
-  AuditEventSeverity,
   createLoginSuccessEvent,
 } from './audit-events';
 
 describe('Audit Emitter', () => {
   describe('StdoutSink', () => {
     it('should output events to console as JSON', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
       const sink = new StdoutSink();
 
       const event = createLoginSuccessEvent('user@example.com', 'user-123', {});
@@ -55,7 +53,7 @@ describe('Audit Emitter', () => {
     });
 
     it('should emit events to all sinks', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
       const sink1 = new StdoutSink();
       const sink2 = new StdoutSink();
@@ -74,7 +72,7 @@ describe('Audit Emitter', () => {
 
     it('should handle sink errors gracefully', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
       // Create a sink that throws an error
       const failingSink = {
@@ -98,10 +96,10 @@ describe('Audit Emitter', () => {
       expect(consoleSpy).toHaveBeenCalled();
 
       // Working sink should still emit
-      expect(consoleLogSpy).toHaveBeenCalled();
+      expect(consoleInfoSpy).toHaveBeenCalled();
 
       consoleSpy.mockRestore();
-      consoleLogSpy.mockRestore();
+      consoleInfoSpy.mockRestore();
     });
 
     it('should flush all sinks', async () => {
@@ -142,7 +140,7 @@ describe('Audit Emitter', () => {
     it('should add webhook sink when URL is provided', () => {
       const emitter = initializeAuditEmitter({
         webhookUrl: 'https://example.com/audit',
-        webhookSecret: 'secret',
+        webhookSecret: 'test-secret-that-is-32-characters-long-for-security',
       });
 
       const sinks = emitter.getSinks();
@@ -162,10 +160,12 @@ describe('Audit Emitter', () => {
     });
 
     it('should have stdout sink by default', () => {
-      const emitter = getAuditEmitter();
+      // Reset global emitter first by calling initializeAuditEmitter with stdout enabled
+      const emitter = initializeAuditEmitter({ enableStdout: true });
       const sinks = emitter.getSinks();
 
       expect(sinks.length).toBeGreaterThanOrEqual(1);
+      expect(sinks.some(s => s.name === 'stdout')).toBe(true);
     });
   });
 
@@ -177,7 +177,7 @@ describe('Audit Emitter', () => {
 
       const sink = new WebhookSink({
         url: 'https://example.com/audit',
-        secret: 'test-secret',
+        secret: 'test-secret-that-is-32-characters-long-for-security',
         batchSize: 1, // Immediate flush
       });
 
@@ -200,7 +200,7 @@ describe('Audit Emitter', () => {
 
   describe('Integration', () => {
     it('should emit events end-to-end', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
       // Initialize emitter
       const emitter = initializeAuditEmitter({

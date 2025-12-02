@@ -1,6 +1,6 @@
 // OpenAuth client for admin dashboard
-import { createClient } from "@openauthjs/openauth/client";
-import { createSubjects } from "@openauthjs/openauth/subject";
+import { createClient } from "@meywd/openauth/client";
+import { createSubjects } from "@meywd/openauth/subject";
 import * as v from "valibot";
 import { getAuthServerUrl } from "./config";
 
@@ -9,14 +9,14 @@ const subjects = createSubjects({
   user: v.object({
     id: v.string(),
     email: v.pipe(v.string(), v.email()),
-    role: v.string(),
+    roles: v.array(v.string()),
   }),
 });
 
 export type Subjects = typeof subjects;
 
 // Create OpenAuth client
-export function getOpenAuthClient(request?: Request, env?: Record<string, any>) {
+export function getOpenAuthClient(request?: Request, env?: { AUTH_SERVER_URL?: string }) {
   const issuer = getAuthServerUrl(request, env);
 
   return createClient({

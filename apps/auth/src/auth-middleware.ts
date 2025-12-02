@@ -9,7 +9,7 @@ export interface AuthContext {
   user: {
     id: string;
     email: string;
-    role: string;
+    roles: string[];
   };
   permissions?: string[];
   isAdmin: boolean;
@@ -42,15 +42,16 @@ export async function verifyAuth(
     throw new Error('Session expired');
   }
 
+  const userRoles = session.user.roles || [];
   logger.debug('User authenticated', {
     userId: session.user.id,
     email: session.user.email,
-    role: session.user.role,
+    roles: userRoles,
   });
 
   return {
     user: session.user,
-    isAdmin: session.user.role === 'admin',
+    isAdmin: userRoles.includes('admin') || userRoles.includes('super_admin'),
   };
 }
 
@@ -64,10 +65,12 @@ export async function verifyAdminAuth(
 ): Promise<AuthContext> {
   const authContext = await verifyAuth(request, env);
 
-  // Check legacy admin role first (backward compatibility)
-  if (authContext.user.role === 'admin') {
-    logger.debug('Admin access granted via legacy role', {
+  // Check RBAC admin roles first
+  const userRoles = authContext.user.roles || [];
+  if (userRoles.includes('admin') || userRoles.includes('super_admin')) {
+    logger.debug('Admin access granted via RBAC role', {
       userId: authContext.user.id,
+      roles: userRoles,
     });
     return authContext;
   }
@@ -91,7 +94,7 @@ export async function verifyAdminAuth(
     if (!hasRoleManagement) {
       logger.warn('Admin access denied', {
         userId: authContext.user.id,
-        role: authContext.user.role,
+        roles: authContext.user.roles,
       });
       throw new Error('Admin access required');
     }
@@ -228,13 +231,13 @@ export function createAuthErrorResponse(
 /**
  * Wrap a route handler with authentication
  */
-export function withAuth<T extends any[], R>(
+export function withAuth<T extends unknown[], R>(
   handler: (authContext: AuthContext, ...args: T) => Promise<R>
 ) {
   return async (request: Request, env: Env, ...args: T): Promise<R | Response> => {
     try {
       const authContext = await verifyAuth(request, env);
-      return await handler(authContext, ...[request, env, ...args] as any);
+      return await handler(authContext, ...[request, env, ...args] as T);
     } catch (error) {
       logger.error('Authentication error', {
         error: error instanceof Error ? error.message : String(error),
@@ -250,13 +253,13 @@ export function withAuth<T extends any[], R>(
 /**
  * Wrap a route handler with admin authentication
  */
-export function withAdminAuth<T extends any[], R>(
+export function withAdminAuth<T extends unknown[], R>(
   handler: (authContext: AuthContext, ...args: T) => Promise<R>
 ) {
   return async (request: Request, env: Env, ...args: T): Promise<R | Response> => {
     try {
       const authContext = await verifyAdminAuth(request, env);
-      return await handler(authContext, ...[request, env, ...args] as any);
+      return await handler(authContext, ...[request, env, ...args] as T);
     } catch (error) {
       logger.error('Admin authentication error', {
         error: error instanceof Error ? error.message : String(error),
@@ -272,14 +275,14 @@ export function withAdminAuth<T extends any[], R>(
 /**
  * Wrap a route handler with permission check
  */
-export function withPermission<T extends any[], R>(
+export function withPermission<T extends unknown[], R>(
   permission: string,
   handler: (authContext: AuthContext, ...args: T) => Promise<R>
 ) {
   return async (request: Request, env: Env, ...args: T): Promise<R | Response> => {
     try {
       const authContext = await verifyPermission(request, env, permission);
-      return await handler(authContext, ...[request, env, ...args] as any);
+      return await handler(authContext, ...[request, env, ...args] as T);
     } catch (error) {
       logger.error('Permission check error', {
         permission,

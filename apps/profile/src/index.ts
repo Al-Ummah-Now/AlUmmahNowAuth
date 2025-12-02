@@ -1,5 +1,5 @@
-import { createClient } from "@openauthjs/openauth/client";
-import { createSubjects } from "@openauthjs/openauth/subject";
+import { createClient } from "@meywd/openauth/client";
+import { createSubjects } from "@meywd/openauth/subject";
 import * as v from "valibot";
 
 // Define subjects matching the auth server
@@ -7,7 +7,7 @@ const subjects = createSubjects({
   user: v.object({
     id: v.string(),
     email: v.pipe(v.string(), v.email()),
-    role: v.string(),
+    roles: v.array(v.string()),
   }),
 });
 
@@ -16,6 +16,8 @@ interface Env {
   AUTH_DB: D1Database;
   AUTH_SERVER_URL?: string;
   APP_URL?: string;
+  ADMIN_URL?: string;
+  CF_WEB_ANALYTICS_TOKEN?: string;
 }
 
 // Session management helpers
@@ -38,7 +40,11 @@ async function getSession(request: Request, storage: KVNamespace) {
     if (!sessionData) return null;
 
     // Parse session data with error handling
-    let session: any;
+    let session: {
+      expiresAt?: string;
+      user?: { id: string; email: string; roles: string[] };
+      tokens?: { access: string; refresh: string };
+    };
     try {
       session = JSON.parse(sessionData);
     } catch (parseError) {
@@ -60,7 +66,11 @@ async function getSession(request: Request, storage: KVNamespace) {
   }
 }
 
-async function createSession(storage: KVNamespace, sessionData: any) {
+async function createSession(storage: KVNamespace, sessionData: {
+  user: { id: string; email: string; roles: string[] };
+  tokens: { access: string; refresh: string };
+  expiresAt: string;
+}) {
   const sessionToken = crypto.randomUUID();
 
   await storage.put(
@@ -116,7 +126,7 @@ function getAppUrl(request: Request, env: Env): string {
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
     const authServerUrl = getAuthServerUrl(request, env);
@@ -140,6 +150,58 @@ export default {
       });
     }
 
+    // Handle token revocation (E2E testing endpoint)
+    // Gets refresh token from session and calls auth server's revoke endpoint
+    if (url.pathname === '/revoke' && request.method === 'POST') {
+      const session = await getSession(request, env.AUTH_STORAGE);
+
+      if (!session || !session.tokens?.refresh) {
+        return new Response(JSON.stringify({ error: 'No session or refresh token found' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      try {
+        // Call auth server's revoke endpoint
+        const revokeResponse = await fetch(`${authServerUrl}/token/revoke`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            token: session.tokens.refresh,
+            token_type_hint: 'refresh_token',
+            client_id: 'profile-app',
+          }),
+        });
+
+        // Clear the local session after revocation
+        const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
+        if (sessionToken) {
+          await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          revoked: true,
+          authServerStatus: revokeResponse.status
+        }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': clearSessionCookie(isLocalhost),
+          },
+        });
+      } catch (error) {
+        console.error('Token revocation error:', error);
+        return new Response(JSON.stringify({ error: 'Failed to revoke token' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Handle OAuth callback
     if (url.pathname === '/callback') {
       const code = url.searchParams.get('code');
@@ -159,7 +221,7 @@ export default {
         const appUrl = getAppUrl(request, env);
         const redirectUri = `${appUrl}/callback`;
 
-        console.log('Exchanging code for tokens', { authServerUrl, appUrl, redirectUri });
+        console.info('Exchanging code for tokens', { authServerUrl, appUrl, redirectUri });
         const result = await client.exchange(code, redirectUri);
 
         if (result.err !== false) {
@@ -186,7 +248,7 @@ export default {
           user: {
             id: userInfo.properties.id,
             email: userInfo.properties.email,
-            role: userInfo.properties.role,
+            roles: userInfo.properties.roles,
           },
           tokens: {
             access: result.tokens.access,
@@ -217,6 +279,7 @@ export default {
       const isLoggedIn = session !== null;
       const userData = session ? JSON.stringify(session.user) : 'null';
       const appUrl = getAppUrl(request, env);
+      const adminUrl = env.ADMIN_URL || '';
 
       const html = `<!DOCTYPE html>
 <html lang="en">
@@ -513,6 +576,7 @@ export default {
         const isLoggedIn = ${isLoggedIn};
         const authServerUrl = '${authServerUrl}';
         const appUrl = '${appUrl}';
+        const adminUrl = '${adminUrl}';
 
         function updateUI() {
             const navMenu = document.getElementById('navMenu');
@@ -527,14 +591,23 @@ export default {
                 document.getElementById('userEmail').textContent = currentUser.email;
 
                 const roleDiv = document.getElementById('userRole');
-                const roleBadge = document.createElement('span');
-                roleBadge.className = currentUser.role === 'admin' ? 'badge badge-admin' : 'badge badge-user';
-                roleBadge.textContent = currentUser.role.toUpperCase();
                 roleDiv.innerHTML = '';
-                roleDiv.appendChild(roleBadge);
+                const roles = currentUser.roles || [];
+                roles.forEach(role => {
+                    const roleBadge = document.createElement('span');
+                    roleBadge.className = role === 'admin' || role === 'super_admin' ? 'badge badge-admin' : 'badge badge-user';
+                    roleBadge.textContent = role.toUpperCase();
+                    roleBadge.style.marginRight = '8px';
+                    roleDiv.appendChild(roleBadge);
+                });
+                if (roles.length === 0) {
+                    roleDiv.textContent = 'No roles assigned';
+                }
 
-                // Update nav menu
+                // Update nav menu - show admin link for admin users
+                const isAdmin = roles.some(r => r === 'admin' || r === 'super_admin');
                 navMenu.innerHTML = \`
+                    \${isAdmin && adminUrl ? \`<a href="\${adminUrl}" class="btn btn-primary" style="margin-right: 10px;">⚙️ Admin Dashboard</a>\` : ''}
                     <button onclick="handleLogout()" class="btn btn-secondary">
                         🚪 Sign Out
                     </button>
@@ -587,6 +660,7 @@ export default {
             checkForErrors();
         });
     </script>
+    ${env.CF_WEB_ANALYTICS_TOKEN ? `<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "${env.CF_WEB_ANALYTICS_TOKEN}"}'></script>` : ''}
 </body>
 </html>`;
 

@@ -34,7 +34,8 @@
       "Bash(git rm:*)",
       "Bash(npx wrangler:*)",
       "Bash(pnpm run:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

@@ -1,4 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES module equivalent of __dirname
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load test environment variables
+dotenv.config({ path: path.resolve(__dirname, '.env.test') });
 
 /**
  * Playwright E2E Test Configuration
@@ -13,7 +22,8 @@ import { defineConfig, devices } from '@playwright/test';
  * - Profile app: http://localhost:8788
  */
 export default defineConfig({
-  testDir: './e2e/tests',
+  testDir: './e2e',
+  testMatch: ['**/*.spec.ts'],
 
   // Test execution settings
   timeout: 30 * 1000, // 30 seconds per test
@@ -44,8 +54,8 @@ export default defineConfig({
 
   // Shared settings for all projects
   use: {
-    // Base URL for navigation
-    baseURL: 'http://localhost:8788', // Profile app is the main entry point
+    // Base URL for navigation (uses env var for QA, defaults to localhost)
+    baseURL: process.env.E2E_PROFILE_URL || 'http://localhost:3302', // Profile app is the main entry point
 
     // Collect trace on failure
     trace: 'on-first-retry',
@@ -57,7 +67,8 @@ export default defineConfig({
     video: 'retain-on-failure',
 
     // Maximum time each action can take
-    actionTimeout: 10000,
+    // Increased from 10s to 15s to handle occasional cold starts in QA
+    actionTimeout: 15000,
 
     // Browser context options
     viewport: { width: 1280, height: 720 },
@@ -101,7 +112,7 @@ export default defineConfig({
   webServer: process.env.SKIP_WEB_SERVER ? undefined : [
     {
       command: 'cd apps/auth && pnpm dev',
-      port: 8787,
+      port: 3301,
       reuseExistingServer: !process.env.CI,
       timeout: 30 * 1000,
       stdout: 'pipe',
@@ -117,7 +128,7 @@ export default defineConfig({
     },
     {
       command: 'cd apps/profile && pnpm dev',
-      port: 8788,
+      port: 3302,
       reuseExistingServer: !process.env.CI,
       timeout: 30 * 1000,
       stdout: 'pipe',

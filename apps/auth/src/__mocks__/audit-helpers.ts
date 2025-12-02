@@ -83,12 +83,12 @@ export class MockD1Database implements D1Database {
   private data: Map<string, any[]> = new Map();
   private shouldFail: 'none' | 'locked' | 'constraint' | 'timeout' | 'partial' = 'none';
   private failureCount = 0;
-  public batch = vi.fn();
-  public prepare = vi.fn();
+  public batch: D1Database['batch'] & { mockClear: () => void };
+  public prepare: D1Database['prepare'] & { mockClear: () => void };
 
   constructor() {
-    this.batch = vi.fn(this._batchImpl.bind(this));
-    this.prepare = vi.fn(this._prepareImpl.bind(this));
+    this.batch = vi.fn(this._batchImpl.bind(this)) as any;
+    this.prepare = vi.fn(this._prepareImpl.bind(this)) as any;
   }
 
   simulateError(errorType: 'locked' | 'constraint' | 'timeout' | 'partial') {
@@ -100,10 +100,10 @@ export class MockD1Database implements D1Database {
     this.shouldFail = 'none';
   }
 
-  private _prepareImpl(query: string): D1PreparedStatement {
+  private _prepareImpl(_query: string): D1PreparedStatement {
     const self = this;
     return {
-      bind(...values: any[]) {
+      bind(..._values: unknown[]) {
         return this;
       },
 
@@ -173,11 +173,11 @@ export class MockD1Database implements D1Database {
     return new ArrayBuffer(0);
   }
 
-  async exec(query: string): Promise<D1ExecResult> {
+  async exec(_query: string): Promise<D1ExecResult> {
     return { count: 0, duration: 0 };
   }
 
-  withSession(constraintOrBookmark?: string): D1DatabaseSession {
+  withSession(_constraintOrBookmark?: string): D1DatabaseSession {
     // Return a mock session object
     return this as any as D1DatabaseSession;
   }
@@ -286,7 +286,7 @@ export class MockWebhookServer {
   /**
    * Verify HMAC signature
    */
-  verifySignature(requestIndex: number, secret: string): boolean {
+  verifySignature(requestIndex: number, _secret: string): boolean {
     const request = this.receivedRequests[requestIndex];
     if (!request) return false;
 

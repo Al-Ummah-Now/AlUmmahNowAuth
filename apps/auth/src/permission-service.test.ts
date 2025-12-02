@@ -15,9 +15,7 @@ import { env } from 'cloudflare:test';
 import './test-setup'; // Setup database schema
 import { PermissionService } from './permission-service';
 import {
-  Permission,
   PermissionData,
-  EffectivePermissions,
 } from './rbac-types';
 
 describe('PermissionService', () => {
@@ -948,7 +946,7 @@ describe('PermissionService', () => {
 
   describe('Audit Logging', () => {
     it('should log permission creation', async () => {
-      const consoleSpy = vi.spyOn(console, 'log');
+      const consoleSpy = vi.spyOn(console, 'info');
 
       await permissionService.createPermission({
         name: 'audit:test:all',
@@ -963,7 +961,7 @@ describe('PermissionService', () => {
     });
 
     it('should log permission grant to role', async () => {
-      const consoleSpy = vi.spyOn(console, 'log');
+      const consoleSpy = vi.spyOn(console, 'info');
 
       const roleId = crypto.randomUUID();
       await env.AUTH_DB.prepare(
@@ -993,7 +991,7 @@ describe('PermissionService', () => {
     });
 
     it('should log permission revocation', async () => {
-      const consoleSpy = vi.spyOn(console, 'log');
+      const consoleSpy = vi.spyOn(console, 'info');
 
       const roleId = crypto.randomUUID();
       await env.AUTH_DB.prepare(

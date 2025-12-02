@@ -19,9 +19,7 @@ import {
   RoleData,
   Permission,
   PermissionGrantCheck,
-  UserRole,
   UserRoleWithDetails,
-  SYSTEM_ROLES,
   isSystemRoleName
 } from './rbac-types';
 import { PermissionService } from './permission-service';
@@ -95,7 +93,7 @@ export class RoleService {
     permissionIds: string[]
   ): Promise<PermissionGrantCheck> {
     // Get granter's effective permissions
-    const granterPerms = await this.permissionService.getUserPermissions(granterId);
+    await this.permissionService.getUserPermissions(granterId);
 
     // Get the permissions being granted
     if (permissionIds.length === 0) {
@@ -217,17 +215,18 @@ export class RoleService {
    * @returns Created role
    */
   async createRole(data: RoleData, createdBy: string): Promise<Role> {
+    // P0-4: CRITICAL - Check if trying to create a system role name FIRST
+    // This must be checked before existence to prevent bypassing security with existing system roles
+    if (isSystemRoleName(data.name)) {
+      throw new Error(
+        `Cannot create role with system role name: ${data.name}`
+      );
+    }
+
     // Check if role name already exists
     const existing = await this.getRoleByName(data.name);
     if (existing) {
       throw new Error(`Role already exists: ${data.name}`);
-    }
-
-    // Check if trying to create a system role name
-    if (isSystemRoleName(data.name)) {
-      throw new Error(
-        `Security violation: Cannot create role with system role name: ${data.name}`
-      );
     }
 
     const id = crypto.randomUUID();
@@ -321,7 +320,7 @@ export class RoleService {
 
     // Build update query
     const fields: string[] = [];
-    const bindings: any[] = [];
+    const bindings: unknown[] = [];
 
     if (updates.name !== undefined) {
       // Check if new name already exists
@@ -575,7 +574,18 @@ export class RoleService {
         AND ur.is_active = 1
         AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
       ORDER BY r.name
-    `).bind(userId).all<any>();
+    `).bind(userId).all<{
+      id: string;
+      user_id: string;
+      role_id: string;
+      granted_by: string | null;
+      granted_at: string;
+      expires_at: string | null;
+      is_active: number;
+      role_name: string;
+      role_description: string | null;
+      role_is_system: number;
+    }>();
 
     return (result.results || []).map(row => ({
       id: row.id,

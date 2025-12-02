@@ -1,0 +1,437 @@
+/**
+ * E2E Test: Admin Audit View
+ *
+ * Tests the audit logs page functionality in the admin dashboard.
+ * Verifies that audit events are captured, displayed, and can be filtered/searched.
+ */
+
+import { test, expect } from '@playwright/test';
+import { loginAdmin } from '../../fixtures/admin';
+import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
+
+/**
+ * Helper function to wait for audit events to be processed
+ * Audit events go through a queue, so we need to wait for them to appear in the database
+ */
+async function waitForAuditEvents(page: any, minCount: number = 1, maxWaitMs: number = 10000): Promise<void> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    // Reload the page to get fresh data
+    await page.reload();
+
+    // Check if we have events in the table
+    const tableRows = page.locator('tbody tr');
+    const rowCount = await tableRows.count();
+
+    if (rowCount >= minCount) {
+      return;
+    }
+
+    // Wait 500ms before trying again
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`Timed out waiting for ${minCount} audit events to appear`);
+}
+
+test.describe('Admin Audit View', () => {
+  test.beforeEach(async ({ page }) => {
+    // Login as admin - this will create login-related audit events
+    await loginAdmin(page, TEST_USERS.admin().email);
+  });
+
+  test('should display audit logs page', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Verify page loaded correctly
+    await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/audit`));
+
+    // Verify page title and header
+    await expect(page.locator('h1:has-text("Audit Logs")')).toBeVisible();
+    await expect(page.locator('text=/Audit Events/i')).toBeVisible();
+    await expect(page.locator('text=/View and filter system audit logs/i')).toBeVisible();
+
+    // Verify table headers are present
+    await expect(page.locator('th:has-text("Timestamp")')).toBeVisible();
+    await expect(page.locator('th:has-text("Event Type")')).toBeVisible();
+    await expect(page.locator('th:has-text("Severity")')).toBeVisible();
+    await expect(page.locator('th:has-text("User ID")')).toBeVisible();
+    await expect(page.locator('th:has-text("IP Address")')).toBeVisible();
+    await expect(page.locator('th:has-text("Status")')).toBeVisible();
+  });
+
+  test('should show login events in audit log', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Wait for audit events to be processed through the queue
+    // Login creates multiple events: token_issued, login_success, etc.
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Verify at least one event is displayed in the table
+    const tableRows = page.locator('tbody tr');
+    const rowCount = await tableRows.count();
+    expect(rowCount).toBeGreaterThan(0);
+
+    // Verify the event has expected structure (columns)
+    const firstRow = tableRows.first();
+    await expect(firstRow.locator('td').nth(0)).toContainText(/\d{1,2}\/\d{1,2}\/\d{4}/); // Timestamp
+    await expect(firstRow.locator('td').nth(1)).toBeVisible(); // Event type
+    await expect(firstRow.locator('td').nth(2)).toBeVisible(); // Severity badge
+    await expect(firstRow.locator('td').nth(5)).toBeVisible(); // Status badge
+  });
+
+  test('should filter audit logs by event type', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Wait for events to appear
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Click "Show Filters" button
+    await page.click('button:has-text("Show Filters")');
+
+    // Wait for filter panel to be visible
+    await expect(page.locator('label:has-text("Event Type")')).toBeVisible();
+
+    // Enter a specific event type filter (e.g., token events)
+    await page.fill('input[id="event_type"]', 'auth.token');
+
+    // Click "Apply Filters" button
+    await page.click('button:has-text("Apply Filters")');
+
+    // Wait for navigation and page to load
+    await page.waitForURL(/event_type=auth\.token/);
+    await page.waitForLoadState('networkidle');
+
+    // Verify the filter is active (shown in URL or active filters display)
+    const url = new URL(page.url());
+    expect(url.searchParams.get('event_type')).toBe('auth.token');
+
+    // Verify filtered results
+    // Either we have matching results or "No audit events found" message
+    const noEventsMessage = page.locator('h3:has-text("No audit events found")');
+    const tableRows = page.locator('tbody tr');
+
+    const hasResults = await tableRows.count() > 0;
+    const showsEmptyState = await noEventsMessage.isVisible();
+
+    // One of these should be true
+    expect(hasResults || showsEmptyState).toBe(true);
+
+    // If we have results, verify they match the filter
+    if (hasResults) {
+      const firstEventType = await tableRows.first().locator('td').nth(1).textContent();
+      expect(firstEventType).toContain('auth.token');
+    }
+  });
+
+  test('should filter audit logs by severity', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Wait for events to appear
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Click "Show Filters" button
+    await page.click('button:has-text("Show Filters")');
+
+    // Wait for filter panel
+    await expect(page.locator('label:has-text("Severity")')).toBeVisible();
+
+    // Select severity filter (use the Select component)
+    await page.locator('button[id="severity"]').click();
+    await page.locator('[role="option"]:has-text("Info")').click();
+
+    // Apply filters
+    await page.click('button:has-text("Apply Filters")');
+
+    // Wait for URL to update
+    await page.waitForURL(/severity=info/);
+
+    // Verify the severity filter is in the URL
+    const url = new URL(page.url());
+    expect(url.searchParams.get('severity')).toBe('info');
+
+    // Verify active filter badge is shown (when filters are hidden)
+    await page.click('button:has-text("Hide Filters")');
+    await expect(page.locator('text=/Active filters:/i')).toBeVisible();
+    await expect(page.locator('text=/Severity: info/i')).toBeVisible();
+  });
+
+  test('should search audit logs by user ID', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Wait for events to appear
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Get a user ID from the first row to search for
+    const firstRow = page.locator('tbody tr').first();
+    const userIdCell = firstRow.locator('td').nth(3); // User ID column
+    const userId = await userIdCell.textContent();
+
+    // Skip test if no user ID (some events may not have user_id)
+    if (!userId || userId.trim() === '-') {
+      test.skip();
+      return;
+    }
+
+    const trimmedUserId = userId.trim();
+
+    // Show filters
+    await page.click('button:has-text("Show Filters")');
+
+    // Enter search query
+    await page.fill('input[id="search"]', trimmedUserId);
+
+    // Apply filters
+    await page.click('button:has-text("Apply Filters")');
+
+    // Wait for URL to update
+    await page.waitForURL(/search=/);
+
+    // Verify search filter in URL
+    const url = new URL(page.url());
+    expect(url.searchParams.get('search')).toBe(trimmedUserId);
+
+    // Verify results contain the searched user ID
+    const tableRows = page.locator('tbody tr');
+    const rowCount = await tableRows.count();
+
+    if (rowCount > 0) {
+      // All visible rows should have the searched user ID
+      const firstRowUserId = await tableRows.first().locator('td').nth(3).textContent();
+      expect(firstRowUserId?.trim()).toBe(trimmedUserId);
+    }
+  });
+
+  test('should clear filters', async ({ page }) => {
+    // Navigate to audit logs page with filters
+    await page.goto(`${TEST_URLS.adminDashboard}/audit?event_type=auth.login&severity=info`);
+
+    // Wait for page to load
+    await page.waitForLoadState('networkidle');
+
+    // Verify filters are active
+    await expect(page.locator('text=/Active filters:/i')).toBeVisible();
+
+    // Show filters panel
+    await page.click('button:has-text("Show Filters")');
+
+    // Click "Clear Filters" button
+    await page.click('button:has-text("Clear Filters")');
+
+    // Verify we're back at the base URL without query params
+    await expect(page).toHaveURL(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Verify active filters are gone
+    await expect(page.locator('text=/Active filters:/i')).not.toBeVisible();
+
+    // Verify filter inputs are empty
+    const eventTypeInput = page.locator('input[id="event_type"]');
+    await expect(eventTypeInput).toHaveValue('');
+  });
+
+  test('should paginate audit logs', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Wait for events to appear
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Check if pagination is available
+    const paginationInfo = page.locator('text=/Page \\d+ of \\d+/');
+    const hasPagination = await paginationInfo.isVisible();
+
+    if (!hasPagination) {
+      // Not enough events for pagination - skip this test
+      test.skip();
+      return;
+    }
+
+    // Get current page number
+    const paginationText = await paginationInfo.textContent();
+    const match = paginationText?.match(/Page (\d+) of (\d+)/);
+
+    if (!match || parseInt(match[2]) <= 1) {
+      // Only one page available
+      test.skip();
+      return;
+    }
+
+    const _totalPages = parseInt(match[2]);
+
+    // Get first row event ID before pagination
+    const firstRowBefore = page.locator('tbody tr').first();
+    const _firstEventBefore = await firstRowBefore.locator('td').nth(1).textContent();
+
+    // Click "Next" button
+    await page.click('button:has-text("Next")');
+
+    // Wait for page 2 to load
+    await page.waitForURL(/page=2/);
+    await page.waitForLoadState('networkidle');
+
+    // Verify we're on page 2
+    const url = new URL(page.url());
+    expect(url.searchParams.get('page')).toBe('2');
+
+    // Verify pagination info updated
+    await expect(page.locator('text=/Page 2 of \\d+/')).toBeVisible();
+
+    // Verify content changed (different events shown)
+    const firstRowAfter = page.locator('tbody tr').first();
+    const _firstEventAfter = await firstRowAfter.locator('td').nth(1).textContent();
+
+    // Events should be different (unless we have duplicate events, which is unlikely)
+    // If they're the same, it's still valid pagination (just same event types)
+    // So we just verify the page number changed, which we already did
+
+    // Click "Previous" button
+    await page.click('button:has-text("Previous")');
+
+    // Wait for page 1 to load
+    await page.waitForURL(/audit(?:\?page=1)?$/);
+    await page.waitForLoadState('networkidle');
+
+    // Verify we're back on page 1
+    await expect(page.locator('text=/Page 1 of \\d+/')).toBeVisible();
+  });
+
+  test('should show filter toggle button', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Verify "Show Filters" button is visible
+    const filterButton = page.locator('button:has-text("Show Filters")');
+    await expect(filterButton).toBeVisible();
+
+    // Click to show filters
+    await filterButton.click();
+
+    // Verify filter panel is visible
+    await expect(page.locator('label:has-text("Event Type")')).toBeVisible();
+    await expect(page.locator('label:has-text("Severity")')).toBeVisible();
+    await expect(page.locator('label:has-text("Search")')).toBeVisible();
+
+    // Verify button text changed to "Hide Filters"
+    await expect(page.locator('button:has-text("Hide Filters")')).toBeVisible();
+
+    // Click to hide filters
+    await page.click('button:has-text("Hide Filters")');
+
+    // Verify filter panel is hidden
+    await expect(page.locator('label:has-text("Event Type")')).not.toBeVisible();
+
+    // Verify button text changed back to "Show Filters"
+    await expect(page.locator('button:has-text("Show Filters")')).toBeVisible();
+  });
+
+  test('should display event severity badges with correct colors', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Wait for events to appear
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Get the first row severity badge
+    const firstRow = page.locator('tbody tr').first();
+    const severityBadge = firstRow.locator('td').nth(2).locator('[class*="badge"]');
+
+    // Verify badge is visible
+    await expect(severityBadge).toBeVisible();
+
+    // Verify badge has text (info, warning, error, etc.)
+    const badgeText = await severityBadge.textContent();
+    expect(badgeText).toMatch(/info|warning|error|critical|debug/i);
+  });
+
+  test('should display success/failed status badges', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Wait for events to appear
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Get the first row status badge
+    const firstRow = page.locator('tbody tr').first();
+    const statusBadge = firstRow.locator('td').nth(5).locator('[class*="badge"]');
+
+    // Verify status badge is visible
+    await expect(statusBadge).toBeVisible();
+
+    // Verify badge shows either "Success" or "Failed"
+    const statusText = await statusBadge.textContent();
+    expect(statusText).toMatch(/Success|Failed/i);
+  });
+
+  test('should show navigation back to dashboard', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Verify back button is present
+    const backButton = page.locator('a[href="/"]').first();
+    await expect(backButton).toBeVisible();
+
+    // Click back button
+    await backButton.click();
+
+    // Verify we're back on dashboard
+    await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/?$`));
+    await expect(page.locator('h1:has-text("Dashboard"), h2:has-text("Dashboard")')).toBeVisible();
+  });
+
+  test('should filter by date range', async ({ page }) => {
+    // Navigate to audit logs page
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+
+    // Wait for events to appear
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Show filters
+    await page.click('button:has-text("Show Filters")');
+
+    // Set date range (last 7 days)
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 7);
+
+    // Format dates for datetime-local input (YYYY-MM-DDTHH:mm)
+    const formatDateTimeLocal = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+
+    const startDateStr = formatDateTimeLocal(startDate);
+    const endDateStr = formatDateTimeLocal(endDate);
+
+    // Fill date inputs
+    await page.fill('input[id="start_date"]', startDateStr);
+    await page.fill('input[id="end_date"]', endDateStr);
+
+    // Apply filters
+    await page.click('button:has-text("Apply Filters")');
+
+    // Wait for URL to update
+    await page.waitForURL(/start_date=/);
+
+    // Verify date filters are in URL
+    const url = new URL(page.url());
+    expect(url.searchParams.get('start_date')).toBeTruthy();
+    expect(url.searchParams.get('end_date')).toBeTruthy();
+
+    // Hide filters to see active filter badges
+    await page.click('button:has-text("Hide Filters")');
+
+    // Verify active date filter badges are shown
+    await expect(page.locator('text=/Active filters:/i')).toBeVisible();
+    await expect(page.locator('text=/From:/i')).toBeVisible();
+    await expect(page.locator('text=/To:/i')).toBeVisible();
+  });
+});

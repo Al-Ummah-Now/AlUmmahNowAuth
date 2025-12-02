@@ -1,0 +1,33 @@
+{
+  "name": "al-ummah-now-audit-consumer-qa",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-10-11",
+  "workers_dev": true,
+
+  // D1 Database binding for audit logs (QA)
+  "d1_databases": [
+    {
+      "binding": "AUDIT_DB",
+      "database_name": "al-ummah-now-d1-qa",
+      "database_id": "28590f3c-dd92-4c26-a803-d73a9bbe2b58"
+    }
+  ],
+
+  // Queue consumer configuration (QA)
+  "queues": {
+    "consumers": [
+      {
+        "queue": "audit-events-qa",
+        "max_batch_size": 50,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "audit-events-qa-dlq"
+      }
+    ]
+  },
+
+  // Observability
+  "observability": {
+    "enabled": true
+  }
+}

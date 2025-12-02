@@ -18,10 +18,8 @@ import {
   Role,
   EffectivePermissions,
   PermissionData,
-  PermissionCheck,
   BulkPermissionCheck,
   BulkPermissionResult,
-  UserPermission,
   parsePermission,
   matchesPermissionPattern
 } from './rbac-types';
@@ -222,7 +220,7 @@ export class PermissionService {
     scope?: string;
   }): Promise<Permission[]> {
     const conditions: string[] = [];
-    const bindings: any[] = [];
+    const bindings: unknown[] = [];
 
     // P0-1: Build parameterized query dynamically
     if (filters.resource) {
@@ -379,17 +377,17 @@ export class PermissionService {
       JOIN permissions p ON up.permission_id = p.id
       WHERE up.user_id = ?
         AND (up.expires_at IS NULL OR up.expires_at > datetime('now'))
-    `).bind(userId).all<any>();
+    `).bind(userId).all<Permission & { is_grant: number }>();
 
     const directPermissions = directResult.results || [];
 
     const directGrants = directPermissions
-      .filter((p: any) => p.is_grant === 1 || p.is_grant === true)
-      .map(({ is_grant, ...rest }: any) => rest);
+      .filter(p => p.is_grant === 1)
+      .map(({ is_grant: _, ...rest }) => rest);
 
     const directDenies = directPermissions
-      .filter((p: any) => p.is_grant === 0 || p.is_grant === false)
-      .map(({ is_grant, ...rest }: any) => rest);
+      .filter(p => p.is_grant === 0)
+      .map(({ is_grant: _, ...rest }) => rest);
 
     const now = new Date();
     const version = await this.getCacheVersion();

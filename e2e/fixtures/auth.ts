@@ -12,6 +12,8 @@ import { setupEmailInterception } from '../utils/email-interceptor';
 const registeredUsers = new Set<string>();
 
 // Test password for all E2E test users
+// SECURITY WARNING: This password is used ONLY for local E2E tests and should NEVER be used in production.
+// In production, always use strong, unique passwords for each user.
 const TEST_PASSWORD = 'TestPassword123!';
 
 /**
@@ -27,8 +29,8 @@ export async function register(page: Page, email: string): Promise<void> {
     return;
   }
 
-  // Set up email interception to capture verification code
-  const emailInterceptor = setupEmailInterception(page);
+  // Set up email interception to capture verification code via Resend API
+  const emailInterceptor = setupEmailInterception();
 
   // Navigate to profile app
   await page.goto(TEST_URLS.profileApp);
@@ -54,7 +56,8 @@ export async function register(page: Page, email: string): Promise<void> {
   await page.click('button:has-text("Continue")');
 
   // Wait for verification code input
-  await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+  // Timeout increased to handle cold starts in QA environment
+  await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 20000 });
 
   const verificationCode = await emailInterceptor.getLastLoginCode(email);
 
@@ -96,6 +99,9 @@ export async function login(page: Page, email: string): Promise<void> {
     return;
   }
 
+  // Set up email interception for verification code via Resend API
+  const emailInterceptor = setupEmailInterception();
+
   // Click login button (using more specific selector to avoid multiple matches)
   await page.locator('#loggedOutView button:has-text("Sign In")').click();
 
@@ -108,6 +114,24 @@ export async function login(page: Page, email: string): Promise<void> {
 
   // Click Continue to submit login
   await page.click('button:has-text("Continue")');
+
+  // Handle verification code if required
+  // Note: Verification code is typically only required for registration.
+  // For returning users (already registered), password flow may skip verification.
+  const codeInput = page.locator('input[name="code"]');
+  const needsVerificationCode = await codeInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+  if (needsVerificationCode) {
+    // Get verification code from intercepted email
+    const verificationCode = await emailInterceptor.getLastLoginCode(email);
+    if (!verificationCode) {
+      throw new Error('Failed to capture verification code from email during login');
+    }
+
+    // Enter verification code
+    await page.fill('input[name="code"]', verificationCode);
+    await page.click('button:has-text("Continue")');
+  }
 
   // Wait for redirect back to profile app (successful login)
   await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });

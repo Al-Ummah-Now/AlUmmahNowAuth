@@ -1,10 +1,12 @@
 // Session management utilities for auth app
 
+import { logger } from './logger';
+
 export interface SessionData {
   user: {
     id: string;
     email: string;
-    role: string;
+    roles: string[];
   };
   tokens: {
     access: string;
@@ -49,7 +51,7 @@ export async function getUserSession(
     try {
       session = JSON.parse(sessionData) as SessionData;
     } catch (parseError) {
-      console.error("Failed to parse session data, deleting corrupted session:", parseError);
+      logger.error("Failed to parse session data, deleting corrupted session", { error: parseError });
       await storage.delete(`session:${sessionToken}`);
       return null;
     }
@@ -62,7 +64,7 @@ export async function getUserSession(
 
     return session;
   } catch (error) {
-    console.error("Error retrieving session:", error);
+    logger.error("Error retrieving session", { error });
     return null;
   }
 }

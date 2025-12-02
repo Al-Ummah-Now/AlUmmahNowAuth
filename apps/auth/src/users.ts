@@ -1,22 +1,38 @@
 import { logger } from './logger';
 import * as v from 'valibot';
 
+// Helper to fetch RBAC roles for a user
+async function getUserRoles(env: Env, userId: string): Promise<string[]> {
+  const rolesResult = await env.AUTH_DB.prepare(`
+    SELECT r.name
+    FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
+    WHERE ur.user_id = ?
+      AND ur.is_active = 1
+      AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+    ORDER BY r.name
+  `).bind(userId).all<{ name: string }>();
+
+  return rolesResult.results?.map(r => r.name) || [];
+}
+
 // Overloaded signatures for backward compatibility
-export async function getOrCreateUser(env: Env, email: string, returnIsNew: true): Promise<{ id: string; role: string; isNew: boolean }>;
-export async function getOrCreateUser(env: Env, email: string, returnIsNew?: false): Promise<{ id: string; role: string }>;
-export async function getOrCreateUser(env: Env, email: string, returnIsNew: boolean = false): Promise<{ id: string; role: string } | { id: string; role: string; isNew: boolean }> {
+export async function getOrCreateUser(env: Env, email: string, returnIsNew: true): Promise<{ id: string; roles: string[]; isNew: boolean }>;
+export async function getOrCreateUser(env: Env, email: string, returnIsNew?: false): Promise<{ id: string; roles: string[] }>;
+export async function getOrCreateUser(env: Env, email: string, returnIsNew: boolean = false): Promise<{ id: string; roles: string[] } | { id: string; roles: string[]; isNew: boolean }> {
     logger.debug('getOrCreateUser called', { email });
 
     // First check if user already exists
     const existingUser = await env.AUTH_DB.prepare(
-      `SELECT id, role FROM user WHERE email = ?`
+      `SELECT id FROM user WHERE email = ?`
     )
       .bind(email)
-      .first<{ id: string; role: string }>();
+      .first<{ id: string }>();
 
     if (existingUser) {
-      logger.info('Existing user found', { userId: existingUser.id, email, role: existingUser.role });
-      return returnIsNew ? { ...existingUser, isNew: false } : existingUser;
+      const roles = await getUserRoles(env, existingUser.id);
+      logger.info('Existing user found', { userId: existingUser.id, email, roles });
+      return returnIsNew ? { id: existingUser.id, roles, isNew: false } : { id: existingUser.id, roles };
     }
 
     logger.info('Creating new user', { email });
@@ -24,18 +40,25 @@ export async function getOrCreateUser(env: Env, email: string, returnIsNew: bool
     // Wrap in try-catch to handle race condition with concurrent requests
     try {
       const result = await env.AUTH_DB.prepare(
-        `INSERT INTO user (email, role, password_reset_required) VALUES (?, 'user', FALSE) RETURNING id, role`
+        `INSERT INTO user (email, password_reset_required) VALUES (?, FALSE) RETURNING id`
       )
         .bind(email)
-        .first<{ id: string; role: string }>();
+        .first<{ id: string }>();
 
       if (!result) {
         logger.error('Failed to create user', { email });
         throw new Error(`Unable to process user: ${email}`);
       }
 
-      logger.info('User created successfully', { userId: result.id, email, role: result.role });
-      return returnIsNew ? { ...result, isNew: true } : result;
+      // Assign default 'user' role in RBAC system
+      await env.AUTH_DB.prepare(
+        `INSERT INTO user_roles (user_id, role_id, granted_by, is_active)
+         VALUES (?, 'role_user', 'system', 1)`
+      ).bind(result.id).run();
+
+      const roles = ['user']; // New users get 'user' role
+      logger.info('User created successfully', { userId: result.id, email, roles });
+      return returnIsNew ? { id: result.id, roles, isNew: true } : { id: result.id, roles };
     } catch (error) {
       // Check if this is a UNIQUE constraint violation (race condition)
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -44,14 +67,15 @@ export async function getOrCreateUser(env: Env, email: string, returnIsNew: bool
 
         // Another request created the user, fetch it
         const concurrentUser = await env.AUTH_DB.prepare(
-          `SELECT id, role FROM user WHERE email = ?`
+          `SELECT id FROM user WHERE email = ?`
         )
           .bind(email)
-          .first<{ id: string; role: string }>();
+          .first<{ id: string }>();
 
         if (concurrentUser) {
-          logger.info('User fetched after race condition', { userId: concurrentUser.id, email, role: concurrentUser.role });
-          return returnIsNew ? { ...concurrentUser, isNew: false } : concurrentUser;
+          const roles = await getUserRoles(env, concurrentUser.id);
+          logger.info('User fetched after race condition', { userId: concurrentUser.id, email, roles });
+          return returnIsNew ? { id: concurrentUser.id, roles, isNew: false } : { id: concurrentUser.id, roles };
         }
       }
 
@@ -61,69 +85,71 @@ export async function getOrCreateUser(env: Env, email: string, returnIsNew: bool
     }
   }
 
-export async function getUserById(env: Env, id: string): Promise<{ id: string; email: string; role: string; created_at: string; password_reset_required?: boolean } | null> {
+export async function getUserById(env: Env, id: string): Promise<{ id: string; email: string; created_at: string; password_reset_required?: boolean } | null> {
   logger.debug('getUserById called', { userId: id });
-  
+
   const result = await env.AUTH_DB.prepare(
-    `SELECT id, email, role, created_at, password_reset_required FROM user WHERE id = ?`
+    `SELECT id, email, created_at, password_reset_required FROM user WHERE id = ?`
   )
     .bind(id)
-    .first<{ id: string; email: string; role: string; created_at: string; password_reset_required: boolean }>();
-  
+    .first<{ id: string; email: string; created_at: string; password_reset_required: boolean }>();
+
   if (result) {
-    logger.debug('User found by ID', { userId: id, email: result.email, role: result.role });
+    logger.debug('User found by ID', { userId: id, email: result.email });
   } else {
     logger.warn('User not found by ID', { userId: id });
   }
-  
+
   return result || null;
 }
 
-export async function getUserByEmail(env: Env, email: string): Promise<{ id: string; email: string; role: string; created_at: string; password_reset_required?: boolean } | null> {
+export async function getUserByEmail(env: Env, email: string): Promise<{ id: string; email: string; created_at: string; password_reset_required?: boolean } | null> {
   const result = await env.AUTH_DB.prepare(
-    `SELECT id, email, role, created_at, password_reset_required FROM user WHERE email = ?`
+    `SELECT id, email, created_at, password_reset_required FROM user WHERE email = ?`
   )
     .bind(email)
-    .first<{ id: string; email: string; role: string; created_at: string; password_reset_required: boolean }>();
+    .first<{ id: string; email: string; created_at: string; password_reset_required: boolean }>();
   return result || null;
 }
 
-export async function getAllUsers(env: Env): Promise<{ id: string; email: string; role: string; created_at: string; password_reset_required?: boolean }[]> {
+export async function getAllUsers(env: Env): Promise<{ id: string; email: string; created_at: string; password_reset_required?: boolean }[]> {
   const result = await env.AUTH_DB.prepare(
-    `SELECT id, email, role, created_at, password_reset_required FROM user ORDER BY created_at DESC`
+    `SELECT id, email, created_at, password_reset_required FROM user ORDER BY created_at DESC`
   )
-    .all<{ id: string; email: string; role: string; created_at: string; password_reset_required: boolean }>();
+    .all<{ id: string; email: string; created_at: string; password_reset_required: boolean }>();
   return result.results || [];
 }
 
-export async function createUser(env: Env, email: string, role: string = 'user'): Promise<{ id: string; email: string; role: string }> {
-  logger.info('createUser called (admin action)', { email, role });
-  
+export async function createUser(env: Env, email: string, initialRole: string = 'user'): Promise<{ id: string; email: string }> {
+  logger.info('createUser called (admin action)', { email, initialRole });
+
   const result = await env.AUTH_DB.prepare(
-    `INSERT INTO user (email, role, password_reset_required) VALUES (?, ?, TRUE) RETURNING id, email, role`
+    `INSERT INTO user (email, password_reset_required) VALUES (?, TRUE) RETURNING id, email`
   )
-    .bind(email, role)
-    .first<{ id: string; email: string; role: string }>();
-  
+    .bind(email)
+    .first<{ id: string; email: string }>();
+
   if (!result) {
-    logger.error('Failed to create user (admin action)', { email, role });
+    logger.error('Failed to create user (admin action)', { email, initialRole });
     throw new Error(`Unable to create user: ${email}`);
   }
-  
-  logger.info('User created successfully (admin action)', { userId: result.id, email, role });
+
+  // Assign RBAC role based on initialRole parameter
+  const roleId = initialRole === 'admin' ? 'role_admin' : 'role_user';
+  await env.AUTH_DB.prepare(
+    `INSERT INTO user_roles (user_id, role_id, granted_by, is_active) VALUES (?, ?, 'system', 1)`
+  ).bind(result.id, roleId).run();
+
+  logger.info('User created successfully (admin action)', { userId: result.id, email, initialRole, roleId });
   return result;
 }
 
 /**
  * Validation schema for user updates
- * Ensures email format is valid and role is either 'user' or 'admin'
+ * Ensures email format is valid
  */
 const UpdateUserSchema = v.object({
   email: v.optional(v.pipe(v.string(), v.email('Invalid email format'))),
-  role: v.optional(v.pipe(
-    v.string(),
-    v.union([v.literal('user'), v.literal('admin')], 'Role must be either "user" or "admin"')
-  )),
 });
 
 /**
@@ -137,7 +163,7 @@ const UpdateUserSchema = v.object({
  * @param userId - The ID of the user whose sessions should be invalidated
  * @returns Number of sessions invalidated
  */
-async function invalidateUserSessions(storage: KVNamespace, userId: string): Promise<number> {
+async function _invalidateUserSessions(storage: KVNamespace, userId: string): Promise<number> {
   logger.info('Invalidating all sessions for user', { userId });
 
   try {
@@ -176,7 +202,7 @@ async function invalidateUserSessions(storage: KVNamespace, userId: string): Pro
 
       // Check if there are more results
       hasMore = !listResult.list_complete;
-      cursor = hasMore ? (listResult as any).cursor : undefined;
+      cursor = hasMore ? (listResult as { cursor?: string }).cursor : undefined;
     }
 
     logger.info('Sessions invalidation complete', { userId, invalidatedCount });
@@ -191,7 +217,7 @@ async function invalidateUserSessions(storage: KVNamespace, userId: string): Pro
   }
 }
 
-export async function updateUser(env: Env, id: string, updates: { email?: string; role?: string }): Promise<{ id: string; email: string; role: string } | null> {
+export async function updateUser(env: Env, id: string, updates: { email?: string }): Promise<{ id: string; email: string } | null> {
   logger.info('updateUser called', { userId: id, updates });
 
   // Validate input with Valibot before processing
@@ -207,48 +233,19 @@ export async function updateUser(env: Env, id: string, updates: { email?: string
     throw new Error(`Invalid user update data: ${validationError.issues.map(i => i.message).join(', ')}`);
   }
 
-  const setParts: string[] = [];
-  const values: any[] = [];
-  let roleChanged = false;
-
-  if (updates.email !== undefined) {
-    setParts.push('email = ?');
-    values.push(updates.email);
-  }
-
-  if (updates.role !== undefined) {
-    setParts.push('role = ?');
-    values.push(updates.role);
-    roleChanged = true;
-    logger.info('Role change detected', { userId: id, newRole: updates.role });
-  }
-
-  if (setParts.length === 0) {
+  if (updates.email === undefined) {
     logger.warn('updateUser called with no updates', { userId: id });
     throw new Error('No updates provided');
   }
 
-  values.push(id);
-
   const result = await env.AUTH_DB.prepare(
-    `UPDATE user SET ${setParts.join(', ')} WHERE id = ? RETURNING id, email, role`
+    `UPDATE user SET email = ? WHERE id = ? RETURNING id, email`
   )
-    .bind(...values)
-    .first<{ id: string; email: string; role: string }>();
+    .bind(updates.email, id)
+    .first<{ id: string; email: string }>();
 
   if (result) {
-    logger.info('User updated successfully', { userId: id, newEmail: result.email, newRole: result.role });
-
-    // Invalidate all sessions if role changed
-    if (roleChanged) {
-      logger.info('Role changed, invalidating all user sessions', { userId: id, newRole: result.role });
-      const invalidatedCount = await invalidateUserSessions(env.AUTH_STORAGE, id);
-      logger.info('Session invalidation complete after role change', {
-        userId: id,
-        newRole: result.role,
-        sessionsInvalidated: invalidatedCount,
-      });
-    }
+    logger.info('User updated successfully', { userId: id, newEmail: result.email });
   } else {
     logger.error('User update failed - user not found', { userId: id });
   }

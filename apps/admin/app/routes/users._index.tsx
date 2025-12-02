@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
-import { Link, useLoaderData, useFetcher } from "react-router";
-import { ArrowLeft, Plus, Pencil, Trash2, Mail, Shield, User, LogOut } from "lucide-react";
+import { Link, useLoaderData, useFetcher, useRevalidator } from "react-router";
+import { ArrowLeft, Plus, Settings, Trash2, Mail, User, LogOut } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -16,9 +16,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog";
-import { getAllUsers } from "../lib/db.server";
+import { UserRoleBadge } from "../components/user-role-badge";
+import { UserRoleManager } from "../components/user-role-manager";
 import { requireAuth } from "../lib/auth.server";
 import { logger } from "../lib/logger.server";
+import {
+  getAllRoles,
+  assignRoleToUser,
+  removeRoleFromUser,
+  isErrorResponse,
+} from "../lib/rbac-api.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -27,10 +34,32 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+interface UserWithRoles {
+  id: string;
+  email: string;
+  created_at: string;
+  role_names: string | null;
+  role_ids: string | null;
+}
+
+interface LoaderData {
+  users: Array<{
+    id: string;
+    email: string;
+    created_at: string;
+    roles: Array<{ id: string; name: string }>;
+  }>;
+  allRoles: Array<{ id: string; name: string; is_system: boolean; description?: string }>;
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_DB: D1Database; AUTH_STORAGE: KVNamespace };
+  const env = context?.cloudflare?.env as {
+    AUTH_DB: D1Database;
+    AUTH_STORAGE: KVNamespace;
+    AUTH_SERVER_URL?: string;
+  };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
-  
+
   // Initialize logger
   if (env?.AUTH_DB) {
     logger.setDatabase(env.AUTH_DB, true);
@@ -57,41 +86,172 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   try {
     if (!env?.AUTH_DB) {
       console.warn("AUTH_DB not available in development mode");
-      return { users: [] };
+      return { users: [], allRoles: [] };
     }
-    const users = await getAllUsers(env.AUTH_DB);
-    return { users };
+
+    // Fetch users with their RBAC roles
+    const usersResult = await env.AUTH_DB.prepare(`
+      SELECT
+        u.id,
+        u.email,
+        u.created_at,
+        GROUP_CONCAT(r.name) as role_names,
+        GROUP_CONCAT(r.id) as role_ids
+      FROM user u
+      LEFT JOIN user_roles ur ON u.id = ur.user_id AND ur.is_active = 1
+      LEFT JOIN roles r ON ur.role_id = r.id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+    `).all<UserWithRoles>();
+
+    // Transform the data to split the concatenated role names and IDs
+    const users = (usersResult.results || []).map((user) => ({
+      id: user.id,
+      email: user.email,
+      created_at: user.created_at,
+      roles: user.role_names && user.role_ids
+        ? user.role_names.split(',').map((name, idx) => ({
+            name: name.trim(),
+            id: user.role_ids!.split(',')[idx].trim(),
+          }))
+        : [],
+    }));
+
+    // Fetch all roles for the role manager
+    const rolesResponse = await getAllRoles(request, env);
+    const allRoles = isErrorResponse(rolesResponse) ? [] : rolesResponse;
+
+    return { users, allRoles };
   } catch (error) {
     console.error("Error loading users:", error);
-    return { users: [] };
+    return { users: [], allRoles: [] };
+  }
+}
+
+export async function action({ request, context }: LoaderFunctionArgs) {
+  const env = context?.cloudflare?.env as {
+    AUTH_DB: D1Database;
+    AUTH_STORAGE: KVNamespace;
+    AUTH_SERVER_URL?: string;
+  };
+
+  // Require authentication for actions
+  try {
+    await requireAuth(request, env, true);
+  } catch (error) {
+    if (error instanceof Response) {
+      throw error;
+    }
+    throw new Response(null, {
+      status: 302,
+      headers: {
+        Location: "/login",
+      },
+    });
+  }
+
+  const formData = await request.formData();
+  const intent = formData.get("intent") as string;
+
+  try {
+    if (intent === "assignRole") {
+      const userId = formData.get("userId") as string;
+      const roleId = formData.get("roleId") as string;
+
+      if (!userId || !roleId) {
+        return { error: "Missing userId or roleId" };
+      }
+
+      const result = await assignRoleToUser(request, env, userId, roleId);
+
+      if (isErrorResponse(result)) {
+        return { error: result.error };
+      }
+
+      return { success: true };
+    }
+
+    if (intent === "removeRole") {
+      const userId = formData.get("userId") as string;
+      const roleId = formData.get("roleId") as string;
+
+      if (!userId || !roleId) {
+        return { error: "Missing userId or roleId" };
+      }
+
+      const result = await removeRoleFromUser(request, env, userId, roleId);
+
+      if (isErrorResponse(result)) {
+        return { error: result.error };
+      }
+
+      return { success: true };
+    }
+
+    if (intent === "deleteUser") {
+      const userId = formData.get("userId") as string;
+
+      if (!userId) {
+        return { error: "Missing userId" };
+      }
+
+      // Delete user from database
+      if (env?.AUTH_DB) {
+        await env.AUTH_DB.prepare(`DELETE FROM user WHERE id = ?`)
+          .bind(userId)
+          .run();
+      }
+
+      return { success: true };
+    }
+
+    return { error: "Unknown intent" };
+  } catch (error) {
+    console.error("Action error:", error);
+    return { error: error instanceof Error ? error.message : "Action failed" };
   }
 }
 
 export default function Users() {
-  const { users } = useLoaderData<typeof loader>();
+  const { users, allRoles } = useLoaderData<LoaderData>();
+  const revalidator = useRevalidator();
+  const fetcher = useFetcher();
   const [searchQuery, setSearchQuery] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserRole, setNewUserRole] = useState("user");
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [roleManagerOpen, setRoleManagerOpen] = useState<string | null>(null);
 
   const handleCreateUser = async () => {
-    // TODO: Implement user creation API call
-    console.log("Creating user:", { email: newUserEmail, role: newUserRole });
+    // TODO: Implement user creation API call with selected roles
+    console.info("Creating user:", { email: newUserEmail, roles: selectedRoles });
     setCreateDialogOpen(false);
     setNewUserEmail("");
-    setNewUserRole("user");
+    setSelectedRoles([]);
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (confirm("Are you sure you want to delete this user?")) {
-      // TODO: Implement user deletion API call
-      console.log("Deleting user:", userId);
+    if (confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
+      fetcher.submit(
+        { intent: "deleteUser", userId },
+        { method: "POST" }
+      );
     }
   };
 
-  const filteredUsers = users.filter((user: any) =>
+  const filteredUsers = users.filter((user) =>
     user.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const openRoleManager = (userId: string) => {
+    setRoleManagerOpen(userId);
+  };
+
+  const closeRoleManager = () => {
+    setRoleManagerOpen(null);
+    // Revalidate to fetch fresh data
+    revalidator.revalidate();
+  };
 
   return (
     <div className="min-h-screen bg-[rgb(var(--color-background))]">
@@ -118,6 +278,12 @@ export default function Users() {
               </Link>
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/roles">Roles</Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/audit">Audit Logs</Link>
+              </Button>
               <Button variant="ghost" size="icon" asChild>
                 <Link to="/logout">
                   <LogOut className="h-5 w-5" />
@@ -135,7 +301,7 @@ export default function Users() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Users</CardTitle>
-                <CardDescription>Manage user accounts and permissions</CardDescription>
+                <CardDescription>Manage user accounts and RBAC role assignments</CardDescription>
               </div>
               <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                 <DialogTrigger asChild>
@@ -163,16 +329,31 @@ export default function Users() {
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="role">Role</Label>
-                      <select
-                        id="role"
-                        className="flex h-9 w-full rounded-md border border-[rgb(var(--color-input))] bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(var(--color-ring))]"
-                        value={newUserRole}
-                        onChange={(e) => setNewUserRole(e.target.value)}
-                      >
-                        <option value="user">User</option>
-                        <option value="admin">Admin</option>
-                      </select>
+                      <Label htmlFor="roles">Initial Roles</Label>
+                      <div className="space-y-2">
+                        {allRoles.map((role) => (
+                          <label key={role.id} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedRoles.includes(role.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedRoles([...selectedRoles, role.id]);
+                                } else {
+                                  setSelectedRoles(selectedRoles.filter((id) => id !== role.id));
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-[rgb(var(--color-input))]"
+                            />
+                            <span className="text-sm">{role.name}</span>
+                            {role.description && (
+                              <span className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                                - {role.description}
+                              </span>
+                            )}
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   </div>
                   <DialogFooter>
@@ -212,13 +393,13 @@ export default function Users() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
+                    <TableHead>RBAC Roles</TableHead>
                     <TableHead>Created At</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredUsers.map((user: any) => (
+                  {filteredUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
@@ -227,15 +408,16 @@ export default function Users() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          {user.role === "admin" ? (
-                            <Shield className="h-4 w-4 text-[rgb(var(--color-primary))]" />
+                        <div className="flex flex-wrap items-center gap-2">
+                          {user.roles.length === 0 ? (
+                            <span className="text-sm text-[rgb(var(--color-muted-foreground))]">
+                              No roles
+                            </span>
                           ) : (
-                            <User className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+                            user.roles.map((role) => (
+                              <UserRoleBadge key={role.id} role={role.name} />
+                            ))
                           )}
-                          <span className={user.role === "admin" ? "text-[rgb(var(--color-primary))]" : ""}>
-                            {user.role}
-                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -243,13 +425,19 @@ export default function Users() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon">
-                            <Pencil className="h-4 w-4" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openRoleManager(user.id)}
+                            title="Manage Roles"
+                          >
+                            <Settings className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDeleteUser(user.id)}
+                            title="Delete User"
                           >
                             <Trash2 className="h-4 w-4 text-[rgb(var(--color-destructive))]" />
                           </Button>
@@ -263,6 +451,23 @@ export default function Users() {
           </CardContent>
         </Card>
       </main>
+
+      {/* Role Manager Dialogs */}
+      {users.map((user) => (
+        <UserRoleManager
+          key={user.id}
+          open={roleManagerOpen === user.id}
+          onOpenChange={(open) => {
+            if (!open) {
+              closeRoleManager();
+            }
+          }}
+          userId={user.id}
+          userEmail={user.email}
+          currentRoles={user.roles}
+          allRoles={allRoles}
+        />
+      ))}
     </div>
   );
 }

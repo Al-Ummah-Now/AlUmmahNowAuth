@@ -14,12 +14,15 @@
     {
       "binding": "AUTH_DB",
       "database_name": "al-ummah-now-d1",
-      "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56"
+      "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56",
+      "preview_database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56"
     }
   ],
   "vars": {
     "AUTH_SERVER_URL": "https://auth.alummahnow.net",
-    "APP_URL": "https://profile.auth.alummahnow.net"
+    "APP_URL": "https://profile.auth.alummahnow.net",
+    "ADMIN_URL": "https://admin.auth.alummahnow.net",
+    "CF_WEB_ANALYTICS_TOKEN": ""
   },
   "observability": {
     "enabled": true

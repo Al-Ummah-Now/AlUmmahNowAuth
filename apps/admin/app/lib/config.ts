@@ -9,7 +9,7 @@ export const config = {
 } as const;
 
 // Get the auth server URL from environment variables
-export function getAuthServerUrl(request?: Request, env?: Record<string, any>): string {
+export function getAuthServerUrl(request?: Request, env?: { AUTH_SERVER_URL?: string }): string {
   // Priority 1: Environment variable (from wrangler.json vars or secrets)
   if (env?.AUTH_SERVER_URL) {
     return env.AUTH_SERVER_URL;
@@ -35,7 +35,7 @@ export function getAuthServerUrl(request?: Request, env?: Record<string, any>): 
 }
 
 // Get the current app URL (for OAuth redirect_uri)
-export function getAppUrl(request?: Request, env?: Record<string, any>): string {
+export function getAppUrl(request?: Request, env?: { APP_URL?: string }): string {
   // Priority 1: Environment variable override
   if (env?.APP_URL) {
     return env.APP_URL;

@@ -73,7 +73,7 @@ export class DLQReplayService {
     const offset = options.offset ?? 0;
 
     let query = 'SELECT * FROM webhook_dlq WHERE 1=1';
-    const bindings: any[] = [];
+    const bindings: unknown[] = [];
 
     if (options.status) {
       query += ' AND status = ?';
@@ -124,7 +124,7 @@ export class DLQReplayService {
     const maxAge = options.maxAge ?? 24; // Default 24 hours
     const dryRun = options.dryRun ?? false;
 
-    console.log(`Starting DLQ replay (dryRun: ${dryRun}):`, options);
+    console.info(`Starting DLQ replay (dryRun: ${dryRun}):`, options);
 
     // Fetch entries to replay
     const { entries } = await this.getQueuedEvents({
@@ -134,7 +134,7 @@ export class DLQReplayService {
     });
 
     if (entries.length === 0) {
-      console.log('No entries found for replay');
+      console.info('No entries found for replay');
       return {
         totalEntries: 0,
         successfulReplays: 0,
@@ -159,7 +159,7 @@ export class DLQReplayService {
     // Process each entry
     for (const entry of entries) {
       try {
-        console.log(`Replaying DLQ entry ${entry.id} (${entry.events.length} events)`);
+        console.info(`Replaying DLQ entry ${entry.id} (${entry.events.length} events)`);
 
         if (!dryRun) {
           // Create a temporary webhook sink for replay
@@ -182,11 +182,11 @@ export class DLQReplayService {
           await this.updateStatus([entry.id], 'completed', new Date().toISOString());
           result.successfulReplays++;
 
-          console.log(`Successfully replayed entry ${entry.id}`);
+          console.error(`Successfully replayed entry ${entry.id}`);
         } else {
           // Dry run - just count as successful
           result.successfulReplays++;
-          console.log(`[DRY RUN] Would replay entry ${entry.id}`);
+          console.error(`[DRY RUN] Would replay entry ${entry.id}`);
         }
 
       } catch (error) {
@@ -203,7 +203,7 @@ export class DLQReplayService {
       }
     }
 
-    console.log('DLQ replay completed:', result);
+    console.info('DLQ replay completed:', result);
     return result;
   }
 
@@ -219,7 +219,7 @@ export class DLQReplayService {
 
     const placeholders = ids.map(() => '?').join(',');
     let query = `UPDATE webhook_dlq SET status = ?`;
-    const bindings: any[] = [status];
+    const bindings: unknown[] = [status];
 
     // When marking as replaying, set the replaying_started_at timestamp
     if (status === 'replaying') {
@@ -254,7 +254,7 @@ export class DLQReplayService {
     const cutoff = new Date(Date.now() - maxAge * 24 * 60 * 60 * 1000).toISOString();
 
     let query = 'DELETE FROM webhook_dlq WHERE created_at < ?';
-    const bindings: any[] = [cutoff];
+    const bindings: unknown[] = [cutoff];
 
     if (options.statusFilter) {
       query += ' AND status = ?';
@@ -263,7 +263,7 @@ export class DLQReplayService {
 
     const result = await this.db.prepare(query).bind(...bindings).run();
 
-    console.log(`Cleaned up ${result.meta.changes} old DLQ entries`);
+    console.info(`Cleaned up ${result.meta.changes} old DLQ entries`);
     return { deleted: result.meta.changes };
   }
 
@@ -306,7 +306,7 @@ export class DLQReplayService {
 
     const resetCount = result.meta.changes;
     if (resetCount > 0) {
-      console.log(`Reset ${resetCount} stale 'replaying' entries back to 'pending' (timeout: ${timeoutMinutes}min, batch: ${batchSize})`);
+      console.info(`Reset ${resetCount} stale 'replaying' entries back to 'pending' (timeout: ${timeoutMinutes}min, batch: ${batchSize})`);
     }
 
     return { reset: resetCount };

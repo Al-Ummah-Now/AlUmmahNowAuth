@@ -6,13 +6,16 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev --port 8787 --persist-to=../../.wrangler/state",
+    "dev": "wrangler dev --port 3301 --inspector-port 3311 --persist-to=../../.wrangler/state",
     "dev:inspect": "wrangler dev --inspector --persist-to=../../.wrangler/state",
     "tail": "wrangler tail --format pretty",
     "deploy": "wrangler deploy",
+    "deploy:qa": "wrangler deploy --config wrangler.qa.json",
     "predeploy": "wrangler d1 migrations apply AUTH_DB --remote",
+    "predeploy:qa": "wrangler d1 migrations apply AUTH_DB --remote --config wrangler.qa.json",
     "migrations:local": "wrangler d1 migrations apply AUTH_DB --local --persist-to=../../.wrangler/state",
     "migrations:remote": "wrangler d1 migrations apply AUTH_DB --remote",
+    "migrations:qa": "wrangler d1 migrations apply AUTH_DB --remote --config wrangler.qa.json",
     "types": "wrangler types",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
@@ -21,17 +24,18 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@openauthjs/openauth": "0.4.3",
+    "@meywd/openauth": "0.5.5",
     "@types/node": "^24.10.1",
+    "jose": "^6.1.0",
     "resend": "^6.5.2",
     "valibot": "^1.2.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.10.11",
     "@cloudflare/workers-types": "^4.20251128.0",
-    "@vitest/coverage-v8": "^4.0.14",
+    "@vitest/coverage-v8": "^3.2.0",
     "typescript": "5.9.3",
-    "vitest": "^4.0.14",
+    "vitest": "^3.2.0",
     "wrangler": "^4.45.3"
   }
 }

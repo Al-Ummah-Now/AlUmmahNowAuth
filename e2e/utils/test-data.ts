@@ -43,11 +43,12 @@ export const TEST_USERS = {
 
 /**
  * Test URLs
+ * Uses environment variables for QA/CI testing, falls back to localhost for local dev
  */
 export const TEST_URLS = {
-  authServer: 'http://localhost:8787',
-  adminDashboard: 'http://localhost:5175',
-  profileApp: 'http://localhost:8788',
+  authServer: process.env.E2E_AUTH_SERVER_URL || 'http://localhost:3301',
+  adminDashboard: process.env.E2E_ADMIN_URL || 'http://localhost:5175',
+  profileApp: process.env.E2E_PROFILE_URL || 'http://localhost:3302',
 };
 
 /**
