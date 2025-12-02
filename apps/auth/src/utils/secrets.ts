@@ -53,7 +53,7 @@ export async function getSecret(
 			// Cache the value for subsequent requests
 			secretsCache.set(secretName, result);
 			return result;
-		} catch (error) {
+		} catch (_error) {
 			return '';
 		}
 	}

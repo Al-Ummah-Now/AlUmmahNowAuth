@@ -5,6 +5,17 @@
  * Used by session management APIs to enforce authentication.
  */
 
+import type { Context, Next } from 'hono';
+import type { BrowserSession, AccountSession } from '../types/sessions';
+
+type SessionContext = Context<{
+	Bindings: Env;
+	Variables: {
+		browserSession: BrowserSession;
+		activeAccount: AccountSession | null;
+	};
+}>;
+
 /**
  * Middleware that requires a valid browser session with active account
  *
@@ -21,7 +32,7 @@
  * });
  * ```
  */
-export async function requireSession(c: any, next: () => Promise<void>): Promise<Response | void> {
+export async function requireSession(c: SessionContext, next: Next): Promise<Response | void> {
 	const browserSession = c.get('browserSession');
 	const activeAccount = c.get('activeAccount');
 
@@ -50,7 +61,7 @@ export async function requireSession(c: any, next: () => Promise<void>): Promise
  * });
  * ```
  */
-export async function requireBrowserSession(c: any, next: () => Promise<void>): Promise<Response | void> {
+export async function requireBrowserSession(c: SessionContext, next: Next): Promise<Response | void> {
 	const browserSession = c.get('browserSession');
 
 	if (!browserSession) {
@@ -75,7 +86,7 @@ export async function requireBrowserSession(c: any, next: () => Promise<void>): 
  * });
  * ```
  */
-export async function optionalSession(c: any, next: () => Promise<void>): Promise<void> {
+export async function optionalSession(c: SessionContext, next: Next): Promise<void> {
 	// Session is already loaded in the main middleware
 	// This just marks the route as session-aware
 	await next();

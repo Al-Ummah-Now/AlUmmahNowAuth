@@ -30,7 +30,7 @@ import {
 import { routeAdminDLQ } from "./admin-dlq-routes";
 import { handleTokenCron } from "./cron/token-cron";
 import { requireSecret } from "./utils/secrets";
-import { trackEvent, trackRequestTiming } from "./utils/analytics";
+import { trackEvent, trackRequestTiming as _trackRequestTiming } from "./utils/analytics";
 
 /**
  * Check if an origin matches allowed origins (supports wildcards like *.example.com)

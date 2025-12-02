@@ -55,6 +55,13 @@ export enum AuditEventType {
   USER_SUSPENDED = 'user.suspended',
   USER_REACTIVATED = 'user.reactivated',
 
+  // Tenant management events
+  TENANT_CREATED = 'tenant.created',
+  TENANT_UPDATED = 'tenant.updated',
+  TENANT_DELETED = 'tenant.deleted',
+  TENANT_ADMIN_ADDED = 'tenant.admin.added',
+  TENANT_ADMIN_REMOVED = 'tenant.admin.removed',
+
   // Security Events
   SECURITY_ALERT = 'security.alert',
   RATE_LIMIT_EXCEEDED = 'security.rate_limit.exceeded',

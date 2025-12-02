@@ -10,9 +10,10 @@
 import { verifyAdminAuth, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter-enhanced';
-import { AuditEventSeverity } from './audit-events';
+import { AuditEventSeverity, AuditEventType } from './audit-events';
 import { checkRateLimit, getClientIP } from './rate-limit';
 import { TenantService } from './services/tenant.service';
+import type { TenantBranding } from './types/tenant';
 import * as v from 'valibot';
 
 // ============================================================================
@@ -127,7 +128,7 @@ export class AdminTenantRoutes {
   private async listTenants(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     try {
       // Verify admin authentication
-      const authContext = await verifyAdminAuth(request, env);
+      const _authContext = await verifyAdminAuth(request, env);
 
       // Parse query parameters
       const url = new URL(request.url);
@@ -189,7 +190,7 @@ export class AdminTenantRoutes {
       // Emit audit event
       await emitAuditEvent({
         timestamp: new Date().toISOString(),
-        eventType: 'tenant.created' as any,
+        eventType: AuditEventType.TENANT_CREATED,
         severity: AuditEventSeverity.INFO,
         userId: authContext.user.id,
         ipAddress: clientIP,
@@ -276,7 +277,7 @@ export class AdminTenantRoutes {
         domain: validated.domain as string | undefined,
         status: validated.status,
         settings: validated.settings,
-        branding: branding as any,
+        branding: branding as Partial<TenantBranding> | undefined,
         emailFromName: validated.emailFromName,
         emailFromAddress: validated.emailFromAddress,
         emailReplyTo: validated.emailReplyTo,
@@ -288,7 +289,7 @@ export class AdminTenantRoutes {
       const clientIP = getClientIP(request);
       await emitAuditEvent({
         timestamp: new Date().toISOString(),
-        eventType: 'tenant.updated' as any,
+        eventType: AuditEventType.TENANT_UPDATED,
         severity: AuditEventSeverity.INFO,
         userId: authContext.user.id,
         ipAddress: clientIP,
@@ -332,7 +333,7 @@ export class AdminTenantRoutes {
       const clientIP = getClientIP(request);
       await emitAuditEvent({
         timestamp: new Date().toISOString(),
-        eventType: 'tenant.deleted' as any,
+        eventType: AuditEventType.TENANT_DELETED,
         severity: AuditEventSeverity.WARNING,
         userId: authContext.user.id,
         ipAddress: clientIP,

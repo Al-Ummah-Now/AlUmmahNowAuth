@@ -50,13 +50,13 @@ export async function handleAuthorizeRequest(
 		state: url.searchParams.get('state') || undefined,
 		code_challenge: url.searchParams.get('code_challenge') || undefined,
 		code_challenge_method: (url.searchParams.get('code_challenge_method') as 'S256' | 'plain') || undefined,
-		prompt: url.searchParams.get('prompt') as any,
+		prompt: url.searchParams.get('prompt') as OIDCAuthorizeParams['prompt'],
 		login_hint: url.searchParams.get('login_hint') || undefined,
 		account_hint: url.searchParams.get('account_hint') || undefined,
 		max_age: url.searchParams.get('max_age') ? parseInt(url.searchParams.get('max_age')!) : undefined,
 		acr_values: url.searchParams.get('acr_values') || undefined,
 		nonce: url.searchParams.get('nonce') || undefined,
-		action: url.searchParams.get('action') as any,
+		action: url.searchParams.get('action') as OIDCAuthorizeParams['action'],
 	};
 
 	// Validate client and redirect_uri FIRST (before any redirects)

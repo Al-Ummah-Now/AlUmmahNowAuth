@@ -176,7 +176,7 @@ export class TenantService {
     domain: string;
     status: 'active' | 'suspended';
     settings: TenantSettings;
-    branding: TenantBranding;
+    branding: Partial<TenantBranding>;
     emailFromName: string;
     emailFromAddress: string;
     emailReplyTo: string;

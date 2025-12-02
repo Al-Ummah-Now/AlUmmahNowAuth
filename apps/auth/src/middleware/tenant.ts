@@ -11,8 +11,19 @@
  * @module middleware/tenant
  */
 
+import type { Context, Next } from 'hono';
 import { TenantService } from '../services/tenant.service';
 import type { TenantContext } from '../types/tenant';
+import type { AccountSession } from '../types/sessions';
+
+type TenantMiddlewareContext = Context<{
+  Bindings: Env;
+  Variables: {
+    tenantContext: TenantContext;
+    tenantId: string;
+    activeAccount?: AccountSession | null;
+  };
+}>;
 
 /**
  * Extract subdomain from host header
@@ -41,7 +52,7 @@ function extractSubdomain(host: string): string | null {
  * 3. Query parameter ?tenant=slug (development only)
  * 4. Default tenant (fallback)
  */
-export async function resolveTenant(c: any, next: () => Promise<void>): Promise<void> {
+export async function resolveTenant(c: TenantMiddlewareContext, next: Next): Promise<void> {
   const tenantService = new TenantService(c.env.AUTH_DB);
 
   let tenant: TenantContext['tenant'] | null = null;
@@ -101,7 +112,7 @@ export async function resolveTenant(c: any, next: () => Promise<void>): Promise<
  * - 401 if not authenticated
  * - 403 if not a tenant admin
  */
-export async function requireTenantAdmin(c: any, next: () => Promise<void>): Promise<Response | void> {
+export async function requireTenantAdmin(c: TenantMiddlewareContext, next: Next): Promise<Response | void> {
   const tenantId = c.get('tenantId');
   const activeAccount = c.get('activeAccount');
 

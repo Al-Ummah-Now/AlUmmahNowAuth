@@ -5,6 +5,7 @@
  * sliding window algorithm. Supports both IP-based and custom key rate limiting.
  */
 
+import type { Context, Next } from 'hono';
 import { checkRateLimit, getClientIP } from '../rate-limit';
 
 /**
@@ -18,7 +19,7 @@ export interface RateLimitConfig {
 	/** Optional custom key prefix for rate limit (default: uses IP) */
 	keyPrefix?: string;
 	/** Optional custom key generator function */
-	keyGenerator?: (c: any) => string;
+	keyGenerator?: (c: Context<{ Bindings: Env }>) => string;
 }
 
 /**
@@ -45,7 +46,7 @@ export interface RateLimitConfig {
  * ```
  */
 export function rateLimit(config: RateLimitConfig) {
-	return async (c: any, next: () => Promise<void>) => {
+	return async (c: Context<{ Bindings: Env }>, next: Next) => {
 		const { limit, window, keyPrefix, keyGenerator } = config;
 
 		// Generate rate limit key
