@@ -50,6 +50,13 @@ export class ResendTestClient {
         });
 
         if (!response.ok) {
+          // Handle rate limiting with exponential backoff
+          if (response.status === 429) {
+            const retryAfter = parseInt(response.headers.get('retry-after') || '5', 10);
+            console.log(`Rate limited by Resend, waiting ${retryAfter}s before retry...`);
+            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+            continue; // Retry this attempt
+          }
           console.error(`Failed to fetch emails from Resend: ${response.status} ${response.statusText}`);
           throw new Error(`Resend API error: ${response.statusText}`);
         }
@@ -91,6 +98,13 @@ export class ResendTestClient {
           );
 
           if (!emailResponse.ok) {
+            // Handle rate limiting
+            if (emailResponse.status === 429) {
+              const retryAfter = parseInt(emailResponse.headers.get('retry-after') || '5', 10);
+              console.log(`Rate limited fetching email content, waiting ${retryAfter}s...`);
+              await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+              continue; // Retry this attempt
+            }
             throw new Error(`Failed to fetch email content: ${emailResponse.statusText}`);
           }
 
