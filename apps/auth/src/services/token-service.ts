@@ -14,11 +14,12 @@ import type { AccessTokenPayload, TokenPair, RefreshTokenRecord } from '../types
 import { TokenError } from '../types/errors';
 
 /**
- * Configuration constants for token lifetimes
+ * Configuration constants for token lifetimes and versioning
  */
 const DEFAULT_ACCESS_TOKEN_LIFETIME = 15 * 60; // 15 minutes in seconds
 const DEFAULT_REFRESH_TOKEN_LIFETIME = 7 * 24 * 60 * 60; // 7 days in seconds
 const MAX_ROTATION_COUNT = 100; // Prevent infinite rotation chains
+const TOKEN_VERSION = 2; // Current token version (1 = legacy, 2 = new with session binding)
 
 /**
  * Get access token lifetime from env or use default
@@ -54,15 +55,21 @@ export class TokenService {
 	 * @param clientId - The OAuth client ID requesting the token
 	 * @param scope - Space-separated OAuth scopes (default: "openid email profile")
 	 * @param env - Cloudflare Workers environment
-	 * @returns A signed JWT access token
+	 * @param sessionId - Account session ID for session binding (Lane 4)
+	 * @param tenantId - Tenant context (optional)
+	 * @param nonce - Nonce from authorization request (OIDC, optional)
+	 * @returns A signed JWT access token and the token hash
 	 * @throws Error if token generation fails
 	 */
 	static async generateAccessToken(
 		user: TokenUser,
 		clientId: string,
 		scope: string = 'openid email profile',
-		env: Env
-	): Promise<string> {
+		env: Env,
+		sessionId?: string,
+		tenantId?: string,
+		nonce?: string
+	): Promise<{ token: string; hash: string; jti: string }> {
 		// Get the active signing key
 		const { kid, privateKey } = await KeyService.getActiveSigningKey(env);
 
@@ -72,21 +79,42 @@ export class TokenService {
 		const now = Math.floor(Date.now() / 1000);
 		const issuer = env.OPENAUTH_ISSUER;
 		const accessTokenLifetime = getAccessTokenLifetime(env);
+		const jti = crypto.randomUUID();
+
+		// Get client audience (defaults to client_id if not set)
+		const audience = await this.getClientAudience(clientId, env);
+
+		// Compute effective permissions (intersection of user roles and client permissions)
+		const permissions = sessionId ? await this.getEffectivePermissions(user.id, clientId, env) : [];
 
 		// Build the access token payload
 		const payload: AccessTokenPayload = {
 			iss: issuer,
 			sub: user.id,
-			aud: clientId,
+			aud: audience,
 			exp: now + accessTokenLifetime,
 			iat: now,
 			nbf: now,
-			jti: crypto.randomUUID(),
+			jti,
 			email: user.email,
 			roles: user.roles,
 			client_id: clientId,
 			scope,
+			auth_time: now,
+			token_version: TOKEN_VERSION,
 		};
+
+		// Add optional claims
+		if (sessionId) {
+			payload.session_id = sessionId;
+			payload.permissions = permissions;
+		}
+		if (tenantId) {
+			payload.tenant_id = tenantId;
+		}
+		if (nonce) {
+			payload.nonce = nonce;
+		}
 
 		// Sign and generate the JWT
 		const jwt = await new SignJWT(payload)
@@ -96,11 +124,14 @@ export class TokenService {
 			.setNotBefore(now)
 			.setIssuer(issuer)
 			.setSubject(user.id)
-			.setAudience(clientId)
-			.setJti(payload.jti)
+			.setAudience(audience)
+			.setJti(jti)
 			.sign(privateKeyObject);
 
-		return jwt;
+		// Hash the token for storage
+		const hash = await this.hashToken(jwt);
+
+		return { token: jwt, hash, jti };
 	}
 
 	/**
@@ -110,6 +141,7 @@ export class TokenService {
 	 * @param clientId - The OAuth client ID
 	 * @param scope - Space-separated OAuth scopes
 	 * @param env - Cloudflare Workers environment
+	 * @param sessionId - Account session ID for session binding (Lane 4)
 	 * @param ipAddress - Client IP address (optional, for audit)
 	 * @param userAgent - Client user agent (optional, for audit)
 	 * @param parentTokenId - Parent token ID for rotation tracking (optional)
@@ -122,6 +154,7 @@ export class TokenService {
 		clientId: string,
 		scope: string = 'openid email profile',
 		env: Env,
+		sessionId?: string,
 		ipAddress?: string,
 		userAgent?: string,
 		parentTokenId?: string,
@@ -168,13 +201,13 @@ export class TokenService {
 		// Insert refresh token into database
 		const stmt = env.AUTH_DB.prepare(
 			`INSERT INTO refresh_tokens
-      (token_hash, user_id, client_id, issued_at, expires_at, ip_address, user_agent, parent_token_id, rotation_count, scope, token_family_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (token_hash, user_id, client_id, issued_at, expires_at, ip_address, user_agent, parent_token_id, rotation_count, scope, token_family_id, session_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id`
 		);
 
 		const result = await stmt
-			.bind(tokenHash, userId, clientId, now, expiresAt, ipAddress, userAgent, parentTokenId, rotationCount, scope, finalTokenFamilyId)
+			.bind(tokenHash, userId, clientId, now, expiresAt, ipAddress, userAgent, parentTokenId, rotationCount, scope, finalTokenFamilyId, sessionId)
 			.first<{ id: string }>();
 
 		if (!result) {
@@ -305,8 +338,11 @@ export class TokenService {
 	 * @param clientId - The OAuth client ID
 	 * @param scope - Space-separated OAuth scopes
 	 * @param env - Cloudflare Workers environment
+	 * @param sessionId - Account session ID for session binding (Lane 4)
 	 * @param ipAddress - Client IP address (optional)
 	 * @param userAgent - Client user agent (optional)
+	 * @param tenantId - Tenant context (optional)
+	 * @param nonce - Nonce from authorization request (OIDC, optional)
 	 * @returns A complete token pair for OAuth 2.0 response
 	 */
 	static async generateTokenPair(
@@ -314,19 +350,49 @@ export class TokenService {
 		clientId: string,
 		scope: string = 'openid email profile',
 		env: Env,
+		sessionId?: string,
 		ipAddress?: string,
-		userAgent?: string
+		userAgent?: string,
+		tenantId?: string,
+		nonce?: string
 	): Promise<TokenPair> {
 		// Generate both tokens
-		const accessToken = await this.generateAccessToken(user, clientId, scope, env);
+		const { token: accessToken, hash: accessTokenHash, jti } = await this.generateAccessToken(
+			user,
+			clientId,
+			scope,
+			env,
+			sessionId,
+			tenantId,
+			nonce
+		);
 		const { token: refreshToken } = await this.generateRefreshToken(
 			user.id,
 			clientId,
 			scope,
 			env,
+			sessionId,
 			ipAddress,
 			userAgent
 		);
+
+		// Store app token reference if session binding is enabled
+		if (sessionId) {
+			const audience = await this.getClientAudience(clientId, env);
+			const now = Math.floor(Date.now() / 1000);
+			const accessTokenLifetime = getAccessTokenLifetime(env);
+			const expiresAt = new Date((now + accessTokenLifetime) * 1000).toISOString();
+
+			await this.storeAppToken({
+				id: jti,
+				accountSessionId: sessionId,
+				clientId,
+				accessTokenHash,
+				scope,
+				audience,
+				expiresAt,
+			}, env);
+		}
 
 		return {
 			access_token: accessToken,
@@ -490,7 +556,13 @@ export class TokenService {
 		}
 
 		// Step 10: Generate new access token
-		const newAccessToken = await this.generateAccessToken(user, clientId, tokenRecord.scope, env);
+		const { token: newAccessToken } = await this.generateAccessToken(
+			user,
+			clientId,
+			tokenRecord.scope,
+			env,
+			tokenRecord.session_id || undefined
+		);
 
 		// Step 11: Return new token pair
 		return {
@@ -743,5 +815,145 @@ export class TokenService {
 		);
 
 		await stmt.bind(tokenId, action, ipAddress, userAgent, metadata).run();
+	}
+
+	// ===== Lane 4: Token Architecture Methods =====
+
+	/**
+	 * Gets the audience for a client (defaults to client_id if not set)
+	 *
+	 * @param clientId - The OAuth client ID
+	 * @param env - Cloudflare Workers environment
+	 * @returns The audience string
+	 */
+	private static async getClientAudience(clientId: string, env: Env): Promise<string> {
+		const client = await env.AUTH_DB.prepare(
+			`SELECT audience FROM oauth_clients WHERE id = ?`
+		).bind(clientId).first<{ audience: string | null }>();
+
+		return client?.audience || clientId;
+	}
+
+	/**
+	 * Computes effective permissions as intersection of user roles and client grants
+	 *
+	 * @param userId - The user ID
+	 * @param clientId - The OAuth client ID
+	 * @param env - Cloudflare Workers environment
+	 * @returns Array of permission names
+	 */
+	private static async getEffectivePermissions(userId: string, clientId: string, env: Env): Promise<string[]> {
+		const result = await env.AUTH_DB.prepare(`
+			SELECT DISTINCT p.name
+			FROM permissions p
+			JOIN role_permissions rp ON p.id = rp.permission_id
+			JOIN user_roles ur ON rp.role_id = ur.role_id
+			JOIN client_permissions cp ON p.id = cp.permission_id
+			WHERE ur.user_id = ?
+			AND cp.client_id = ?
+			AND ur.is_active = 1
+			AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+		`).bind(userId, clientId).all<{ name: string }>();
+
+		return result.results?.map(r => r.name) || [];
+	}
+
+	/**
+	 * Stores an app token reference in the database
+	 *
+	 * @param params - App token parameters
+	 * @param env - Cloudflare Workers environment
+	 */
+	private static async storeAppToken(params: {
+		id: string;
+		accountSessionId: string;
+		clientId: string;
+		accessTokenHash: string;
+		scope: string;
+		audience: string;
+		expiresAt: string;
+	}, env: Env): Promise<void> {
+		await env.AUTH_DB.prepare(`
+			INSERT INTO app_tokens (id, account_session_id, client_id, access_token_hash, scope, audience, expires_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`).bind(
+			params.id,
+			params.accountSessionId,
+			params.clientId,
+			params.accessTokenHash,
+			params.scope,
+			params.audience,
+			params.expiresAt
+		).run();
+	}
+
+	/**
+	 * Revokes all tokens for a session (both app tokens and refresh tokens)
+	 *
+	 * @param sessionId - The account session ID
+	 * @param env - Cloudflare Workers environment
+	 * @returns Number of tokens revoked
+	 */
+	static async revokeSessionTokens(sessionId: string, env: Env): Promise<{ revoked: number }> {
+		const now = new Date().toISOString();
+
+		const result = await env.AUTH_DB.batch([
+			env.AUTH_DB.prepare(`
+				UPDATE app_tokens
+				SET is_revoked = 1, revoked_at = ?, revoke_reason = 'session_revoked'
+				WHERE account_session_id = ? AND is_revoked = 0
+			`).bind(now, sessionId),
+			env.AUTH_DB.prepare(`
+				UPDATE refresh_tokens
+				SET revoked = 1, revoked_at = ?, revoked_reason = 'session_revoked'
+				WHERE session_id = ? AND revoked = 0
+			`).bind(Math.floor(Date.now() / 1000), sessionId),
+		]);
+
+		const appTokensRevoked = result[0].meta?.changes || 0;
+		const refreshTokensRevoked = result[1].meta?.changes || 0;
+
+		return { revoked: appTokensRevoked + refreshTokensRevoked };
+	}
+
+	/**
+	 * Revokes all tokens for a user across all sessions
+	 *
+	 * @param userId - The user ID
+	 * @param env - Cloudflare Workers environment
+	 * @returns Number of tokens revoked
+	 */
+	static async revokeUserTokens(userId: string, env: Env): Promise<{ revoked: number }> {
+		// Get all account sessions for user
+		const sessions = await env.AUTH_DB.prepare(`
+			SELECT id FROM account_sessions WHERE user_id = ?
+		`).bind(userId).all<{ id: string }>();
+
+		const sessionIds = sessions.results?.map(s => s.id) || [];
+
+		if (sessionIds.length === 0) {
+			return { revoked: 0 };
+		}
+
+		const placeholders = sessionIds.map(() => '?').join(',');
+		const now = new Date().toISOString();
+
+		const result = await env.AUTH_DB.batch([
+			env.AUTH_DB.prepare(`
+				UPDATE app_tokens
+				SET is_revoked = 1, revoked_at = ?, revoke_reason = 'user_logout'
+				WHERE account_session_id IN (${placeholders}) AND is_revoked = 0
+			`).bind(now, ...sessionIds),
+			env.AUTH_DB.prepare(`
+				UPDATE refresh_tokens
+				SET revoked = 1, revoked_at = ?, revoked_reason = 'user_logout'
+				WHERE user_id = ? AND revoked = 0
+			`).bind(Math.floor(Date.now() / 1000), userId),
+		]);
+
+		const appTokensRevoked = result[0].meta?.changes || 0;
+		const refreshTokensRevoked = result[1].meta?.changes || 0;
+
+		return { revoked: appTokensRevoked + refreshTokensRevoked };
 	}
 }

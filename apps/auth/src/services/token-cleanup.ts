@@ -10,8 +10,9 @@
 /**
  * Configuration constants for cleanup
  */
-const CLEANUP_BATCH_SIZE = 100; // Process tokens in batches
+const CLEANUP_BATCH_SIZE = 1000; // Process tokens in batches (Lane 4: increased from 100)
 const ANALYTICS_RETENTION_DAYS = 90; // Keep analytics for 90 days
+const MAX_EXECUTION_MS = 10000; // 10 seconds max execution time for cleanup jobs (Lane 4)
 
 /**
  * Service for cleaning up expired and old tokens
@@ -25,29 +26,45 @@ export class TokenCleanupService {
 	 */
 	static async runCleanup(env: Env): Promise<{
 		expiredTokensDeleted: number;
+		expiredAppTokensDeleted: number;
+		expiredBrowserSessionsDeleted: number;
 		oldAnalyticsDeleted: number;
 		duration: number;
+		timeBoxedExit: boolean;
 	}> {
 		const startTime = Date.now();
 
-		// Clean up expired tokens
-		const expiredTokensDeleted = await this.cleanupExpiredTokens(env);
+		// Lane 4: Clean up expired browser sessions (cascades to account_sessions via FK)
+		const expiredBrowserSessionsDeleted = await this.cleanupExpiredBrowserSessions(env, startTime);
+
+		// Clean up expired refresh tokens
+		const expiredTokensDeleted = await this.cleanupExpiredTokens(env, startTime);
+
+		// Lane 4: Clean up expired app tokens
+		const expiredAppTokensDeleted = await this.cleanupExpiredAppTokens(env, startTime);
 
 		// Clean up old analytics
-		const oldAnalyticsDeleted = await this.cleanupOldAnalytics(env);
+		const oldAnalyticsDeleted = await this.cleanupOldAnalytics(env, startTime);
 
 		const duration = Date.now() - startTime;
+		const timeBoxedExit = duration >= MAX_EXECUTION_MS;
 
 		console.info('Token cleanup completed', {
 			expiredTokensDeleted,
+			expiredAppTokensDeleted,
+			expiredBrowserSessionsDeleted,
 			oldAnalyticsDeleted,
 			duration,
+			timeBoxedExit,
 		});
 
 		return {
 			expiredTokensDeleted,
+			expiredAppTokensDeleted,
+			expiredBrowserSessionsDeleted,
 			oldAnalyticsDeleted,
 			duration,
+			timeBoxedExit,
 		};
 	}
 
@@ -55,35 +72,24 @@ export class TokenCleanupService {
 	 * Removes expired refresh tokens from the database
 	 *
 	 * @param env - Cloudflare Workers environment
+	 * @param startTime - Start time for time-boxing
 	 * @returns Number of tokens deleted
 	 */
-	private static async cleanupExpiredTokens(env: Env): Promise<number> {
+	private static async cleanupExpiredTokens(env: Env, startTime: number): Promise<number> {
 		const now = Math.floor(Date.now() / 1000);
 		let totalDeleted = 0;
 
-		// Find expired tokens in batches
-		while (true) {
-			// Get a batch of expired token IDs
-			const expiredTokens = await env.AUTH_DB.prepare(
-				`SELECT id FROM refresh_tokens
-         WHERE expires_at < ?
-         LIMIT ?`
+		// Find expired tokens in batches with time-boxing
+		while (Date.now() - startTime < MAX_EXECUTION_MS) {
+			const result = await env.AUTH_DB.prepare(
+				`DELETE FROM refresh_tokens
+         WHERE id IN (
+           SELECT id FROM refresh_tokens
+           WHERE (expires_at < ? OR revoked = 1)
+           LIMIT ?
+         )`
 			)
 				.bind(now, CLEANUP_BATCH_SIZE)
-				.all<{ id: string }>();
-
-			if (!expiredTokens.results || expiredTokens.results.length === 0) {
-				break;
-			}
-
-			const tokenIds = expiredTokens.results.map((t) => t.id);
-
-			// Delete the batch
-			const placeholders = tokenIds.map(() => '?').join(',');
-			const result = await env.AUTH_DB.prepare(
-				`DELETE FROM refresh_tokens WHERE id IN (${placeholders})`
-			)
-				.bind(...tokenIds)
 				.run();
 
 			const deleted = result.meta?.changes ?? 0;
@@ -93,8 +99,6 @@ export class TokenCleanupService {
 			if (deleted < CLEANUP_BATCH_SIZE) {
 				break;
 			}
-
-			// No delay needed - D1 can handle batch operations
 		}
 
 		return totalDeleted;
@@ -104,14 +108,15 @@ export class TokenCleanupService {
 	 * Removes old token usage analytics from the database
 	 *
 	 * @param env - Cloudflare Workers environment
+	 * @param startTime - Start time for time-boxing
 	 * @returns Number of analytics records deleted
 	 */
-	private static async cleanupOldAnalytics(env: Env): Promise<number> {
+	private static async cleanupOldAnalytics(env: Env, startTime: number): Promise<number> {
 		const cutoffTime = Math.floor(Date.now() / 1000) - ANALYTICS_RETENTION_DAYS * 24 * 60 * 60;
 		let totalDeleted = 0;
 
-		// Delete old analytics in batches
-		while (true) {
+		// Delete old analytics in batches with time-boxing
+		while (Date.now() - startTime < MAX_EXECUTION_MS) {
 			const result = await env.AUTH_DB.prepare(
 				`DELETE FROM token_usage
          WHERE id IN (
@@ -130,8 +135,79 @@ export class TokenCleanupService {
 			if (deleted < CLEANUP_BATCH_SIZE) {
 				break;
 			}
+		}
 
-			// No delay needed - D1 can handle batch operations
+		return totalDeleted;
+	}
+
+	/**
+	 * Lane 4: Removes expired browser sessions from the database
+	 * Cascade deletes account_sessions via foreign key constraint
+	 *
+	 * @param env - Cloudflare Workers environment
+	 * @param startTime - Start time for time-boxing
+	 * @returns Number of browser sessions deleted
+	 */
+	private static async cleanupExpiredBrowserSessions(env: Env, startTime: number): Promise<number> {
+		const now = new Date().toISOString();
+		let totalDeleted = 0;
+
+		// Delete expired browser sessions in batches with time-boxing
+		while (Date.now() - startTime < MAX_EXECUTION_MS) {
+			const result = await env.AUTH_DB.prepare(
+				`DELETE FROM browser_sessions
+         WHERE id IN (
+           SELECT id FROM browser_sessions
+           WHERE expires_at < ? OR is_revoked = 1
+           LIMIT ?
+         )`
+			)
+				.bind(now, CLEANUP_BATCH_SIZE)
+				.run();
+
+			const deleted = result.meta?.changes ?? 0;
+			totalDeleted += deleted;
+
+			// If we deleted fewer records than the batch size, we're done
+			if (deleted < CLEANUP_BATCH_SIZE) {
+				break;
+			}
+		}
+
+		return totalDeleted;
+	}
+
+	/**
+	 * Lane 4: Removes expired app tokens from the database
+	 *
+	 * @param env - Cloudflare Workers environment
+	 * @param startTime - Start time for time-boxing
+	 * @returns Number of app tokens deleted
+	 */
+	private static async cleanupExpiredAppTokens(env: Env, startTime: number): Promise<number> {
+		const now = new Date().toISOString();
+		let totalDeleted = 0;
+
+		// Delete expired app tokens in batches with time-boxing
+		while (Date.now() - startTime < MAX_EXECUTION_MS) {
+			const result = await env.AUTH_DB.prepare(
+				`DELETE FROM app_tokens
+         WHERE id IN (
+           SELECT id FROM app_tokens
+           WHERE expires_at < ? OR is_revoked = 1
+           LIMIT ?
+         )`
+			)
+				.bind(now, CLEANUP_BATCH_SIZE)
+				.run();
+
+			const deleted = result.meta?.changes ?? 0;
+			totalDeleted += deleted;
+
+			// If we deleted fewer records than the batch size, we're done
+			if (deleted < CLEANUP_BATCH_SIZE) {
+				break;
+			}
 		}
 
 		return totalDeleted;

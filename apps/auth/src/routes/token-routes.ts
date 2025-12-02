@@ -65,6 +65,10 @@ interface IntrospectionResponse {
 	aud?: string | string[];
 	iss?: string;
 	jti?: string;
+	// Lane 4: Custom claims
+	roles?: string[];
+	permissions?: string[];
+	session_id?: string;
 }
 
 /**
@@ -98,6 +102,11 @@ export class TokenRoutes {
 
 		if (url.pathname === '/token/revoke' && request.method === 'POST') {
 			return this.addCorsHeaders(await this.handleRevocation(request, env, ctx), request, env);
+		}
+
+		// Lane 4: Token exchange endpoint (RFC 8693)
+		if (url.pathname === '/token/exchange' && request.method === 'POST') {
+			return this.addCorsHeaders(await this.handleTokenExchange(request, env, ctx), request, env);
 		}
 
 		// 404 for unknown routes
@@ -326,6 +335,42 @@ export class TokenRoutes {
 				try {
 					const payload = await TokenService.verifyAccessToken(token, env);
 
+					// Lane 4: Check token version for legacy vs new token handling
+					const tokenVersion = payload.token_version || 1;
+
+					if (tokenVersion >= 2 && payload.session_id) {
+						// New tokens: Check app_tokens for revocation
+						const encoder = new TextEncoder();
+						const tokenData = encoder.encode(token);
+						const hashBuffer = await crypto.subtle.digest('SHA-256', tokenData);
+						const hashArray = Array.from(new Uint8Array(hashBuffer));
+						const tokenHash = hashArray.map((byte) => byte.toString(16).padStart(2, '0')).join('');
+
+						const appToken = await env.AUTH_DB.prepare(`
+							SELECT is_revoked FROM app_tokens WHERE access_token_hash = ?
+						`).bind(tokenHash).first<{ is_revoked: number }>();
+
+						// Must exist in app_tokens and not be revoked
+						if (!appToken || appToken.is_revoked) {
+							return new Response(JSON.stringify({ active: false }), {
+								status: 200,
+								headers: { 'Content-Type': 'application/json' },
+							});
+						}
+
+						// Verify session is still valid
+						const session = await env.AUTH_DB.prepare(`
+							SELECT is_revoked FROM account_sessions WHERE id = ?
+						`).bind(payload.session_id).first<{ is_revoked: number }>();
+
+						if (!session || session.is_revoked) {
+							return new Response(JSON.stringify({ active: false }), {
+								status: 200,
+								headers: { 'Content-Type': 'application/json' },
+							});
+						}
+					}
+
 					const response: IntrospectionResponse = {
 						active: true,
 						scope: payload.scope,
@@ -340,6 +385,15 @@ export class TokenRoutes {
 						iss: payload.iss,
 						jti: payload.jti,
 					};
+
+					// Lane 4: Include custom claims if present
+					if (payload.permissions) {
+						response.roles = payload.roles;
+						response.permissions = payload.permissions;
+					}
+					if (payload.session_id) {
+						response.session_id = payload.session_id;
+					}
 
 					return new Response(JSON.stringify(response), {
 						status: 200,
@@ -532,6 +586,154 @@ export class TokenRoutes {
 
 			default:
 				return { error: 'server_error' };
+		}
+	}
+
+	/**
+	 * POST /token/exchange - Token exchange endpoint (RFC 8693)
+	 *
+	 * Exchanges a valid access token for a new token with a different audience.
+	 * This enables cross-app SSO where a user authenticated in one app can get
+	 * tokens for other apps without re-authentication.
+	 *
+	 * @param request - HTTP request
+	 * @param env - Cloudflare Workers environment
+	 * @param ctx - Execution context
+	 * @returns New token pair or error response
+	 */
+	private static async handleTokenExchange(
+		request: Request,
+		env: Env,
+		_ctx: ExecutionContext
+	): Promise<Response> {
+		try {
+			// Parse form data
+			const contentType = request.headers.get('Content-Type') || '';
+			if (!contentType.includes('application/x-www-form-urlencoded')) {
+				return this.errorResponse(
+					'invalid_request',
+					'Content-Type must be application/x-www-form-urlencoded',
+					400
+				);
+			}
+
+			const formData = await request.formData();
+			const grantType = formData.get('grant_type') as string;
+			const subjectToken = formData.get('subject_token') as string;
+			const subjectTokenType = formData.get('subject_token_type') as string;
+			const audience = formData.get('audience') as string;
+			const scope = formData.get('scope') as string | null;
+
+			// Validate grant type
+			if (grantType !== 'urn:ietf:params:oauth:grant-type:token-exchange') {
+				return this.errorResponse(
+					'unsupported_grant_type',
+					'Only token exchange grant type is supported',
+					400
+				);
+			}
+
+			// Validate required parameters
+			if (!subjectToken || !audience) {
+				return this.errorResponse(
+					'invalid_request',
+					'subject_token and audience are required',
+					400
+				);
+			}
+
+			// Validate subject token type
+			if (subjectTokenType && subjectTokenType !== 'urn:ietf:params:oauth:token-type:access_token') {
+				return this.errorResponse(
+					'invalid_request',
+					'Only access_token type is supported for subject_token',
+					400
+				);
+			}
+
+			// Verify subject token
+			const subjectPayload = await TokenService.verifyAccessToken(subjectToken, env);
+
+			// Verify target client exists
+			const targetClient = await env.AUTH_DB.prepare(`
+				SELECT id, audience FROM oauth_clients WHERE id = ? OR audience = ?
+			`).bind(audience, audience).first<{ id: string; audience: string | null }>();
+
+			if (!targetClient) {
+				return this.errorResponse('invalid_request', 'Invalid target audience', 400);
+			}
+
+			// Get user data
+			const user = await env.AUTH_DB.prepare(`SELECT id, email FROM user WHERE id = ?`)
+				.bind(subjectPayload.sub)
+				.first<{ id: string; email: string }>();
+
+			if (!user) {
+				return this.errorResponse('invalid_grant', 'User not found', 400);
+			}
+
+			// Fetch user roles
+			const rolesResult = await env.AUTH_DB.prepare(`
+				SELECT r.name
+				FROM user_roles ur
+				JOIN roles r ON ur.role_id = r.id
+				WHERE ur.user_id = ?
+				  AND ur.is_active = 1
+				  AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+				ORDER BY r.name
+			`).bind(user.id).all<{ name: string }>();
+
+			const roles = rolesResult.results?.map(r => r.name) || [];
+
+			// Determine scope for new token (requested scope or inherit from subject token)
+			const requestedScope = scope || subjectPayload.scope;
+
+			// Get client IP and user agent for audit logging
+			const ipAddress = request.headers.get('CF-Connecting-IP') || undefined;
+			const userAgent = request.headers.get('User-Agent') || undefined;
+
+			// Generate new token pair for target audience
+			const tokenPair = await TokenService.generateTokenPair(
+				{ id: user.id, email: user.email, roles },
+				targetClient.id,
+				requestedScope,
+				env,
+				subjectPayload.session_id, // Preserve session binding
+				ipAddress,
+				userAgent,
+				subjectPayload.tenant_id, // Preserve tenant context
+				undefined // No nonce for token exchange
+			);
+
+			// Track token exchange in analytics
+			// TODO: Add 'token_exchange' to EventType enum in analytics.ts
+			// trackEvent(env, {
+			// 	event: 'token_exchange',
+			// 	clientId: targetClient.id,
+			// 	sourceAudience: subjectPayload.aud,
+			// 	targetAudience: targetClient.audience || targetClient.id,
+			// 	ipAddress,
+			// 	userAgent,
+			// 	success: true,
+			// });
+
+			return new Response(JSON.stringify({
+				access_token: tokenPair.access_token,
+				issued_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+				token_type: tokenPair.token_type,
+				expires_in: tokenPair.expires_in,
+				refresh_token: tokenPair.refresh_token,
+				scope: tokenPair.scope,
+			}), {
+				status: 200,
+				headers: {
+					'Content-Type': 'application/json',
+					'Cache-Control': 'no-store',
+					Pragma: 'no-cache',
+				},
+			});
+		} catch (error) {
+			return this.handleError(error);
 		}
 	}
 }
