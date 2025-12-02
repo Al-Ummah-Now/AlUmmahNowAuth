@@ -67,7 +67,8 @@ export default defineConfig({
     video: 'retain-on-failure',
 
     // Maximum time each action can take
-    actionTimeout: 10000,
+    // Increased from 10s to 15s to handle occasional cold starts in QA
+    actionTimeout: 15000,
 
     // Browser context options
     viewport: { width: 1280, height: 720 },

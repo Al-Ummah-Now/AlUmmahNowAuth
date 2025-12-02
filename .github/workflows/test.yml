@@ -261,6 +261,27 @@ jobs:
           echo "❌ Timeout waiting for QA services"
           exit 1
 
+      - name: Warm up QA auth server (pre-load encryption keys)
+        run: |
+          echo "Warming up auth server to pre-load cryptographic keys..."
+          # The first /authorize request triggers encryption key loading which can be slow
+          # Make a dummy request to warm up the keys before tests run
+          # This request will fail (missing redirect_uri) but will trigger key initialization
+
+          echo "Making warmup requests..."
+          for i in 1 2 3; do
+            echo "Warmup request $i..."
+            start_time=$(date +%s%3N)
+            curl -s -o /dev/null -w "%{http_code}" \
+              "https://auth.qa.alummahnow.net/authorize?client_id=warmup&response_type=code&redirect_uri=https://profile.auth.qa.alummahnow.net/callback" || true
+            end_time=$(date +%s%3N)
+            duration=$((end_time - start_time))
+            echo "  Request $i took ${duration}ms"
+            sleep 1
+          done
+
+          echo "✅ Warmup complete - encryption keys should now be loaded"
+
       - name: Run E2E tests against QA
         run: pnpm exec playwright test
         env:
@@ -269,6 +290,7 @@ jobs:
           E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
           E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
 
       - name: Upload E2E test results
         uses: actions/upload-artifact@v5

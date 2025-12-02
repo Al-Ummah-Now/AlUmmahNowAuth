@@ -204,8 +204,8 @@ importers:
   apps/auth:
     dependencies:
       '@meywd/openauth':
-        specifier: 0.5.3
-        version: 0.5.3(arctic@2.3.4)(hono@4.10.7)
+        specifier: 0.5.5
+        version: 0.5.5(arctic@2.3.4)(hono@4.10.7)
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
@@ -1030,6 +1030,12 @@ packages:
 
   '@meywd/openauth@0.5.3':
     resolution: {integrity: sha512-lPaY1SV1iZ8qmEDXm6NIT2nZioXHtf1br0kGj67754LpsaJIziv3C1XnsBDUSg8MJ8Ya1x64BCn5C7vBSPXLng==, tarball: https://npm.pkg.github.com/download/@meywd/openauth/0.5.3/39cf74539829211a590dcce8390902c0e224f9cb}
+    peerDependencies:
+      arctic: ^2.2.2
+      hono: ^4.0.0
+
+  '@meywd/openauth@0.5.5':
+    resolution: {integrity: sha512-ArpWaU5HDDtgkjRYYgdaoH6mLKSUnTHEdTpO6dI8SkSNN5xxmBZbASDT/ZY8vsrmacvP313c0hPLazf5MY+xiQ==, tarball: https://npm.pkg.github.com/download/@meywd/openauth/0.5.5/e1b4711ca22d5c46a872de129e528b85c6e4c5f5}
     peerDependencies:
       arctic: ^2.2.2
       hono: ^4.0.0
@@ -4198,6 +4204,14 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@meywd/openauth@0.5.3(arctic@2.3.4)(hono@4.10.7)':
+    dependencies:
+      '@standard-schema/spec': 1.0.0-beta.3
+      arctic: 2.3.4
+      aws4fetch: 1.0.20
+      hono: 4.10.7
+      jose: 5.9.6
+
+  '@meywd/openauth@0.5.5(arctic@2.3.4)(hono@4.10.7)':
     dependencies:
       '@standard-schema/spec': 1.0.0-beta.3
       arctic: 2.3.4

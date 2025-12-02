@@ -1,82 +1,58 @@
 /**
  * Email Interceptor for E2E Tests
  *
- * Retrieves email verification codes from the auth server's test endpoint.
- * Implements retry/polling to handle async email processing.
+ * Retrieves email verification codes using the Resend API.
+ * This allows E2E tests to verify actual email delivery and extract codes.
  */
 
-import { Page } from '@playwright/test';
-import { TEST_URLS } from './test-data';
+import { ResendTestClient } from './resend-client';
+
+// Resend API key from environment
+const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.E2E_RESEND_API_KEY;
 
 /**
- * Configuration for email polling
- */
-const POLL_CONFIG = {
-  maxAttempts: 10,
-  intervalMs: 500,
-  timeoutMs: 5000,
-};
-
-/**
- * Sleep helper
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Set up email interception for a page
+ * Set up email interception using Resend API
  *
- * This retrieves email codes from the auth server's test endpoint.
- * Implements polling with retries to handle async email processing.
- *
- * @param page - Playwright page object
  * @returns Function to get the last login code
  */
-export function setupEmailInterception(page: Page): {
-  getLastLoginCode: (email?: string) => Promise<string | null>;
+export function setupEmailInterception(): {
+  getLastLoginCode: (email: string) => Promise<string | null>;
 } {
-  let lastEmail: string | null = null;
+  if (!RESEND_API_KEY) {
+    console.warn('RESEND_API_KEY not set - email interception will not work');
+  }
+
+  const resendClient = RESEND_API_KEY ? new ResendTestClient(RESEND_API_KEY) : null;
 
   return {
-    getLastLoginCode: async (email?: string): Promise<string | null> => {
-      const emailToCheck = email || lastEmail;
-      if (!emailToCheck) {
+    getLastLoginCode: async (email: string): Promise<string | null> => {
+      if (!resendClient) {
+        console.error('Resend client not initialized - RESEND_API_KEY is missing');
         return null;
       }
 
-      lastEmail = emailToCheck;
+      try {
+        // Get the verification email from Resend
+        const emailHtml = await resendClient.getVerificationEmail(email);
 
-      // Poll for the verification code with retries
-      for (let attempt = 1; attempt <= POLL_CONFIG.maxAttempts; attempt++) {
-        try {
-          const response = await page.request.get(
-            `${TEST_URLS.authServer}/test/email/${encodeURIComponent(emailToCheck)}`
-          );
-
-          if (response.ok()) {
-            const data = await response.json();
-            if (data.code) {
-              console.log(`Retrieved verification code for ${emailToCheck} on attempt ${attempt}`);
-              return data.code;
-            }
-          }
-
-          // If we got a 404 or no code, the email hasn't been processed yet
-          if (attempt < POLL_CONFIG.maxAttempts) {
-            console.log(`Waiting for email code (attempt ${attempt}/${POLL_CONFIG.maxAttempts})...`);
-            await sleep(POLL_CONFIG.intervalMs);
-          }
-        } catch (error) {
-          console.error(`Error on attempt ${attempt}:`, error);
-          if (attempt < POLL_CONFIG.maxAttempts) {
-            await sleep(POLL_CONFIG.intervalMs);
-          }
+        if (!emailHtml) {
+          console.error(`No verification email found for ${email}`);
+          return null;
         }
-      }
 
-      console.error(`Failed to retrieve email code for ${emailToCheck} after ${POLL_CONFIG.maxAttempts} attempts`);
-      return null;
+        // Extract the verification code from the email
+        const code = resendClient.extractVerificationCode(emailHtml);
+
+        if (!code) {
+          console.error(`Could not extract verification code from email for ${email}`);
+          return null;
+        }
+
+        return code;
+      } catch (error) {
+        console.error(`Error getting verification code for ${email}:`, error);
+        return null;
+      }
     },
   };
 }

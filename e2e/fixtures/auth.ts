@@ -29,8 +29,8 @@ export async function register(page: Page, email: string): Promise<void> {
     return;
   }
 
-  // Set up email interception to capture verification code
-  const emailInterceptor = setupEmailInterception(page);
+  // Set up email interception to capture verification code via Resend API
+  const emailInterceptor = setupEmailInterception();
 
   // Navigate to profile app
   await page.goto(TEST_URLS.profileApp);
@@ -56,7 +56,8 @@ export async function register(page: Page, email: string): Promise<void> {
   await page.click('button:has-text("Continue")');
 
   // Wait for verification code input
-  await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+  // Timeout increased to handle cold starts in QA environment
+  await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 20000 });
 
   const verificationCode = await emailInterceptor.getLastLoginCode(email);
 
@@ -98,8 +99,8 @@ export async function login(page: Page, email: string): Promise<void> {
     return;
   }
 
-  // Set up email interception for verification code
-  const emailInterceptor = setupEmailInterception(page);
+  // Set up email interception for verification code via Resend API
+  const emailInterceptor = setupEmailInterception();
 
   // Click login button (using more specific selector to avoid multiple matches)
   await page.locator('#loggedOutView button:has-text("Sign In")').click();
