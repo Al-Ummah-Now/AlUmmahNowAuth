@@ -46,12 +46,12 @@
     {
       "binding": "CLIENT_SECRET_SALT",
       "store_id": "f8eddc9944d041919ed8dc7d08d32308",
-      "secret_name": "CLIENT_SECRET_SALT"
+      "secret_name": "CLIENT_SECRET_SALT_QA"
     },
     {
       "binding": "KEY_ENCRYPTION_MASTER_KEY",
       "store_id": "f8eddc9944d041919ed8dc7d08d32308",
-      "secret_name": "KEY_ENCRYPTION_MASTER_KEY"
+      "secret_name": "KEY_ENCRYPTION_MASTER_KEY_QA"
     },
     {
       "binding": "RESEND_API_KEY",
