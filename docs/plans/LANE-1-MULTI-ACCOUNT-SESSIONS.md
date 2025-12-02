@@ -422,14 +422,31 @@ export class BrowserSessionService {
   }
 
   /**
-   * Update last activity timestamp
+   * Update last activity timestamp with write throttling
+   * Only updates DB if more than 5 minutes since last stored activity
+   * Uses sliding window: extends expires_at on activity
    */
-  async touchBrowserSession(sessionId: string): Promise<void> {
+  async touchBrowserSession(sessionId: string, currentLastActivity?: string): Promise<void> {
+    // Write throttle: skip DB write if touched recently
+    const THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
+    if (currentLastActivity) {
+      const lastUpdate = new Date(currentLastActivity).getTime();
+      const now = Date.now();
+      if (now - lastUpdate < THROTTLE_MS) {
+        return; // Skip DB write - too recent
+      }
+    }
+
+    // Sliding window: extend expiration on activity
+    const newExpiresAt = new Date();
+    newExpiresAt.setDate(newExpiresAt.getDate() + SESSION_CONSTRAINTS.SESSION_LIFETIME_DAYS);
+
     await this.db.prepare(`
       UPDATE browser_sessions
-      SET last_activity = datetime('now')
+      SET last_activity = datetime('now'),
+          expires_at = ?
       WHERE id = ?
-    `).bind(sessionId).run();
+    `).bind(newExpiresAt.toISOString(), sessionId).run();
   }
 
   /**
@@ -502,7 +519,7 @@ export class AccountSessionService {
 
   /**
    * Add an account to browser session
-   * Enforces max 3 accounts constraint
+   * Enforces max 3 accounts constraint (only counts non-expired sessions)
    */
   async addAccountToSession(params: {
     browserSessionId: string;
@@ -510,10 +527,12 @@ export class AccountSessionService {
     authMethod?: string;
     setActive?: boolean;
   }): Promise<AccountSession> {
-    // Check account limit
+    // Check account limit - only count non-expired, non-revoked sessions
     const count = await this.db.prepare(`
       SELECT COUNT(*) as count FROM account_sessions
-      WHERE browser_session_id = ? AND is_revoked = 0
+      WHERE browser_session_id = ?
+        AND is_revoked = 0
+        AND expires_at > datetime('now')
     `).bind(params.browserSessionId).first<{ count: number }>();
 
     if (count && count.count >= SESSION_CONSTRAINTS.MAX_ACCOUNTS_PER_BROWSER) {
@@ -713,6 +732,38 @@ export class AccountSessionService {
     return result ? this.mapAccountSession(result) : null;
   }
 
+  /**
+   * Get account session by user ID within a browser session
+   * Required by Lane 3 session management APIs
+   */
+  async getAccountSessionByUserId(browserSessionId: string, userId: string): Promise<AccountSession | null> {
+    const result = await this.db.prepare(`
+      SELECT * FROM account_sessions
+      WHERE browser_session_id = ?
+        AND user_id = ?
+        AND is_revoked = 0
+        AND expires_at > datetime('now')
+    `).bind(browserSessionId, userId).first();
+
+    return result ? this.mapAccountSession(result) : null;
+  }
+
+  /**
+   * Get all accounts for a browser session
+   * Required by Lane 3 session management APIs and max-accounts pre-check
+   */
+  async getAccountsForBrowserSession(browserSessionId: string): Promise<AccountSession[]> {
+    const results = await this.db.prepare(`
+      SELECT * FROM account_sessions
+      WHERE browser_session_id = ?
+        AND is_revoked = 0
+        AND expires_at > datetime('now')
+      ORDER BY is_active DESC, last_used DESC
+    `).bind(browserSessionId).all();
+
+    return results.results.map(row => this.mapAccountSession(row));
+  }
+
   private mapAccountSession(row: any): AccountSession {
     return {
       id: row.id,
@@ -888,8 +939,9 @@ app.use('*', async (c, next) => {
     const browserSession = await browserSessionService.getBrowserSessionByToken(sessionToken);
 
     if (browserSession) {
-      // Touch session to extend activity
-      await browserSessionService.touchBrowserSession(browserSession.id);
+      // Touch session with throttling - pass lastActivity for throttle check
+      // This uses sliding window expiration and only writes to DB every 5 minutes
+      await browserSessionService.touchBrowserSession(browserSession.id, browserSession.lastActivity);
 
       const accountSessionService = new AccountSessionService(c.env.AUTH_DB);
       const activeAccount = await accountSessionService.getActiveAccount(browserSession.id);

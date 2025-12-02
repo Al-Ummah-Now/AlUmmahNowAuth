@@ -343,6 +343,155 @@ export class OIDCAuthorizeService {
 }
 ```
 
+### Authorization Code Generation
+
+The `generateAuthorizationCode` function integrates with OpenAuth's authorization code flow. This is implemented as a helper that wraps OpenAuth's internal code generation:
+
+```typescript
+// File: apps/auth/src/utils/authorization-code.ts
+
+import { createHash } from 'crypto';
+import { generateId } from './id';
+import type { D1Database } from '@cloudflare/workers-types';
+
+interface AuthorizationCodeParams {
+  clientId: string;
+  userId: string;
+  redirectUri: string;
+  scope?: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: 'S256' | 'plain';
+  nonce?: string;
+}
+
+/**
+ * Generate and store an authorization code for the OAuth flow
+ * This integrates with OpenAuth's token exchange
+ *
+ * Note: If using OpenAuth's built-in authorize endpoint, you may need to
+ * call into OpenAuth's internal APIs instead. This implementation provides
+ * a standalone approach for custom authorize handling.
+ */
+export async function generateAuthorizationCode(
+  env: { AUTH_DB: D1Database },
+  params: AuthorizationCodeParams
+): Promise<string> {
+  const code = generateId('authcode', 32); // Random authorization code
+  const codeHash = await hashCode(code);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  // Store the authorization code with its parameters
+  await env.AUTH_DB.prepare(`
+    INSERT INTO authorization_codes (
+      code_hash, client_id, user_id, redirect_uri, scope,
+      code_challenge, code_challenge_method, nonce, expires_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    codeHash,
+    params.clientId,
+    params.userId,
+    params.redirectUri,
+    params.scope || '',
+    params.codeChallenge || null,
+    params.codeChallengeMethod || null,
+    params.nonce || null,
+    expiresAt.toISOString()
+  ).run();
+
+  return code;
+}
+
+/**
+ * Validate and consume an authorization code during token exchange
+ */
+export async function validateAuthorizationCode(
+  env: { AUTH_DB: D1Database },
+  code: string,
+  clientId: string,
+  redirectUri: string,
+  codeVerifier?: string
+): Promise<{ userId: string; scope: string; nonce?: string } | null> {
+  const codeHash = await hashCode(code);
+
+  const stored = await env.AUTH_DB.prepare(`
+    SELECT * FROM authorization_codes
+    WHERE code_hash = ?
+      AND client_id = ?
+      AND redirect_uri = ?
+      AND expires_at > datetime('now')
+      AND used_at IS NULL
+  `).bind(codeHash, clientId, redirectUri).first();
+
+  if (!stored) {
+    return null;
+  }
+
+  // Validate PKCE if code_challenge was provided
+  if (stored.code_challenge) {
+    if (!codeVerifier) {
+      return null; // PKCE required but verifier not provided
+    }
+
+    const valid = await validatePKCE(
+      codeVerifier,
+      stored.code_challenge as string,
+      stored.code_challenge_method as 'S256' | 'plain'
+    );
+
+    if (!valid) {
+      return null;
+    }
+  }
+
+  // Mark code as used (one-time use)
+  await env.AUTH_DB.prepare(`
+    UPDATE authorization_codes SET used_at = datetime('now') WHERE code_hash = ?
+  `).bind(codeHash).run();
+
+  return {
+    userId: stored.user_id as string,
+    scope: stored.scope as string,
+    nonce: stored.nonce as string | undefined,
+  };
+}
+
+async function hashCode(code: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(code);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function validatePKCE(
+  verifier: string,
+  challenge: string,
+  method: 'S256' | 'plain'
+): Promise<boolean> {
+  if (method === 'plain') {
+    return verifier === challenge;
+  }
+
+  // S256: BASE64URL(SHA256(verifier)) === challenge
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = new Uint8Array(hashBuffer);
+  const computed = btoa(String.fromCharCode(...hashArray))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  return computed === challenge;
+}
+```
+
+**Note:** If your OpenAuth setup already handles authorization codes internally, you can instead import from OpenAuth's package. Check if `@meywd/openauth` exports a `createAuthorizationCode` or similar function.
+
+---
+
 ### File: apps/auth/src/routes/authorize.ts
 
 ```typescript
@@ -351,6 +500,7 @@ import { OIDCAuthorizeService } from '../services/oidc-authorize.service';
 import { BrowserSessionService } from '../services/browser-session.service';
 import { AccountSessionService } from '../services/account-session.service';
 import { validateClient } from '../middleware/client-validation';
+import { generateAuthorizationCode } from '../utils/authorization-code';
 import type { OIDCAuthorizeParams } from '../types/oidc';
 import type { Env } from '../types/env';
 

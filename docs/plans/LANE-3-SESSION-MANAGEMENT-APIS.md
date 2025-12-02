@@ -56,15 +56,44 @@ import { requireSession } from '../middleware/session';
 import { clearSessionCookie, createSessionCookie } from '../utils/session-cookie';
 import { emitAuditEvent } from '../services/audit';
 import { getActiveSigningKey } from '../utils/keys';
+import { rateLimit } from '../middleware/rate-limit';
 import type { Env } from '../types/env';
 
 const sessionRoutes = new Hono<{ Bindings: Env }>();
 
 /**
+ * Rate Limiting Configuration for Session Endpoints
+ *
+ * Session operations can be abuse vectors (enumeration, DoS, session hijacking attempts).
+ * Apply appropriate rate limits based on operation sensitivity.
+ *
+ * | Endpoint                    | Limit        | Window  | Reason                          |
+ * |-----------------------------|--------------|---------|----------------------------------|
+ * | GET /session/accounts       | 30 req       | 1 min   | Read-only, moderate limit        |
+ * | POST /session/switch        | 10 req       | 1 min   | Abuse potential for testing IDs  |
+ * | DELETE /session/accounts/*  | 5 req        | 1 min   | Sign-out should be infrequent    |
+ * | DELETE /session/all         | 3 req        | 1 min   | Full logout is rare              |
+ * | GET /session/check          | 60 req       | 1 min   | Silent check, needs to be fast   |
+ * | GET /session/devices        | 20 req       | 1 min   | Read-only device list            |
+ * | DELETE /session/devices/*   | 5 req        | 1 min   | Remote logout should be rare     |
+ */
+
+// Rate limit middleware factory
+const sessionRateLimit = {
+  accounts: rateLimit({ limit: 30, window: 60, keyPrefix: 'session:accounts' }),
+  switch: rateLimit({ limit: 10, window: 60, keyPrefix: 'session:switch' }),
+  signOut: rateLimit({ limit: 5, window: 60, keyPrefix: 'session:signout' }),
+  signOutAll: rateLimit({ limit: 3, window: 60, keyPrefix: 'session:signoutall' }),
+  check: rateLimit({ limit: 60, window: 60, keyPrefix: 'session:check' }),
+  devices: rateLimit({ limit: 20, window: 60, keyPrefix: 'session:devices' }),
+  remoteLogout: rateLimit({ limit: 5, window: 60, keyPrefix: 'session:remote' }),
+};
+
+/**
  * GET /session/accounts
  * List all logged-in accounts in current browser session
  */
-sessionRoutes.get('/accounts', requireSession, async (c) => {
+sessionRoutes.get('/accounts', sessionRateLimit.accounts, requireSession, async (c) => {
   const browserSession = c.get('browserSession');
   const browserSessionService = new BrowserSessionService(c.env.AUTH_DB);
 
@@ -96,7 +125,7 @@ sessionRoutes.get('/accounts', requireSession, async (c) => {
  * Switch active account in current browser session
  * Body: { userId: string }
  */
-sessionRoutes.post('/switch', requireSession, async (c) => {
+sessionRoutes.post('/switch', sessionRateLimit.switch, requireSession, async (c) => {
   const browserSession = c.get('browserSession');
   const { userId } = await c.req.json<{ userId: string }>();
 
@@ -137,7 +166,7 @@ sessionRoutes.post('/switch', requireSession, async (c) => {
  * Sign out one account from current browser session
  * IMPORTANT: This performs a HARD sign out - revokes session AND all tokens
  */
-sessionRoutes.delete('/accounts/:userId', requireSession, async (c) => {
+sessionRoutes.delete('/accounts/:userId', sessionRateLimit.signOut, requireSession, async (c) => {
   const browserSession = c.get('browserSession');
   const activeAccount = c.get('activeAccount');
   const userId = c.req.param('userId');
@@ -199,7 +228,7 @@ sessionRoutes.delete('/accounts/:userId', requireSession, async (c) => {
  * Sign out all accounts and destroy browser session
  * IMPORTANT: This performs a HARD sign out - revokes all sessions AND all tokens
  */
-sessionRoutes.delete('/all', requireSession, async (c) => {
+sessionRoutes.delete('/all', sessionRateLimit.signOutAll, requireSession, async (c) => {
   const browserSession = c.get('browserSession');
   const activeAccount = c.get('activeAccount');
 
@@ -249,7 +278,7 @@ sessionRoutes.delete('/all', requireSession, async (c) => {
  * Silent session check - returns current session status
  * Used for checking if user is logged in without redirecting
  */
-sessionRoutes.get('/check', async (c) => {
+sessionRoutes.get('/check', sessionRateLimit.check, async (c) => {
   const browserSession = c.get('browserSession');
   const activeAccount = c.get('activeAccount');
 
@@ -283,7 +312,7 @@ sessionRoutes.get('/check', async (c) => {
  * List all active sessions for current user across all devices
  * Requires authentication
  */
-sessionRoutes.get('/devices', requireSession, async (c) => {
+sessionRoutes.get('/devices', sessionRateLimit.devices, requireSession, async (c) => {
   const activeAccount = c.get('activeAccount');
   const browserSession = c.get('browserSession');
 
@@ -309,7 +338,7 @@ sessionRoutes.get('/devices', requireSession, async (c) => {
  * Revoke a specific session (remote logout)
  * IMPORTANT: This performs a HARD sign out - revokes session AND all tokens
  */
-sessionRoutes.delete('/devices/:sessionId', requireSession, async (c) => {
+sessionRoutes.delete('/devices/:sessionId', sessionRateLimit.remoteLogout, requireSession, async (c) => {
   const activeAccount = c.get('activeAccount');
   const browserSession = c.get('browserSession');
   const sessionId = c.req.param('sessionId');
@@ -481,7 +510,17 @@ export interface DeviceSessionsResponse {
 
 ## Client SDK
 
-### File: packages/auth-client/src/session.ts
+> **Full SDK Plan**: See [SDK-AUTH-CLIENT.md](./SDK-AUTH-CLIENT.md) for the complete SDK implementation including:
+> - `AuthClient` - Main entry point with OAuth/OIDC flows
+> - `OAuthManager` - Built on `oauth4webapi` library
+> - `SessionManager` - Multi-account session management (below)
+> - `TokenManager` - Token storage and refresh
+> - React hooks and providers
+> - Migration helpers
+
+The session management portion of the SDK is defined below. This integrates with the full `@alummahnow/auth-client` package.
+
+### File: packages/auth-client/src/session/manager.ts
 
 ```typescript
 export interface AuthSession {

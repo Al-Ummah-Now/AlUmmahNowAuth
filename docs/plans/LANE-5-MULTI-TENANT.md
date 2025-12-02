@@ -785,34 +785,222 @@ function extractSubdomain(host: string): string | null {
 
 ---
 
+## Tenant-Scoped Session Cookies
+
+### Security Concern: Cross-Tenant Session Replay
+
+**Problem:** Without tenant isolation, a session cookie obtained on Tenant A's domain could be replayed on Tenant B's domain, allowing:
+- Cross-tenant authentication bypass
+- Unauthorized access to other tenants' data
+- SSO/admin actions performed in wrong tenant context
+
+### Solution: Tenant-Bound Sessions and Cookies
+
+```typescript
+// File: apps/auth/src/utils/tenant-session-cookie.ts
+
+import { SESSION_COOKIE_NAME, createSessionCookie } from './session-cookie';
+
+/**
+ * Create tenant-scoped session cookie name
+ * Each tenant gets its own cookie to prevent cross-tenant replay
+ */
+export function getTenantCookieName(tenantSlug: string): string {
+  // Sanitize tenant slug for cookie name
+  const safeTenantSlug = tenantSlug.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  return `${SESSION_COOKIE_NAME}_${safeTenantSlug}`;
+}
+
+/**
+ * Create session cookie scoped to tenant domain
+ */
+export function createTenantSessionCookie(
+  token: string,
+  tenantSlug: string,
+  tenantDomain?: string | null
+): string {
+  const cookieName = getTenantCookieName(tenantSlug);
+  const options: SessionCookieOptions = {
+    secure: true,
+    sameSite: 'Lax',
+    maxAge: 604800, // 7 days
+  };
+
+  // Scope cookie to tenant's domain if using custom domain
+  if (tenantDomain) {
+    options.domain = tenantDomain;
+  }
+
+  const parts = [
+    `${cookieName}=${token}`,
+    'HttpOnly',
+    `Max-Age=${options.maxAge}`,
+    `SameSite=${options.sameSite}`,
+  ];
+
+  if (options.secure) parts.push('Secure');
+  if (options.domain) parts.push(`Domain=${options.domain}`);
+  parts.push('Path=/');
+
+  return parts.join('; ');
+}
+
+/**
+ * Parse tenant-specific session cookie from request
+ */
+export function parseTenantSessionCookie(
+  cookieHeader: string | null,
+  tenantSlug: string
+): string | null {
+  if (!cookieHeader) return null;
+
+  const cookieName = getTenantCookieName(tenantSlug);
+  const cookies = cookieHeader.split(';').map(c => c.trim());
+  const sessionCookie = cookies.find(c => c.startsWith(`${cookieName}=`));
+
+  if (!sessionCookie) return null;
+  return sessionCookie.slice(cookieName.length + 1);
+}
+```
+
+### Tenant Validation in Session Lookup
+
+```typescript
+// File: apps/auth/src/services/browser-session.service.ts (updated for multi-tenant)
+
+/**
+ * Get browser session by token with tenant validation
+ * CRITICAL: Always verify session belongs to the requesting tenant
+ */
+async getBrowserSessionByToken(
+  token: string,
+  expectedTenantId: string
+): Promise<BrowserSession | null> {
+  const tokenHash = await hashToken(token);
+  const result = await this.db.prepare(`
+    SELECT * FROM browser_sessions
+    WHERE session_token_hash = ?
+      AND tenant_id = ?
+      AND is_revoked = 0
+      AND expires_at > datetime('now')
+  `).bind(tokenHash, expectedTenantId).first();
+
+  // Reject sessions that don't match the expected tenant
+  if (!result) {
+    return null;
+  }
+
+  // Double-check tenant match (defense in depth)
+  if (result.tenant_id !== expectedTenantId) {
+    console.error('Tenant mismatch in session lookup', {
+      sessionTenant: result.tenant_id,
+      expectedTenant: expectedTenantId,
+    });
+    return null;
+  }
+
+  return this.mapBrowserSession(result);
+}
+```
+
+### Updated Session Middleware with Tenant Isolation
+
+```typescript
+// File: apps/auth/src/middleware/session.ts (multi-tenant version)
+
+import { parseTenantSessionCookie, createTenantSessionCookie } from '../utils/tenant-session-cookie';
+
+export const sessionMiddleware = createMiddleware<{ Bindings: Env }>(async (c, next) => {
+  const tenantContext = c.get('tenantContext');
+  if (!tenantContext) {
+    // Tenant middleware must run first
+    return c.json({ error: 'Tenant context required' }, 500);
+  }
+
+  const cookieHeader = c.req.header('Cookie');
+  const tenantSlug = tenantContext.tenant.slug;
+  const tenantId = tenantContext.tenant.id;
+
+  // Parse tenant-specific session cookie
+  const sessionToken = parseTenantSessionCookie(cookieHeader, tenantSlug);
+
+  if (sessionToken) {
+    const browserSessionService = new BrowserSessionService(c.env.AUTH_DB);
+
+    // CRITICAL: Pass tenantId for validation
+    const browserSession = await browserSessionService.getBrowserSessionByToken(
+      sessionToken,
+      tenantId // Ensure session belongs to this tenant
+    );
+
+    if (browserSession) {
+      await browserSessionService.touchBrowserSession(browserSession.id, browserSession.lastActivity);
+
+      const accountSessionService = new AccountSessionService(c.env.AUTH_DB);
+      const activeAccount = await accountSessionService.getActiveAccount(browserSession.id);
+
+      c.set('browserSession', browserSession);
+      c.set('activeAccount', activeAccount);
+    } else {
+      // Invalid or cross-tenant session - clear the cookie
+      const clearCookie = createTenantSessionCookie('', tenantSlug, tenantContext.tenant.customDomain);
+      c.header('Set-Cookie', clearCookie.replace(/Max-Age=\d+/, 'Max-Age=0'));
+    }
+  }
+
+  await next();
+});
+```
+
+### Key Security Properties
+
+| Property | Implementation |
+|----------|---------------|
+| **Tenant-specific cookies** | Cookie name includes tenant slug: `__session_acme` |
+| **Session-tenant binding** | Browser sessions have `tenant_id` column |
+| **Lookup validation** | `getBrowserSessionByToken` requires `expectedTenantId` |
+| **Cross-tenant rejection** | Sessions for wrong tenant return null |
+| **Cookie domain scoping** | Custom domains get domain-scoped cookies |
+
+---
+
 ## Tenant-Scoped Queries
 
 ### File: apps/auth/src/utils/tenant-query.ts
 
 ```typescript
 /**
- * Helper to build tenant-scoped queries
+ * SECURITY WARNING: Never use string interpolation for tenant IDs in SQL queries.
+ * Always use parameterized queries to prevent SQL injection attacks.
+ *
+ * The tenantId often comes from HTTP Host header resolution, making it an
+ * untrusted input that could be manipulated by attackers.
+ *
+ * BAD (SQL Injection vulnerable):
+ *   `SELECT * FROM users WHERE tenant_id = '${tenantId}'`
+ *
+ * GOOD (Parameterized):
+ *   db.prepare(`SELECT * FROM users WHERE tenant_id = ?`).bind(tenantId)
  */
-export function withTenantScope(baseQuery: string, tenantId: string): string {
-  // Add tenant_id condition to WHERE clause
-  if (baseQuery.toLowerCase().includes('where')) {
-    return baseQuery.replace(/where/i, `WHERE tenant_id = '${tenantId}' AND`);
-  } else {
-    const insertPoint = baseQuery.toLowerCase().includes('order by')
-      ? baseQuery.toLowerCase().indexOf('order by')
-      : baseQuery.toLowerCase().includes('limit')
-        ? baseQuery.toLowerCase().indexOf('limit')
-        : baseQuery.length;
-
-    return `${baseQuery.slice(0, insertPoint)} WHERE tenant_id = '${tenantId}' ${baseQuery.slice(insertPoint)}`;
-  }
-}
 
 /**
- * Tenant-aware user query builder
+ * Tenant-aware query builder with parameterized queries
+ * All methods return query strings with ? placeholders and separate bindings
  */
 export class TenantQueryBuilder {
-  constructor(private tenantId: string) {}
+  constructor(private tenantId: string) {
+    // Validate tenantId format to prevent injection via other vectors
+    if (!/^[a-z0-9_-]+$/i.test(tenantId)) {
+      throw new Error('Invalid tenant ID format');
+    }
+  }
+
+  /**
+   * Get tenant binding for use in parameterized queries
+   */
+  getTenantBinding(): string {
+    return this.tenantId;
+  }
 
   users() {
     return {

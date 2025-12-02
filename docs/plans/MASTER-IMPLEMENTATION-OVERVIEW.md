@@ -356,6 +356,164 @@ Services that multiple lanes depend on:
 
 ---
 
+## Feature Flags Strategy
+
+Feature flags enable safe rollout, A/B testing, and quick rollback of new functionality.
+
+### Implementation
+
+```typescript
+// File: apps/auth/src/utils/feature-flags.ts
+
+export interface FeatureFlags {
+  multiAccountSessions: boolean;     // Lane 1
+  ssoEnabled: boolean;               // Lane 2
+  audienceSpecificTokens: boolean;   // Lane 4
+  multiTenantEnabled: boolean;       // Lane 5
+  adminSessionControls: boolean;     // Lane 6
+}
+
+const DEFAULT_FLAGS: FeatureFlags = {
+  multiAccountSessions: false,
+  ssoEnabled: false,
+  audienceSpecificTokens: false,
+  multiTenantEnabled: false,
+  adminSessionControls: false,
+};
+
+/**
+ * Get feature flags from environment or KV storage
+ */
+export async function getFeatureFlags(env: Env): Promise<FeatureFlags> {
+  // Check KV for dynamic flags (can be updated without deploy)
+  const kvFlags = await env.FEATURE_FLAGS_KV?.get('flags', 'json');
+
+  // Environment variables override KV
+  return {
+    multiAccountSessions: env.FF_MULTI_ACCOUNT === 'true' || kvFlags?.multiAccountSessions || DEFAULT_FLAGS.multiAccountSessions,
+    ssoEnabled: env.FF_SSO === 'true' || kvFlags?.ssoEnabled || DEFAULT_FLAGS.ssoEnabled,
+    audienceSpecificTokens: env.FF_AUDIENCE_TOKENS === 'true' || kvFlags?.audienceSpecificTokens || DEFAULT_FLAGS.audienceSpecificTokens,
+    multiTenantEnabled: env.FF_MULTI_TENANT === 'true' || kvFlags?.multiTenantEnabled || DEFAULT_FLAGS.multiTenantEnabled,
+    adminSessionControls: env.FF_ADMIN_SESSIONS === 'true' || kvFlags?.adminSessionControls || DEFAULT_FLAGS.adminSessionControls,
+  };
+}
+
+/**
+ * Check if a feature is enabled
+ */
+export function isFeatureEnabled(flags: FeatureFlags, feature: keyof FeatureFlags): boolean {
+  return flags[feature] === true;
+}
+```
+
+### Usage in Code
+
+```typescript
+// In route handlers or services
+const flags = await getFeatureFlags(c.env);
+
+if (isFeatureEnabled(flags, 'multiAccountSessions')) {
+  // New multi-account logic
+} else {
+  // Legacy single-session logic
+}
+```
+
+### Rollout Strategy
+
+| Phase | Features Enabled | Rollout % |
+|-------|-----------------|-----------|
+| Phase 1a | multiAccountSessions | 10% → 50% → 100% |
+| Phase 1b | ssoEnabled | 10% → 50% → 100% |
+| Phase 2a | audienceSpecificTokens | 10% → 50% → 100% |
+| Phase 2b | adminSessionControls | 100% (internal first) |
+| Phase 3 | multiTenantEnabled | Per-tenant basis |
+
+---
+
+## Database Migration Rollback Strategy
+
+### Rollback SQL Files
+
+Each migration should have a corresponding down migration for rollback:
+
+```
+migrations/
+├── 0023_browser_sessions.sql
+├── 0023_browser_sessions_down.sql      ← Rollback
+├── 0024_account_sessions_trigger.sql
+├── 0024_account_sessions_trigger_down.sql
+├── 0025_app_tokens.sql
+├── 0025_app_tokens_down.sql
+└── ...
+```
+
+### Example Down Migrations
+
+```sql
+-- 0023_browser_sessions_down.sql
+-- WARNING: This will delete all browser session data!
+-- Only use in emergency rollback scenarios
+
+-- Drop indexes first
+DROP INDEX IF EXISTS idx_browser_sessions_token;
+DROP INDEX IF EXISTS idx_browser_sessions_tenant;
+DROP INDEX IF EXISTS idx_browser_sessions_expires;
+DROP INDEX IF EXISTS idx_account_sessions_browser;
+DROP INDEX IF EXISTS idx_account_sessions_user;
+DROP INDEX IF EXISTS idx_account_sessions_active;
+DROP INDEX IF EXISTS idx_account_sessions_unique_user;
+
+-- Drop tables (CASCADE will handle account_sessions)
+DROP TABLE IF EXISTS account_sessions;
+DROP TABLE IF EXISTS browser_sessions;
+
+-- 0024_account_sessions_trigger_down.sql
+DROP TRIGGER IF EXISTS ensure_single_active_account;
+
+-- 0025_app_tokens_down.sql
+DROP INDEX IF EXISTS idx_app_tokens_session;
+DROP INDEX IF EXISTS idx_app_tokens_client;
+DROP INDEX IF EXISTS idx_app_tokens_hash;
+DROP INDEX IF EXISTS idx_app_tokens_expires;
+DROP INDEX IF EXISTS idx_app_tokens_introspection;
+DROP INDEX IF EXISTS idx_client_permissions_client;
+
+DROP TABLE IF EXISTS client_permissions;
+DROP TABLE IF EXISTS app_tokens;
+
+-- 0026_oauth_clients_audience_down.sql
+-- Note: SQLite doesn't support DROP COLUMN, so recreate table or leave column
+-- For D1, the safest approach is to leave the column (it won't hurt)
+-- ALTER TABLE oauth_clients DROP COLUMN audience; -- Not supported in SQLite
+```
+
+### Pre-Migration Backup Procedure
+
+```bash
+# Before any migration, create a backup
+# For Cloudflare D1:
+wrangler d1 backup create AUTH_DB --name "pre-migration-$(date +%Y%m%d-%H%M%S)"
+
+# List backups
+wrangler d1 backup list AUTH_DB
+
+# Restore from backup if needed
+wrangler d1 backup restore AUTH_DB <backup-id>
+```
+
+### Migration Testing Checklist
+
+- [ ] Test migration on local D1 database first
+- [ ] Test migration on QA environment
+- [ ] Verify down migration works
+- [ ] Create backup before production migration
+- [ ] Run migration during low-traffic period
+- [ ] Monitor error rates after migration
+- [ ] Keep rollback ready for 24 hours
+
+---
+
 ## Risk Mitigation
 
 ### Technical Risks
@@ -441,7 +599,9 @@ docs/plans/
 ├── LANE-5-MULTI-TENANT.md
 ├── LANE-6-ADMIN-SESSION-CONTROLS.md
 ├── LANE-7-UI-IMPLEMENTATION.md        (Admin & Profile UI)
-└── CLIENT-INTEGRATION-GUIDE.md        (for app developers)
+├── SDK-AUTH-CLIENT.md                 (@alummahnow/auth-client package)
+├── CLIENT-INTEGRATION-GUIDE.md        (for app developers)
+└── CLIENT-MIGRATION-GUIDE.md          (migrating existing clients)
 ```
 
 Each lane document contains:

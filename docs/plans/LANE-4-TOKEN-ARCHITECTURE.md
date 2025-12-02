@@ -101,36 +101,80 @@ This ensures:
 
 ### Session Cleanup Job
 
-A scheduled worker cleans up expired sessions:
+A scheduled worker cleans up expired sessions with batching and time-boxing:
 
 ```typescript
 // Scheduled every hour via Cloudflare Cron Trigger
+// Uses LIMIT for batched deletes to avoid long-running queries
+// Time-boxed to max 10 seconds per execution
 export async function cleanupExpiredSessions(db: D1Database): Promise<CleanupResult> {
   const now = new Date().toISOString();
+  const startTime = Date.now();
+  const MAX_EXECUTION_MS = 10000; // 10 seconds max
+  const BATCH_SIZE = 1000; // Delete in batches
 
-  // Delete expired browser sessions (cascades to account_sessions via FK)
-  const browserResult = await db.prepare(`
-    DELETE FROM browser_sessions
-    WHERE expires_at < ? OR is_revoked = 1
-  `).bind(now).run();
+  let browserSessionsDeleted = 0;
+  let refreshTokensDeleted = 0;
+  let appTokensDeleted = 0;
 
-  // Delete expired/revoked refresh tokens
-  const tokenResult = await db.prepare(`
-    DELETE FROM refresh_tokens
-    WHERE expires_at < ? OR is_revoked = 1
-  `).bind(now).run();
+  // Helper to check if we should continue
+  const shouldContinue = () => Date.now() - startTime < MAX_EXECUTION_MS;
 
-  // Delete expired app tokens
-  const appTokenResult = await db.prepare(`
-    DELETE FROM app_tokens
-    WHERE expires_at < ? OR is_revoked = 1
-  `).bind(now).run();
+  // Delete expired browser sessions in batches (cascades to account_sessions via FK)
+  while (shouldContinue()) {
+    const result = await db.prepare(`
+      DELETE FROM browser_sessions
+      WHERE id IN (
+        SELECT id FROM browser_sessions
+        WHERE expires_at < ? OR is_revoked = 1
+        LIMIT ?
+      )
+    `).bind(now, BATCH_SIZE).run();
+
+    const deleted = result.meta.changes || 0;
+    browserSessionsDeleted += deleted;
+    if (deleted < BATCH_SIZE) break; // No more to delete
+  }
+
+  // Delete expired/revoked refresh tokens in batches
+  while (shouldContinue()) {
+    const result = await db.prepare(`
+      DELETE FROM refresh_tokens
+      WHERE id IN (
+        SELECT id FROM refresh_tokens
+        WHERE expires_at < ? OR is_revoked = 1
+        LIMIT ?
+      )
+    `).bind(now, BATCH_SIZE).run();
+
+    const deleted = result.meta.changes || 0;
+    refreshTokensDeleted += deleted;
+    if (deleted < BATCH_SIZE) break;
+  }
+
+  // Delete expired app tokens in batches
+  while (shouldContinue()) {
+    const result = await db.prepare(`
+      DELETE FROM app_tokens
+      WHERE id IN (
+        SELECT id FROM app_tokens
+        WHERE expires_at < ? OR is_revoked = 1
+        LIMIT ?
+      )
+    `).bind(now, BATCH_SIZE).run();
+
+    const deleted = result.meta.changes || 0;
+    appTokensDeleted += deleted;
+    if (deleted < BATCH_SIZE) break;
+  }
 
   return {
-    browserSessionsDeleted: browserResult.meta.changes || 0,
-    refreshTokensDeleted: tokenResult.meta.changes || 0,
-    appTokensDeleted: appTokenResult.meta.changes || 0,
+    browserSessionsDeleted,
+    refreshTokensDeleted,
+    appTokensDeleted,
     timestamp: now,
+    executionTimeMs: Date.now() - startTime,
+    timeBoxedExit: !shouldContinue(), // True if we hit time limit
   };
 }
 ```
@@ -151,6 +195,80 @@ For each Account Session:
 User's access tokens become invalid on next introspection
 (JWT signature valid but session_id check fails)
 ```
+
+### Legacy Token Migration Strategy
+
+When migrating from the existing token schema to the new architecture, handle backwards compatibility:
+
+```typescript
+/**
+ * Legacy Token Handling Strategy
+ *
+ * Problem: Existing tokens don't have session_id binding or app_tokens entries
+ * Solution: Dual-read during transition, allow legacy tokens until natural expiry
+ */
+
+// Token version identifier (add to new tokens)
+const TOKEN_VERSION = 2;
+
+async function verifyAccessToken(token: string): Promise<AccessTokenClaims | null> {
+  try {
+    const { payload } = await jwtVerify(token, keyResolver, { issuer: this.issuer });
+    const claims = payload as unknown as AccessTokenClaims;
+
+    // Check token version for new vs legacy handling
+    const tokenVersion = claims.token_version || 1;
+
+    if (tokenVersion >= 2) {
+      // New tokens: Full validation with session binding
+      const tokenHash = await hashToken(token);
+      const appToken = await this.db.prepare(`
+        SELECT is_revoked FROM app_tokens WHERE access_token_hash = ?
+      `).bind(tokenHash).first();
+
+      // Must exist in app_tokens and not be revoked
+      if (!appToken || appToken.is_revoked) {
+        return null;
+      }
+
+      // Verify session is still valid
+      const session = await this.db.prepare(`
+        SELECT is_revoked FROM account_sessions WHERE id = ?
+      `).bind(claims.session_id).first();
+
+      if (!session || session.is_revoked) {
+        return null;
+      }
+    } else {
+      // Legacy tokens (v1): Only check JWT validity and expiration
+      // Allow until natural expiry (max 1 hour for access tokens)
+      // Log for monitoring migration progress
+      console.log('Legacy token used', { sub: claims.sub, exp: claims.exp });
+    }
+
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
+// When generating new tokens, include version
+const accessTokenClaims: AccessTokenClaims = {
+  // ... existing claims ...
+  token_version: TOKEN_VERSION,
+};
+```
+
+**Migration Timeline:**
+1. Deploy new token architecture
+2. New tokens issued with `token_version: 2` and `session_id` binding
+3. Legacy tokens (no `token_version`) continue working until they expire (max 7 days for refresh)
+4. After 7 days, all tokens are new format
+5. Remove legacy handling code after transition period
+
+**Monitoring:**
+- Track ratio of legacy vs new tokens in introspection
+- Alert if legacy token usage doesn't decrease over time
 
 ---
 
@@ -220,6 +338,8 @@ CREATE INDEX idx_app_tokens_session ON app_tokens(account_session_id);
 CREATE INDEX idx_app_tokens_client ON app_tokens(client_id);
 CREATE INDEX idx_app_tokens_hash ON app_tokens(access_token_hash);
 CREATE INDEX idx_app_tokens_expires ON app_tokens(expires_at);
+-- Composite index for introspection queries (hash + revocation check)
+CREATE INDEX idx_app_tokens_introspection ON app_tokens(access_token_hash, is_revoked);
 
 -- Client-specific permissions mapping
 CREATE TABLE client_permissions (
