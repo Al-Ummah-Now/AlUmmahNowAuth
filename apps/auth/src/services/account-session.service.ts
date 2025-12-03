@@ -28,6 +28,11 @@ export class AccountSessionService {
 		userId: string;
 		authMethod?: string;
 		setActive?: boolean;
+		// OpenAuth enterprise fields
+		refreshToken?: string;
+		clientId?: string;
+		subjectType?: string;
+		subjectProperties?: Record<string, unknown>;
 	}): Promise<AccountSession> {
 		// Check account limit - only count non-expired, non-revoked sessions
 		const count = await this.db
@@ -55,9 +60,29 @@ export class AccountSessionService {
 			.first();
 
 		if (existing) {
-			// Reactivate existing session
+			// Reactivate existing session and update OpenAuth fields
 			if (params.setActive !== false) {
 				await this.setActiveAccount(params.browserSessionId, existing.id as string);
+			}
+			// Update OpenAuth fields if provided (refresh_token, client_id, etc.)
+			if (params.refreshToken || params.clientId || params.subjectType || params.subjectProperties) {
+				await this.db
+					.prepare(
+						`UPDATE account_sessions SET
+						refresh_token = COALESCE(?, refresh_token),
+						client_id = COALESCE(?, client_id),
+						subject_type = COALESCE(?, subject_type),
+						subject_properties = COALESCE(?, subject_properties)
+						WHERE id = ?`
+					)
+					.bind(
+						params.refreshToken || null,
+						params.clientId || null,
+						params.subjectType || null,
+						params.subjectProperties ? JSON.stringify(params.subjectProperties) : null,
+						existing.id
+					)
+					.run();
 			}
 			const session = await this.getAccountSessionById(existing.id as string);
 			if (!session) {
@@ -78,10 +103,21 @@ export class AccountSessionService {
 
 		await this.db
 			.prepare(
-				`INSERT INTO account_sessions (id, browser_session_id, user_id, auth_method, is_active, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?)`
+				`INSERT INTO account_sessions (id, browser_session_id, user_id, auth_method, is_active, expires_at, refresh_token, client_id, subject_type, subject_properties)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 			)
-			.bind(id, params.browserSessionId, params.userId, params.authMethod || 'email', params.setActive !== false ? 1 : 0, expiresAt.toISOString())
+			.bind(
+				id,
+				params.browserSessionId,
+				params.userId,
+				params.authMethod || 'email',
+				params.setActive !== false ? 1 : 0,
+				expiresAt.toISOString(),
+				params.refreshToken || null,
+				params.clientId || 'profile-app',
+				params.subjectType || 'user',
+				params.subjectProperties ? JSON.stringify(params.subjectProperties) : '{}'
+			)
 			.run();
 
 		const session = await this.getAccountSessionById(id);
@@ -343,6 +379,15 @@ export class AccountSessionService {
 	 * Map database row to AccountSession object
 	 */
 	private mapAccountSession(row: Record<string, unknown>): AccountSession {
+		let subjectProperties: Record<string, unknown> = {};
+		if (row.subject_properties) {
+			try {
+				subjectProperties = JSON.parse(row.subject_properties as string);
+			} catch {
+				subjectProperties = {};
+			}
+		}
+
 		return {
 			id: row.id as string,
 			browserSessionId: row.browser_session_id as string,
@@ -353,6 +398,11 @@ export class AccountSessionService {
 			lastUsed: row.last_used as string,
 			expiresAt: row.expires_at as string,
 			isRevoked: Boolean(row.is_revoked),
+			// OpenAuth enterprise fields
+			refreshToken: (row.refresh_token as string) || undefined,
+			clientId: (row.client_id as string) || undefined,
+			subjectType: (row.subject_type as string) || 'user',
+			subjectProperties,
 		};
 	}
 }

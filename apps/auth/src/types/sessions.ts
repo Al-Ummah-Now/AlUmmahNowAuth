@@ -37,6 +37,11 @@ export interface AccountSession {
 	lastUsed: string;
 	expiresAt: string;
 	isRevoked: boolean;
+	// OpenAuth enterprise fields
+	refreshToken?: string;
+	clientId?: string;
+	subjectType?: string;
+	subjectProperties?: Record<string, unknown>;
 }
 
 /**

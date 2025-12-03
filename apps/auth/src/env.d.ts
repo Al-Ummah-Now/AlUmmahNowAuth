@@ -33,6 +33,8 @@ declare global {
     REFRESH_TOKEN_EXPIRY?: number;
     // Environment identifier: "production", "qa", or "development"
     ENVIRONMENT?: string;
+    // 64-character hex string (32 bytes) for encrypting browser session cookies
+    SESSION_SECRET?: string;
   }
 }
 

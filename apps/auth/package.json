@@ -24,7 +24,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@meywd/openauth": "1.0.1",
+    "@meywd/openauth": "^1.0.5",
     "@types/node": "^24.10.1",
     "jose": "^6.1.0",
     "resend": "^6.5.2",

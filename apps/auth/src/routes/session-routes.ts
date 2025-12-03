@@ -30,7 +30,7 @@ type SessionVariables = {
 	activeAccount: AccountSession | null;
 };
 
-const sessionRoutes = new Hono<{ Bindings: Env; Variables: SessionVariables }>();
+const sessionRoutes = new Hono<{ Bindings: Env; Variables: SessionVariables }>().basePath('/session');
 
 /**
  * Rate Limiting Configuration for Session Endpoints
@@ -49,6 +49,8 @@ const sessionRoutes = new Hono<{ Bindings: Env; Variables: SessionVariables }>()
  * | DELETE /session/devices/*   | 5 req        | 1 min   | Remote logout should be rare     |
  */
 
+import { parseSessionCookie } from '../utils/session-cookie';
+
 const sessionRateLimit = {
 	accounts: rateLimit({ limit: 30, window: 60, keyPrefix: 'session:accounts' }),
 	switch: rateLimit({ limit: 10, window: 60, keyPrefix: 'session:switch' }),
@@ -58,6 +60,22 @@ const sessionRateLimit = {
 	devices: rateLimit({ limit: 20, window: 60, keyPrefix: 'session:devices' }),
 	remoteLogout: rateLimit({ limit: 5, window: 60, keyPrefix: 'session:remote' }),
 };
+
+// Load browser session from cookie for all routes
+sessionRoutes.use('*', async (c, next) => {
+	const sessionToken = parseSessionCookie(c.req.header('Cookie') || '');
+	if (sessionToken) {
+		const browserSessionService = new BrowserSessionService(c.env.AUTH_DB);
+		const browserSession = await browserSessionService.getBrowserSessionByToken(sessionToken);
+		if (browserSession) {
+			c.set('browserSession', browserSession);
+			const accountSessionService = new AccountSessionService(c.env.AUTH_DB);
+			const activeAccount = await accountSessionService.getActiveAccount(browserSession.id);
+			c.set('activeAccount', activeAccount);
+		}
+	}
+	await next();
+});
 
 /**
  * GET /session/accounts

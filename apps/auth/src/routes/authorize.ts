@@ -143,33 +143,18 @@ export async function handleAuthorizeRequest(
 		return Response.redirect(errorUrl, 302);
 	}
 
-	// Silent auth success - generate code and redirect
+	// Silent auth - switch active account and let OpenAuth handle the rest
+	// Note: We don't generate our own codes because OpenAuth's /token endpoint
+	// only recognizes codes it generates. By returning null, OpenAuth will
+	// see the existing session and issue tokens for the active user.
 	if (!decision.shouldShowUI && decision.selectedAccount) {
 		// Switch active account if needed
 		if (decision.selectedAccount.id !== activeAccount?.id) {
 			const accountService = new AccountSessionService(env.AUTH_DB);
 			await accountService.setActiveAccount(browserSession!.id, decision.selectedAccount.id);
 		}
-
-		// Generate authorization code
-		const code = await generateAuthorizationCode(env.AUTH_DB, {
-			clientId: params.client_id,
-			userId: decision.selectedAccount.userId,
-			redirectUri: params.redirect_uri,
-			scope: params.scope,
-			codeChallenge: params.code_challenge,
-			codeChallengeMethod: params.code_challenge_method,
-			nonce: params.nonce,
-		});
-
-		// Redirect to client with authorization code
-		const redirectUrl = new URL(params.redirect_uri);
-		redirectUrl.searchParams.set('code', code);
-		if (params.state) {
-			redirectUrl.searchParams.set('state', params.state);
-		}
-
-		return Response.redirect(redirectUrl.toString(), 302);
+		// Return null to let OpenAuth handle code generation
+		return null;
 	}
 
 	// Show UI based on decision

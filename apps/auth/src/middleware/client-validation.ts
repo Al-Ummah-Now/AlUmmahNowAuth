@@ -60,9 +60,9 @@ export async function validateClient(
 	// Fetch client from database
 	const client = await db
 		.prepare(
-			`SELECT id, name, redirect_uris
+			`SELECT id, client_id, name, redirect_uris
       FROM oauth_clients
-      WHERE id = ? AND enabled = 1`
+      WHERE client_id = ? AND enabled = 1`
 		)
 		.bind(clientId)
 		.first();
@@ -74,8 +74,11 @@ export async function validateClient(
 		};
 	}
 
-	// Parse registered redirect URIs
-	const redirectUris = JSON.parse(client.redirect_uris as string) as string[];
+	// Parse registered redirect URIs (handles both JSON array and comma-separated formats)
+	const rawUris = client.redirect_uris as string;
+	const redirectUris = rawUris.startsWith('[')
+		? JSON.parse(rawUris) as string[]
+		: rawUris.split(',').map(u => u.trim());
 
 	// Validate redirect URI is registered
 	if (!redirectUris.includes(redirectUri)) {
@@ -88,7 +91,7 @@ export async function validateClient(
 	return {
 		valid: true,
 		client: {
-			id: client.id as string,
+			id: client.client_id as string,
 			name: client.name as string,
 			redirectUris,
 		},
@@ -115,9 +118,9 @@ export async function getClient(
 } | null> {
 	const client = await db
 		.prepare(
-			`SELECT id, name, redirect_uris
+			`SELECT id, client_id, name, redirect_uris
       FROM oauth_clients
-      WHERE id = ? AND enabled = 1`
+      WHERE client_id = ? AND enabled = 1`
 		)
 		.bind(clientId)
 		.first();
@@ -126,9 +129,15 @@ export async function getClient(
 		return null;
 	}
 
+	// Parse redirect URIs (handles both JSON array and comma-separated formats)
+	const rawUris = client.redirect_uris as string;
+	const redirectUris = rawUris.startsWith('[')
+		? JSON.parse(rawUris) as string[]
+		: rawUris.split(',').map(u => u.trim());
+
 	return {
-		id: client.id as string,
+		id: client.client_id as string,
 		name: client.name as string,
-		redirectUris: JSON.parse(client.redirect_uris as string) as string[],
+		redirectUris,
 	};
 }

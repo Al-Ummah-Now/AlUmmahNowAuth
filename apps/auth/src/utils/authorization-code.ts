@@ -54,6 +54,16 @@ export async function generateAuthorizationCode(
 	const codeHash = await hashToken(code);
 	const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
+	// Look up the internal OAuth client ID (FK references oauth_clients.id, not client_id)
+	const client = await db
+		.prepare(`SELECT id FROM oauth_clients WHERE client_id = ?`)
+		.bind(params.clientId)
+		.first<{ id: string }>();
+
+	if (!client) {
+		throw new Error(`OAuth client not found: ${params.clientId}`);
+	}
+
 	// Store the authorization code with its parameters
 	await db
 		.prepare(
@@ -65,7 +75,7 @@ export async function generateAuthorizationCode(
 		)
 		.bind(
 			codeHash,
-			params.clientId,
+			client.id, // Use internal ID for FK constraint
 			params.userId,
 			params.redirectUri,
 			params.scope || '',
@@ -107,6 +117,16 @@ export async function validateAuthorizationCode(
 ): Promise<AuthorizationCodeResult | null> {
 	const codeHash = await hashToken(code);
 
+	// Look up the internal OAuth client ID (DB stores internal ID, not public client_id)
+	const client = await db
+		.prepare(`SELECT id FROM oauth_clients WHERE client_id = ?`)
+		.bind(clientId)
+		.first<{ id: string }>();
+
+	if (!client) {
+		return null; // Client not found
+	}
+
 	const stored = await db
 		.prepare(
 			`SELECT * FROM authorization_codes
@@ -116,7 +136,7 @@ export async function validateAuthorizationCode(
         AND expires_at > datetime('now')
         AND used_at IS NULL`
 		)
-		.bind(codeHash, clientId, redirectUri)
+		.bind(codeHash, client.id, redirectUri)
 		.first();
 
 	if (!stored) {

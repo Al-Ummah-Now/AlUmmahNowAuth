@@ -207,7 +207,20 @@ export class TokenService {
 		);
 
 		const result = await stmt
-			.bind(tokenHash, userId, clientId, now, expiresAt, ipAddress, userAgent, parentTokenId, rotationCount, scope, finalTokenFamilyId, sessionId)
+			.bind(
+				tokenHash,
+				userId,
+				clientId,
+				now,
+				expiresAt,
+				ipAddress ?? null,
+				userAgent ?? null,
+				parentTokenId ?? null,
+				rotationCount,
+				scope,
+				finalTokenFamilyId ?? null,
+				sessionId ?? null
+			)
 			.first<{ id: string }>();
 
 		if (!result) {
@@ -527,8 +540,8 @@ export class TokenService {
 				clientId,
 				now,
 				expiresAt,
-				ipAddress,
-				userAgent,
+				ipAddress ?? null,
+				userAgent ?? null,
 				tokenRecord.id,
 				newRotationCount,
 				tokenRecord.scope,
@@ -537,9 +550,9 @@ export class TokenService {
 
 			// 3. Log the refresh event
 			env.AUTH_DB.prepare(
-				`INSERT INTO token_usage (token_id, action, timestamp, ip_address, user_agent)
-         VALUES (?, 'refreshed', ?, ?, ?)`
-			).bind(tokenRecord.id, now, ipAddress, userAgent)
+				`INSERT INTO token_usage (token_id, subject, event_type, client_id, timestamp, ip_address, user_agent)
+         VALUES (?, ?, 'refreshed', ?, ?, ?, ?)`
+			).bind(tokenRecord.id, `user:${tokenRecord.user_id}`, clientId, now, ipAddress ?? null, userAgent ?? null)
 		]);
 
 		// Step 9: Check for concurrent rotation
@@ -622,9 +635,10 @@ export class TokenService {
 
 		const logStatements = tokenIds.map((id) =>
 			env.AUTH_DB.prepare(
-				`INSERT INTO token_usage (token_id, action, timestamp, metadata)
-         VALUES (?, 'revoked', ?, ?)`
-			).bind(id, now, metadata)
+				`INSERT INTO token_usage (token_id, subject, event_type, client_id, timestamp, metadata)
+         SELECT ?, 'user:' || user_id, 'revoked', client_id, ?, ?
+         FROM refresh_tokens WHERE id = ?`
+			).bind(id, now, metadata, id)
 		);
 
 		await env.AUTH_DB.batch(logStatements);
@@ -692,9 +706,10 @@ export class TokenService {
 
 		const logStatements = tokenIds.map((id) =>
 			env.AUTH_DB.prepare(
-				`INSERT INTO token_usage (token_id, action, metadata)
-         VALUES (?, ?, ?)`
-			).bind(id, 'revoked', metadata)
+				`INSERT INTO token_usage (token_id, subject, event_type, client_id, metadata)
+         SELECT ?, 'user:' || user_id, 'revoked', client_id, ?
+         FROM refresh_tokens WHERE id = ?`
+			).bind(id, metadata, id)
 		);
 
 		await env.AUTH_DB.batch(logStatements);
@@ -803,18 +818,42 @@ export class TokenService {
 	 */
 	private static async logTokenUsage(
 		tokenId: string,
-		action: 'generated' | 'refreshed' | 'revoked' | 'expired',
+		action: 'generated' | 'refreshed' | 'revoked' | 'reused',
 		env: Env,
 		ipAddress?: string,
 		userAgent?: string,
-		metadata?: string
+		metadata?: string,
+		userId?: string,
+		clientId?: string
 	): Promise<void> {
+		// Get subject from refresh token if not provided
+		let subject = userId ? `user:${userId}` : 'unknown';
+		let resolvedClientId = clientId;
+
+		if (!userId || !clientId) {
+			const tokenRecord = await env.AUTH_DB.prepare(
+				`SELECT user_id, client_id FROM refresh_tokens WHERE id = ?`
+			).bind(tokenId).first<{ user_id: string; client_id: string }>();
+			if (tokenRecord) {
+				subject = `user:${tokenRecord.user_id}`;
+				resolvedClientId = resolvedClientId || tokenRecord.client_id;
+			}
+		}
+
 		const stmt = env.AUTH_DB.prepare(
-			`INSERT INTO token_usage (token_id, action, ip_address, user_agent, metadata)
-       VALUES (?, ?, ?, ?, ?)`
+			`INSERT INTO token_usage (token_id, subject, event_type, client_id, ip_address, user_agent, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
 		);
 
-		await stmt.bind(tokenId, action, ipAddress, userAgent, metadata).run();
+		await stmt.bind(
+			tokenId,
+			subject,
+			action,
+			resolvedClientId ?? null,
+			ipAddress ?? null,
+			userAgent ?? null,
+			metadata ?? null
+		).run();
 	}
 
 	// ===== Lane 4: Token Architecture Methods =====

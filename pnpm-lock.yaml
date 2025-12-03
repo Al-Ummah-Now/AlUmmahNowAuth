@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@meywd/openauth':
-        specifier: ^1.0.1
-        version: 1.0.1(arctic@2.3.4)(hono@4.10.7)
+        specifier: ^1.0.4
+        version: 1.0.4(arctic@2.3.4)(hono@4.10.7)
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.10.11
@@ -204,8 +204,8 @@ importers:
   apps/auth:
     dependencies:
       '@meywd/openauth':
-        specifier: 1.0.1
-        version: 1.0.1(arctic@2.3.4)(hono@4.10.7)
+        specifier: ^1.0.4
+        version: 1.0.4(arctic@2.3.4)(hono@4.10.7)
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
@@ -1033,6 +1033,12 @@ packages:
 
   '@meywd/openauth@1.0.1':
     resolution: {integrity: sha512-+NyN2sCKf49tMFDjQ4E/Ujnlbu28qbRDbMbrc9lG1s/7PISkkMlHwNAspi4PGSW9R/tspWzuIXDMBaL1eDIPsw==, tarball: https://npm.pkg.github.com/download/@meywd/openauth/1.0.1/7ac5ba6fbcf930deef8d8768460406ad6f5dd38c}
+    peerDependencies:
+      arctic: ^2.2.2
+      hono: ^4.0.0
+
+  '@meywd/openauth@1.0.4':
+    resolution: {integrity: sha512-j05FTkrL7tJvAo0zbmeCQALxspLEck3+jDKMmdOzriVYjkS3hDi4CjOZ9J1bF0Vh4SYY8BqQBXHP1VhEN4Ej2w==, tarball: https://npm.pkg.github.com/download/@meywd/openauth/1.0.4/0bdbedd1a85e30854f68d67b79f2926221594803}
     peerDependencies:
       arctic: ^2.2.2
       hono: ^4.0.0
@@ -4195,6 +4201,14 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@meywd/openauth@1.0.1(arctic@2.3.4)(hono@4.10.7)':
+    dependencies:
+      '@standard-schema/spec': 1.0.0-beta.3
+      arctic: 2.3.4
+      aws4fetch: 1.0.20
+      hono: 4.10.7
+      jose: 5.9.6
+
+  '@meywd/openauth@1.0.4(arctic@2.3.4)(hono@4.10.7)':
     dependencies:
       '@standard-schema/spec': 1.0.0-beta.3
       arctic: 2.3.4

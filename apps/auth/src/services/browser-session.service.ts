@@ -101,7 +101,9 @@ export class BrowserSessionService {
 				`SELECT
         a.*,
         u.id as user_id,
-        u.email as user_email
+        u.email as user_email,
+        u.name as user_name,
+        u.avatar_url as user_avatar_url
       FROM account_sessions a
       JOIN user u ON a.user_id = u.id
       WHERE a.browser_session_id = ?
@@ -228,6 +230,8 @@ export class BrowserSessionService {
 			user: {
 				id: row.user_id as string,
 				email: row.user_email as string,
+				name: (row.user_name as string) || undefined,
+				avatarUrl: (row.user_avatar_url as string) || undefined,
 			},
 		};
 	}

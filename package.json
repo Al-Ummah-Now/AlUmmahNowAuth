@@ -58,6 +58,6 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@meywd/openauth": "^1.0.1"
+    "@meywd/openauth": "^1.0.5"
   }
 }

@@ -18,10 +18,14 @@ interface SessionCookieOptions {
  * Create session cookie header value
  *
  * Creates a secure HTTP-only session cookie with appropriate security settings.
- * The cookie is scoped to the root path and uses SameSite=Lax for CSRF protection.
+ * Uses SameSite=None; Secure to support cross-origin requests from profile/admin apps.
+ *
+ * SECURITY NOTE: SameSite=None is required for cross-origin requests with credentials,
+ * which is needed for the account switcher in profile/admin apps on different subdomains.
+ * The Secure flag is always required when using SameSite=None.
  *
  * @param token - Browser session token
- * @param domain - Optional custom domain for the cookie
+ * @param domain - Optional custom domain for the cookie (e.g., '.alummahnow.net' for sharing across subdomains)
  * @returns Cookie header value
  *
  * @example
@@ -30,10 +34,12 @@ interface SessionCookieOptions {
  * c.header('Set-Cookie', cookie);
  * ```
  */
-export function createSessionCookie(token: string, domain?: string): string {
+export function createSessionCookie(token: string, domain?: string, isLocalhost: boolean = false): string {
+	// For localhost: SameSite=Lax (no Secure needed, works with HTTP)
+	// For production: SameSite=None + Secure (required for cross-origin)
 	const options: SessionCookieOptions = {
-		secure: true,
-		sameSite: 'Lax',
+		secure: !isLocalhost,
+		sameSite: isLocalhost ? 'Lax' : 'None',
 		maxAge: 604800, // 7 days (matches SESSION_LIFETIME_DAYS)
 	};
 
@@ -94,6 +100,6 @@ export function parseSessionCookie(cookieHeader: string | null | undefined): str
  * c.header('Set-Cookie', clearSessionCookie());
  * ```
  */
-export function clearSessionCookie(domain?: string): string {
-	return createSessionCookie('', domain).replace(/Max-Age=\d+/, 'Max-Age=0');
+export function clearSessionCookie(domain?: string, isLocalhost: boolean = false): string {
+	return createSessionCookie('', domain, isLocalhost).replace(/Max-Age=\d+/, 'Max-Age=0');
 }

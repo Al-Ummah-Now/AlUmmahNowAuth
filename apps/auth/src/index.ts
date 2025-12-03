@@ -1,5 +1,22 @@
-import { issuer } from "@meywd/openauth";
+// DEBUG: Force reload trigger - 2025-12-03T12:15:00
+import { createMultiTenantIssuer } from "@meywd/openauth";
 import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
+import { D1SessionAdapter } from "./adapters/session-adapter";
+import { D1TenantAdapter } from "./adapters/tenant-adapter";
+
+/**
+ * Convert hex string to Uint8Array (32 bytes for session secret)
+ */
+function hexToSecret(hex: string): Uint8Array {
+  if (hex.length !== 64) {
+    throw new Error("Hex string must be exactly 64 characters (32 bytes)");
+  }
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
 import { PasswordProvider } from "@meywd/openauth/provider/password";
 import { PasswordUI } from "@meywd/openauth/ui/password";
 import { createSubjects } from "@meywd/openauth/subject";
@@ -32,6 +49,16 @@ import { handleTokenCron } from "./cron/token-cron";
 import { requireSecret } from "./utils/secrets";
 import { trackEvent, trackRequestTiming as _trackRequestTiming } from "./utils/analytics";
 import adminSessionRoutes from "./routes/admin-session-routes";
+// Note: Session routes (/session/*) are now handled by OpenAuth enterprise issuer
+// which provides: /session/accounts, /session/switch, /session/accounts/:userId, /session/all, /session/check
+import { handleSelectAccountGet, handleSelectAccountPost } from "./routes/select-account";
+import { AdminTenantRoutes } from "./admin-tenant-routes";
+import { renderAccountSwitcher } from "./ui/account-switcher";
+import { renderSessionList } from "./ui/session-list";
+import { renderAdminSessionsDashboard } from "./ui/admin-sessions";
+import { BrowserSessionService } from "./services/browser-session.service";
+import { AccountSessionService } from "./services/account-session.service";
+import { parseSessionCookie } from "./utils/session-cookie";
 
 /**
  * Check if an origin matches allowed origins (supports wildcards like *.example.com)
@@ -124,18 +151,18 @@ function addSecurityHeaders(response: Response, isProduction: boolean = true): R
   // Content Security Policy
   // - default-src 'self': Only load resources from same origin by default
   // - script-src 'self' 'unsafe-inline': Allow inline scripts for OpenAuth UI
-  // - style-src 'self' 'unsafe-inline': Allow inline styles for OpenAuth UI
+  // - style-src: Allow inline styles, Tailwind preflight, and Google Fonts CSS for OpenAuth UI
   // - img-src 'self' data: https: Allow images from same origin, data URIs, and HTTPS
-  // - font-src 'self': Only load fonts from same origin
+  // - font-src 'self' https://fonts.gstatic.com: Allow fonts from same origin and Google Fonts
   // - connect-src 'self': Only make network requests to same origin
   // - frame-ancestors 'none': Prevent embedding (same as X-Frame-Options: DENY)
   headers.set(
     'Content-Security-Policy',
     "default-src 'self'; " +
     "script-src 'self' 'unsafe-inline'; " +
-    "style-src 'self' 'unsafe-inline'; " +
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; " +
     "img-src 'self' data: https:; " +
-    "font-src 'self'; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
     "connect-src 'self'; " +
     "frame-ancestors 'none'"
   );
@@ -212,10 +239,185 @@ export default {
       }
     }
 
-    // Handle admin session management routes
+    // Handle admin session management routes (API)
     if (url.pathname.startsWith('/admin/sessions') || url.pathname.match(/^\/admin\/users\/[^/]+\/sessions/)) {
       const response = await adminSessionRoutes.fetch(request, env, ctx);
       if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
+
+    // Handle admin tenant management routes
+    if (url.pathname.startsWith('/admin/tenants')) {
+      const adminTenantRoutes = new AdminTenantRoutes(env.AUTH_DB);
+      const response = await adminTenantRoutes.handle(request, env, ctx);
+      if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
+
+    // Session management routes (API: /session/*) are handled by OpenAuth enterprise issuer
+    // OpenAuth provides: /session/accounts, /session/switch, /session/accounts/:userId, /session/all, /session/check
+    // We only need to handle CORS preflight here - actual requests go to OpenAuth
+    if (url.pathname.startsWith('/session/') && request.method === 'OPTIONS') {
+      const origin = request.headers.get('Origin');
+      const allowedOrigins = getAllowedOrigins(env, origin);
+      const isAllowed = origin && matchOrigin(origin, [...allowedOrigins, ...(env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [])]);
+
+      const headers: HeadersInit = {
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cookie',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Max-Age': '86400',
+      };
+      if (isAllowed && origin) {
+        headers['Access-Control-Allow-Origin'] = origin;
+      }
+      return new Response(null, { status: 204, headers });
+    }
+
+    // Handle session UI pages
+    if (url.pathname === '/settings/sessions') {
+      // User's session management page
+      // Use browser session (multi-account) instead of OpenAuth session
+      const sessionToken = parseSessionCookie(request.headers.get('Cookie') || '');
+      if (!sessionToken) {
+        // Redirect to profile app to login
+        return Response.redirect(env.PROFILE_APP_URL || `${url.origin}/`, 302);
+      }
+
+      const browserSessionService = new BrowserSessionService(env.AUTH_DB);
+      const accountSessionService = new AccountSessionService(env.AUTH_DB);
+
+      // Get browser session
+      const browserSession = await browserSessionService.getBrowserSessionByToken(sessionToken);
+      if (!browserSession) {
+        return Response.redirect(env.PROFILE_APP_URL || `${url.origin}/`, 302);
+      }
+
+      // Get active account from browser session
+      const activeAccount = await accountSessionService.getActiveAccount(browserSession.id);
+      if (!activeAccount) {
+        return Response.redirect(env.PROFILE_APP_URL || `${url.origin}/`, 302);
+      }
+
+      // Get user's sessions across devices
+      const userSessions = await accountSessionService.getUserSessions(activeAccount.userId);
+
+      // Transform to UI format (DeviceSession interface)
+      const sessions = await Promise.all(userSessions.map(async (s) => {
+        const browser = await browserSessionService.getBrowserSessionById(s.browserSessionId);
+        return {
+          id: s.id,
+          browserSessionId: s.browserSessionId,
+          deviceType: (browser?.deviceType || 'unknown') as 'desktop' | 'mobile' | 'tablet' | 'unknown',
+          deviceName: browser?.deviceName || 'Unknown Device',
+          ipAddress: browser?.ipAddress || null,
+          lastActivity: s.lastUsed,
+          createdAt: s.authenticatedAt,
+          isCurrentSession: s.browserSessionId === browserSession.id,
+        };
+      }));
+
+      const html = renderSessionList({
+        sessions,
+        actionBaseUrl: '/session/devices',
+        showRevokeAll: true,
+      });
+
+      return addSecurityHeaders(new Response(html, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }), isProduction);
+    }
+
+    // Handle account switcher component (for embedding)
+    if (url.pathname === '/ui/account-switcher') {
+      // Use browser session (multi-account) instead of OpenAuth session
+      const sessionToken = parseSessionCookie(request.headers.get('Cookie') || '');
+      if (!sessionToken) {
+        return addSecurityHeaders(new Response('', { status: 204 }), isProduction);
+      }
+
+      const browserSessionService = new BrowserSessionService(env.AUTH_DB);
+      // First get the session by token to get the ID
+      const session = await browserSessionService.getBrowserSessionByToken(sessionToken);
+      if (!session) {
+        return addSecurityHeaders(new Response('', { status: 204 }), isProduction);
+      }
+
+      // Then get the session with accounts using the ID
+      const browserSession = await browserSessionService.getBrowserSessionWithAccounts(session.id);
+
+      if (!browserSession) {
+        return addSecurityHeaders(new Response('', { status: 204 }), isProduction);
+      }
+
+      // Transform to AccountSwitcherAccount interface
+      const accounts = browserSession.accounts.map(a => ({
+        userId: a.userId,
+        email: a.user.email,
+        name: a.user.name,
+        avatarUrl: a.user.avatarUrl,
+        lastUsed: a.lastUsed,
+        isActive: a.isActive,
+      }));
+
+      const html = renderAccountSwitcher({
+        accounts,
+        actionBaseUrl: '/session',
+        showAccountCount: true,
+      });
+
+      return addSecurityHeaders(new Response(html, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }), isProduction);
+    }
+
+    // Handle admin sessions dashboard UI
+    if (url.pathname === '/admin/sessions/dashboard') {
+      // Verify admin access
+      const session = await getUserSession(request, env.AUTH_STORAGE);
+      if (!session?.user) {
+        return Response.redirect(`${url.origin}/`, 302);
+      }
+
+      // TODO: Check admin role properly
+      // For now, render the dashboard with empty data (API endpoint populates real data)
+      const html = renderAdminSessionsDashboard({
+        stats: {
+          totalSessions: 0,
+          activeSessions: 0,
+          loginsLast24h: 0,
+          deviceBreakdown: { desktop: 0, mobile: 0, tablet: 0, unknown: 0 },
+        },
+        suspicious: { multipleIPsInShortTime: [], failedThenSuccessfulLogins: [] },
+        sessions: [],
+        filters: {},
+        userBaseUrl: '/admin/users',
+        actionBaseUrl: '/admin/sessions',
+      });
+
+      return addSecurityHeaders(new Response(html, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }), isProduction);
+    }
+
+    // Handle account selection page (OIDC flow)
+    if (url.pathname === '/select-account') {
+      // Get browser session for multi-account support
+      const sessionToken = parseSessionCookie(request.headers.get('Cookie') || '');
+      let browserSession = null;
+
+      if (sessionToken) {
+        const browserSessionService = new BrowserSessionService(env.AUTH_DB);
+        browserSession = await browserSessionService.getBrowserSessionByToken(sessionToken);
+      }
+
+      if (request.method === 'GET') {
+        const response = await handleSelectAccountGet(request, env, browserSession);
+        return addSecurityHeaders(response, isProduction);
+      } else if (request.method === 'POST') {
+        const response = await handleSelectAccountPost(request, env, browserSession);
         return addSecurityHeaders(response, isProduction);
       }
     }
@@ -563,6 +765,27 @@ export default {
       }
     }
 
+    // Handle direct auth access without OAuth callback - redirect to profile's OAuth flow
+    // This handles the case where user goes directly to auth server instead of through a client app
+    // Only intercept /authorize when missing required params - enterprise issuer handles prompt=select_account etc.
+    if (url.pathname === '/authorize') {
+      const redirectUri = url.searchParams.get('redirect_uri');
+      const clientId = url.searchParams.get('client_id');
+
+      // If no redirect_uri or client_id, redirect through profile app's OAuth flow
+      if (!redirectUri || !clientId) {
+        logger.debug('Direct auth access without OAuth params, redirecting to profile OAuth flow');
+
+        const profileUrl = env.PROFILE_APP_URL || 'http://localhost:3302';
+        const profileCallback = `${profileUrl}/callback`;
+        const oauthUrl = `${url.origin}/authorize?response_type=code&client_id=profile-app&redirect_uri=${encodeURIComponent(profileCallback)}`;
+
+        ctx.waitUntil(logger.finalizeRequest());
+        return Response.redirect(oauthUrl, 302);
+      }
+      // Enterprise issuer handles prompt=select_account, prompt=login, etc. natively
+    }
+
     // Rate limiting for token endpoints
     // Token endpoints are more sensitive and require stricter rate limits
     if (url.pathname === '/token' ||
@@ -640,43 +863,37 @@ export default {
       });
     }
 
-    // Note: Token endpoints (/token, /token/introspect, /token/revoke) are now
-    // handled by the forked OpenAuth issuer with built-in enterprise features
+    // Token endpoints (/token, /token/introspect, /token/revoke) are
+    // handled by OpenAuth issuer with consistent JWKS keys
 
-    // The real OpenAuth server code starts here:
-    logger.debug('Initializing OpenAuth issuer', {
+    // Initialize OpenAuth enterprise issuer with multi-account session support
+    logger.debug('Initializing OpenAuth enterprise issuer', {
       hasStorage: !!env.AUTH_STORAGE,
       issuerEnv: env.OPENAUTH_ISSUER,
     });
 
-    // Initialize OpenAuth audit service with queue for async processing
-    const auditService = new AuditService({
-      database: env.AUTH_DB,
-      queue: env.AUDIT_QUEUE, // Queue-based mode for better performance
-    });
+    // Note: OpenAuth enterprise issuer handles session management via D1SessionAdapter
+    // No need for manual session token tracking - OpenAuth manages the __session cookie
 
-    // Handle OpenAuth issuer and apply security headers
-    const issuerResponse = await issuer({
-      storage: CloudflarePatchedStorage({
-        namespace: env.AUTH_STORAGE,
-      }),
+    // Create storage and services for enterprise issuer
+    const storage = CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE });
+    const sessionService = new D1SessionAdapter(env.AUTH_DB);
+    const tenantService = new D1TenantAdapter(env.AUTH_DB);
+    const sessionSecret = hexToSecret(env.SESSION_SECRET || '0'.repeat(64));
+
+    // Create enterprise issuer with multi-account session support
+    const { app } = createMultiTenantIssuer({
+      storage,
+      sessionService,
+      tenantService,
+      sessionSecret,
       subjects,
-      // Enable client authentication with D1 database
-      clientDb: env.AUTH_DB,
-      // Enable audit logging for token operations
-      audit: {
-        service: auditService,
-        hooks: {
-          onTokenGenerated: true,
-          onTokenRefreshed: true,
-          onTokenRevoked: true,
-          onTokenReused: true,
-        },
-      },
-      // Configure CORS for token endpoints (supports wildcards like *.alummahnow.net)
-      cors: {
-        origins: getAllowedOrigins(env, request.headers.get('Origin')),
-        credentials: true,
+      tenantResolver: {
+        customDomains: new Map([
+          ['localhost', 'tenant_default'],
+          ['127.0.0.1', 'tenant_default'],
+          ['auth.alummahnow.net', 'tenant_default'],
+        ]),
       },
       providers: {
         password: PasswordProvider(
@@ -797,6 +1014,10 @@ export default {
       theme: {
         title: "Al Ummah Now",
         primary: "#0891b2",
+        background: {
+          light: "#444444",
+          dark: "#1a1a2d",
+        },
         favicon: "https://al-ummah-now-images.b-cdn.net/favicon_io/favicon.ico",
         logo: {
           dark: "https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png",
@@ -804,24 +1025,36 @@ export default {
             "https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png",
         },
       },
-      success: async (oauthCtx, value) => {
-        logger.info('Authentication successful', { email: value.email });
+      onSuccess: async (authCtx, value, _tenant) => {
+        // Enterprise issuer: password provider gives email in claims
+        const email = String(value.email || '');
+        logger.info('Authentication successful', { email, provider: value.provider });
+
+        // DEBUG: Log the full value object and tenant
+        logger.info('[DEBUG] onSuccess called', {
+          valueKeys: Object.keys(value),
+          value: JSON.stringify(value).slice(0, 500),
+          tenant: _tenant?.id,
+          hasAuthCtx: !!authCtx,
+          hasSubjectMethod: typeof authCtx?.subject === 'function',
+        });
+
         try {
-          const user = await getOrCreateUser(env, value.email, true);
+          const user = await getOrCreateUser(env, email, true);
           const isNewUser = user.isNew; // Track if this is a new account
 
           // Debug: Log the roles being returned
           logger.info('User roles from RBAC', {
             userId: user.id,
-            email: value.email,
+            email,
             roles: user.roles,
             rolesCount: user.roles.length
           });
 
-          // Emit login success audit event
+          // Emit login success audit event (use outer ctx for waitUntil)
           const clientIP = getClientIP(request);
           const loginEvent = createLoginSuccessEvent(
-            value.email,
+            email,
             user.id,
             {
               ipAddress: clientIP,
@@ -835,7 +1068,7 @@ export default {
           trackEvent(env, {
             event: 'login_success',
             userId: user.id,
-            email: value.email,
+            email,
             ipAddress: clientIP,
             userAgent: request.headers.get('User-Agent') ?? undefined,
             success: true,
@@ -848,7 +1081,7 @@ export default {
           if (isNewUser) {
             const accountEvent = createAccountCreatedEvent(
               user.id,
-              value.email,
+              email,
               user.roles.join(','),
               {
                 ipAddress: clientIP,
@@ -862,23 +1095,72 @@ export default {
             trackEvent(env, {
               event: 'register',
               userId: user.id,
-              email: value.email,
+              email,
               ipAddress: clientIP,
               userAgent: request.headers.get('User-Agent') ?? undefined,
               success: true,
             });
           }
 
-          return oauthCtx.subject("user", {
+          // DEBUG: Log before calling subject
+          logger.info('[DEBUG] Calling authCtx.subject', {
+            type: 'user',
+            properties: { id: user.id, email, roles: user.roles },
+          });
+
+          const subjectResponse = await authCtx.subject("user", {
             id: user.id,
-            email: value.email,
+            email,
             roles: user.roles,
           });
+
+          // DEBUG: Log the response from subject
+          logger.info('[DEBUG] authCtx.subject returned', {
+            responseType: typeof subjectResponse,
+            isResponse: subjectResponse instanceof Response,
+            status: subjectResponse instanceof Response ? subjectResponse.status : 'N/A',
+            headers: subjectResponse instanceof Response
+              ? Object.fromEntries(subjectResponse.headers.entries())
+              : 'N/A',
+          });
+
+          // DEBUG: If not a Response, log what it actually is and return error
+          if (!(subjectResponse instanceof Response)) {
+            logger.error('[DEBUG] subjectResponse is NOT a Response!', {
+              actualValue: JSON.stringify(subjectResponse).slice(0, 500),
+              constructorName: subjectResponse?.constructor?.name,
+            });
+            // Return a clear error so we can see what's happening
+            return new Response(JSON.stringify({
+              error: 'subject_not_response',
+              debug: {
+                type: typeof subjectResponse,
+                value: subjectResponse,
+              }
+            }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+
+          // DEBUG: Check if it's a redirect or has unexpected content
+          const isRedirect = subjectResponse.status >= 300 && subjectResponse.status < 400;
+          if (!isRedirect) {
+            const cloned = subjectResponse.clone();
+            const body = await cloned.text();
+            logger.error('[DEBUG] subjectResponse is NOT a redirect!', {
+              status: subjectResponse.status,
+              contentType: subjectResponse.headers.get('Content-Type'),
+              body: body.slice(0, 1000),
+            });
+          }
+
+          return subjectResponse;
         } catch (error) {
-          // Emit login failed audit event
+          // Emit login failed audit event (use outer ctx for waitUntil)
           const clientIP = getClientIP(request);
           const failedEvent = createLoginFailedEvent(
-            value.email,
+            email,
             error instanceof Error ? error.message : String(error),
             {
               ipAddress: clientIP,
@@ -891,7 +1173,7 @@ export default {
           // Track login failed in analytics
           trackEvent(env, {
             event: 'login_failed',
-            email: value.email,
+            email,
             ipAddress: clientIP,
             userAgent: request.headers.get('User-Agent') ?? undefined,
             errorCode: error instanceof Error ? error.message : 'unknown',
@@ -901,7 +1183,106 @@ export default {
           throw error;
         }
       },
-    }).fetch(request, env, ctx);
+    });
+
+    // Call issuer to handle the request
+    // OpenAuth enterprise issuer manages sessions via D1SessionAdapter and sets the __session cookie
+    const issuerResponse = await app.fetch(request, env, ctx);
+
+    // DEBUG: Log what the issuer returned
+    const isRedirect = issuerResponse.status >= 300 && issuerResponse.status < 400;
+    const contentType = issuerResponse.headers.get('Content-Type') || '';
+    logger.info('[DEBUG] Issuer response', {
+      status: issuerResponse.status,
+      isRedirect,
+      contentType,
+      location: issuerResponse.headers.get('Location') || 'none',
+      pathname: url.pathname,
+    });
+
+    // If it's JSON but should be a redirect, log more details
+    if (contentType.includes('application/json') && url.pathname.includes('/password')) {
+      try {
+        const clonedResponse = issuerResponse.clone();
+        const body = await clonedResponse.text();
+        logger.warn('[DEBUG] Unexpected JSON from password flow', {
+          body: body.slice(0, 1000),
+          pathname: url.pathname,
+        });
+      } catch (e) {
+        logger.error('[DEBUG] Could not read response body', { error: String(e) });
+      }
+    }
+
+    // Handle session API responses - add CORS and enrich /session/accounts with user data
+    if (url.pathname.startsWith('/session/')) {
+      const origin = request.headers.get('Origin');
+      const allowedOrigins = getAllowedOrigins(env, origin);
+      const isAllowed = origin && matchOrigin(origin, [...allowedOrigins, ...(env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [])]);
+
+      let finalResponse = issuerResponse;
+
+      // Enrich /session/accounts response with user profile data (email, name, avatar)
+      // OpenAuth only returns session data, but profile app needs user info
+      if (url.pathname === '/session/accounts' && issuerResponse.ok) {
+        try {
+          const data = await issuerResponse.clone().json() as { accounts?: Array<{ userId: string; isActive: boolean; authenticatedAt: number }> };
+          if (data.accounts && data.accounts.length > 0) {
+            // Fetch user data for all accounts
+            const userIds = data.accounts.map(a => a.userId);
+            const placeholders = userIds.map(() => '?').join(',');
+            const usersResult = await env.AUTH_DB
+              .prepare(`SELECT id, email, name, avatar_url FROM user WHERE id IN (${placeholders})`)
+              .bind(...userIds)
+              .all();
+
+            const usersMap = new Map<string, { email: string; name: string | null; avatarUrl: string | null }>();
+            for (const row of usersResult.results || []) {
+              usersMap.set(row.id as string, {
+                email: row.email as string,
+                name: row.name as string | null,
+                avatarUrl: row.avatar_url as string | null,
+              });
+            }
+
+            // Enrich accounts with user data
+            const enrichedAccounts = data.accounts.map(account => {
+              const user = usersMap.get(account.userId);
+              return {
+                ...account,
+                email: user?.email || '',
+                name: user?.name || null,
+                avatarUrl: user?.avatarUrl || null,
+                lastUsed: new Date(account.authenticatedAt * 1000).toISOString(),
+              };
+            });
+
+            const enrichedData = { accounts: enrichedAccounts };
+            finalResponse = new Response(JSON.stringify(enrichedData), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+        } catch (e) {
+          logger.error('Failed to enrich session accounts', { error: String(e) });
+          // Fall back to original response
+        }
+      }
+
+      if (isAllowed && origin) {
+        const corsHeaders = new Headers(finalResponse.headers);
+        corsHeaders.set('Access-Control-Allow-Origin', origin);
+        corsHeaders.set('Access-Control-Allow-Credentials', 'true');
+        const corsResponse = new Response(finalResponse.body, {
+          status: finalResponse.status,
+          statusText: finalResponse.statusText,
+          headers: corsHeaders,
+        });
+        return addSecurityHeaders(corsResponse, isProduction);
+      }
+
+      return addSecurityHeaders(finalResponse, isProduction);
+    }
 
     // Apply security headers to all OpenAuth responses
     return addSecurityHeaders(issuerResponse, isProduction);
