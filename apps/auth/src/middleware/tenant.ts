@@ -93,7 +93,7 @@ export async function resolveTenant(c: TenantMiddlewareContext, next: Next): Pro
       backgroundColor: tenant.backgroundColor,
       fontFamily: tenant.fontFamily,
     },
-    isDefault: tenant.id === 'tenant_default',
+    isDefault: tenant.id === 'default',
   };
 
   c.set('tenantContext', tenantContext);

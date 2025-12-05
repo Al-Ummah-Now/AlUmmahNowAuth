@@ -1,96 +1,25 @@
 /**
  * @fileoverview D1 Session Adapter for OpenAuth Enterprise
  *
- * This adapter wraps our D1-based session services to implement the
- * SessionService interface expected by OpenAuth's createMultiTenantIssuer.
+ * This adapter implements OpenAuth's SessionService interface using D1 storage.
+ * All timestamps are stored as INTEGER (Unix epoch milliseconds) to match
+ * OpenAuth's schema (003_session_management.sql).
  *
- * Key differences handled:
- * - Timestamps: D1 uses ISO strings, OpenAuth uses Unix timestamps
- * - Missing fields: Provides defaults for fields not in our schema
- * - Computed fields: Derives account_user_ids from account_sessions table
+ * Note: Uses direct D1 queries - no dependency on BrowserSessionService/AccountSessionService
  */
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { BrowserSessionService } from '../services/browser-session.service';
-import { AccountSessionService } from '../services/account-session.service';
-
-// OpenAuth contract types (defined locally to avoid module resolution issues)
-interface OpenAuthBrowserSession {
-	id: string;
-	tenant_id: string;
-	created_at: number;
-	last_activity: number;
-	user_agent: string;
-	ip_address: string;
-	version: number;
-	active_user_id: string | null;
-	account_user_ids: string[];
-}
-
-interface OpenAuthAccountSession {
-	id: string;
-	browser_session_id: string;
-	user_id: string;
-	is_active: boolean;
-	authenticated_at: number;
-	expires_at: number;
-	subject_type: string;
-	subject_properties: Record<string, unknown>;
-	refresh_token: string;
-	client_id: string;
-}
-
-interface SessionService {
-	createBrowserSession(params: {
-		tenantId: string;
-		userAgent: string;
-		ipAddress: string;
-	}): Promise<OpenAuthBrowserSession>;
-	getBrowserSession(sessionId: string, tenantId: string): Promise<OpenAuthBrowserSession | null>;
-	updateBrowserSession(session: OpenAuthBrowserSession): Promise<void>;
-	addAccountToSession(params: {
-		browserSessionId: string;
-		userId: string;
-		subjectType: string;
-		subjectProperties: Record<string, unknown>;
-		refreshToken: string;
-		clientId: string;
-		ttl: number;
-	}): Promise<OpenAuthAccountSession>;
-	getAccountSession(browserSessionId: string, userId: string): Promise<OpenAuthAccountSession | null>;
-	listAccounts(browserSessionId: string): Promise<OpenAuthAccountSession[]>;
-	switchActiveAccount(browserSessionId: string, userId: string): Promise<void>;
-	removeAccount(browserSessionId: string, userId: string): Promise<void>;
-	removeAllAccounts(browserSessionId: string): Promise<void>;
-	revokeUserSessions(tenantId: string, userId: string): Promise<number>;
-	revokeSpecificSession(sessionId: string, tenantId: string): Promise<boolean>;
-}
-
-/**
- * Convert ISO string timestamp to Unix timestamp (seconds)
- */
-function isoToUnix(isoString: string): number {
-	return Math.floor(new Date(isoString).getTime() / 1000);
-}
-
-/**
- * Convert Unix timestamp (seconds) to ISO string
- */
-function unixToIso(unix: number): string {
-	return new Date(unix * 1000).toISOString();
-}
+import type {
+	BrowserSession,
+	AccountSession,
+	SessionService,
+} from '@al-ummah-now/openauth/contracts/types';
 
 /**
  * D1 Session Adapter implementing OpenAuth's SessionService interface
  */
 export class D1SessionAdapter implements SessionService {
-	private browserService: BrowserSessionService;
-	private accountService: AccountSessionService;
-
-	constructor(private db: D1Database) {
-		this.browserService = new BrowserSessionService(db);
-		this.accountService = new AccountSessionService(db);
-	}
+	constructor(private db: D1Database) {}
 
 	/**
 	 * Create a new browser session
@@ -99,45 +28,90 @@ export class D1SessionAdapter implements SessionService {
 		tenantId: string;
 		userAgent: string;
 		ipAddress: string;
-	}): Promise<OpenAuthBrowserSession> {
-		const { session } = await this.browserService.createBrowserSession({
-			tenantId: params.tenantId,
-			userAgent: params.userAgent,
-			ipAddress: params.ipAddress,
-		});
+	}): Promise<BrowserSession> {
+		const id = `bs_${crypto.randomUUID().replace(/-/g, '')}`;
+		const now = Date.now();
 
-		return this.mapToOpenAuthBrowserSession(session, []);
+		await this.db
+			.prepare(
+				`INSERT INTO browser_sessions
+				(id, tenant_id, user_agent, ip_address, created_at, last_activity, version, active_user_id)
+				VALUES (?, ?, ?, ?, ?, ?, 1, NULL)`
+			)
+			.bind(id, params.tenantId, params.userAgent, params.ipAddress, now, now)
+			.run();
+
+		return {
+			id,
+			tenant_id: params.tenantId,
+			created_at: now,
+			last_activity: now,
+			user_agent: params.userAgent,
+			ip_address: params.ipAddress,
+			version: 1,
+			active_user_id: null,
+			account_user_ids: [],
+		};
 	}
 
 	/**
 	 * Get a browser session by ID and tenant ID
 	 */
-	async getBrowserSession(sessionId: string, tenantId: string): Promise<OpenAuthBrowserSession | null> {
-		const session = await this.browserService.getBrowserSessionById(sessionId);
+	async getBrowserSession(sessionId: string, tenantId: string): Promise<BrowserSession | null> {
+		const row = await this.db
+			.prepare(
+				`SELECT id, tenant_id, created_at, last_activity, user_agent, ip_address, version, active_user_id
+				FROM browser_sessions
+				WHERE id = ? AND tenant_id = ?`
+			)
+			.bind(sessionId, tenantId)
+			.first<{
+				id: string;
+				tenant_id: string;
+				created_at: number;
+				last_activity: number;
+				user_agent: string | null;
+				ip_address: string | null;
+				version: number;
+				active_user_id: string | null;
+			}>();
 
-		if (!session) return null;
-
-		// Verify tenant matches
-		if (session.tenantId !== tenantId) return null;
-
-		// Check if expired or revoked
-		if (session.isRevoked) return null;
-		if (new Date(session.expiresAt) < new Date()) return null;
+		if (!row) return null;
 
 		// Get account user IDs
-		const accounts = await this.accountService.getAccountsForBrowserSession(sessionId);
-		const accountUserIds = accounts.map((a) => a.userId);
-		const activeAccount = accounts.find((a) => a.isActive);
+		const accounts = await this.db
+			.prepare(`SELECT user_id FROM account_sessions WHERE browser_session_id = ? ORDER BY authenticated_at ASC`)
+			.bind(sessionId)
+			.all<{ user_id: string }>();
 
-		return this.mapToOpenAuthBrowserSession(session, accountUserIds, activeAccount?.userId);
+		const accountUserIds = (accounts.results || []).map((a) => a.user_id);
+
+		return {
+			id: row.id,
+			tenant_id: row.tenant_id,
+			created_at: row.created_at,
+			last_activity: row.last_activity,
+			user_agent: row.user_agent || '',
+			ip_address: row.ip_address || '',
+			version: row.version || 1,
+			active_user_id: row.active_user_id,
+			account_user_ids: accountUserIds,
+		};
 	}
 
 	/**
 	 * Update an existing browser session
 	 */
-	async updateBrowserSession(session: OpenAuthBrowserSession): Promise<void> {
-		// Touch the session to update last_activity
-		await this.browserService.touchBrowserSession(session.id);
+	async updateBrowserSession(session: BrowserSession): Promise<void> {
+		const now = Date.now();
+		await this.db
+			.prepare(
+				`UPDATE browser_sessions
+				SET last_activity = ?, version = version + 1, active_user_id = ?
+				WHERE id = ?`
+			)
+			.bind(now, session.active_user_id, session.id)
+			.run();
 	}
 
 	/**
@@ -151,150 +125,308 @@ export class D1SessionAdapter implements SessionService {
 		refreshToken: string;
 		clientId: string;
 		ttl: number;
-	}): Promise<OpenAuthAccountSession> {
-		// Store all OpenAuth fields in D1
-		const accountSession = await this.accountService.addAccountToSession({
-			browserSessionId: params.browserSessionId,
-			userId: params.userId,
-			authMethod: 'password',
-			setActive: true,
-			// Pass OpenAuth enterprise fields to be stored in D1
-			refreshToken: params.refreshToken,
-			clientId: params.clientId,
-			subjectType: params.subjectType,
-			subjectProperties: params.subjectProperties,
-		});
+	}): Promise<AccountSession> {
+		const id = `as_${crypto.randomUUID().replace(/-/g, '')}`;
+		const now = Date.now();
+		const expiresAt = now + params.ttl * 1000;
 
-		// Map to OpenAuth format - fields are now stored in D1
-		return this.mapToOpenAuthAccountSession(accountSession);
+		// Check if account already exists for this user in this session
+		const existing = await this.db
+			.prepare(`SELECT id FROM account_sessions WHERE browser_session_id = ? AND user_id = ?`)
+			.bind(params.browserSessionId, params.userId)
+			.first<{ id: string }>();
+
+		if (existing) {
+			// Update existing account session
+			await this.db
+				.prepare(
+					`UPDATE account_sessions
+					SET is_active = 1, authenticated_at = ?, expires_at = ?,
+						subject_type = ?, subject_properties = ?, refresh_token = ?, client_id = ?
+					WHERE browser_session_id = ? AND user_id = ?`
+				)
+				.bind(
+					now,
+					expiresAt,
+					params.subjectType,
+					JSON.stringify(params.subjectProperties),
+					params.refreshToken,
+					params.clientId,
+					params.browserSessionId,
+					params.userId
+				)
+				.run();
+
+			// Deactivate other accounts
+			await this.db
+				.prepare(`UPDATE account_sessions SET is_active = 0 WHERE browser_session_id = ? AND user_id != ?`)
+				.bind(params.browserSessionId, params.userId)
+				.run();
+
+			// Update browser session active_user_id
+			await this.db
+				.prepare(`UPDATE browser_sessions SET active_user_id = ? WHERE id = ?`)
+				.bind(params.userId, params.browserSessionId)
+				.run();
+
+			return {
+				id: existing.id,
+				browser_session_id: params.browserSessionId,
+				user_id: params.userId,
+				is_active: true,
+				authenticated_at: now,
+				expires_at: expiresAt,
+				subject_type: params.subjectType,
+				subject_properties: params.subjectProperties,
+				refresh_token: params.refreshToken,
+				client_id: params.clientId,
+			};
+		}
+
+		// Check max accounts limit (3)
+		const countResult = await this.db
+			.prepare(`SELECT COUNT(*) as count FROM account_sessions WHERE browser_session_id = ?`)
+			.bind(params.browserSessionId)
+			.first<{ count: number }>();
+
+		if (countResult && countResult.count >= 3) {
+			throw new Error('max_accounts_exceeded');
+		}
+
+		// Deactivate other accounts first
+		await this.db
+			.prepare(`UPDATE account_sessions SET is_active = 0 WHERE browser_session_id = ?`)
+			.bind(params.browserSessionId)
+			.run();
+
+		// Insert new account session
+		await this.db
+			.prepare(
+				`INSERT INTO account_sessions
+				(id, browser_session_id, user_id, is_active, authenticated_at, expires_at,
+				 subject_type, subject_properties, refresh_token, client_id)
+				VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`
+			)
+			.bind(
+				id,
+				params.browserSessionId,
+				params.userId,
+				now,
+				expiresAt,
+				params.subjectType,
+				JSON.stringify(params.subjectProperties),
+				params.refreshToken,
+				params.clientId
+			)
+			.run();
+
+		// Update browser session active_user_id
+		await this.db
+			.prepare(`UPDATE browser_sessions SET active_user_id = ? WHERE id = ?`)
+			.bind(params.userId, params.browserSessionId)
+			.run();
+
+		return {
+			id,
+			browser_session_id: params.browserSessionId,
+			user_id: params.userId,
+			is_active: true,
+			authenticated_at: now,
+			expires_at: expiresAt,
+			subject_type: params.subjectType,
+			subject_properties: params.subjectProperties,
+			refresh_token: params.refreshToken,
+			client_id: params.clientId,
+		};
 	}
 
 	/**
 	 * Get an account session by browser session ID and user ID
 	 */
-	async getAccountSession(browserSessionId: string, userId: string): Promise<OpenAuthAccountSession | null> {
-		const accountSession = await this.accountService.getAccountSessionByUserId(browserSessionId, userId);
+	async getAccountSession(browserSessionId: string, userId: string): Promise<AccountSession | null> {
+		const row = await this.db
+			.prepare(
+				`SELECT id, browser_session_id, user_id, is_active, authenticated_at, expires_at,
+						subject_type, subject_properties, refresh_token, client_id
+				FROM account_sessions
+				WHERE browser_session_id = ? AND user_id = ?`
+			)
+			.bind(browserSessionId, userId)
+			.first<{
+				id: string;
+				browser_session_id: string;
+				user_id: string;
+				is_active: number;
+				authenticated_at: number;
+				expires_at: number;
+				subject_type: string | null;
+				subject_properties: string | null;
+				refresh_token: string | null;
+				client_id: string | null;
+			}>();
 
-		if (!accountSession) return null;
+		if (!row) return null;
 
-		return this.mapToOpenAuthAccountSession(accountSession);
+		return {
+			id: row.id,
+			browser_session_id: row.browser_session_id,
+			user_id: row.user_id,
+			is_active: row.is_active === 1,
+			authenticated_at: row.authenticated_at,
+			expires_at: row.expires_at,
+			subject_type: row.subject_type || 'user',
+			subject_properties: row.subject_properties ? JSON.parse(row.subject_properties) : {},
+			refresh_token: row.refresh_token || '',
+			client_id: row.client_id || '',
+		};
 	}
 
 	/**
 	 * List all accounts in a browser session
 	 */
-	async listAccounts(browserSessionId: string): Promise<OpenAuthAccountSession[]> {
-		const accounts = await this.accountService.getAccountsForBrowserSession(browserSessionId);
+	async listAccounts(browserSessionId: string): Promise<AccountSession[]> {
+		const result = await this.db
+			.prepare(
+				`SELECT id, browser_session_id, user_id, is_active, authenticated_at, expires_at,
+						subject_type, subject_properties, refresh_token, client_id
+				FROM account_sessions
+				WHERE browser_session_id = ?
+				ORDER BY authenticated_at DESC`
+			)
+			.bind(browserSessionId)
+			.all<{
+				id: string;
+				browser_session_id: string;
+				user_id: string;
+				is_active: number;
+				authenticated_at: number;
+				expires_at: number;
+				subject_type: string | null;
+				subject_properties: string | null;
+				refresh_token: string | null;
+				client_id: string | null;
+			}>();
 
-		return accounts.map((a) => this.mapToOpenAuthAccountSession(a));
+		return (result.results || []).map((row) => ({
+			id: row.id,
+			browser_session_id: row.browser_session_id,
+			user_id: row.user_id,
+			is_active: row.is_active === 1,
+			authenticated_at: row.authenticated_at,
+			expires_at: row.expires_at,
+			subject_type: row.subject_type || 'user',
+			subject_properties: row.subject_properties ? JSON.parse(row.subject_properties) : {},
+			refresh_token: row.refresh_token || '',
+			client_id: row.client_id || '',
+		}));
 	}
 
 	/**
 	 * Switch the active account in a browser session
 	 */
 	async switchActiveAccount(browserSessionId: string, userId: string): Promise<void> {
-		await this.accountService.setActiveAccountByUserId(browserSessionId, userId);
+		// Deactivate all accounts
+		await this.db
+			.prepare(`UPDATE account_sessions SET is_active = 0 WHERE browser_session_id = ?`)
+			.bind(browserSessionId)
+			.run();
+
+		// Activate the specified account
+		await this.db
+			.prepare(`UPDATE account_sessions SET is_active = 1 WHERE browser_session_id = ? AND user_id = ?`)
+			.bind(browserSessionId, userId)
+			.run();
+
+		// Update browser session active_user_id
+		await this.db
+			.prepare(`UPDATE browser_sessions SET active_user_id = ? WHERE id = ?`)
+			.bind(userId, browserSessionId)
+			.run();
 	}
 
 	/**
 	 * Remove an account from a browser session
 	 */
 	async removeAccount(browserSessionId: string, userId: string): Promise<void> {
-		await this.accountService.removeAccountFromSession(browserSessionId, userId);
+		await this.db
+			.prepare(`DELETE FROM account_sessions WHERE browser_session_id = ? AND user_id = ?`)
+			.bind(browserSessionId, userId)
+			.run();
+
+		// If this was the active user, clear active_user_id
+		await this.db
+			.prepare(`UPDATE browser_sessions SET active_user_id = NULL WHERE id = ? AND active_user_id = ?`)
+			.bind(browserSessionId, userId)
+			.run();
 	}
 
 	/**
 	 * Remove all accounts from a browser session
 	 */
 	async removeAllAccounts(browserSessionId: string): Promise<void> {
-		// Get all accounts and remove them
-		const accounts = await this.accountService.getAccountsForBrowserSession(browserSessionId);
-		for (const account of accounts) {
-			await this.accountService.removeAccountFromSession(browserSessionId, account.userId);
-		}
+		await this.db
+			.prepare(`DELETE FROM account_sessions WHERE browser_session_id = ?`)
+			.bind(browserSessionId)
+			.run();
+
+		// Clear active_user_id
+		await this.db
+			.prepare(`UPDATE browser_sessions SET active_user_id = NULL WHERE id = ?`)
+			.bind(browserSessionId)
+			.run();
 	}
 
 	/**
 	 * Revoke all sessions for a user across all browsers
 	 */
 	async revokeUserSessions(tenantId: string, userId: string): Promise<number> {
-		// Note: Our current implementation doesn't filter by tenant for revoking
-		// This is acceptable for single-tenant deployments
-		const result = await this.accountService.revokeAllUserSessions(userId);
-		return result.revoked;
+		// Get count of sessions that will be affected
+		const countResult = await this.db
+			.prepare(
+				`SELECT COUNT(DISTINCT a.browser_session_id) as count
+				FROM account_sessions a
+				JOIN browser_sessions b ON a.browser_session_id = b.id
+				WHERE a.user_id = ? AND b.tenant_id = ?`
+			)
+			.bind(userId, tenantId)
+			.first<{ count: number }>();
+
+		// Delete account sessions for this user
+		await this.db
+			.prepare(
+				`DELETE FROM account_sessions
+				WHERE user_id = ? AND browser_session_id IN (
+					SELECT id FROM browser_sessions WHERE tenant_id = ?
+				)`
+			)
+			.bind(userId, tenantId)
+			.run();
+
+		// Clear active_user_id where this user was active
+		await this.db
+			.prepare(`UPDATE browser_sessions SET active_user_id = NULL WHERE tenant_id = ? AND active_user_id = ?`)
+			.bind(tenantId, userId)
+			.run();
+
+		return countResult?.count || 0;
 	}
 
 	/**
 	 * Revoke a specific browser session
 	 */
 	async revokeSpecificSession(sessionId: string, tenantId: string): Promise<boolean> {
-		const session = await this.browserService.getBrowserSessionById(sessionId);
+		// Delete all account sessions for this browser session
+		await this.db
+			.prepare(`DELETE FROM account_sessions WHERE browser_session_id = ?`)
+			.bind(sessionId)
+			.run();
 
-		if (!session) return false;
-		if (session.tenantId !== tenantId) return false;
+		// Delete the browser session itself
+		const result = await this.db
+			.prepare(`DELETE FROM browser_sessions WHERE id = ? AND tenant_id = ?`)
+			.bind(sessionId, tenantId)
+			.run();
 
-		await this.browserService.revokeBrowserSession(sessionId);
-		return true;
-	}
-
-	/**
-	 * Map our D1 BrowserSession to OpenAuth's BrowserSession format
-	 */
-	private mapToOpenAuthBrowserSession(
-		session: {
-			id: string;
-			tenantId: string;
-			userAgent: string | null;
-			ipAddress: string | null;
-			createdAt: string;
-			lastActivity: string;
-		},
-		accountUserIds: string[],
-		activeUserId?: string
-	): OpenAuthBrowserSession {
-		return {
-			id: session.id,
-			tenant_id: session.tenantId,
-			created_at: isoToUnix(session.createdAt),
-			last_activity: isoToUnix(session.lastActivity),
-			user_agent: session.userAgent || '',
-			ip_address: session.ipAddress || '',
-			version: 1, // We don't track version, default to 1
-			active_user_id: activeUserId || null,
-			account_user_ids: accountUserIds,
-		};
-	}
-
-	/**
-	 * Map our D1 AccountSession to OpenAuth's AccountSession format
-	 */
-	private mapToOpenAuthAccountSession(
-		session: {
-			id: string;
-			browserSessionId: string;
-			userId: string;
-			isActive: boolean;
-			authenticatedAt: string;
-			expiresAt: string;
-			// OpenAuth enterprise fields stored in D1
-			refreshToken?: string;
-			clientId?: string;
-			subjectType?: string;
-			subjectProperties?: Record<string, unknown>;
-		}
-	): OpenAuthAccountSession {
-		return {
-			id: session.id,
-			browser_session_id: session.browserSessionId,
-			user_id: session.userId,
-			is_active: session.isActive,
-			authenticated_at: isoToUnix(session.authenticatedAt),
-			expires_at: isoToUnix(session.expiresAt),
-			// OpenAuth enterprise fields from D1 storage
-			subject_type: session.subjectType || 'user',
-			subject_properties: session.subjectProperties || {},
-			refresh_token: session.refreshToken || '',
-			client_id: session.clientId || '',
-		};
+		return (result.meta?.changes || 0) > 0;
 	}
 }

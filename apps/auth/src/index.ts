@@ -1,5 +1,5 @@
 // DEBUG: Force reload trigger - 2025-12-03T12:15:00
-import { createMultiTenantIssuer } from "@meywd/openauth";
+import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
@@ -17,10 +17,10 @@ function hexToSecret(hex: string): Uint8Array {
   }
   return bytes;
 }
-import { PasswordProvider } from "@meywd/openauth/provider/password";
-import { PasswordUI } from "@meywd/openauth/ui/password";
-import { createSubjects } from "@meywd/openauth/subject";
-import { AuditService } from "@meywd/openauth/services/audit";
+import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
+import { PasswordUI } from "@al-ummah-now/openauth/ui/password";
+import { createSubjects } from "@al-ummah-now/openauth/subject";
+import { AuditService } from "@al-ummah-now/openauth/services/audit";
 import * as v from 'valibot';
 import SendEmail from "./email";
 import {
@@ -627,12 +627,12 @@ export default {
           });
         }
 
-        // Assign admin role via RBAC (upsert to handle existing role assignments)
+        // Assign admin role via RBAC (using OpenAuth's rbac_user_roles directly for upsert)
         await env.AUTH_DB.prepare(
-          `INSERT INTO user_roles (user_id, role_id, granted_by, is_active)
-           VALUES (?, 'role_admin', 'system', 1)
-           ON CONFLICT(user_id, role_id) DO UPDATE SET is_active = 1, granted_by = 'system'`
-        ).bind(user.id).run();
+          `INSERT INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by)
+           VALUES (?, 'role_admin_default', 'default', ?, 'system')
+           ON CONFLICT(user_id, role_id, tenant_id) DO UPDATE SET assigned_by = 'system'`
+        ).bind(user.id, Date.now()).run();
 
         logger.info('User promoted to admin (E2E test)', { userId: user.id, email: user.email });
         ctx.waitUntil(logger.finalizeRequest());
@@ -890,9 +890,9 @@ export default {
       subjects,
       tenantResolver: {
         customDomains: new Map([
-          ['localhost', 'tenant_default'],
-          ['127.0.0.1', 'tenant_default'],
-          ['auth.alummahnow.net', 'tenant_default'],
+          ['localhost', 'default'],
+          ['127.0.0.1', 'default'],
+          ['auth.alummahnow.net', 'default'],
         ]),
       },
       providers: {
@@ -1126,16 +1126,17 @@ export default {
 
           // DEBUG: If not a Response, log what it actually is and return error
           if (!(subjectResponse instanceof Response)) {
+            const unknownResponse = subjectResponse as unknown;
             logger.error('[DEBUG] subjectResponse is NOT a Response!', {
-              actualValue: JSON.stringify(subjectResponse).slice(0, 500),
-              constructorName: subjectResponse?.constructor?.name,
+              actualValue: JSON.stringify(unknownResponse).slice(0, 500),
+              constructorName: (unknownResponse as { constructor?: { name?: string } })?.constructor?.name,
             });
             // Return a clear error so we can see what's happening
             return new Response(JSON.stringify({
               error: 'subject_not_response',
               debug: {
-                type: typeof subjectResponse,
-                value: subjectResponse,
+                type: typeof unknownResponse,
+                value: unknownResponse,
               }
             }), {
               status: 500,

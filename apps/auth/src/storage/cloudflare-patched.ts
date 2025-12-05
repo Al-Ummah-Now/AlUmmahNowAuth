@@ -1,7 +1,7 @@
 /**
  * Patched CloudflareStorage for OpenAuth
  *
- * This is a patched version of @meywd/openauth/storage/cloudflare
+ * This is a patched version of @al-ummah-now/openauth/storage/cloudflare
  * that fixes a timing bug in TTL calculation.
  *
  * BUG FIX: The original implementation uses Math.floor() which can result
@@ -22,7 +22,7 @@
  * Issue: https://github.com/openauthjs/openauth/issues/XXX (to be filed)
  */
 
-import { joinKey, splitKey, type StorageAdapter } from "@meywd/openauth/storage/storage";
+import { joinKey, splitKey, type StorageAdapter } from "@al-ummah-now/openauth/storage/storage";
 
 export interface CloudflarePatchedStorageOptions {
   namespace: KVNamespace;

@@ -1,15 +1,15 @@
 /**
  * @fileoverview Browser Session Service for managing browser/device sessions
  *
- * This service manages browser-level sessions that can contain multiple account sessions:
- * - Creates and validates browser sessions
- * - Tracks device information (UA, IP, device type)
- * - Implements sliding window expiration
- * - Provides session cleanup and revocation
+ * This service manages browser-level sessions that can contain multiple account sessions.
+ * Updated to work with OpenAuth's schema (003_session_management.sql):
+ * - browser_sessions: id, tenant_id, created_at, last_activity, user_agent, ip_address, version, active_user_id
+ * - account_sessions: id, browser_session_id, user_id, is_active, authenticated_at, expires_at, subject_type, subject_properties, refresh_token, client_id
+ *
+ * Note: OpenAuth uses JWE-encrypted cookies containing the session ID directly.
+ * The session ID is extracted by OpenAuth middleware and passed to these services.
  */
 
-import { generateId } from '../utils/id';
-import { hashToken } from '../utils/crypto';
 import { parseUserAgent } from '../utils/user-agent';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { BrowserSession, BrowserSessionWithAccounts, AccountSessionWithUser } from '../types/sessions';
@@ -18,60 +18,45 @@ export class BrowserSessionService {
 	constructor(private db: D1Database) {}
 
 	/**
-	 * Create a new browser session
+	 * Create a new browser session (for OpenAuth middleware use)
 	 *
 	 * @param params - Session creation parameters
-	 * @returns The created browser session and its token
+	 * @returns The created browser session
 	 */
 	async createBrowserSession(params: {
+		id: string;
 		tenantId?: string;
 		userAgent: string;
 		ipAddress: string;
-	}): Promise<{ session: BrowserSession; token: string }> {
-		const id = generateId('bs');
-		const token = generateId('bst', 32); // Browser session token
-		const tokenHash = await hashToken(token);
-		const { deviceType, deviceName } = parseUserAgent(params.userAgent);
-
-		const expiresAt = new Date();
-		const sessionLifetimeDays = 7; // SESSION_CONSTRAINTS.SESSION_LIFETIME_DAYS
-		expiresAt.setDate(expiresAt.getDate() + sessionLifetimeDays);
+	}): Promise<BrowserSession> {
+		const now = Date.now();
 
 		await this.db
 			.prepare(
-				`INSERT INTO browser_sessions (id, tenant_id, session_token_hash, user_agent, ip_address, device_type, device_name, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+				`INSERT INTO browser_sessions (id, tenant_id, user_agent, ip_address, created_at, last_activity, version, active_user_id)
+				VALUES (?, ?, ?, ?, ?, ?, 1, NULL)`
 			)
-			.bind(id, params.tenantId || 'default', tokenHash, params.userAgent, params.ipAddress, deviceType, deviceName, expiresAt.toISOString())
+			.bind(params.id, params.tenantId || 'default', params.userAgent, params.ipAddress, now, now)
 			.run();
 
-		const session = await this.getBrowserSessionById(id);
+		const session = await this.getBrowserSessionById(params.id);
 		if (!session) {
 			throw new Error('Failed to create browser session');
 		}
 
-		return { session, token };
+		return session;
 	}
 
 	/**
-	 * Get browser session by token
+	 * Get browser session by token (session ID from JWE cookie)
+	 * OpenAuth extracts the session ID from the JWE cookie and passes it here.
 	 *
-	 * @param token - The browser session token
-	 * @returns The browser session or null if not found/expired/revoked
+	 * @param sessionId - The browser session ID (from JWE cookie)
+	 * @returns The browser session or null if not found
 	 */
-	async getBrowserSessionByToken(token: string): Promise<BrowserSession | null> {
-		const tokenHash = await hashToken(token);
-		const result = await this.db
-			.prepare(
-				`SELECT * FROM browser_sessions
-      WHERE session_token_hash = ?
-      AND is_revoked = 0
-      AND expires_at > datetime('now')`
-			)
-			.bind(tokenHash)
-			.first();
-
-		return result ? this.mapBrowserSession(result) : null;
+	async getBrowserSessionByToken(sessionId: string): Promise<BrowserSession | null> {
+		// In OpenAuth, the "token" is the session ID itself (extracted from JWE cookie)
+		return this.getBrowserSessionById(sessionId);
 	}
 
 	/**
@@ -81,7 +66,10 @@ export class BrowserSessionService {
 	 * @returns The browser session or null if not found
 	 */
 	async getBrowserSessionById(id: string): Promise<BrowserSession | null> {
-		const result = await this.db.prepare(`SELECT * FROM browser_sessions WHERE id = ?`).bind(id).first();
+		const result = await this.db
+			.prepare(`SELECT * FROM browser_sessions WHERE id = ?`)
+			.bind(id)
+			.first();
 
 		return result ? this.mapBrowserSession(result) : null;
 	}
@@ -96,22 +84,22 @@ export class BrowserSessionService {
 		const session = await this.getBrowserSessionById(sessionId);
 		if (!session) return null;
 
+		const now = Date.now();
 		const accounts = await this.db
 			.prepare(
 				`SELECT
-        a.*,
-        u.id as user_id,
-        u.email as user_email,
-        u.name as user_name,
-        u.avatar_url as user_avatar_url
-      FROM account_sessions a
-      JOIN user u ON a.user_id = u.id
-      WHERE a.browser_session_id = ?
-      AND a.is_revoked = 0
-      AND a.expires_at > datetime('now')
-      ORDER BY a.is_active DESC, a.last_used DESC`
+					a.*,
+					u.id as user_id,
+					u.email as user_email,
+					u.name as user_name,
+					u.avatar_url as user_avatar_url
+				FROM account_sessions a
+				JOIN user u ON a.user_id = u.id
+				WHERE a.browser_session_id = ?
+				AND a.expires_at > ?
+				ORDER BY a.is_active DESC, a.authenticated_at DESC`
 			)
-			.bind(sessionId)
+			.bind(sessionId, now)
 			.all();
 
 		const mappedAccounts = (accounts.results || []).map((row) => this.mapAccountSessionWithUser(row));
@@ -126,69 +114,66 @@ export class BrowserSessionService {
 	/**
 	 * Update last activity timestamp with write throttling
 	 * Only updates DB if more than 5 minutes since last stored activity
-	 * Uses sliding window: extends expires_at on activity
 	 *
 	 * @param sessionId - The browser session ID
-	 * @param currentLastActivity - Current last_activity timestamp for throttle check
+	 * @param currentLastActivity - Current last_activity timestamp for throttle check (Unix ms)
 	 */
-	async touchBrowserSession(sessionId: string, currentLastActivity?: string): Promise<void> {
+	async touchBrowserSession(sessionId: string, currentLastActivity?: number): Promise<void> {
 		// Write throttle: skip DB write if touched recently
 		const THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
 		if (currentLastActivity) {
-			const lastUpdate = new Date(currentLastActivity).getTime();
 			const now = Date.now();
-			if (now - lastUpdate < THROTTLE_MS) {
+			if (now - currentLastActivity < THROTTLE_MS) {
 				return; // Skip DB write - too recent
 			}
 		}
 
-		// Sliding window: extend expiration on activity
-		const newExpiresAt = new Date();
-		const sessionLifetimeDays = 7; // SESSION_CONSTRAINTS.SESSION_LIFETIME_DAYS
-		newExpiresAt.setDate(newExpiresAt.getDate() + sessionLifetimeDays);
-
+		const now = Date.now();
 		await this.db
 			.prepare(
 				`UPDATE browser_sessions
-      SET last_activity = datetime('now'),
-          expires_at = ?
-      WHERE id = ?`
+				SET last_activity = ?, version = version + 1
+				WHERE id = ?`
 			)
-			.bind(newExpiresAt.toISOString(), sessionId)
+			.bind(now, sessionId)
 			.run();
 	}
 
 	/**
-	 * Revoke browser session (logs out all accounts)
+	 * Revoke browser session (deletes session and all accounts)
+	 * OpenAuth uses hard deletes instead of soft-deletes.
 	 *
 	 * @param sessionId - The browser session ID to revoke
 	 */
 	async revokeBrowserSession(sessionId: string): Promise<void> {
 		await this.db.batch([
-			this.db.prepare(`UPDATE browser_sessions SET is_revoked = 1 WHERE id = ?`).bind(sessionId),
-			this.db.prepare(`UPDATE account_sessions SET is_revoked = 1 WHERE browser_session_id = ?`).bind(sessionId),
+			this.db.prepare(`DELETE FROM account_sessions WHERE browser_session_id = ?`).bind(sessionId),
+			this.db.prepare(`DELETE FROM browser_sessions WHERE id = ?`).bind(sessionId),
 		]);
 	}
 
 	/**
-	 * Clean up expired sessions with batching and time-boxing
+	 * Clean up expired account sessions
+	 * Browser sessions don't have expiry in OpenAuth schema, only account sessions do.
 	 *
 	 * @param batchSize - Maximum number of sessions to delete per call (default: 100)
-	 * @returns Number of sessions deleted
+	 * @returns Number of account sessions deleted
 	 */
 	async cleanupExpiredSessions(batchSize: number = 100): Promise<{ deleted: number }> {
-		// Delete expired or revoked sessions with LIMIT for time-boxing
+		const now = Date.now();
+
+		// Delete expired account sessions with LIMIT for time-boxing
 		const result = await this.db
 			.prepare(
-				`DELETE FROM browser_sessions
-      WHERE (expires_at < datetime('now') OR is_revoked = 1)
-      AND id IN (
-        SELECT id FROM browser_sessions
-        WHERE expires_at < datetime('now') OR is_revoked = 1
-        LIMIT ?
-      )`
+				`DELETE FROM account_sessions
+				WHERE expires_at < ?
+				AND id IN (
+					SELECT id FROM account_sessions
+					WHERE expires_at < ?
+					LIMIT ?
+				)`
 			)
-			.bind(batchSize)
+			.bind(now, now, batchSize)
 			.run();
 
 		return { deleted: result.meta?.changes || 0 };
@@ -198,18 +183,20 @@ export class BrowserSessionService {
 	 * Map database row to BrowserSession object
 	 */
 	private mapBrowserSession(row: Record<string, unknown>): BrowserSession {
+		const { deviceType, deviceName } = parseUserAgent((row.user_agent as string) || '');
+
 		return {
 			id: row.id as string,
 			tenantId: row.tenant_id as string,
-			sessionTokenHash: row.session_token_hash as string,
+			sessionTokenHash: '', // Not used in OpenAuth - session ID is in JWE cookie
 			userAgent: (row.user_agent as string) || null,
 			ipAddress: (row.ip_address as string) || null,
-			deviceType: (row.device_type as 'desktop' | 'mobile' | 'tablet' | 'unknown') || 'unknown',
-			deviceName: (row.device_name as string) || null,
-			createdAt: row.created_at as string,
-			lastActivity: row.last_activity as string,
-			expiresAt: row.expires_at as string,
-			isRevoked: Boolean(row.is_revoked),
+			deviceType: deviceType || 'unknown',
+			deviceName: deviceName || null,
+			createdAt: new Date(row.created_at as number).toISOString(),
+			lastActivity: new Date(row.last_activity as number).toISOString(),
+			expiresAt: '', // Not used in OpenAuth browser_sessions schema
+			isRevoked: false, // OpenAuth uses hard deletes
 		};
 	}
 
@@ -222,11 +209,11 @@ export class BrowserSessionService {
 			browserSessionId: row.browser_session_id as string,
 			userId: row.user_id as string,
 			isActive: Boolean(row.is_active),
-			authenticatedAt: row.authenticated_at as string,
-			authMethod: (row.auth_method as 'email' | 'google' | 'mfa' | 'password') || 'email',
-			lastUsed: row.last_used as string,
-			expiresAt: row.expires_at as string,
-			isRevoked: Boolean(row.is_revoked),
+			authenticatedAt: new Date(row.authenticated_at as number).toISOString(),
+			authMethod: 'email', // Default - OpenAuth doesn't track auth method
+			lastUsed: new Date(row.authenticated_at as number).toISOString(), // Use authenticated_at as last_used
+			expiresAt: new Date(row.expires_at as number).toISOString(),
+			isRevoked: false, // OpenAuth uses hard deletes
 			user: {
 				id: row.user_id as string,
 				email: row.user_email as string,

@@ -9,11 +9,11 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { issuer } from "@meywd/openauth";
-import { createClient } from "@meywd/openauth/client";
-import { MemoryStorage } from "@meywd/openauth/storage/memory";
-import { createSubjects } from "@meywd/openauth/subject";
-import type { Provider } from "@meywd/openauth/provider/provider";
+import { issuer } from "@al-ummah-now/openauth";
+import { createClient } from "@al-ummah-now/openauth/client";
+import { MemoryStorage } from "@al-ummah-now/openauth/storage/memory";
+import { createSubjects } from "@al-ummah-now/openauth/subject";
+import type { Provider } from "@al-ummah-now/openauth/provider/provider";
 import * as v from "valibot";
 import "./test-setup"; // Setup database schema
 

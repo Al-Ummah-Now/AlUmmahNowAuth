@@ -2,7 +2,8 @@
  * Tenant Service
  *
  * Core service for managing tenants, tenant administrators, and tenant-scoped operations.
- * Implements multi-tenant architecture with complete data isolation.
+ * Updated to work with OpenAuth's schema (002_add_tenant_support.sql):
+ * - tenants: id, domain, name, status, branding (JSON), settings (JSON), created_at, updated_at
  *
  * SECURITY CRITICAL:
  * - ALL queries use parameterized bindings to prevent SQL injection
@@ -43,19 +44,16 @@ export class TenantService {
   }
 
   /**
-   * Resolve tenant from slug
+   * Resolve tenant by ID (replaces slug-based lookup)
    *
    * SECURITY: Uses parameterized query to prevent SQL injection
    *
-   * @param slug - Tenant slug (from subdomain or query param)
+   * @param tenantId - Tenant ID
    * @returns Tenant or null if not found
    */
-  async resolveTenantBySlug(slug: string): Promise<Tenant | null> {
-    const result = await this.db.prepare(`
-      SELECT * FROM tenants WHERE slug = ? AND status = 'active'
-    `).bind(slug).first();
-
-    return result ? this.mapTenant(result) : null;
+  async resolveTenantBySlug(tenantId: string): Promise<Tenant | null> {
+    // OpenAuth doesn't have slug - use ID instead
+    return this.getTenantById(tenantId);
   }
 
   /**
@@ -99,25 +97,27 @@ export class TenantService {
    *
    * @param params - Tenant creation parameters
    * @returns Created tenant
-   * @throws Error if slug or domain already exists
+   * @throws Error if ID or domain already exists
    */
   async createTenant(params: {
+    id?: string;
     name: string;
-    slug: string;
+    slug?: string; // Ignored - use id instead
     domain?: string;
     createdBy?: string;
     settings?: Partial<TenantSettings>;
     branding?: Partial<TenantBranding>;
   }): Promise<Tenant> {
-    const id = generateId('tenant');
+    const id = params.id || params.slug || generateId('tenant');
+    const now = Date.now();
 
-    // Validate slug uniqueness
+    // Validate ID uniqueness
     const existing = await this.db.prepare(`
-      SELECT id FROM tenants WHERE slug = ?
-    `).bind(params.slug).first();
+      SELECT id FROM tenants WHERE id = ?
+    `).bind(id).first();
 
     if (existing) {
-      throw new Error('Tenant slug already exists');
+      throw new Error('Tenant ID already exists');
     }
 
     // Validate domain uniqueness if provided
@@ -131,26 +131,33 @@ export class TenantService {
       }
     }
 
+    // Build branding JSON
+    const branding = {
+      logoUrl: params.branding?.logoUrl || null,
+      faviconUrl: params.branding?.faviconUrl || null,
+      primaryColor: params.branding?.primaryColor || '#1976d2',
+      secondaryColor: params.branding?.secondaryColor || '#424242',
+      backgroundColor: params.branding?.backgroundColor || '#ffffff',
+      fontFamily: params.branding?.fontFamily || 'Inter, sans-serif',
+    };
+
+    // Build settings JSON
+    const settings = {
+      ...params.settings,
+      createdBy: params.createdBy || null,
+    };
+
     await this.db.prepare(`
-      INSERT INTO tenants (
-        id, name, slug, domain, settings,
-        logo_url, favicon_url, primary_color, secondary_color, background_color, font_family,
-        created_by
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tenants (id, name, domain, status, branding, settings, created_at, updated_at)
+      VALUES (?, ?, ?, 'active', ?, ?, ?, ?)
     `).bind(
       id,
       params.name,
-      params.slug,
       params.domain || null,
-      JSON.stringify(params.settings || {}),
-      params.branding?.logoUrl || null,
-      params.branding?.faviconUrl || null,
-      params.branding?.primaryColor || '#1976d2',
-      params.branding?.secondaryColor || '#424242',
-      params.branding?.backgroundColor || '#ffffff',
-      params.branding?.fontFamily || 'Inter, sans-serif',
-      params.createdBy || null
+      JSON.stringify(branding),
+      JSON.stringify(settings),
+      now,
+      now
     ).run();
 
     const tenant = await this.getTenantById(id);
@@ -183,6 +190,12 @@ export class TenantService {
     maxUsers: number;
     maxClients: number;
   }>): Promise<Tenant> {
+    // Get current tenant
+    const current = await this.getTenantById(id);
+    if (!current) {
+      throw new Error('Tenant not found');
+    }
+
     const sets: string[] = [];
     const values: unknown[] = [];
 
@@ -210,68 +223,44 @@ export class TenantService {
       values.push(updates.status);
     }
 
-    if (updates.settings !== undefined) {
-      sets.push('settings = ?');
-      values.push(JSON.stringify(updates.settings));
-    }
-
+    // Merge branding updates
     if (updates.branding !== undefined) {
-      if (updates.branding.logoUrl !== undefined) {
-        sets.push('logo_url = ?');
-        values.push(updates.branding.logoUrl);
-      }
-      if (updates.branding.primaryColor !== undefined) {
-        sets.push('primary_color = ?');
-        values.push(updates.branding.primaryColor);
-      }
-      if (updates.branding.secondaryColor !== undefined) {
-        sets.push('secondary_color = ?');
-        values.push(updates.branding.secondaryColor);
-      }
-      if (updates.branding.backgroundColor !== undefined) {
-        sets.push('background_color = ?');
-        values.push(updates.branding.backgroundColor);
-      }
-      if (updates.branding.fontFamily !== undefined) {
-        sets.push('font_family = ?');
-        values.push(updates.branding.fontFamily);
-      }
+      const newBranding = {
+        logoUrl: updates.branding.logoUrl ?? current.logoUrl,
+        faviconUrl: updates.branding.faviconUrl ?? current.faviconUrl,
+        primaryColor: updates.branding.primaryColor ?? current.primaryColor,
+        secondaryColor: updates.branding.secondaryColor ?? current.secondaryColor,
+        backgroundColor: updates.branding.backgroundColor ?? current.backgroundColor,
+        fontFamily: updates.branding.fontFamily ?? current.fontFamily,
+      };
+      sets.push('branding = ?');
+      values.push(JSON.stringify(newBranding));
     }
 
-    if (updates.emailFromName !== undefined) {
-      sets.push('email_from_name = ?');
-      values.push(updates.emailFromName);
+    // Merge settings updates
+    if (updates.settings !== undefined || updates.emailFromName !== undefined ||
+        updates.emailFromAddress !== undefined || updates.emailReplyTo !== undefined ||
+        updates.maxUsers !== undefined || updates.maxClients !== undefined) {
+      const newSettings = {
+        ...current.settings,
+        ...(updates.settings || {}),
+        emailFromName: updates.emailFromName ?? current.emailFromName,
+        emailFromAddress: updates.emailFromAddress ?? current.emailFromAddress,
+        emailReplyTo: updates.emailReplyTo ?? current.emailReplyTo,
+        maxUsers: updates.maxUsers ?? current.maxUsers,
+        maxClients: updates.maxClients ?? current.maxClients,
+      };
+      sets.push('settings = ?');
+      values.push(JSON.stringify(newSettings));
     }
 
-    if (updates.emailFromAddress !== undefined) {
-      sets.push('email_from_address = ?');
-      values.push(updates.emailFromAddress);
-    }
-
-    if (updates.emailReplyTo !== undefined) {
-      sets.push('email_reply_to = ?');
-      values.push(updates.emailReplyTo);
-    }
-
-    if (updates.maxUsers !== undefined) {
-      sets.push('max_users = ?');
-      values.push(updates.maxUsers);
-    }
-
-    if (updates.maxClients !== undefined) {
-      sets.push('max_clients = ?');
-      values.push(updates.maxClients);
-    }
-
-    sets.push('updated_at = datetime("now")');
+    const now = Date.now();
+    sets.push('updated_at = ?');
+    values.push(now);
 
     if (sets.length === 1) {
       // Only updated_at changed, return current tenant
-      const tenant = await this.getTenantById(id);
-      if (!tenant) {
-        throw new Error('Tenant not found');
-      }
-      return tenant;
+      return current;
     }
 
     values.push(id);
@@ -301,10 +290,11 @@ export class TenantService {
       throw new Error('Cannot delete default tenant');
     }
 
+    const now = Date.now();
     await this.db.prepare(`
-      UPDATE tenants SET status = 'deleted', updated_at = datetime('now')
+      UPDATE tenants SET status = 'deleted', updated_at = ?
       WHERE id = ?
-    `).bind(id).run();
+    `).bind(now, id).run();
   }
 
   /**
@@ -388,11 +378,12 @@ export class TenantService {
     grantedBy?: string;
   }): Promise<TenantAdmin> {
     const id = generateId('ta');
+    const now = Date.now();
 
     await this.db.prepare(`
-      INSERT INTO tenant_admins (id, tenant_id, user_id, role, granted_by)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(id, params.tenantId, params.userId, params.role, params.grantedBy || null).run();
+      INSERT INTO tenant_admins (id, tenant_id, user_id, role, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(id, params.tenantId, params.userId, params.role, now, now).run();
 
     const admin = await this.getTenantAdmin(id);
     if (!admin) {
@@ -489,8 +480,8 @@ export class TenantService {
       tenantId: result.tenant_id as string,
       userId: result.user_id as string,
       role: result.role as 'owner' | 'admin' | 'viewer',
-      grantedAt: result.granted_at as string,
-      grantedBy: result.granted_by as string | null,
+      grantedAt: new Date(result.created_at as number).toISOString(),
+      grantedBy: null,
       user: {
         email: result.user_email as string,
       },
@@ -499,6 +490,7 @@ export class TenantService {
 
   /**
    * Map database row to Tenant object
+   * OpenAuth schema: id, domain, name, status, branding (JSON), settings (JSON), created_at, updated_at
    *
    * @private
    * @param row - Database row
@@ -506,28 +498,49 @@ export class TenantService {
    */
   private mapTenant(row: unknown): Tenant {
     const r = row as Record<string, unknown>;
+
+    // Parse branding JSON
+    let branding: Record<string, unknown> = {};
+    if (r.branding) {
+      try {
+        branding = JSON.parse(r.branding as string);
+      } catch {
+        branding = {};
+      }
+    }
+
+    // Parse settings JSON
+    let settings: Record<string, unknown> = {};
+    if (r.settings) {
+      try {
+        settings = JSON.parse(r.settings as string);
+      } catch {
+        settings = {};
+      }
+    }
+
     return {
       id: r.id as string,
       name: r.name as string,
-      slug: r.slug as string,
+      slug: r.id as string, // Use ID as slug for backwards compatibility
       domain: r.domain as string | null,
       status: r.status as 'active' | 'suspended' | 'deleted',
-      logoUrl: r.logo_url as string | null,
-      faviconUrl: r.favicon_url as string | null,
-      primaryColor: r.primary_color as string,
-      secondaryColor: r.secondary_color as string,
-      backgroundColor: r.background_color as string,
-      fontFamily: r.font_family as string,
-      emailFromName: r.email_from_name as string | null,
-      emailFromAddress: r.email_from_address as string | null,
-      emailReplyTo: r.email_reply_to as string | null,
-      settings: JSON.parse((r.settings as string) || '{}'),
-      createdAt: r.created_at as string,
-      updatedAt: r.updated_at as string,
-      createdBy: r.created_by as string | null,
-      maxUsers: r.max_users as number,
-      maxClients: r.max_clients as number,
-      maxSessionsPerUser: r.max_sessions_per_user as number,
+      logoUrl: (branding.logoUrl as string) || null,
+      faviconUrl: (branding.faviconUrl as string) || null,
+      primaryColor: (branding.primaryColor as string) || '#1976d2',
+      secondaryColor: (branding.secondaryColor as string) || '#424242',
+      backgroundColor: (branding.backgroundColor as string) || '#ffffff',
+      fontFamily: (branding.fontFamily as string) || 'Inter, sans-serif',
+      emailFromName: (settings.emailFromName as string) || null,
+      emailFromAddress: (settings.emailFromAddress as string) || null,
+      emailReplyTo: (settings.emailReplyTo as string) || null,
+      settings: settings as TenantSettings,
+      createdAt: new Date(r.created_at as number).toISOString(),
+      updatedAt: new Date(r.updated_at as number).toISOString(),
+      createdBy: (settings.createdBy as string) || null,
+      maxUsers: (settings.maxUsers as number) || 100,
+      maxClients: (settings.maxClients as number) || 10,
+      maxSessionsPerUser: (settings.maxSessionsPerUser as number) || 5,
     };
   }
 }

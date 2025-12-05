@@ -50,10 +50,10 @@ export async function getOrCreateUser(env: Env, email: string, returnIsNew: bool
         throw new Error(`Unable to process user: ${email}`);
       }
 
-      // Assign default 'user' role in RBAC system
+      // Assign default 'member' role in RBAC system (OpenAuth: role_member_default)
       await env.AUTH_DB.prepare(
         `INSERT INTO user_roles (user_id, role_id, granted_by, is_active)
-         VALUES (?, 'role_user', 'system', 1)`
+         VALUES (?, 'role_member_default', 'system', 1)`
       ).bind(result.id).run();
 
       const roles = ['user']; // New users get 'user' role
@@ -134,8 +134,8 @@ export async function createUser(env: Env, email: string, initialRole: string = 
     throw new Error(`Unable to create user: ${email}`);
   }
 
-  // Assign RBAC role based on initialRole parameter
-  const roleId = initialRole === 'admin' ? 'role_admin' : 'role_user';
+  // Assign RBAC role based on initialRole parameter (OpenAuth role IDs)
+  const roleId = initialRole === 'admin' ? 'role_admin_default' : 'role_member_default';
   await env.AUTH_DB.prepare(
     `INSERT INTO user_roles (user_id, role_id, granted_by, is_active) VALUES (?, ?, 'system', 1)`
   ).bind(result.id, roleId).run();

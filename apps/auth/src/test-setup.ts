@@ -13,72 +13,33 @@ export async function setupDatabase() {
     )
   `).run();
 
-  // Migration 0011: Create RBAC tables
-  // 1. Roles table
-  await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS roles (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      name TEXT UNIQUE NOT NULL,
-      description TEXT,
-      parent_role_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
-      is_system BOOLEAN DEFAULT FALSE,
-      metadata TEXT DEFAULT '{}',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      created_by TEXT REFERENCES user(id),
-      updated_by TEXT REFERENCES user(id)
-    )
-  `).run();
+  // Note: Legacy RBAC tables (roles, permissions, role_permissions) removed.
+  // App now uses VIEWs over OpenAuth's rbac_* tables (created after rbac_* tables below).
 
-  // 2. Permissions table
-  await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS permissions (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      name TEXT UNIQUE NOT NULL,
-      resource TEXT NOT NULL,
-      action TEXT NOT NULL,
-      scope TEXT DEFAULT '*',
-      description TEXT,
-      is_system BOOLEAN DEFAULT FALSE,
-      metadata TEXT DEFAULT '{}',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
-
-  // 3. Role-Permission mapping
-  await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS role_permissions (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-      permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-      granted_by TEXT REFERENCES user(id),
-      granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(role_id, permission_id)
-    )
-  `).run();
-
-  // 4. User-Role mapping
+  // User-Role mapping table (app code inserts here, but production uses VIEW over rbac_user_roles)
+  // Note: Production uses a VIEW pointing to rbac_user_roles
   await env.AUTH_DB.prepare(`
     CREATE TABLE IF NOT EXISTS user_roles (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-      granted_by TEXT REFERENCES user(id),
+      user_id TEXT NOT NULL,
+      role_id TEXT NOT NULL,
+      granted_by TEXT,
       granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       expires_at TIMESTAMP,
       is_active BOOLEAN DEFAULT TRUE,
+      tenant_id TEXT DEFAULT 'default',
       UNIQUE(user_id, role_id)
     )
   `).run();
 
-  // 5. Direct user permissions
+  // 5. Direct user permissions (no FK to permissions since it's a VIEW)
   await env.AUTH_DB.prepare(`
     CREATE TABLE IF NOT EXISTS user_permissions (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      permission_id TEXT NOT NULL,
       is_grant BOOLEAN DEFAULT TRUE,
-      granted_by TEXT REFERENCES user(id),
+      granted_by TEXT,
       granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       expires_at TIMESTAMP,
       reason TEXT,
@@ -86,12 +47,243 @@ export async function setupDatabase() {
     )
   `).run();
 
-  // Create indexes
+  // Create indexes for tables (not views - views are created later after rbac_* tables)
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id, is_active)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id)`).run();
-  await env.AUTH_DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_permissions_name ON permissions(name)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_permissions_resource ON permissions(resource, action, scope)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id)`).run();
+
+  // ============================================================================
+  // OpenAuth RBAC tables (matching 004_rbac_schema.sql)
+  // ============================================================================
+
+  // rbac_apps
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS rbac_apps (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )
+  `).run();
+
+  // rbac_roles
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS rbac_roles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      tenant_id TEXT NOT NULL,
+      description TEXT,
+      is_system_role INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      UNIQUE(name, tenant_id)
+    )
+  `).run();
+
+  // rbac_permissions
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS rbac_permissions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      app_id TEXT NOT NULL,
+      description TEXT,
+      resource TEXT NOT NULL,
+      action TEXT NOT NULL,
+      scope TEXT DEFAULT '*',
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      UNIQUE(name, app_id)
+    )
+  `).run();
+
+  // rbac_role_permissions
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS rbac_role_permissions (
+      role_id TEXT NOT NULL,
+      permission_id TEXT NOT NULL,
+      assigned_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      PRIMARY KEY (role_id, permission_id)
+    )
+  `).run();
+
+  // rbac_user_roles
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS rbac_user_roles (
+      user_id TEXT NOT NULL,
+      role_id TEXT NOT NULL,
+      tenant_id TEXT NOT NULL,
+      assigned_at INTEGER NOT NULL,
+      expires_at INTEGER,
+      assigned_by TEXT NOT NULL,
+      PRIMARY KEY (user_id, role_id, tenant_id)
+    )
+  `).run();
+
+  // ============================================================================
+  // RBAC Compatibility Views (matching 0003_app_extensions.sql)
+  // ============================================================================
+
+  // View: roles -> rbac_roles (includes extra columns for app compatibility)
+  await env.AUTH_DB.prepare(`
+    CREATE VIEW IF NOT EXISTS roles AS
+    SELECT
+      id,
+      name,
+      description,
+      NULL AS parent_role_id,
+      is_system_role AS is_system,
+      '{}' AS metadata,
+      created_at,
+      updated_at,
+      NULL AS created_by,
+      NULL AS updated_by,
+      tenant_id
+    FROM rbac_roles
+  `).run();
+
+  // View: permissions -> rbac_permissions (includes extra columns for app compatibility)
+  await env.AUTH_DB.prepare(`
+    CREATE VIEW IF NOT EXISTS permissions AS
+    SELECT
+      id,
+      name,
+      description,
+      resource,
+      action,
+      scope,
+      0 AS is_system,
+      '{}' AS metadata,
+      app_id,
+      created_at,
+      updated_at
+    FROM rbac_permissions
+  `).run();
+
+  // View: role_permissions -> rbac_role_permissions (includes extra columns for app compatibility)
+  await env.AUTH_DB.prepare(`
+    CREATE VIEW IF NOT EXISTS role_permissions AS
+    SELECT
+      role_id || '_' || permission_id AS id,
+      role_id,
+      permission_id,
+      NULL AS granted_by,
+      assigned_at AS granted_at,
+      assigned_at AS created_at
+    FROM rbac_role_permissions
+  `).run();
+
+  // ============================================================================
+  // INSTEAD OF Triggers for views (to handle INSERT/UPDATE/DELETE)
+  // ============================================================================
+
+  // Trigger: INSERT into roles -> rbac_roles
+  await env.AUTH_DB.prepare(`
+    CREATE TRIGGER IF NOT EXISTS roles_insert
+    INSTEAD OF INSERT ON roles
+    BEGIN
+      INSERT INTO rbac_roles (id, name, tenant_id, description, is_system_role, created_at, updated_at)
+      VALUES (
+        NEW.id,
+        NEW.name,
+        COALESCE(NEW.tenant_id, 'default'),
+        NEW.description,
+        COALESCE(NEW.is_system, 0),
+        COALESCE(NEW.created_at, unixepoch() * 1000),
+        COALESCE(NEW.updated_at, unixepoch() * 1000)
+      );
+    END
+  `).run();
+
+  // Trigger: UPDATE roles -> rbac_roles
+  await env.AUTH_DB.prepare(`
+    CREATE TRIGGER IF NOT EXISTS roles_update
+    INSTEAD OF UPDATE ON roles
+    BEGIN
+      UPDATE rbac_roles
+      SET name = NEW.name,
+          description = NEW.description,
+          is_system_role = NEW.is_system,
+          updated_at = COALESCE(NEW.updated_at, unixepoch() * 1000)
+      WHERE id = OLD.id;
+    END
+  `).run();
+
+  // Trigger: DELETE from roles -> rbac_roles
+  await env.AUTH_DB.prepare(`
+    CREATE TRIGGER IF NOT EXISTS roles_delete
+    INSTEAD OF DELETE ON roles
+    BEGIN
+      DELETE FROM rbac_roles WHERE id = OLD.id;
+    END
+  `).run();
+
+  // Trigger: INSERT into permissions -> rbac_permissions
+  await env.AUTH_DB.prepare(`
+    CREATE TRIGGER IF NOT EXISTS permissions_insert
+    INSTEAD OF INSERT ON permissions
+    BEGIN
+      INSERT INTO rbac_permissions (id, name, app_id, description, resource, action, scope, created_at, updated_at)
+      VALUES (
+        NEW.id,
+        NEW.name,
+        COALESCE(NEW.app_id, 'default'),
+        NEW.description,
+        COALESCE(NEW.resource, '*'),
+        COALESCE(NEW.action, '*'),
+        COALESCE(NEW.scope, '*'),
+        COALESCE(NEW.created_at, unixepoch() * 1000),
+        COALESCE(NEW.updated_at, unixepoch() * 1000)
+      );
+    END
+  `).run();
+
+  // Trigger: UPDATE permissions -> rbac_permissions
+  await env.AUTH_DB.prepare(`
+    CREATE TRIGGER IF NOT EXISTS permissions_update
+    INSTEAD OF UPDATE ON permissions
+    BEGIN
+      UPDATE rbac_permissions
+      SET name = NEW.name,
+          description = NEW.description,
+          resource = NEW.resource,
+          action = NEW.action,
+          scope = NEW.scope,
+          updated_at = COALESCE(NEW.updated_at, unixepoch() * 1000)
+      WHERE id = OLD.id;
+    END
+  `).run();
+
+  // Trigger: DELETE from permissions -> rbac_permissions
+  await env.AUTH_DB.prepare(`
+    CREATE TRIGGER IF NOT EXISTS permissions_delete
+    INSTEAD OF DELETE ON permissions
+    BEGIN
+      DELETE FROM rbac_permissions WHERE id = OLD.id;
+    END
+  `).run();
+
+  // Trigger: INSERT into role_permissions -> rbac_role_permissions
+  await env.AUTH_DB.prepare(`
+    CREATE TRIGGER IF NOT EXISTS role_permissions_insert
+    INSTEAD OF INSERT ON role_permissions
+    BEGIN
+      INSERT INTO rbac_role_permissions (role_id, permission_id, assigned_at)
+      VALUES (
+        NEW.role_id,
+        NEW.permission_id,
+        COALESCE(NEW.created_at, unixepoch() * 1000)
+      );
+    END
+  `).run();
+
+  // Trigger: DELETE from role_permissions -> rbac_role_permissions
+  await env.AUTH_DB.prepare(`
+    CREATE TRIGGER IF NOT EXISTS role_permissions_delete
+    INSTEAD OF DELETE ON role_permissions
+    BEGIN
+      DELETE FROM rbac_role_permissions WHERE role_id = OLD.role_id AND permission_id = OLD.permission_id;
+    END
+  `).run();
 
   // Migration 0009: Create audit_events table
   await env.AUTH_DB.prepare(`
@@ -172,18 +364,25 @@ export async function setupDatabase() {
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_event_type ON token_usage(event_type)`).run();
 
   // Seed system roles
+  // Create system roles using OpenAuth's rbac_roles table directly
+  // Using OpenAuth naming convention: role_{name}_default
   const systemRoles = [
-    { id: 'role_super_admin', name: 'super_admin', description: 'Super administrator with full access', is_system: 1 },
-    { id: 'role_admin', name: 'admin', description: 'Administrator with elevated privileges', is_system: 1 },
-    { id: 'role_moderator', name: 'moderator', description: 'Moderator with content management privileges', is_system: 1 },
-    { id: 'role_user', name: 'user', description: 'Standard user with basic access', is_system: 1 },
+    { id: 'role_super_admin_default', name: 'super_admin', description: 'Super administrator with full access', is_system: 1 },
+    { id: 'role_admin_default', name: 'admin', description: 'Administrator with elevated privileges', is_system: 1 },
+    { id: 'role_moderator_default', name: 'moderator', description: 'Moderator with content management privileges', is_system: 1 },
+    { id: 'role_member_default', name: 'member', description: 'Standard user with basic access', is_system: 1 },
+    // Keep legacy IDs for backward compatibility in tests
+    { id: 'role_super_admin', name: 'super_admin_legacy', description: 'Super administrator (legacy)', is_system: 1 },
+    { id: 'role_admin', name: 'admin_legacy', description: 'Administrator (legacy)', is_system: 1 },
+    { id: 'role_user', name: 'user_legacy', description: 'Standard user (legacy)', is_system: 1 },
   ];
 
+  const now = Date.now();
   for (const role of systemRoles) {
     await env.AUTH_DB.prepare(`
-      INSERT OR IGNORE INTO roles (id, name, description, is_system)
-      VALUES (?, ?, ?, ?)
-    `).bind(role.id, role.name, role.description, role.is_system).run();
+      INSERT OR IGNORE INTO rbac_roles (id, name, tenant_id, description, is_system_role, created_at, updated_at)
+      VALUES (?, ?, 'default', ?, ?, ?, ?)
+    `).bind(role.id, role.name, role.description, role.is_system, now, now).run();
   }
 
   // Create test users for use in tests (for foreign key references)
@@ -241,12 +440,12 @@ export async function setupDatabase() {
       VALUES (?, ?, FALSE)
     `).bind(user.id, user.email).run();
 
-    // Assign RBAC role if specified
+    // Assign RBAC role if specified (using rbac_user_roles directly)
     if (user.rbacRole) {
       await env.AUTH_DB.prepare(`
-        INSERT OR IGNORE INTO user_roles (user_id, role_id, granted_by, is_active)
-        VALUES (?, ?, 'system', 1)
-      `).bind(user.id, user.rbacRole).run();
+        INSERT OR IGNORE INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by)
+        VALUES (?, ?, 'default', ?, 'system')
+      `).bind(user.id, user.rbacRole, now).run();
     }
   }
 }

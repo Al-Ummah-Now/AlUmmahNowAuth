@@ -21,8 +21,9 @@ import * as v from 'valibot';
 // ============================================================================
 
 const CreateTenantSchema = v.object({
+  id: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(50), v.regex(/^[a-z0-9-]+$/))),
+  slug: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(50), v.regex(/^[a-z0-9-]+$/))), // Deprecated, use id
   name: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
-  slug: v.pipe(v.string(), v.minLength(1), v.maxLength(50), v.regex(/^[a-z0-9-]+$/)),
   domain: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(255))),
   settings: v.optional(v.record(v.string(), v.any())),
   branding: v.optional(v.object({
@@ -177,10 +178,10 @@ export class AdminTenantRoutes {
       const body = await request.json();
       const validated = v.parse(CreateTenantSchema, body);
 
-      // Create tenant
+      // Create tenant (use id or fall back to slug for backwards compatibility)
       const tenant = await this.tenantService.createTenant({
+        id: validated.id || validated.slug,
         name: validated.name,
-        slug: validated.slug,
         domain: validated.domain,
         settings: validated.settings,
         branding: validated.branding,

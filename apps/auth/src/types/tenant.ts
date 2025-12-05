@@ -98,4 +98,4 @@ export interface TenantContext {
   isDefault: boolean;
 }
 
-export const DEFAULT_TENANT_ID = 'tenant_default';
+export const DEFAULT_TENANT_ID = 'default';

@@ -4,10 +4,9 @@
  * This adapter wraps our D1-based TenantService to implement the
  * TenantService interface expected by OpenAuth's createMultiTenantIssuer.
  *
- * Key differences handled:
- * - Timestamps: D1 uses ISO strings, OpenAuth uses Unix timestamps
- * - Branding: D1 has flat fields, OpenAuth has nested branding object
- * - Settings: D1 stores as JSON string, OpenAuth expects object
+ * Updated to work with OpenAuth's schema (002_add_tenant_support.sql):
+ * - tenants: id, domain, name, status, branding (JSON), settings (JSON), created_at, updated_at
+ * - Timestamps stored as INTEGER (Unix epoch ms)
  */
 
 import type { D1Database } from '@cloudflare/workers-types';
@@ -100,11 +99,9 @@ export class D1TenantAdapter implements OpenAuthTenantService {
 		branding?: OpenAuthTenantBranding;
 		settings?: OpenAuthTenantSettings;
 	}): Promise<OpenAuthTenant> {
-		// Our D1 service generates its own ID, so we use slug as a workaround
-		// to match the provided ID
 		const d1Tenant = await this.tenantService.createTenant({
+			id: params.id, // Use provided ID directly
 			name: params.name,
-			slug: params.id, // Use provided ID as slug
 			domain: params.domain,
 			branding: params.branding
 				? {
@@ -137,12 +134,7 @@ export class D1TenantAdapter implements OpenAuthTenantService {
 	async getTenant(tenantId: string): Promise<OpenAuthTenant | null> {
 		const d1Tenant = await this.tenantService.getTenantById(tenantId);
 
-		if (!d1Tenant) {
-			// Try by slug as fallback (since we use slug as ID mapping)
-			const bySlug = await this.tenantService.resolveTenantBySlug(tenantId);
-			if (!bySlug) return null;
-			return this.mapToOpenAuthTenant(bySlug);
-		}
+		if (!d1Tenant) return null;
 
 		return this.mapToOpenAuthTenant(d1Tenant);
 	}
