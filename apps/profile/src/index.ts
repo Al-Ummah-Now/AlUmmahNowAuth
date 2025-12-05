@@ -909,10 +909,9 @@ export default {
                 if (response.ok) {
                     // After switching the active account on the auth server,
                     // we need to get new tokens for the profile app.
-                    // Use prompt=none for silent auth - OpenAuth will use the switched account's
-                    // session to issue new tokens without showing login UI.
+                    // Don't use prompt=none - let OpenAuth show login UI if needed.
                     const redirectUri = encodeURIComponent(appUrl + '/callback');
-                    window.location.href = authServerUrl + '/authorize?response_type=code&client_id=profile-app&redirect_uri=' + redirectUri + '&prompt=none';
+                    window.location.href = authServerUrl + '/authorize?response_type=code&client_id=profile-app&redirect_uri=' + redirectUri;
                 } else {
                     console.error('Failed to switch account:', await response.text());
                 }
