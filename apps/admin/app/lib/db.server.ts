@@ -41,9 +41,9 @@ export async function createUser(
   }
 
   // Assign RBAC role based on initialRole parameter
-  const roleId = initialRole === 'admin' ? 'role_admin' : 'role_user';
+  const roleId = initialRole === 'admin' ? 'role_admin_default' : 'role_member_default';
   await db.prepare(
-    `INSERT INTO user_roles (user_id, role_id, granted_by, is_active) VALUES (?, ?, 'system', 1)`
+    `INSERT INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by) VALUES (?, ?, 'default', unixepoch() * 1000, 'system')`
   ).bind(result.id, roleId).run();
 
   return result;
@@ -68,8 +68,8 @@ export async function updateUser(
 }
 
 export async function deleteUser(db: D1Database, id: string): Promise<boolean> {
-  // First delete user_roles entries
-  await db.prepare(`DELETE FROM user_roles WHERE user_id = ?`).bind(id).run();
+  // First delete rbac_user_roles entries
+  await db.prepare(`DELETE FROM rbac_user_roles WHERE user_id = ?`).bind(id).run();
 
   // Then delete the user
   const result = await db.prepare(
@@ -95,13 +95,12 @@ export interface UsersByRole {
 export async function getUserStats(db: D1Database) {
   const totalUsers = await db.prepare(`SELECT COUNT(*) as count FROM user`).first<{ count: number }>();
 
-  // Count admin users via RBAC (users with role_admin or role_super_admin)
+  // Count admin users via RBAC (users with role_admin_default or role_super_admin_default)
   const adminUsers = await db.prepare(`
     SELECT COUNT(DISTINCT ur.user_id) as count
-    FROM user_roles ur
-    WHERE ur.role_id IN ('role_admin', 'role_super_admin')
-      AND ur.is_active = 1
-      AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+    FROM rbac_user_roles ur
+    WHERE ur.role_id IN ('role_admin_default', 'role_super_admin_default')
+      AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
   `).first<{ count: number }>();
 
   return {
@@ -114,9 +113,9 @@ export async function getRoleStats(db: D1Database): Promise<RoleStats> {
   const result = await db.prepare(`
     SELECT
       COUNT(*) as total_roles,
-      SUM(CASE WHEN is_system = 1 THEN 1 ELSE 0 END) as system_roles,
-      SUM(CASE WHEN is_system = 0 THEN 1 ELSE 0 END) as custom_roles
-    FROM roles
+      SUM(CASE WHEN is_system_role = 1 THEN 1 ELSE 0 END) as system_roles,
+      SUM(CASE WHEN is_system_role = 0 THEN 1 ELSE 0 END) as custom_roles
+    FROM rbac_roles
   `).first<{ total_roles: number; system_roles: number; custom_roles: number }>();
 
   return {
@@ -129,8 +128,9 @@ export async function getRoleStats(db: D1Database): Promise<RoleStats> {
 export async function getUsersByRole(db: D1Database, limit: number = 5): Promise<UsersByRole[]> {
   const result = await db.prepare(`
     SELECT r.name, COUNT(ur.user_id) as user_count
-    FROM roles r
-    LEFT JOIN user_roles ur ON r.id = ur.role_id AND ur.is_active = 1
+    FROM rbac_roles r
+    LEFT JOIN rbac_user_roles ur ON r.id = ur.role_id
+      AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
     GROUP BY r.id, r.name
     ORDER BY user_count DESC
     LIMIT ?

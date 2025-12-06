@@ -98,8 +98,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         GROUP_CONCAT(r.name) as role_names,
         GROUP_CONCAT(r.id) as role_ids
       FROM user u
-      LEFT JOIN user_roles ur ON u.id = ur.user_id AND ur.is_active = 1
-      LEFT JOIN roles r ON ur.role_id = r.id
+      LEFT JOIN rbac_user_roles ur ON u.id = ur.user_id
+        AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
+      LEFT JOIN rbac_roles r ON ur.role_id = r.id
       GROUP BY u.id
       ORDER BY u.created_at DESC
     `).all<UserWithRoles>();

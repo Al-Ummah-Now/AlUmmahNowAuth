@@ -7,6 +7,7 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev --port 3301 --inspector-port 3311",
+    "dev:remote": "wrangler dev --port 3301 --inspector-port 3311 --remote",
     "dev:inspect": "wrangler dev --inspector",
     "tail": "wrangler tail --format pretty",
     "deploy": "wrangler deploy",
@@ -28,7 +29,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.7-pr.5.25",
+    "@al-ummah-now/openauth": "1.0.7-pr.5.28",
     "@types/node": "^24.10.1",
     "jose": "^6.1.0",
     "resend": "^6.5.2",

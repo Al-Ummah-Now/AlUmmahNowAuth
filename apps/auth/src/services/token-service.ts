@@ -786,14 +786,14 @@ export class TokenService {
 			throw TokenError.databaseError('User not found', { userId });
 		}
 
-		// Fetch RBAC roles from user_roles table
+		// Fetch RBAC roles from rbac_user_roles table
 		const rolesResult = await env.AUTH_DB.prepare(`
 			SELECT r.name
-			FROM user_roles ur
-			JOIN roles r ON ur.role_id = r.id
+			FROM rbac_user_roles ur
+			JOIN rbac_roles r ON ur.role_id = r.id
 			WHERE ur.user_id = ?
-			  AND ur.is_active = 1
-			  AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+			  
+			  AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
 			ORDER BY r.name
 		`).bind(userId).all<{ name: string }>();
 
@@ -885,13 +885,13 @@ export class TokenService {
 		const result = await env.AUTH_DB.prepare(`
 			SELECT DISTINCT p.name
 			FROM permissions p
-			JOIN role_permissions rp ON p.id = rp.permission_id
-			JOIN user_roles ur ON rp.role_id = ur.role_id
+			JOIN rbac_role_permissions rp ON p.id = rp.permission_id
+			JOIN rbac_user_roles ur ON rp.role_id = ur.role_id
 			JOIN client_permissions cp ON p.id = cp.permission_id
 			WHERE ur.user_id = ?
 			AND cp.client_id = ?
-			AND ur.is_active = 1
-			AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+			
+			AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
 		`).bind(userId, clientId).all<{ name: string }>();
 
 		return result.results?.map(r => r.name) || [];

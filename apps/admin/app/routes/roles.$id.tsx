@@ -57,8 +57,8 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
 interface UserWithRole {
   id: string;
   email: string;
-  granted_at: string;
-  granted_by: string | null;
+  assigned_at: number;
+  assigned_by: string | null;
 }
 
 interface LoaderData {
@@ -121,12 +121,13 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
         SELECT
           u.id,
           u.email,
-          ur.granted_at,
-          ur.granted_by
-        FROM user_roles ur
+          ur.assigned_at,
+          ur.assigned_by
+        FROM rbac_user_roles ur
         JOIN user u ON ur.user_id = u.id
-        WHERE ur.role_id = ? AND ur.is_active = 1
-        ORDER BY ur.granted_at DESC
+        WHERE ur.role_id = ?
+          AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
+        ORDER BY ur.assigned_at DESC
       `).bind(roleId).all<UserWithRole>();
 
       usersWithRole = usersResult.results || [];
@@ -238,8 +239,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
       if (env?.AUTH_DB) {
         await env.AUTH_DB.prepare(`
-          UPDATE user_roles
-          SET is_active = 0
+          DELETE FROM rbac_user_roles
           WHERE user_id = ? AND role_id = ?
         `).bind(userId, roleId).run();
       }
@@ -554,10 +554,10 @@ export default function RoleDetail() {
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">{user.email}</TableCell>
                         <TableCell>
-                          {new Date(user.granted_at).toLocaleDateString()}
+                          {new Date(user.assigned_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
-                          {user.granted_by || "System"}
+                          {user.assigned_by || "System"}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button

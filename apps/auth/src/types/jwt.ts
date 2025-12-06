@@ -58,7 +58,7 @@ export interface AccessTokenPayload {
 	nbf: number; // Not before
 	jti: string; // JWT ID
 	email: string;
-	roles: string[]; // RBAC roles from user_roles table
+	roles: string[]; // RBAC roles from rbac_user_roles table
 	client_id: string;
 	scope: string;
 	// Lane 4: Token Architecture enhancements

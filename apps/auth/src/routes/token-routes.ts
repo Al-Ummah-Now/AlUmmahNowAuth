@@ -675,11 +675,11 @@ export class TokenRoutes {
 			// Fetch user roles
 			const rolesResult = await env.AUTH_DB.prepare(`
 				SELECT r.name
-				FROM user_roles ur
-				JOIN roles r ON ur.role_id = r.id
+				FROM rbac_user_roles ur
+				JOIN rbac_roles r ON ur.role_id = r.id
 				WHERE ur.user_id = ?
-				  AND ur.is_active = 1
-				  AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+				  
+				  AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
 				ORDER BY r.name
 			`).bind(user.id).all<{ name: string }>();
 

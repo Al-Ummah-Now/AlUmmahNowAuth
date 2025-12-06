@@ -58,11 +58,11 @@ export function requireAdmin(): MiddlewareHandler<{
 		// Get user roles
 		const rolesResult = await c.env.AUTH_DB.prepare(`
 			SELECT r.name
-			FROM user_roles ur
-			JOIN roles r ON ur.role_id = r.id
+			FROM rbac_user_roles ur
+			JOIN rbac_roles r ON ur.role_id = r.id
 			WHERE ur.user_id = ?
-			  AND ur.is_active = 1
-			  AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+			  
+			  AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
 		`)
 			.bind(user.id)
 			.all<{ name: string }>();
@@ -120,12 +120,12 @@ export function requirePermission(permission: string): MiddlewareHandler<{
 		const hasPermission = await c.env.AUTH_DB.prepare(`
 			SELECT COUNT(*) as count
 			FROM permissions p
-			JOIN role_permissions rp ON p.id = rp.permission_id
-			JOIN user_roles ur ON rp.role_id = ur.role_id
+			JOIN rbac_role_permissions rp ON p.id = rp.permission_id
+			JOIN rbac_user_roles ur ON rp.role_id = ur.role_id
 			WHERE ur.user_id = ?
 			  AND p.name = ?
-			  AND ur.is_active = 1
-			  AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+			  
+			  AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
 		`)
 			.bind(adminUser.userId, permission)
 			.first<{ count: number }>();

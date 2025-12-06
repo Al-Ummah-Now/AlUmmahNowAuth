@@ -1,5 +1,6 @@
 // DEBUG: Force reload trigger - 2025-12-03T12:15:00
 import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
+import { RBACAdapter, RBACServiceImpl } from "@al-ummah-now/openauth/rbac/index";
 import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
@@ -881,6 +882,10 @@ export default {
     const tenantService = new D1TenantAdapter(env.AUTH_DB);
     const sessionSecret = hexToSecret(env.SESSION_SECRET || '0'.repeat(64));
 
+    // Create RBAC service for JWT token enrichment
+    const rbacAdapter = new RBACAdapter(env.AUTH_DB);
+    const rbacService = new RBACServiceImpl(rbacAdapter, storage);
+
     // Create enterprise issuer with multi-account session support
     const { app } = createMultiTenantIssuer({
       storage,
@@ -888,6 +893,7 @@ export default {
       tenantService,
       sessionSecret,
       subjects,
+      rbacService,
       tenantResolver: {
         customDomains: new Map([
           ['localhost', 'default'],

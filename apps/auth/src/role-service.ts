@@ -53,10 +53,10 @@ export class RoleService {
   private async isSystemRole(roleId: string): Promise<boolean> {
     // P0-1: Use parameterized query
     const role = await this.db.prepare(
-      `SELECT is_system FROM roles WHERE id = ?`
-    ).bind(roleId).first<{ is_system: number | boolean }>();
+      `SELECT is_system_role FROM rbac_roles WHERE id = ?`
+    ).bind(roleId).first<{ is_system_role: number | boolean }>();
 
-    return role?.is_system === true || role?.is_system === 1;
+    return role?.is_system_role === true || role?.is_system_role === 1;
   }
 
   /**
@@ -71,10 +71,10 @@ export class RoleService {
   private async isSystemRoleByName(roleName: string): Promise<boolean> {
     // P0-1: Use parameterized query
     const role = await this.db.prepare(
-      `SELECT is_system FROM roles WHERE name = ?`
-    ).bind(roleName).first<{ is_system: number | boolean }>();
+      `SELECT is_system_role FROM rbac_roles WHERE name = ?`
+    ).bind(roleName).first<{ is_system_role: number | boolean }>();
 
-    return role?.is_system === true || role?.is_system === 1;
+    return role?.is_system_role === true || role?.is_system_role === 1;
   }
 
   /**
@@ -167,7 +167,7 @@ export class RoleService {
   async getRole(roleId: string): Promise<Role | null> {
     // P0-1: ALWAYS use parameterized queries
     const result = await this.db.prepare(
-      `SELECT * FROM roles WHERE id = ?`
+      `SELECT * FROM rbac_roles WHERE id = ?`
     ).bind(roleId).first<Role>();
 
     return result;
@@ -184,7 +184,7 @@ export class RoleService {
   async getRoleByName(name: string): Promise<Role | null> {
     // P0-1: ALWAYS use parameterized queries
     const result = await this.db.prepare(
-      `SELECT * FROM roles WHERE name = ?`
+      `SELECT * FROM rbac_roles WHERE name = ?`
     ).bind(name).first<Role>();
 
     return result;
@@ -199,7 +199,7 @@ export class RoleService {
    */
   async getAllRoles(): Promise<Role[]> {
     const result = await this.db.prepare(
-      `SELECT * FROM roles ORDER BY name`
+      `SELECT * FROM rbac_roles ORDER BY name`
     ).all<Role>();
 
     return result.results || [];
@@ -242,7 +242,7 @@ export class RoleService {
 
     // P0-1: ALWAYS use parameterized queries
     await this.db.prepare(
-      `INSERT INTO roles (id, name, description, parent_role_id, is_system, metadata, created_at, updated_at, created_by, updated_by)
+      `INSERT INTO rbac_roles (id, name, description, parent_role_id, is_system, metadata, created_at, updated_at, created_by, updated_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id,
@@ -404,7 +404,7 @@ export class RoleService {
 
     // Check if role is in use
     const usageCount = await this.db.prepare(
-      `SELECT COUNT(*) as count FROM user_roles WHERE role_id = ?`
+      `SELECT COUNT(*) as count FROM rbac_user_roles WHERE role_id = ?`
     ).bind(roleId).first<{ count: number }>();
 
     if (usageCount && usageCount.count > 0) {
@@ -415,7 +415,7 @@ export class RoleService {
 
     // Check if role has child roles
     const childCount = await this.db.prepare(
-      `SELECT COUNT(*) as count FROM roles WHERE parent_role_id = ?`
+      `SELECT COUNT(*) as count FROM rbac_roles WHERE parent_role_id = ?`
     ).bind(roleId).first<{ count: number }>();
 
     if (childCount && childCount.count > 0) {
@@ -426,7 +426,7 @@ export class RoleService {
 
     // P0-1: ALWAYS use parameterized queries
     await this.db.prepare(
-      `DELETE FROM roles WHERE id = ?`
+      `DELETE FROM rbac_roles WHERE id = ?`
     ).bind(roleId).run();
 
     // Invalidate caches
@@ -464,7 +464,7 @@ export class RoleService {
 
     // Get all permissions in the role
     const rolePermissions = await this.db.prepare(
-      `SELECT permission_id FROM role_permissions WHERE role_id = ?`
+      `SELECT permission_id FROM rbac_role_permissions WHERE role_id = ?`
     ).bind(roleId).all<{ permission_id: string }>();
 
     const permissionIds = (rolePermissions.results || []).map(rp => rp.permission_id);
@@ -480,7 +480,7 @@ export class RoleService {
 
     // Check if user already has this role
     const existing = await this.db.prepare(
-      `SELECT id FROM user_roles WHERE user_id = ? AND role_id = ?`
+      `SELECT id FROM rbac_user_roles WHERE user_id = ? AND role_id = ?`
     ).bind(userId, roleId).first();
 
     if (existing) {
@@ -488,15 +488,14 @@ export class RoleService {
       return;
     }
 
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const expires = expiresAt ? expiresAt.toISOString() : null;
+    const now = Date.now();
+    const expires = expiresAt ? expiresAt.getTime() : null;
 
     // P0-1: ALWAYS use parameterized queries
     await this.db.prepare(
-      `INSERT INTO user_roles (id, user_id, role_id, granted_by, granted_at, expires_at, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`
-    ).bind(id, userId, roleId, grantedBy, now, expires).run();
+      `INSERT INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, expires_at, assigned_by)
+       VALUES (?, ?, 'default', ?, ?, ?)`
+    ).bind(userId, roleId, now, expires, grantedBy).run();
 
     // Invalidate caches
     await this.permissionService.invalidateAllCaches();
@@ -527,7 +526,7 @@ export class RoleService {
   ): Promise<void> {
     // P0-1: ALWAYS use parameterized queries
     const result = await this.db.prepare(
-      `DELETE FROM user_roles WHERE user_id = ? AND role_id = ?`
+      `DELETE FROM rbac_user_roles WHERE user_id = ? AND role_id = ?`
     ).bind(userId, roleId).run();
 
     if ((result.meta?.changes || 0) === 0) {
@@ -558,43 +557,38 @@ export class RoleService {
     // P0-1: ALWAYS use parameterized queries
     const result = await this.db.prepare(`
       SELECT
-        ur.id,
         ur.user_id,
         ur.role_id,
-        ur.granted_by,
-        ur.granted_at,
+        ur.assigned_by,
+        ur.assigned_at,
         ur.expires_at,
-        ur.is_active,
         r.name as role_name,
         r.description as role_description,
-        r.is_system as role_is_system
-      FROM user_roles ur
-      JOIN roles r ON ur.role_id = r.id
+        r.is_system_role as role_is_system
+      FROM rbac_user_roles ur
+      JOIN rbac_roles r ON ur.role_id = r.id
       WHERE ur.user_id = ?
-        AND ur.is_active = 1
-        AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+        AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
       ORDER BY r.name
     `).bind(userId).all<{
-      id: string;
       user_id: string;
       role_id: string;
-      granted_by: string | null;
-      granted_at: string;
-      expires_at: string | null;
-      is_active: number;
+      assigned_by: string | null;
+      assigned_at: number;
+      expires_at: number | null;
       role_name: string;
       role_description: string | null;
       role_is_system: number;
     }>();
 
     return (result.results || []).map(row => ({
-      id: row.id,
+      id: `${row.user_id}_${row.role_id}`,
       userId: row.user_id,
       roleId: row.role_id,
-      grantedBy: row.granted_by,
-      grantedAt: new Date(row.granted_at),
+      grantedBy: row.assigned_by,
+      grantedAt: new Date(row.assigned_at),
       expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
-      isActive: row.is_active === 1,
+      isActive: true, // Already filtered by expires_at
       role: {
         id: row.role_id,
         name: row.role_name,
@@ -625,8 +619,8 @@ export class RoleService {
         p.is_system,
         p.metadata,
         p.created_at
-      FROM role_permissions rp
-      JOIN permissions p ON rp.permission_id = p.id
+      FROM rbac_role_permissions rp
+      JOIN rbac_permissions p ON rp.permission_id = p.id
       WHERE rp.role_id = ?
       ORDER BY p.resource, p.action, p.scope
     `).bind(roleId).all<Permission>();
@@ -768,10 +762,9 @@ export class RoleService {
     // P0-1: ALWAYS use parameterized queries
     const result = await this.db.prepare(`
       SELECT DISTINCT user_id
-      FROM user_roles
+      FROM rbac_user_roles
       WHERE role_id = ?
-        AND is_active = 1
-        AND (expires_at IS NULL OR expires_at > datetime('now'))
+        AND (expires_at IS NULL OR expires_at > unixepoch() * 1000)
       ORDER BY user_id
     `).bind(roleId).all<{ user_id: string }>();
 
@@ -779,31 +772,32 @@ export class RoleService {
   }
 
   /**
-   * Deactivate expired role assignments
+   * Clean up expired role assignments
    *
-   * @returns Number of deactivated assignments
+   * Note: rbac_user_roles doesn't have is_active column - expiry is computed from expires_at.
+   * This method deletes expired assignments to keep the table clean.
+   *
+   * @returns Number of deleted assignments
    */
-  async deactivateExpiredRoles(): Promise<number> {
+  async cleanupExpiredRoles(): Promise<number> {
     const result = await this.db.prepare(`
-      UPDATE user_roles
-      SET is_active = 0
-      WHERE is_active = 1
-        AND expires_at IS NOT NULL
-        AND expires_at <= datetime('now')
+      DELETE FROM rbac_user_roles
+      WHERE expires_at IS NOT NULL
+        AND expires_at <= unixepoch() * 1000
     `).run();
 
-    const deactivated = result.meta?.changes || 0;
+    const deleted = result.meta?.changes || 0;
 
-    if (deactivated > 0) {
+    if (deleted > 0) {
       // Invalidate caches
       await this.permissionService.invalidateAllCaches();
 
-      logger.info('[AUDIT] Expired roles deactivated', {
-        count: deactivated,
-        deactivatedAt: new Date().toISOString()
+      logger.info('[AUDIT] Expired roles cleaned up', {
+        count: deleted,
+        deletedAt: new Date().toISOString()
       });
     }
 
-    return deactivated;
+    return deleted;
   }
 }

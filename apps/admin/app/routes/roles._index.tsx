@@ -103,8 +103,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       rolesResponse.map(async (role) => {
         const countResult = await env.AUTH_DB.prepare(`
           SELECT COUNT(*) as count
-          FROM user_roles
-          WHERE role_id = ? AND is_active = 1
+          FROM rbac_user_roles
+          WHERE role_id = ?
+            AND (expires_at IS NULL OR expires_at > unixepoch() * 1000)
         `).bind(role.id).first<{ count: number }>();
 
         return {
@@ -179,10 +180,10 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       // Check if role is system role (additional safety check)
       if (env?.AUTH_DB) {
         const role = await env.AUTH_DB.prepare(`
-          SELECT is_system FROM roles WHERE id = ?
-        `).bind(roleId).first<{ is_system: number }>();
+          SELECT is_system_role FROM rbac_roles WHERE id = ?
+        `).bind(roleId).first<{ is_system_role: number }>();
 
-        if (role?.is_system) {
+        if (role?.is_system_role) {
           return { error: "Cannot delete system roles" };
         }
       }

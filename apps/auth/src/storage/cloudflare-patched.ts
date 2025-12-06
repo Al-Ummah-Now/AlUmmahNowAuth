@@ -41,8 +41,10 @@ export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOption
 
     async set(key: string[], value: unknown, expiry?: Date): Promise<void> {
       // FIX: Use Math.ceil() and Math.max(60, ...) to ensure minimum 60s TTL
+      // Also clamp to max 32-bit integer (KV limit) - about 68 years
+      const MAX_TTL = 2147483647;
       const ttl = expiry
-        ? Math.max(60, Math.ceil((expiry.getTime() - Date.now()) / 1000))
+        ? Math.min(MAX_TTL, Math.max(60, Math.ceil((expiry.getTime() - Date.now()) / 1000)))
         : undefined;
 
       await options.namespace.put(joinKey(key), JSON.stringify(value), {

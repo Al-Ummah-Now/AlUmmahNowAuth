@@ -36,6 +36,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const error = url.searchParams.get("error");
 
   if (error) {
+    // Handle login_required from prompt=none - retry with normal auth flow
+    if (error === 'login_required') {
+      const appUrl = getAppUrl(request, env);
+      const { url: authorizeUrl } = await getOpenAuthClient(request, env).authorize(`${appUrl}/auth/callback`, "code");
+      logger.info('Retrying auth without prompt=none', { authorizeUrl });
+      await logger.finalizeRequest();
+      return redirect(authorizeUrl);
+    }
     logger.warn('OAuth error received', { error });
     await logger.finalizeRequest();
     return redirect(`/?error=${encodeURIComponent(error)}`);
@@ -179,12 +187,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     await logger.finalizeRequest();
     return redirect("/?demo=true");
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error("Auth callback error", {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined
     });
     await logger.finalizeRequest();
-    return redirect("/login?error=auth_failed");
+    return redirect(`/login?error=${encodeURIComponent(errorMessage)}`);
   }
 }
 

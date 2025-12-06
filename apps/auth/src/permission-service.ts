@@ -328,15 +328,13 @@ export class PermissionService {
         r.name,
         r.description,
         r.parent_role_id,
-        r.is_system,
-        r.metadata,
+        r.is_system_role as is_system,
         r.created_at,
         r.updated_at
-      FROM user_roles ur
-      JOIN roles r ON ur.role_id = r.id
+      FROM rbac_user_roles ur
+      JOIN rbac_roles r ON ur.role_id = r.id
       WHERE ur.user_id = ?
-        AND ur.is_active = 1
-        AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+        AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
     `).bind(userId).all<Role>();
 
     const roles = rolesResult.results || [];
@@ -360,8 +358,8 @@ export class PermissionService {
           p.is_system,
           p.metadata,
           p.created_at
-        FROM role_permissions rp
-        JOIN permissions p ON rp.permission_id = p.id
+        FROM rbac_role_permissions rp
+        JOIN rbac_permissions p ON rp.permission_id = p.id
         WHERE rp.role_id IN (${placeholders})
       `).bind(...roleIds).all<Permission>();
 
@@ -369,15 +367,10 @@ export class PermissionService {
     }
 
     // P0-1: Load direct user permissions with parameterized query
-    const directResult = await this.db.prepare(`
-      SELECT
-        p.*,
-        up.is_grant
-      FROM user_permissions up
-      JOIN permissions p ON up.permission_id = p.id
-      WHERE up.user_id = ?
-        AND (up.expires_at IS NULL OR up.expires_at > datetime('now'))
-    `).bind(userId).all<Permission & { is_grant: number }>();
+    // Note: Direct user permissions (grants/denies) are not yet implemented in the schema.
+    // The user_permissions view only computes permissions from roles.
+    // This query returns empty results until rbac_user_permissions table is added.
+    const directResult = { results: [] as (Permission & { is_grant: number })[] };
 
     const directPermissions = directResult.results || [];
 
@@ -428,7 +421,7 @@ export class PermissionService {
       if (role.parent_role_id && !allIds.has(role.parent_role_id)) {
         // P0-1: Use parameterized query
         const parentResult = await this.db.prepare(
-          `SELECT * FROM roles WHERE id = ?`
+          `SELECT * FROM rbac_roles WHERE id = ?`
         ).bind(role.parent_role_id).first<Role>();
 
         if (parentResult) {
@@ -595,12 +588,11 @@ export class PermissionService {
     permissionId: string,
     grantedBy: string
   ): Promise<void> {
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
+    const now = Date.now();
 
     // Check if already granted
     const existing = await this.db.prepare(
-      `SELECT id FROM role_permissions WHERE role_id = ? AND permission_id = ?`
+      `SELECT role_id FROM rbac_role_permissions WHERE role_id = ? AND permission_id = ?`
     ).bind(roleId, permissionId).first();
 
     if (existing) {
@@ -610,9 +602,9 @@ export class PermissionService {
 
     // P0-1: ALWAYS use parameterized queries
     await this.db.prepare(
-      `INSERT INTO role_permissions (id, role_id, permission_id, granted_by, granted_at)
-       VALUES (?, ?, ?, ?, ?)`
-    ).bind(id, roleId, permissionId, grantedBy, now).run();
+      `INSERT INTO rbac_role_permissions (role_id, permission_id, granted_by, granted_at)
+       VALUES (?, ?, ?, ?)`
+    ).bind(roleId, permissionId, grantedBy, now).run();
 
     // P0-2: CRITICAL - Invalidate caches immediately
     await this.invalidateAllCaches();
@@ -643,7 +635,7 @@ export class PermissionService {
   ): Promise<void> {
     // P0-1: ALWAYS use parameterized queries
     const result = await this.db.prepare(
-      `DELETE FROM role_permissions
+      `DELETE FROM rbac_role_permissions
        WHERE role_id = ? AND permission_id = ?`
     ).bind(roleId, permissionId).run();
 
@@ -683,46 +675,10 @@ export class PermissionService {
     reason: string,
     expiresAt?: Date
   ): Promise<void> {
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const expires = expiresAt ? expiresAt.toISOString() : null;
-
-    // Check if already exists
-    const existing = await this.db.prepare(
-      `SELECT id, is_grant FROM user_permissions WHERE user_id = ? AND permission_id = ?`
-    ).bind(userId, permissionId).first<{ id: string; is_grant: boolean }>();
-
-    if (existing) {
-      if (existing.is_grant) {
-        logger.warn('[RBAC] Permission already granted to user', { userId, permissionId });
-        return;
-      }
-      // Update existing deny to grant
-      await this.db.prepare(
-        `UPDATE user_permissions
-         SET is_grant = 1, granted_by = ?, granted_at = ?, expires_at = ?, reason = ?
-         WHERE id = ?`
-      ).bind(grantedBy, now, expires, reason, existing.id).run();
-    } else {
-      // P0-1: ALWAYS use parameterized queries
-      await this.db.prepare(
-        `INSERT INTO user_permissions (id, user_id, permission_id, is_grant, granted_by, granted_at, expires_at, reason)
-         VALUES (?, ?, ?, 1, ?, ?, ?, ?)`
-      ).bind(id, userId, permissionId, grantedBy, now, expires, reason).run();
-    }
-
-    // P0-2: CRITICAL - Invalidate caches immediately
-    await this.invalidateAllCaches();
-
-    // Log audit event
-    logger.info('[AUDIT] Permission granted to user', {
-      userId,
-      permissionId,
-      grantedBy,
-      reason,
-      expiresAt: expires,
-      grantedAt: now
-    });
+    // Note: Direct user permissions are not yet implemented in the schema.
+    // Permissions are granted through roles only (rbac_user_roles + rbac_role_permissions).
+    // TODO: Implement rbac_user_permissions table for direct grants/denies.
+    throw new Error('Direct user permissions not implemented. Use role-based permissions instead.');
   }
 
   /**
@@ -744,46 +700,10 @@ export class PermissionService {
     reason: string,
     expiresAt?: Date
   ): Promise<void> {
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const expires = expiresAt ? expiresAt.toISOString() : null;
-
-    // Check if already exists
-    const existing = await this.db.prepare(
-      `SELECT id, is_grant FROM user_permissions WHERE user_id = ? AND permission_id = ?`
-    ).bind(userId, permissionId).first<{ id: string; is_grant: boolean }>();
-
-    if (existing) {
-      if (!existing.is_grant) {
-        logger.warn('[RBAC] Permission already denied for user', { userId, permissionId });
-        return;
-      }
-      // Update existing grant to deny
-      await this.db.prepare(
-        `UPDATE user_permissions
-         SET is_grant = 0, granted_by = ?, granted_at = ?, expires_at = ?, reason = ?
-         WHERE id = ?`
-      ).bind(deniedBy, now, expires, reason, existing.id).run();
-    } else {
-      // P0-1: ALWAYS use parameterized queries
-      await this.db.prepare(
-        `INSERT INTO user_permissions (id, user_id, permission_id, is_grant, granted_by, granted_at, expires_at, reason)
-         VALUES (?, ?, ?, 0, ?, ?, ?, ?)`
-      ).bind(id, userId, permissionId, deniedBy, now, expires, reason).run();
-    }
-
-    // P0-2: CRITICAL - Invalidate caches immediately
-    await this.invalidateAllCaches();
-
-    // Log audit event
-    logger.info('[AUDIT] Permission denied for user', {
-      userId,
-      permissionId,
-      deniedBy,
-      reason,
-      expiresAt: expires,
-      deniedAt: now
-    });
+    // Note: Direct user permissions are not yet implemented in the schema.
+    // Permissions are granted through roles only (rbac_user_roles + rbac_role_permissions).
+    // TODO: Implement rbac_user_permissions table for direct grants/denies.
+    throw new Error('Direct user permissions not implemented. Use role-based permissions instead.');
   }
 
   /**
@@ -801,27 +721,10 @@ export class PermissionService {
     permissionId: string,
     removedBy: string
   ): Promise<void> {
-    // P0-1: ALWAYS use parameterized queries
-    const result = await this.db.prepare(
-      `DELETE FROM user_permissions
-       WHERE user_id = ? AND permission_id = ?`
-    ).bind(userId, permissionId).run();
-
-    if ((result.meta?.changes || 0) === 0) {
-      logger.warn('[RBAC] Direct permission not found for user', { userId, permissionId });
-      return;
-    }
-
-    // P0-2: CRITICAL - Invalidate caches immediately
-    await this.invalidateAllCaches();
-
-    // Log audit event
-    logger.info('[AUDIT] Direct permission removed from user', {
-      userId,
-      permissionId,
-      removedBy,
-      removedAt: new Date().toISOString()
-    });
+    // Note: Direct user permissions are not yet implemented in the schema.
+    // Permissions are granted through roles only (rbac_user_roles + rbac_role_permissions).
+    // TODO: Implement rbac_user_permissions table for direct grants/denies.
+    throw new Error('Direct user permissions not implemented. Use role-based permissions instead.');
   }
 
   /**
@@ -848,7 +751,7 @@ export class PermissionService {
 
     // Check if permission is in use
     const roleUsage = await this.db.prepare(
-      `SELECT COUNT(*) as count FROM role_permissions WHERE permission_id = ?`
+      `SELECT COUNT(*) as count FROM rbac_role_permissions WHERE permission_id = ?`
     ).bind(permissionId).first<{ count: number }>();
 
     const userUsage = await this.db.prepare(

@@ -202,12 +202,75 @@ export default {
       }
     }
 
+    // API endpoint to get fresh user info with roles directly from the database
+    if (url.pathname === '/api/me') {
+      const session = await getSession(request, env.AUTH_STORAGE);
+
+      if (!session || !session.user?.id) {
+        return new Response(JSON.stringify({ error: 'Not authenticated' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      try {
+        // Fetch roles directly from the database for the most up-to-date data
+        const rolesResult = await env.AUTH_DB.prepare(`
+          SELECT r.name
+          FROM rbac_user_roles ur
+          JOIN rbac_roles r ON ur.role_id = r.id
+          WHERE ur.user_id = ?
+            AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
+          ORDER BY r.name
+        `).bind(session.user.id).all<{ name: string }>();
+
+        const roles = rolesResult.results?.map(r => r.name) || [];
+
+        const freshUser = {
+          id: session.user.id,
+          email: session.user.email,
+          roles,
+        };
+
+        // Update session with fresh roles
+        const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
+        if (sessionToken) {
+          const updatedSession = {
+            ...session,
+            user: freshUser,
+          };
+          await env.AUTH_STORAGE.put(
+            `session:${sessionToken}`,
+            JSON.stringify(updatedSession),
+            { expirationTtl: 7 * 24 * 60 * 60 }
+          );
+        }
+
+        return new Response(JSON.stringify(freshUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (error) {
+        console.error('Error fetching user info:', error);
+        return new Response(JSON.stringify({ error: 'Failed to fetch user info' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Handle OAuth callback
     if (url.pathname === '/callback') {
       const code = url.searchParams.get('code');
       const error = url.searchParams.get('error');
 
       if (error) {
+        // Handle login_required from prompt=none - retry with normal auth flow
+        if (error === 'login_required') {
+          const appUrl = getAppUrl(request, env);
+          const redirectUri = encodeURIComponent(`${appUrl}/callback`);
+          return Response.redirect(`${authServerUrl}/authorize?response_type=code&client_id=profile-app&redirect_uri=${redirectUri}`, 302);
+        }
         return Response.redirect(`${url.origin}/?error=${encodeURIComponent(error)}`, 302);
       }
 
@@ -268,8 +331,9 @@ export default {
           },
         });
       } catch (error) {
-        console.error('OAuth callback error:', error);
-        return Response.redirect(`${url.origin}/?error=auth_failed`, 302);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('OAuth callback error:', errorMessage);
+        return Response.redirect(`${url.origin}/?error=${encodeURIComponent(errorMessage)}`, 302);
       }
     }
 
@@ -909,9 +973,9 @@ export default {
                 if (response.ok) {
                     // After switching the active account on the auth server,
                     // we need to get new tokens for the profile app.
-                    // Don't use prompt=none - let OpenAuth show login UI if needed.
+                    // Use prompt=none for silent auth since session was just switched.
                     const redirectUri = encodeURIComponent(appUrl + '/callback');
-                    window.location.href = authServerUrl + '/authorize?response_type=code&client_id=profile-app&redirect_uri=' + redirectUri;
+                    window.location.href = authServerUrl + '/authorize?response_type=code&client_id=profile-app&redirect_uri=' + redirectUri + '&prompt=none';
                 } else {
                     console.error('Failed to switch account:', await response.text());
                 }
@@ -962,40 +1026,57 @@ export default {
             }
         }
 
-        function updateUI() {
+        function renderUserUI(user) {
+            const navMenu = document.getElementById('navMenu');
+            document.getElementById('loggedInView').style.display = 'block';
+            document.getElementById('loggedOutView').style.display = 'none';
+
+            // Populate profile data
+            document.getElementById('userId').textContent = user.id;
+            document.getElementById('userEmail').textContent = user.email;
+
+            const roleDiv = document.getElementById('userRole');
+            roleDiv.innerHTML = '';
+            const roles = user.roles || [];
+            roles.forEach(role => {
+                const roleBadge = document.createElement('span');
+                roleBadge.className = role === 'admin' || role === 'super_admin' ? 'badge badge-admin' : 'badge badge-user';
+                roleBadge.textContent = role.toUpperCase();
+                roleBadge.style.marginRight = '8px';
+                roleDiv.appendChild(roleBadge);
+            });
+            if (roles.length === 0) {
+                roleDiv.textContent = 'No roles assigned';
+            }
+
+            // Update nav menu - show admin link for admin users
+            const isAdmin = roles.some(r => r === 'admin' || r === 'super_admin');
+            navMenu.innerHTML = \`
+                \${isAdmin && adminUrl ? \`<a href="\${adminUrl}" class="btn btn-primary">⚙️ Admin</a>\` : ''}
+            \`;
+
+            // Load accounts for the account switcher
+            loadAccounts();
+        }
+
+        async function updateUI() {
             const navMenu = document.getElementById('navMenu');
 
             if (isLoggedIn && currentUser) {
-                // Show logged in view
-                document.getElementById('loggedInView').style.display = 'block';
-                document.getElementById('loggedOutView').style.display = 'none';
+                // First render with cached data
+                renderUserUI(currentUser);
 
-                // Populate profile data
-                document.getElementById('userId').textContent = currentUser.id;
-                document.getElementById('userEmail').textContent = currentUser.email;
-
-                const roleDiv = document.getElementById('userRole');
-                roleDiv.innerHTML = '';
-                const roles = currentUser.roles || [];
-                roles.forEach(role => {
-                    const roleBadge = document.createElement('span');
-                    roleBadge.className = role === 'admin' || role === 'super_admin' ? 'badge badge-admin' : 'badge badge-user';
-                    roleBadge.textContent = role.toUpperCase();
-                    roleBadge.style.marginRight = '8px';
-                    roleDiv.appendChild(roleBadge);
-                });
-                if (roles.length === 0) {
-                    roleDiv.textContent = 'No roles assigned';
+                // Then fetch fresh user data with current roles
+                try {
+                    const response = await fetch('/api/me', { credentials: 'include' });
+                    if (response.ok) {
+                        const freshUser = await response.json();
+                        // Update with fresh data
+                        renderUserUI(freshUser);
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch fresh user data:', err);
                 }
-
-                // Update nav menu - show admin link for admin users
-                const isAdmin = roles.some(r => r === 'admin' || r === 'super_admin');
-                navMenu.innerHTML = \`
-                    \${isAdmin && adminUrl ? \`<a href="\${adminUrl}" class="btn btn-primary">⚙️ Admin</a>\` : ''}
-                \`;
-
-                // Load accounts for the account switcher
-                loadAccounts();
             } else {
                 // Show logged out view
                 document.getElementById('loggedInView').style.display = 'none';

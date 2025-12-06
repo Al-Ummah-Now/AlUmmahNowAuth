@@ -1,6 +1,20 @@
 // Server-side authentication utilities for admin app
 import { logger } from "./logger.server";
 
+// Helper to fetch fresh roles from DB
+async function getUserRolesFromDB(db: D1Database, userId: string): Promise<string[]> {
+  const rolesResult = await db.prepare(`
+    SELECT r.name
+    FROM rbac_user_roles ur
+    JOIN rbac_roles r ON ur.role_id = r.id
+    WHERE ur.user_id = ?
+      AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
+    ORDER BY r.name
+  `).bind(userId).all<{ name: string }>();
+
+  return rolesResult.results?.map(r => r.name) || [];
+}
+
 export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE: KVNamespace }) {
   const url = new URL(request.url);
   logger.debug('getAuthenticatedUser called', { path: url.pathname });
@@ -67,11 +81,11 @@ export function redirectToLogin(request: Request) {
 
 export async function requireAuth(
   request: Request,
-  env: { AUTH_STORAGE?: KVNamespace },
+  env: { AUTH_STORAGE?: KVNamespace; AUTH_DB?: D1Database },
   requireAdmin: boolean = false
 ) {
   const url = new URL(request.url);
-  
+
   // If no storage available, always redirect to login
   if (!env?.AUTH_STORAGE) {
     logger.error('AUTH_STORAGE not available', { path: url.pathname });
@@ -86,13 +100,23 @@ export async function requireAuth(
   }
 
   if (requireAdmin) {
-    const roles = user.roles || [];
+    // Always query DB for fresh roles - don't trust cached session roles
+    if (!env?.AUTH_DB) {
+      logger.error('AUTH_DB not available for admin check', { path: url.pathname });
+      throw new Response("Forbidden: Database not available", { status: 403 });
+    }
+
+    const roles = await getUserRolesFromDB(env.AUTH_DB, user.id);
     const hasAdminAccess = roles.includes("admin") || roles.includes("super_admin");
+
     if (!hasAdminAccess) {
+      logger.warn('Admin access denied', { userId: user.id, email: user.email, roles });
       throw new Response("Forbidden: Admin access required", { status: 403 });
     }
+
+    // Return user with fresh roles
+    return { ...user, roles };
   }
 
-  
   return user;
 }

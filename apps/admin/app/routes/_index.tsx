@@ -1,8 +1,9 @@
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData } from "react-router";
-import { Users, ShieldCheck, Activity, Database, LogOut, Shield, FileText, Key, Monitor } from "lucide-react";
+import { Users, ShieldCheck, Activity, Database, Shield, FileText, Key, Monitor } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { AccountSwitcher } from "@al-ummah-now/ui";
 import { getUserStats, getRoleStats, getUsersByRole } from "../lib/db.server";
 import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl, getAppUrl } from "../lib/config";
@@ -62,6 +63,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     logger.info('Returning welcome page data');
     return {
       isAuthenticated: false,
+      user: null,
       totalUsers: 0,
       adminUsers: 0,
       totalRoles: 0,
@@ -80,6 +82,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       logger.warn("AUTH_DB not available in development mode");
       return {
         isAuthenticated: true,
+        user: user ? { id: user.id, email: user.email } : null,
         totalUsers: 0,
         adminUsers: 0,
         totalRoles: 0,
@@ -104,6 +107,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
     return {
       isAuthenticated: true,
+      user: user ? { id: user.id, email: user.email } : null,
       ...stats,
       ...roleStats,
       usersByRole,
@@ -117,6 +121,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
     return {
       isAuthenticated: true,
+      user: user ? { id: user.id, email: user.email } : null,
       totalUsers: 0,
       adminUsers: 0,
       totalRoles: 0,
@@ -295,11 +300,7 @@ export default function Index() {
               <Button variant="outline" asChild>
                 <Link to="/sessions">Sessions</Link>
               </Button>
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/logout">
-                  <LogOut className="h-5 w-5" />
-                </Link>
-              </Button>
+              <AccountSwitcher authServerUrl={data.authServerUrl} currentUser={data.user} />
             </div>
           </div>
         </div>

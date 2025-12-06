@@ -5,11 +5,10 @@ import * as v from 'valibot';
 async function getUserRoles(env: Env, userId: string): Promise<string[]> {
   const rolesResult = await env.AUTH_DB.prepare(`
     SELECT r.name
-    FROM user_roles ur
-    JOIN roles r ON ur.role_id = r.id
+    FROM rbac_user_roles ur
+    JOIN rbac_roles r ON ur.role_id = r.id
     WHERE ur.user_id = ?
-      AND ur.is_active = 1
-      AND (ur.expires_at IS NULL OR ur.expires_at > datetime('now'))
+      AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
     ORDER BY r.name
   `).bind(userId).all<{ name: string }>();
 
@@ -52,11 +51,12 @@ export async function getOrCreateUser(env: Env, email: string, returnIsNew: bool
 
       // Assign default 'member' role in RBAC system (OpenAuth: role_member_default)
       await env.AUTH_DB.prepare(
-        `INSERT INTO user_roles (user_id, role_id, granted_by, is_active)
-         VALUES (?, 'role_member_default', 'system', 1)`
+        `INSERT INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by)
+         VALUES (?, 'role_member_default', 'default', unixepoch() * 1000, 'system')`
       ).bind(result.id).run();
 
-      const roles = ['user']; // New users get 'user' role
+      // Fetch the actual role we just assigned
+      const roles = await getUserRoles(env, result.id);
       logger.info('User created successfully', { userId: result.id, email, roles });
       return returnIsNew ? { id: result.id, roles, isNew: true } : { id: result.id, roles };
     } catch (error) {
@@ -137,7 +137,7 @@ export async function createUser(env: Env, email: string, initialRole: string = 
   // Assign RBAC role based on initialRole parameter (OpenAuth role IDs)
   const roleId = initialRole === 'admin' ? 'role_admin_default' : 'role_member_default';
   await env.AUTH_DB.prepare(
-    `INSERT INTO user_roles (user_id, role_id, granted_by, is_active) VALUES (?, ?, 'system', 1)`
+    `INSERT INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by) VALUES (?, ?, 'default', unixepoch() * 1000, 'system')`
   ).bind(result.id, roleId).run();
 
   logger.info('User created successfully (admin action)', { userId: result.id, email, initialRole, roleId });

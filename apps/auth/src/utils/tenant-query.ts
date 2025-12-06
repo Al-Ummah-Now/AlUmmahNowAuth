@@ -75,7 +75,7 @@ export class TenantQueryBuilder {
   roles() {
     return {
       // Include system roles (tenant_id IS NULL AND is_system = 1) and tenant-specific roles
-      select: `SELECT * FROM roles WHERE tenant_id = ? OR (tenant_id IS NULL AND is_system = 1)`,
+      select: `SELECT * FROM rbac_roles WHERE tenant_id = ? OR (tenant_id IS NULL AND is_system = 1)`,
       bindings: [this.tenantId],
     };
   }

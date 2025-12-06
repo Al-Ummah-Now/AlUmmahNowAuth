@@ -38,6 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_clients_tenant_id ON clients(tenant_id);
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     level TEXT NOT NULL,
+    service TEXT DEFAULT 'AUTH',
     message TEXT NOT NULL,
     context TEXT,
     timestamp INTEGER NOT NULL DEFAULT (unixepoch() * 1000)

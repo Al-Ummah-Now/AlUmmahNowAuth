@@ -7,7 +7,9 @@
   "scripts": {
     "types": "pnpm --parallel --filter \"./apps/*\" types",
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:remote": "pnpm --parallel --filter auth run dev:remote & pnpm --parallel --filter admin --filter profile --filter audit-consumer run dev",
     "dev:auth": "pnpm --filter auth dev",
+    "dev:auth:remote": "pnpm --filter auth dev:remote",
     "dev:admin": "pnpm --filter admin dev",
     "dev:profile": "pnpm --filter profile dev",
     "dev:consumer": "pnpm --filter audit-consumer dev",
@@ -58,6 +60,6 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.7-pr.5.25"
+    "@al-ummah-now/openauth": "^1.0.7-pr.5.31"
   }
 }
