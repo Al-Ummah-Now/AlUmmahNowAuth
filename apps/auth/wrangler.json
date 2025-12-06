@@ -46,7 +46,7 @@
       "dataset": "auth_events"
     }
   ],
-  "secrets_store": [
+  "secrets_store_secrets": [
     {
       "binding": "CLIENT_SECRET_SALT",
       "store_id": "f8eddc9944d041919ed8dc7d08d32308",
