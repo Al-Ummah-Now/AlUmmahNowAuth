@@ -241,7 +241,13 @@ export default {
     }
 
     // Handle admin session management routes (API)
-    if (url.pathname.startsWith('/admin/sessions') || url.pathname.match(/^\/admin\/users\/[^/]+\/sessions/)) {
+    // Let OpenAuth handle /admin/sessions/revoke and /admin/sessions/revoke-user
+    // App handles: GET /admin/sessions, GET /admin/sessions/stats, GET /admin/sessions/suspicious,
+    //              POST /admin/sessions/bulk-terminate, and /admin/users/*/sessions/* routes
+    const isOpenAuthSessionRoute = url.pathname === '/admin/sessions/revoke' ||
+                                    url.pathname === '/admin/sessions/revoke-user';
+    if (!isOpenAuthSessionRoute &&
+        (url.pathname.startsWith('/admin/sessions') || url.pathname.match(/^\/admin\/users\/[^/]+\/sessions/))) {
       const response = await adminSessionRoutes.fetch(request, env, ctx);
       if (response.status !== 404) {
         return addSecurityHeaders(response, isProduction);

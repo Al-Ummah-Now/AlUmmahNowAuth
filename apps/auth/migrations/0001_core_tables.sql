@@ -20,19 +20,8 @@ CREATE TABLE IF NOT EXISTS user (
 CREATE INDEX IF NOT EXISTS idx_user_email ON user(email);
 CREATE INDEX IF NOT EXISTS idx_user_tenant_id ON user(tenant_id);
 
--- Legacy clients table (for backward compatibility)
-CREATE TABLE IF NOT EXISTS clients (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    secret TEXT,
-    redirect_uri TEXT NOT NULL,
-    tenant_id TEXT NOT NULL DEFAULT 'default',
-    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_clients_tenant_id ON clients(tenant_id);
+-- Note: OAuth clients are managed by OpenAuth via oauth_clients table
+-- The legacy 'clients' table has been removed - use OpenAuth's client management APIs
 
 -- Logs table for general application logging
 CREATE TABLE IF NOT EXISTS logs (
