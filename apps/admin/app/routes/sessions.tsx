@@ -1,5 +1,5 @@
-import type { MetaFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, Link } from "react-router";
+import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
+import { useLoaderData, Link, useFetcher } from "react-router";
 import {
   Users,
   Monitor,
@@ -10,13 +10,37 @@ import {
   Clock,
   Globe,
   ArrowLeft,
-  ExternalLink
+  Trash2,
+  RefreshCw,
+  Search,
+  HelpCircle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { requireAuth } from "../lib/auth.server";
-import { getAuthServerUrl, getAppUrl } from "../lib/config";
+import { Input } from "../components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { Badge } from "../components/ui/badge";
+import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
 import { logger } from "../lib/logger.server";
+import {
+  listSessions,
+  getSessionStats,
+  getSuspiciousActivity,
+  terminateSession,
+  terminateAllUserSessions,
+  isErrorResponse,
+  type Session,
+  type SessionStats,
+  type SuspiciousActivity,
+} from "../lib/admin-api.server";
+import { useState } from "react";
 
 export const meta: MetaFunction = () => {
   return [
@@ -25,16 +49,24 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+type LoaderData = {
+  sessions: Session[];
+  stats: SessionStats;
+  suspicious: SuspiciousActivity;
+  total: number;
+  error?: string;
+};
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
     AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
-    APP_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
-  // Initialize logger
   if (env?.AUTH_DB) {
     logger.setDatabase(env.AUTH_DB, true);
     if (ctx) logger.setContext(ctx);
@@ -42,21 +74,139 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   logger.logLoader('sessions', request);
 
-  // Check authentication - requireAuth throws redirect if not authenticated
   await requireAuth(request, env);
+  const user = await getAuthenticatedUser(request, env);
 
-  const authServerUrl = getAuthServerUrl(request, env);
+  if (!user) {
+    throw new Response("Unauthorized", { status: 401 });
+  }
 
-  // The actual session data will be loaded from the auth server's admin dashboard
-  // This page serves as an entry point that redirects to the auth server's session management UI
+  const actingUser = {
+    id: user.id,
+    email: user.email,
+    roles: user.roles || [],
+  };
+
+  // Parse URL params for filtering
+  const url = new URL(request.url);
+  const limit = parseInt(url.searchParams.get('limit') || '50');
+  const offset = parseInt(url.searchParams.get('offset') || '0');
+  const deviceType = url.searchParams.get('device_type') || undefined;
+  const userId = url.searchParams.get('user_id') || undefined;
+
+  // Fetch data in parallel
+  const [sessionsResult, statsResult, suspiciousResult] = await Promise.all([
+    listSessions(env, actingUser, { limit, offset, device_type: deviceType, user_id: userId }),
+    getSessionStats(env, actingUser),
+    getSuspiciousActivity(env, actingUser),
+  ]);
+
+  const defaultStats: SessionStats = {
+    totalSessions: 0,
+    activeSessions: 0,
+    loginsLast24h: 0,
+    deviceBreakdown: {},
+  };
+
+  const defaultSuspicious: SuspiciousActivity = {
+    multipleIPsInShortTime: [] as SuspiciousActivity['multipleIPsInShortTime'],
+    failedThenSuccessfulLogins: [] as SuspiciousActivity['failedThenSuccessfulLogins'],
+  };
+
+  if (isErrorResponse(sessionsResult)) {
+    logger.error('Failed to load sessions', { error: sessionsResult.error });
+    return {
+      sessions: [],
+      stats: isErrorResponse(statsResult) ? defaultStats : statsResult,
+      suspicious: isErrorResponse(suspiciousResult) ? defaultSuspicious : suspiciousResult,
+      total: 0,
+      error: sessionsResult.error,
+    };
+  }
+
   return {
-    authServerUrl,
-    dashboardUrl: `${authServerUrl}/admin/sessions/dashboard`,
+    sessions: sessionsResult.sessions,
+    stats: isErrorResponse(statsResult) ? defaultStats : statsResult,
+    suspicious: isErrorResponse(suspiciousResult) ? defaultSuspicious : suspiciousResult,
+    total: sessionsResult.total,
   };
 }
 
+export async function action({ request, context }: ActionFunctionArgs) {
+  const env = context?.cloudflare?.env as {
+    AUTH_DB: D1Database;
+    AUTH_STORAGE: KVNamespace;
+    AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
+  };
+
+  await requireAuth(request, env);
+  const user = await getAuthenticatedUser(request, env);
+
+  if (!user) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  const actingUser = {
+    id: user.id,
+    email: user.email,
+    roles: user.roles || [],
+  };
+
+  const formData = await request.formData();
+  const action = formData.get('_action') as string;
+  const userId = formData.get('userId') as string;
+  const sessionId = formData.get('sessionId') as string;
+
+  if (action === 'terminate') {
+    const result = await terminateSession(env, actingUser, userId, sessionId);
+    if (isErrorResponse(result)) {
+      return { success: false, error: result.error };
+    }
+    return { success: true };
+  }
+
+  if (action === 'terminateAll') {
+    const result = await terminateAllUserSessions(env, actingUser, userId);
+    if (isErrorResponse(result)) {
+      return { success: false, error: result.error };
+    }
+    return { success: true };
+  }
+
+  return { success: false, error: "Unknown action" };
+}
+
+function getDeviceIcon(deviceType: string) {
+  switch (deviceType?.toLowerCase()) {
+    case 'mobile':
+      return <Smartphone className="h-4 w-4" />;
+    case 'tablet':
+      return <Tablet className="h-4 w-4" />;
+    case 'desktop':
+    default:
+      return <Monitor className="h-4 w-4" />;
+  }
+}
+
+function formatDate(dateString: string) {
+  if (!dateString) return 'N/A';
+  try {
+    return new Date(dateString).toLocaleString();
+  } catch {
+    return dateString;
+  }
+}
+
 export default function SessionsPage() {
-  const { authServerUrl, dashboardUrl } = useLoaderData<typeof loader>();
+  const { sessions, stats, suspicious, total, error } = useLoaderData<LoaderData>();
+  const fetcher = useFetcher();
+  const [searchUserId, setSearchUserId] = useState('');
+
+  const suspiciousCount =
+    (suspicious?.multipleIPsInShortTime?.length || 0) +
+    (suspicious?.failedThenSuccessfulLogins?.length || 0);
 
   return (
     <div className="min-h-screen bg-[rgb(var(--color-background))]">
@@ -96,109 +246,237 @@ export default function SessionsPage() {
           </p>
         </div>
 
-        {/* Info Cards */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
+            Error loading sessions: {error}
+          </div>
+        )}
+
+        {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Browser Sessions</CardTitle>
-              <Monitor className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                Track active browser sessions per user
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Multi-Account</CardTitle>
+              <CardTitle className="text-sm font-medium">Total Sessions</CardTitle>
               <Users className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
             </CardHeader>
             <CardContent>
+              <div className="text-2xl font-bold">{stats.totalSessions}</div>
               <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                Up to 3 accounts per browser session
+                Active sessions across all users
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Device Types</CardTitle>
-              <Smartphone className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+              <CardTitle className="text-sm font-medium">Active Now</CardTitle>
+              <Activity className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
+              <div className="text-2xl font-bold text-green-500">{stats.activeSessions}</div>
               <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                Desktop, Mobile, Tablet tracking
+                Used in the last hour
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Security</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+              <CardTitle className="text-sm font-medium">Logins (24h)</CardTitle>
+              <Clock className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
             </CardHeader>
             <CardContent>
+              <div className="text-2xl font-bold">{stats.loginsLast24h}</div>
               <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                Force logout and session revocation
+                New logins in the last 24 hours
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Suspicious</CardTitle>
+              <AlertTriangle className={`h-4 w-4 ${suspiciousCount > 0 ? 'text-yellow-500' : 'text-[rgb(var(--color-muted-foreground))]'}`} />
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${suspiciousCount > 0 ? 'text-yellow-500' : ''}`}>
+                {suspiciousCount}
+              </div>
+              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                Flagged for review
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Main Action Card */}
-        <Card className="max-w-2xl mx-auto">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <div className="h-16 w-16 rounded-full bg-[rgb(var(--color-primary))]/10 flex items-center justify-center">
-                <Activity className="h-8 w-8 text-[rgb(var(--color-primary))]" />
+        {/* Device Breakdown */}
+        {Object.keys(stats.deviceBreakdown).length > 0 && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="text-lg">Device Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-6 flex-wrap">
+                {Object.entries(stats.deviceBreakdown).map(([device, count]) => (
+                  <div key={device} className="flex items-center gap-2">
+                    {getDeviceIcon(device)}
+                    <span className="capitalize">{device || 'Unknown'}</span>
+                    <Badge variant="secondary">{count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Suspicious Activity Alert */}
+        {suspiciousCount > 0 && (
+          <Card className="mb-8 border-yellow-500/50">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2 text-yellow-500">
+                <AlertTriangle className="h-5 w-5" />
+                Suspicious Activity Detected
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {suspicious.multipleIPsInShortTime.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2">Multiple IPs in Short Time</h4>
+                  <div className="space-y-2">
+                    {suspicious.multipleIPsInShortTime.map((item, i) => (
+                      <div key={i} className="text-sm p-2 bg-yellow-500/10 rounded">
+                        <span className="font-medium">{item.email}</span> - {item.ipCount} different IPs
+                        <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                          IPs: {Array.isArray(item.ipAddresses) ? item.ipAddresses.join(', ') : item.ipAddresses}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {suspicious.failedThenSuccessfulLogins.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2">Failed Then Successful Logins</h4>
+                  <div className="space-y-2">
+                    {suspicious.failedThenSuccessfulLogins.map((item, i) => (
+                      <div key={i} className="text-sm p-2 bg-yellow-500/10 rounded">
+                        <span className="font-medium">{item.email}</span> - {item.failedAttempts} failed attempts before success
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Sessions Table */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Active Sessions</CardTitle>
+                <CardDescription>
+                  {total} total sessions
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <form method="get" className="flex items-center gap-2">
+                  <Input
+                    name="user_id"
+                    placeholder="Filter by User ID..."
+                    value={searchUserId}
+                    onChange={(e) => setSearchUserId(e.target.value)}
+                    className="w-64"
+                  />
+                  <Button type="submit" variant="outline" size="icon">
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </form>
+                <Button variant="outline" size="icon" onClick={() => window.location.reload()}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-            <CardTitle className="text-2xl">Session Dashboard</CardTitle>
-            <CardDescription className="text-base">
-              Access the full session management dashboard to monitor active sessions,
-              view device breakdowns, detect suspicious activity, and manage user sessions.
-            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="bg-[rgb(var(--color-muted))]/30 rounded-lg p-4">
-              <h4 className="font-medium mb-2">Available Actions:</h4>
-              <ul className="space-y-2 text-sm text-[rgb(var(--color-muted-foreground))]">
-                <li className="flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  View all active sessions across users
-                </li>
-                <li className="flex items-center gap-2">
-                  <Monitor className="h-4 w-4" />
-                  See device type breakdown (Desktop/Mobile/Tablet)
-                </li>
-                <li className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4" />
-                  Monitor suspicious activity alerts
-                </li>
-                <li className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Track login patterns and session duration
-                </li>
-                <li className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Terminate individual or all user sessions
-                </li>
-              </ul>
-            </div>
-
-            <Button asChild className="w-full" size="lg">
-              <a href={dashboardUrl} target="_blank" rel="noopener noreferrer">
-                <Activity className="h-5 w-5 mr-2" />
-                Open Session Dashboard
-                <ExternalLink className="h-4 w-4 ml-2" />
-              </a>
-            </Button>
-
-            <p className="text-center text-xs text-[rgb(var(--color-muted-foreground))]">
-              Opens in a new tab on the authentication server
-            </p>
+          <CardContent>
+            {sessions.length === 0 ? (
+              <div className="text-center py-8 text-[rgb(var(--color-muted-foreground))]">
+                <HelpCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No active sessions found</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead>Device</TableHead>
+                    <TableHead>IP Address</TableHead>
+                    <TableHead>Last Used</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sessions.map((session) => (
+                    <TableRow key={session.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{session.email}</div>
+                          <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                            {session.userId}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {getDeviceIcon(session.device?.type)}
+                          <span className="capitalize">{session.device?.type || 'Unknown'}</span>
+                        </div>
+                        {session.device?.name && (
+                          <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                            {session.device.name}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Globe className="h-3 w-3" />
+                          {session.device?.ipAddress || 'N/A'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>{formatDate(session.lastUsed)}</div>
+                        <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                          Auth: {formatDate(session.authenticatedAt)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={session.isActive ? "default" : "secondary"}>
+                          {session.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <fetcher.Form method="post">
+                          <input type="hidden" name="_action" value="terminate" />
+                          <input type="hidden" name="userId" value={session.userId} />
+                          <input type="hidden" name="sessionId" value={session.id} />
+                          <Button
+                            type="submit"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                            disabled={fetcher.state !== 'idle'}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </fetcher.Form>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </main>

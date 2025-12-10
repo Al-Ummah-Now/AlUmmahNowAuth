@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { Link, useLoaderData, useRevalidator } from "react-router";
+import { Link, useLoaderData, useFetcher } from "react-router";
 import { ArrowLeft, Plus, Key, Trash2, RefreshCw, Copy, Check, Globe, Lock, Settings } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -26,6 +26,15 @@ import {
 import { requireAuth } from "../lib/auth.server";
 import { logger } from "../lib/logger.server";
 import { getAuthServerUrl } from "../lib/config";
+import {
+  listClients,
+  createClient,
+  updateClient,
+  deleteClient as deleteOAuthClient,
+  rotateClientSecret,
+  isErrorResponse,
+  type ActingUser,
+} from "../lib/admin-api.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -53,6 +62,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
@@ -63,8 +74,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   // Always require authentication
+  let currentUser: { id: string; email: string; roles: string[] };
   try {
-    await requireAuth(request, env, true);
+    currentUser = await requireAuth(request, env, true) as { id: string; email: string; roles: string[] };
   } catch (error) {
     if (error instanceof Response) {
       throw error;
@@ -75,37 +87,25 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
   }
 
+  // Construct acting user for M2M API calls
+  const actingUser: ActingUser = {
+    id: currentUser.id,
+    email: currentUser.email,
+    roles: currentUser.roles || [],
+  };
+
   const authServerUrl = getAuthServerUrl(request, env);
 
   try {
-    if (!env?.AUTH_DB) {
-      logger.warn("AUTH_DB not available");
+    // Fetch clients via M2M API
+    const clientsResponse = await listClients(env, actingUser);
+
+    if (isErrorResponse(clientsResponse)) {
+      logger.error("Error loading clients:", { error: clientsResponse.error });
       return { clients: [], authServerUrl };
     }
 
-    // Query D1 directly like other admin pages
-    const result = await env.AUTH_DB.prepare(`
-      SELECT id, client_id, client_type, allowed_grants, redirect_uris, created_at
-      FROM oauth_clients
-      ORDER BY created_at DESC
-    `).all<{
-      id: string;
-      client_id: string;
-      client_type: string;
-      allowed_grants: string;
-      redirect_uris: string;
-      created_at: number;
-    }>();
-
-    // Parse JSON fields
-    const clients = (result.results || []).map(client => ({
-      ...client,
-      client_type: client.client_type as "public" | "confidential",
-      allowed_grants: client.allowed_grants ? client.allowed_grants.split(',') : [],
-      redirect_uris: client.redirect_uris ? client.redirect_uris.split(',') : [],
-    }));
-
-    return { clients, authServerUrl };
+    return { clients: clientsResponse.clients, authServerUrl };
   } catch (error) {
     logger.error("Error loading clients:", { error });
     return { clients: [], authServerUrl };
@@ -117,10 +117,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
     AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
   };
 
+  let currentUser: { id: string; email: string; roles: string[] };
   try {
-    await requireAuth(request, env, true);
+    currentUser = await requireAuth(request, env, true) as { id: string; email: string; roles: string[] };
   } catch (error) {
     if (error instanceof Response) {
       throw error;
@@ -128,51 +131,43 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return { error: "Unauthorized" };
   }
 
-  const authServerUrl = getAuthServerUrl(request, env);
+  // Construct acting user for M2M API calls
+  const actingUser: ActingUser = {
+    id: currentUser.id,
+    email: currentUser.email,
+    roles: currentUser.roles || [],
+  };
+
   const formData = await request.formData();
   const intent = formData.get("intent");
 
   if (intent === "create") {
     const clientId = formData.get("client_id") as string;
-    const clientType = formData.get("client_type") as string;
+    const clientType = formData.get("client_type") as "public" | "confidential";
     const redirectUris = (formData.get("redirect_uris") as string).split("\n").filter(u => u.trim());
     const allowedGrants = formData.getAll("allowed_grants") as string[];
 
-    const response = await fetch(`${authServerUrl}/admin/clients`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: request.headers.get("Cookie") || "",
-      },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_type: clientType,
-        redirect_uris: redirectUris,
-        allowed_grants: allowedGrants.length > 0 ? allowedGrants : ["authorization_code", "refresh_token"],
-      }),
+    const result = await createClient(env, actingUser, {
+      client_id: clientId,
+      client_type: clientType,
+      redirect_uris: redirectUris,
+      allowed_grants: allowedGrants.length > 0 ? allowedGrants : ["authorization_code", "refresh_token"],
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Failed to create client" }));
-      return { error: (error as { error?: string }).error || "Failed to create client" };
+    if (isErrorResponse(result)) {
+      return { error: result.error };
     }
 
-    const result = await response.json() as { client_secret?: string };
     return { success: true, client_secret: result.client_secret };
   }
 
   if (intent === "delete") {
     const clientId = formData.get("client_id") as string;
 
-    const response = await fetch(`${authServerUrl}/admin/clients/${encodeURIComponent(clientId)}`, {
-      method: "DELETE",
-      headers: {
-        Cookie: request.headers.get("Cookie") || "",
-      },
-    });
+    const result = await deleteOAuthClient(env, actingUser, clientId);
 
-    if (!response.ok) {
-      return { error: "Failed to delete client" };
+    if (isErrorResponse(result)) {
+      return { error: result.error };
     }
 
     return { success: true };
@@ -181,19 +176,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (intent === "rotate_secret") {
     const clientId = formData.get("client_id") as string;
 
-    const response = await fetch(`${authServerUrl}/admin/clients/${encodeURIComponent(clientId)}/rotate-secret`, {
-      method: "POST",
-      headers: {
-        Cookie: request.headers.get("Cookie") || "",
-      },
-    });
+    const result = await rotateClientSecret(env, actingUser, clientId);
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Failed to rotate secret" }));
-      return { error: (error as { error?: string }).error || "Failed to rotate secret" };
+    if (isErrorResponse(result)) {
+      return { error: result.error };
     }
 
-    const result = await response.json() as { client_secret?: string };
     return { success: true, newSecret: result.client_secret };
   }
 
@@ -202,20 +190,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const redirectUris = (formData.get("redirect_uris") as string).split("\n").filter(u => u.trim());
     const allowedGrants = formData.getAll("allowed_grants") as string[];
 
-    const response = await fetch(`${authServerUrl}/admin/clients/${encodeURIComponent(clientId)}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: request.headers.get("Cookie") || "",
-      },
-      body: JSON.stringify({
-        redirect_uris: redirectUris,
-        allowed_grants: allowedGrants,
-      }),
+    const result = await updateClient(env, actingUser, clientId, {
+      redirect_uris: redirectUris,
+      allowed_grants: allowedGrants,
     });
 
-    if (!response.ok) {
-      return { error: "Failed to update client" };
+    if (isErrorResponse(result)) {
+      return { error: result.error };
     }
 
     return { success: true };
@@ -225,8 +206,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
 }
 
 export default function ClientsPage() {
-  const { clients, authServerUrl } = useLoaderData<LoaderData>();
-  const revalidator = useRevalidator();
+  const { clients } = useLoaderData<LoaderData>();
+  const fetcher = useFetcher<{ success?: boolean; error?: string; client_secret?: string; newSecret?: string }>();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -235,7 +216,6 @@ export default function ClientsPage() {
   const [selectedClient, setSelectedClient] = useState<OAuthClient | null>(null);
   const [newClientSecret, setNewClientSecret] = useState<string | null>(null);
   const [copiedSecret, setCopiedSecret] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Form state for create
@@ -248,147 +228,90 @@ export default function ClientsPage() {
   const [editRedirectUris, setEditRedirectUris] = useState("");
   const [editAllowedGrants, setEditAllowedGrants] = useState<string[]>([]);
 
-  const handleCreate = async () => {
-    setIsLoading(true);
-    setError(null);
+  const isLoading = fetcher.state !== "idle";
 
-    try {
-      const formData = new FormData();
-      formData.append("intent", "create");
-      formData.append("client_id", newClientId);
-      formData.append("client_type", newClientType);
-      formData.append("redirect_uris", newRedirectUris);
-      newAllowedGrants.forEach(grant => formData.append("allowed_grants", grant));
+  // Handle fetcher responses
+  useEffect(() => {
+    if (fetcher.data) {
+      if (fetcher.data.error) {
+        setError(fetcher.data.error);
+      } else if (fetcher.data.success) {
+        setError(null);
 
-      const response = await fetch(`${authServerUrl}/admin/clients`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          client_id: newClientId,
-          client_type: newClientType,
-          redirect_uris: newRedirectUris.split("\n").filter(u => u.trim()),
-          allowed_grants: newAllowedGrants,
-        }),
-      });
+        // Handle client secret from create
+        if (fetcher.data.client_secret) {
+          setNewClientSecret(fetcher.data.client_secret);
+          setSecretDialogOpen(true);
+          setCreateDialogOpen(false);
+          setNewClientId("");
+          setNewClientType("public");
+          setNewRedirectUris("");
+          setNewAllowedGrants(["authorization_code", "refresh_token"]);
+        }
 
-      const result = await response.json() as { error?: string; client_secret?: string };
+        // Handle client secret from rotate
+        if (fetcher.data.newSecret) {
+          setNewClientSecret(fetcher.data.newSecret);
+          setSecretDialogOpen(true);
+        }
 
-      if (!response.ok) {
-        setError(result.error || "Failed to create client");
-        return;
+        // Close dialogs on success
+        if (deleteDialogOpen) {
+          setDeleteDialogOpen(false);
+          setSelectedClient(null);
+        }
+        if (editDialogOpen) {
+          setEditDialogOpen(false);
+          setSelectedClient(null);
+        }
       }
-
-      if (result.client_secret) {
-        setNewClientSecret(result.client_secret);
-        setSecretDialogOpen(true);
-      }
-
-      setCreateDialogOpen(false);
-      setNewClientId("");
-      setNewClientType("public");
-      setNewRedirectUris("");
-      setNewAllowedGrants(["authorization_code", "refresh_token"]);
-      revalidator.revalidate();
-    } catch (err) {
-      setError("Failed to create client");
-    } finally {
-      setIsLoading(false);
     }
+  }, [fetcher.data, deleteDialogOpen, editDialogOpen]);
+
+  const handleCreate = () => {
+    setError(null);
+    const formData = new FormData();
+    formData.append("intent", "create");
+    formData.append("client_id", newClientId);
+    formData.append("client_type", newClientType);
+    formData.append("redirect_uris", newRedirectUris);
+    newAllowedGrants.forEach(grant => formData.append("allowed_grants", grant));
+
+    fetcher.submit(formData, { method: "POST" });
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!selectedClient) return;
-    setIsLoading(true);
     setError(null);
 
-    try {
-      const response = await fetch(
-        `${authServerUrl}/admin/clients/${encodeURIComponent(selectedClient.client_id)}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
-      );
+    const formData = new FormData();
+    formData.append("intent", "delete");
+    formData.append("client_id", selectedClient.client_id);
 
-      if (!response.ok) {
-        setError("Failed to delete client");
-        return;
-      }
-
-      setDeleteDialogOpen(false);
-      setSelectedClient(null);
-      revalidator.revalidate();
-    } catch (err) {
-      setError("Failed to delete client");
-    } finally {
-      setIsLoading(false);
-    }
+    fetcher.submit(formData, { method: "POST" });
   };
 
-  const handleUpdate = async () => {
+  const handleUpdate = () => {
     if (!selectedClient) return;
-    setIsLoading(true);
     setError(null);
 
-    try {
-      const response = await fetch(
-        `${authServerUrl}/admin/clients/${encodeURIComponent(selectedClient.client_id)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            redirect_uris: editRedirectUris.split("\n").filter(u => u.trim()),
-            allowed_grants: editAllowedGrants,
-          }),
-        }
-      );
+    const formData = new FormData();
+    formData.append("intent", "update");
+    formData.append("client_id", selectedClient.client_id);
+    formData.append("redirect_uris", editRedirectUris);
+    editAllowedGrants.forEach(grant => formData.append("allowed_grants", grant));
 
-      if (!response.ok) {
-        setError("Failed to update client");
-        return;
-      }
-
-      setEditDialogOpen(false);
-      setSelectedClient(null);
-      revalidator.revalidate();
-    } catch (err) {
-      setError("Failed to update client");
-    } finally {
-      setIsLoading(false);
-    }
+    fetcher.submit(formData, { method: "POST" });
   };
 
-  const handleRotateSecret = async (client: OAuthClient) => {
-    setIsLoading(true);
+  const handleRotateSecret = (client: OAuthClient) => {
     setError(null);
 
-    try {
-      const response = await fetch(
-        `${authServerUrl}/admin/clients/${encodeURIComponent(client.client_id)}/rotate-secret`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
+    const formData = new FormData();
+    formData.append("intent", "rotate_secret");
+    formData.append("client_id", client.client_id);
 
-      const result = await response.json() as { error?: string; client_secret?: string };
-
-      if (!response.ok) {
-        setError(result.error || "Failed to rotate secret");
-        return;
-      }
-
-      if (result.client_secret) {
-        setNewClientSecret(result.client_secret);
-        setSecretDialogOpen(true);
-      }
-    } catch (err) {
-      setError("Failed to rotate secret");
-    } finally {
-      setIsLoading(false);
-    }
+    fetcher.submit(formData, { method: "POST" });
   };
 
   const copySecret = () => {

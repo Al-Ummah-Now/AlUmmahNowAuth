@@ -486,3 +486,23 @@ export function createPermissionManagementEvent(
     },
   });
 }
+
+export function createUserManagementEvent(
+  eventType: AuditEventType,
+  targetUserId: string,
+  targetEmail: string,
+  performedBy: string,
+  details: Record<string, unknown> = {}
+): AuditEvent {
+  return createAuditEvent(eventType, {
+    severity: eventType === AuditEventType.USER_DELETED
+      ? AuditEventSeverity.WARNING
+      : AuditEventSeverity.INFO,
+    userId: performedBy,
+    metadata: {
+      targetUserId,
+      targetEmail,
+      ...details,
+    },
+  });
+}

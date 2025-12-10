@@ -8,7 +8,7 @@
  * - Service health metrics
  */
 
-import { verifyAdminAuth, createAuthErrorResponse } from './auth-middleware';
+import { verifyAdminAuth, verifyAdminRequest, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter-enhanced';
 import { AuditEventType, AuditEventSeverity, createSecurityAlertEvent } from './audit-events';
@@ -555,19 +555,24 @@ export class AdminEnterpriseRoutes {
    */
   private async listClients(request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:clients');
 
+      // OpenAuth schema: id, name, client_secret_hash, grant_types, scopes, redirect_uris, created_at
       const result = await this.db.prepare(`
-        SELECT id, client_id, client_type, allowed_grants, redirect_uris, created_at
+        SELECT id, name, client_secret_hash, grant_types, redirect_uris, created_at
         FROM oauth_clients
         ORDER BY created_at DESC
-      `).all<Omit<OAuthClient, 'client_secret_hash'>>();
+      `).all<{ id: string; name: string; client_secret_hash: string | null; grant_types: string; redirect_uris: string; created_at: number }>();
 
-      // Parse JSON fields
+      // Map to API response format
       const clients = (result.results || []).map(client => ({
-        ...client,
-        allowed_grants: JSON.parse(client.allowed_grants || '[]'),
+        id: client.id,
+        client_id: client.id, // For backward compatibility
+        name: client.name,
+        client_type: client.client_secret_hash ? 'confidential' : 'public',
+        allowed_grants: JSON.parse(client.grant_types || '[]'),
         redirect_uris: JSON.parse(client.redirect_uris || '[]'),
+        created_at: client.created_at,
       }));
 
       return new Response(JSON.stringify({ clients }), {
@@ -591,7 +596,8 @@ export class AdminEnterpriseRoutes {
    */
   private async createClient(request: Request, env: Env): Promise<Response> {
     try {
-      const authContext = await verifyAdminAuth(request, env);
+      const authContext = await verifyAdminRequest(request, env, 'admin:clients');
+      const userId = authContext.type === 'm2m' ? authContext.actingUser.id : authContext.user.id;
 
       // Rate limiting
       const clientIP = getClientIP(request);
@@ -620,17 +626,19 @@ export class AdminEnterpriseRoutes {
         clientSecretHash = Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
       }
 
+      // OpenAuth schema: id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at
+      const now = Date.now();
       await this.db.prepare(`
-        INSERT INTO oauth_clients (id, client_id, client_secret_hash, client_type, allowed_grants, redirect_uris, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at)
+        VALUES (?, 'default', ?, ?, ?, '[]', ?, '{}', 1, ?, ?)
       `).bind(
         id,
-        validated.client_id,
+        validated.client_id, // Use client_id as the name
         clientSecretHash,
-        validated.client_type,
         JSON.stringify(validated.allowed_grants),
         JSON.stringify(validated.redirect_uris),
-        Math.floor(Date.now() / 1000)
+        now,
+        now
       ).run();
 
       // Emit audit event
@@ -638,7 +646,7 @@ export class AdminEnterpriseRoutes {
         timestamp: new Date().toISOString(),
         eventType: AuditEventType.OAUTH_CLIENT_CREATED,
         severity: AuditEventSeverity.INFO,
-        userId: authContext.user.id,
+        userId,
         ipAddress: getClientIP(request),
         userAgent: request.headers.get('User-Agent'),
         requestId: null,
@@ -652,7 +660,7 @@ export class AdminEnterpriseRoutes {
 
       logger.info('OAuth client created', {
         clientId: validated.client_id,
-        createdBy: authContext.user.id,
+        createdBy: userId,
       });
 
       // Return client info (and secret ONLY on creation for confidential clients)
@@ -694,22 +702,27 @@ export class AdminEnterpriseRoutes {
    */
   private async getClient(clientId: string, request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:clients');
 
+      // OpenAuth schema uses 'id' as the client identifier
       const client = await this.db.prepare(`
-        SELECT id, client_id, client_type, allowed_grants, redirect_uris, created_at
+        SELECT id, name, client_secret_hash, grant_types, redirect_uris, created_at
         FROM oauth_clients
-        WHERE client_id = ?
-      `).bind(clientId).first<Omit<OAuthClient, 'client_secret_hash'>>();
+        WHERE id = ?
+      `).bind(clientId).first<{ id: string; name: string; client_secret_hash: string | null; grant_types: string; redirect_uris: string; created_at: number }>();
 
       if (!client) {
         return createAuthErrorResponse('Client not found', 404);
       }
 
       return new Response(JSON.stringify({
-        ...client,
-        allowed_grants: JSON.parse(client.allowed_grants || '[]'),
+        id: client.id,
+        client_id: client.id,
+        name: client.name,
+        client_type: client.client_secret_hash ? 'confidential' : 'public',
+        allowed_grants: JSON.parse(client.grant_types || '[]'),
         redirect_uris: JSON.parse(client.redirect_uris || '[]'),
+        created_at: client.created_at,
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -732,17 +745,18 @@ export class AdminEnterpriseRoutes {
    */
   private async updateClient(clientId: string, request: Request, env: Env): Promise<Response> {
     try {
-      const authContext = await verifyAdminAuth(request, env);
+      const authContext = await verifyAdminRequest(request, env, 'admin:clients');
+      const userId = authContext.type === 'm2m' ? authContext.actingUser.id : authContext.user.id;
 
       const body = await request.json();
       const validated = v.parse(UpdateClientSchema, body);
 
-      // Build update query dynamically
+      // Build update query dynamically (OpenAuth schema uses grant_types, not allowed_grants)
       const updates: string[] = [];
       const bindParams: unknown[] = [];
 
       if (validated.allowed_grants) {
-        updates.push('allowed_grants = ?');
+        updates.push('grant_types = ?');
         bindParams.push(JSON.stringify(validated.allowed_grants));
       }
       if (validated.redirect_uris) {
@@ -754,10 +768,14 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('No updates provided', 400);
       }
 
+      // Add updated_at timestamp
+      updates.push('updated_at = ?');
+      bindParams.push(Date.now());
+
       bindParams.push(clientId);
 
       const result = await this.db.prepare(`
-        UPDATE oauth_clients SET ${updates.join(', ')} WHERE client_id = ?
+        UPDATE oauth_clients SET ${updates.join(', ')} WHERE id = ?
       `).bind(...bindParams).run();
 
       if (!result.meta?.changes || result.meta.changes === 0) {
@@ -769,7 +787,7 @@ export class AdminEnterpriseRoutes {
         timestamp: new Date().toISOString(),
         eventType: AuditEventType.OAUTH_CLIENT_UPDATED,
         severity: AuditEventSeverity.INFO,
-        userId: authContext.user.id,
+        userId,
         ipAddress: getClientIP(request),
         userAgent: request.headers.get('User-Agent'),
         requestId: null,
@@ -783,7 +801,7 @@ export class AdminEnterpriseRoutes {
 
       logger.info('OAuth client updated', {
         clientId,
-        updatedBy: authContext.user.id,
+        updatedBy: userId,
       });
 
       return new Response(JSON.stringify({ success: true }), {
@@ -812,7 +830,8 @@ export class AdminEnterpriseRoutes {
    */
   private async deleteClient(clientId: string, request: Request, env: Env): Promise<Response> {
     try {
-      const authContext = await verifyAdminAuth(request, env);
+      const authContext = await verifyAdminRequest(request, env, 'admin:clients');
+      const userId = authContext.type === 'm2m' ? authContext.actingUser.id : authContext.user.id;
 
       // Rate limiting for destructive operations
       const rateLimitIP = getClientIP(request);
@@ -822,7 +841,7 @@ export class AdminEnterpriseRoutes {
       }
 
       const result = await this.db.prepare(
-        'DELETE FROM oauth_clients WHERE client_id = ?'
+        'DELETE FROM oauth_clients WHERE id = ?'
       ).bind(clientId).run();
 
       if (!result.meta?.changes || result.meta.changes === 0) {
@@ -834,7 +853,7 @@ export class AdminEnterpriseRoutes {
         timestamp: new Date().toISOString(),
         eventType: AuditEventType.OAUTH_CLIENT_DELETED,
         severity: AuditEventSeverity.WARNING,
-        userId: authContext.user.id,
+        userId,
         ipAddress: getClientIP(request),
         userAgent: request.headers.get('User-Agent'),
         requestId: null,
@@ -847,7 +866,7 @@ export class AdminEnterpriseRoutes {
 
       logger.info('OAuth client deleted', {
         clientId,
-        deletedBy: authContext.user.id,
+        deletedBy: userId,
       });
 
       return new Response(JSON.stringify({ success: true }), {
@@ -872,7 +891,8 @@ export class AdminEnterpriseRoutes {
    */
   private async rotateClientSecret(clientId: string, request: Request, env: Env): Promise<Response> {
     try {
-      const authContext = await verifyAdminAuth(request, env);
+      const authContext = await verifyAdminRequest(request, env, 'admin:clients');
+      const userId = authContext.type === 'm2m' ? authContext.actingUser.id : authContext.user.id;
 
       // Rate limiting
       const rateLimitIP = getClientIP(request);
@@ -881,16 +901,16 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('Rate limit exceeded', 429);
       }
 
-      // Check client exists and is confidential
+      // Check client exists and is confidential (has client_secret_hash)
       const client = await this.db.prepare(
-        'SELECT id, client_type FROM oauth_clients WHERE client_id = ?'
-      ).bind(clientId).first<{ id: string; client_type: string }>();
+        'SELECT id, client_secret_hash FROM oauth_clients WHERE id = ?'
+      ).bind(clientId).first<{ id: string; client_secret_hash: string | null }>();
 
       if (!client) {
         return createAuthErrorResponse('Client not found', 404);
       }
 
-      if (client.client_type !== 'confidential') {
+      if (!client.client_secret_hash) {
         return createAuthErrorResponse('Cannot rotate secret for public clients', 400);
       }
 
@@ -906,15 +926,15 @@ export class AdminEnterpriseRoutes {
 
       // Update in database
       await this.db.prepare(
-        'UPDATE oauth_clients SET client_secret_hash = ? WHERE client_id = ?'
-      ).bind(newSecretHash, clientId).run();
+        'UPDATE oauth_clients SET client_secret_hash = ?, updated_at = ? WHERE id = ?'
+      ).bind(newSecretHash, Date.now(), clientId).run();
 
       // Emit audit event
       await emitAuditEvent({
         timestamp: new Date().toISOString(),
         eventType: AuditEventType.OAUTH_CLIENT_SECRET_ROTATED,
         severity: AuditEventSeverity.WARNING,
-        userId: authContext.user.id,
+        userId,
         ipAddress: getClientIP(request),
         userAgent: request.headers.get('User-Agent'),
         requestId: null,
@@ -927,7 +947,7 @@ export class AdminEnterpriseRoutes {
 
       logger.info('OAuth client secret rotated', {
         clientId,
-        rotatedBy: authContext.user.id,
+        rotatedBy: userId,
       });
 
       return new Response(JSON.stringify({

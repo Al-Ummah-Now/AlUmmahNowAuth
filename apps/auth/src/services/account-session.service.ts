@@ -122,7 +122,7 @@ export class AccountSessionService {
 				now,
 				expiresAt,
 				params.refreshToken || '',
-				params.clientId || 'profile-app',
+				params.clientId || '109a1087-6626-40f7-8a7f-7f42f83f4f30',
 				params.subjectType || 'user',
 				params.subjectProperties ? JSON.stringify(params.subjectProperties) : '{}'
 			)

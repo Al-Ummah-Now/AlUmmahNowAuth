@@ -10,7 +10,8 @@
   },
   "vars": {
     "AUTH_SERVER_URL": "https://auth.qa.alummahnow.net",
-    "APP_URL": "https://admin.auth.qa.alummahnow.net"
+    "APP_URL": "https://admin.auth.qa.alummahnow.net",
+    "ADMIN_CLIENT_ID": "admin-dashboard-m2m"
   },
   "kv_namespaces": [
     {

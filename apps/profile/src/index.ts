@@ -95,7 +95,7 @@ function clearSessionCookie(isLocalhost: boolean) {
 // Get OpenAuth client
 function getAuthClient(authServerUrl: string) {
   return createClient({
-    clientID: "profile-app",
+    clientID: "109a1087-6626-40f7-8a7f-7f42f83f4f30",
     issuer: authServerUrl,
   });
 }
@@ -172,7 +172,7 @@ export default {
           body: new URLSearchParams({
             token: session.tokens.refresh,
             token_type_hint: 'refresh_token',
-            client_id: 'profile-app',
+            client_id: '109a1087-6626-40f7-8a7f-7f42f83f4f30',
           }),
         });
 
@@ -269,7 +269,7 @@ export default {
         if (error === 'login_required') {
           const appUrl = getAppUrl(request, env);
           const redirectUri = encodeURIComponent(`${appUrl}/callback`);
-          return Response.redirect(`${authServerUrl}/authorize?response_type=code&client_id=profile-app&redirect_uri=${redirectUri}`, 302);
+          return Response.redirect(`${authServerUrl}/authorize?response_type=code&client_id=109a1087-6626-40f7-8a7f-7f42f83f4f30&redirect_uri=${redirectUri}`, 302);
         }
         return Response.redirect(`${url.origin}/?error=${encodeURIComponent(error)}`, 302);
       }
@@ -975,7 +975,7 @@ export default {
                     // we need to get new tokens for the profile app.
                     // Use prompt=none for silent auth since session was just switched.
                     const redirectUri = encodeURIComponent(appUrl + '/callback');
-                    window.location.href = authServerUrl + '/authorize?response_type=code&client_id=profile-app&redirect_uri=' + redirectUri + '&prompt=none';
+                    window.location.href = authServerUrl + '/authorize?response_type=code&client_id=109a1087-6626-40f7-8a7f-7f42f83f4f30&redirect_uri=' + redirectUri + '&prompt=none';
                 } else {
                     console.error('Failed to switch account:', await response.text());
                 }
@@ -1007,7 +1007,7 @@ export default {
         function handleAddAccount() {
             const redirectUri = encodeURIComponent(appUrl + '/callback');
             // Use prompt=select_account to show account picker with existing accounts + "Use another account" option
-            window.location.href = authServerUrl + '/authorize?response_type=code&client_id=profile-app&redirect_uri=' + redirectUri + '&prompt=select_account';
+            window.location.href = authServerUrl + '/authorize?response_type=code&client_id=109a1087-6626-40f7-8a7f-7f42f83f4f30&redirect_uri=' + redirectUri + '&prompt=select_account';
         }
 
         function handleManageSessions() {
@@ -1094,7 +1094,7 @@ export default {
         function handleLogin() {
             // Use appUrl from server (respects APP_URL env var)
             const redirectUri = encodeURIComponent(appUrl + '/callback');
-            const loginUrl = \`\${authServerUrl}/authorize?response_type=code&client_id=profile-app&redirect_uri=\${redirectUri}\`;
+            const loginUrl = \`\${authServerUrl}/authorize?response_type=code&client_id=109a1087-6626-40f7-8a7f-7f42f83f4f30&redirect_uri=\${redirectUri}\`;
             window.location.href = loginUrl;
         }
 

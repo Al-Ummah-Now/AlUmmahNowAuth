@@ -38,9 +38,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Get OpenAuth client
   const client = getOpenAuthClient(request, env);
 
-  // Generate authorize URL
+  // Generate authorize URL with prompt=select for account picker
   logger.debug('Generating authorize URL');
-  const { url: authorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  const authorizeUrl = `${baseAuthorizeUrl}&prompt=select`;
   logger.debug('Authorize URL generated', { authorizeUrl });
 
   // Check if user is authenticated
@@ -300,7 +301,7 @@ export default function Index() {
               <Button variant="outline" asChild>
                 <Link to="/sessions">Sessions</Link>
               </Button>
-              <AccountSwitcher authServerUrl={data.authServerUrl} currentUser={data.user} />
+              <AccountSwitcher authServerUrl={data.authServerUrl} currentUser={data.user} clientId="1448ed27-39a6-417d-b4c8-07f881e81269" />
             </div>
           </div>
         </div>

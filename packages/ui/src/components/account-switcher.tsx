@@ -11,11 +11,11 @@ interface Account {
 export interface AccountSwitcherProps {
   authServerUrl: string;
   currentUser?: { id: string; email: string } | null;
-  /** OAuth client ID for adding accounts (e.g., 'admin-dashboard') */
-  clientId?: string;
+  /** OAuth client ID for adding accounts */
+  clientId: string;
 }
 
-export function AccountSwitcher({ authServerUrl, currentUser, clientId = 'admin-dashboard' }: AccountSwitcherProps) {
+export function AccountSwitcher({ authServerUrl, currentUser, clientId }: AccountSwitcherProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -160,7 +160,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId = 'admin-
           />
 
           {/* Dropdown */}
-          <div className="absolute right-0 top-full mt-2 w-72 bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))] rounded-lg shadow-lg z-50">
+          <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))] rounded-lg shadow-lg z-50">
             <div className="px-3 py-2 border-b border-[rgb(var(--color-border))]">
               <p className="text-xs font-medium text-[rgb(var(--color-muted-foreground))]">
                 Signed in accounts

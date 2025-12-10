@@ -28,9 +28,14 @@ const secretsCache = new Map<string, string>();
  */
 export async function getSecret(
 	binding: unknown,
-	secretName: string
+	secretName: string,
+	fallbackEnv?: Record<string, unknown>
 ): Promise<string> {
 	if (!binding) {
+		// Check fallback env if binding is undefined
+		if (fallbackEnv && typeof fallbackEnv[secretName] === 'string') {
+			return fallbackEnv[secretName] as string;
+		}
 		return '';
 	}
 
@@ -51,14 +56,28 @@ export async function getSecret(
 			const value = await (binding as { get: () => Promise<string> }).get();
 			const result = value || '';
 			// Cache the value for subsequent requests
-			secretsCache.set(secretName, result);
+			if (result) {
+				secretsCache.set(secretName, result);
+				return result;
+			}
+			// If secrets store returned empty, check fallback env
+			if (fallbackEnv && typeof fallbackEnv[secretName] === 'string') {
+				return fallbackEnv[secretName] as string;
+			}
 			return result;
 		} catch (_error) {
+			// Secrets store failed, try fallback env (for local dev)
+			if (fallbackEnv && typeof fallbackEnv[secretName] === 'string') {
+				return fallbackEnv[secretName] as string;
+			}
 			return '';
 		}
 	}
 
-	// Case 3: Unknown binding type
+	// Case 3: Unknown binding type - try fallback
+	if (fallbackEnv && typeof fallbackEnv[secretName] === 'string') {
+		return fallbackEnv[secretName] as string;
+	}
 	return '';
 }
 
@@ -75,9 +94,10 @@ export async function getSecret(
  */
 export async function requireSecret(
 	binding: unknown,
-	secretName: string
+	secretName: string,
+	fallbackEnv?: Record<string, unknown>
 ): Promise<string> {
-	const value = await getSecret(binding, secretName);
+	const value = await getSecret(binding, secretName, fallbackEnv);
 
 	if (!value) {
 		throw new Error(`Missing required secret: ${secretName}`);

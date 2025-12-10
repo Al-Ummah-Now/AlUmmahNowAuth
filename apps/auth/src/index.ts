@@ -37,6 +37,7 @@ import { checkRateLimit, getClientIP } from "./rate-limit";
 import { AdminRBACRoutes } from "./admin-rbac-routes";
 import { RBACRoutes } from "./rbac-routes";
 import { AdminEnterpriseRoutes } from "./admin-enterprise-routes";
+import { AdminUserRoutes } from "./admin-user-routes";
 import { initializeAuditEmitter, getAuditEmitter } from "./audit-emitter";
 import {
   createLoginSuccessEvent,
@@ -218,6 +219,7 @@ export default {
     const adminRBACRoutes = new AdminRBACRoutes(env.AUTH_DB, env.AUTH_STORAGE);
     const rbacRoutes = new RBACRoutes(env.AUTH_DB, env.AUTH_STORAGE);
     const adminEnterpriseRoutes = new AdminEnterpriseRoutes(env.AUTH_DB, env.AUTH_STORAGE);
+    const adminUserRoutes = new AdminUserRoutes(env.AUTH_DB, env.AUTH_STORAGE);
 
     // Handle admin RBAC routes
     if (url.pathname.startsWith('/admin/roles')) {
@@ -227,11 +229,22 @@ export default {
       }
     }
 
+    // Handle admin user CRUD routes (separate from token management)
+    // Token-related paths go to adminEnterpriseRoutes, user CRUD goes to adminUserRoutes
+    const isTokenManagementPath = url.pathname === '/admin/users/tokens/revoke' ||
+                                   url.pathname.match(/^\/admin\/users\/[^/]+\/tokens$/);
+    if (url.pathname.startsWith('/admin/users') && !isTokenManagementPath) {
+      const response = await adminUserRoutes.handle(request, env, ctx);
+      if (response.status !== 404) {
+        return addSecurityHeaders(response, isProduction);
+      }
+    }
+
     // Handle admin enterprise routes (audit logs, client management, token management, health)
     if (url.pathname === '/admin/audit' ||
         url.pathname.startsWith('/admin/audit-logs') ||
         url.pathname.startsWith('/admin/clients') ||
-        url.pathname.startsWith('/admin/users') ||
+        isTokenManagementPath ||
         url.pathname === '/admin/health' ||
         url.pathname === '/admin/metrics') {
       const response = await adminEnterpriseRoutes.handle(request, env, ctx);
@@ -785,7 +798,8 @@ export default {
 
         const profileUrl = env.PROFILE_APP_URL || 'http://localhost:3302';
         const profileCallback = `${profileUrl}/callback`;
-        const oauthUrl = `${url.origin}/authorize?response_type=code&client_id=profile-app&redirect_uri=${encodeURIComponent(profileCallback)}`;
+        const profileClientId = env.PROFILE_CLIENT_ID || '109a1087-6626-40f7-8a7f-7f42f83f4f30';
+        const oauthUrl = `${url.origin}/authorize?response_type=code&client_id=${profileClientId}&redirect_uri=${encodeURIComponent(profileCallback)}`;
 
         ctx.waitUntil(logger.finalizeRequest());
         return Response.redirect(oauthUrl, 302);
@@ -900,11 +914,13 @@ export default {
       sessionSecret,
       subjects,
       rbacService,
+      clientDb: env.AUTH_DB,
       tenantResolver: {
         customDomains: new Map([
           ['localhost', 'default'],
           ['127.0.0.1', 'default'],
           ['auth.alummahnow.net', 'default'],
+          ['auth.qa.alummahnow.net', 'default'],
         ]),
       },
       providers: {
@@ -975,7 +991,7 @@ export default {
               });
 
               try {
-                const apiKey = await requireSecret(env.RESEND_API_KEY, 'RESEND_API_KEY');
+                const apiKey = await requireSecret(env.RESEND_API_KEY, 'RESEND_API_KEY', env as Record<string, unknown>);
 
                 logger.debug('Using RESEND_API_KEY from environment');
 
@@ -1115,13 +1131,15 @@ export default {
           }
 
           // DEBUG: Log before calling subject
+          // Note: userID is required by OpenAuth enterprise issuer for RBAC enrichment
           logger.info('[DEBUG] Calling authCtx.subject', {
             type: 'user',
-            properties: { id: user.id, email, roles: user.roles },
+            properties: { id: user.id, userID: user.id, email, roles: user.roles },
           });
 
           const subjectResponse = await authCtx.subject("user", {
             id: user.id,
+            userID: user.id, // Required by OpenAuth for RBAC token enrichment
             email,
             roles: user.roles,
           });

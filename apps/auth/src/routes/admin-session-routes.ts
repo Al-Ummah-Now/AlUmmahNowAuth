@@ -29,7 +29,7 @@ type AdminVariables = {
 	adminUser: { userId: string; email: string; roles: string[] } | null;
 };
 
-const adminSessionRoutes = new Hono<{ Bindings: Env; Variables: AdminVariables }>();
+const adminSessionRoutes = new Hono<{ Bindings: Env; Variables: AdminVariables }>().basePath('/admin');
 
 /**
  * Rate Limiting Configuration for Admin Session Endpoints
@@ -385,7 +385,7 @@ adminSessionRoutes.post(
  * List all active sessions with filtering
  */
 adminSessionRoutes.get(
-	'/',
+	'/sessions',
 	adminRateLimit.view,
 	requirePermission('users:read'),
 	async (c) => {
@@ -476,7 +476,7 @@ adminSessionRoutes.get(
  * Get session statistics
  */
 adminSessionRoutes.get(
-	'/stats',
+	'/sessions/stats',
 	adminRateLimit.stats,
 	requirePermission('analytics:read'),
 	async (c) => {
@@ -545,7 +545,7 @@ adminSessionRoutes.get(
  * Get suspicious session activity
  */
 adminSessionRoutes.get(
-	'/suspicious',
+	'/sessions/suspicious',
 	adminRateLimit.view,
 	requirePermission('audit:read'),
 	async (c) => {
@@ -618,7 +618,7 @@ adminSessionRoutes.get(
  * Bulk terminate sessions by filter criteria
  */
 adminSessionRoutes.post(
-	'/bulk-terminate',
+	'/sessions/bulk-terminate',
 	adminRateLimit.terminate,
 	requirePermission('users:manage'),
 	async (c) => {

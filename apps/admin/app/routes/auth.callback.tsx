@@ -64,7 +64,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       appUrl,
       authServerUrl,
       redirectUri: `${appUrl}/auth/callback`,
-      clientId: 'admin-dashboard',
+      clientId: '1448ed27-39a6-417d-b4c8-07f881e81269',
       tokenEndpoint: `${authServerUrl}/token`
     });
 

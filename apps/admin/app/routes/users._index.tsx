@@ -24,8 +24,14 @@ import {
   getAllRoles,
   assignRoleToUser,
   removeRoleFromUser,
-  isErrorResponse,
+  isErrorResponse as isRbacError,
 } from "../lib/rbac-api.server";
+import {
+  listUsers,
+  deleteUser,
+  isErrorResponse,
+  type ActingUser,
+} from "../lib/admin-api.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -33,14 +39,6 @@ export const meta: MetaFunction = () => {
     { name: "description", content: "Manage user accounts" },
   ];
 };
-
-interface UserWithRoles {
-  id: string;
-  email: string;
-  created_at: string;
-  role_names: string | null;
-  role_ids: string | null;
-}
 
 interface LoaderData {
   users: Array<{
@@ -57,6 +55,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
@@ -67,8 +67,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   // Always require authentication
+  let currentUser: { id: string; email: string; roles: string[] };
   try {
-    await requireAuth(request, env, true);
+    currentUser = await requireAuth(request, env, true) as { id: string; email: string; roles: string[] };
   } catch (error) {
     // If it's a redirect response (from requireAuth), throw it
     if (error instanceof Response) {
@@ -83,44 +84,33 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
   }
 
+  // Construct acting user for M2M API calls
+  const actingUser: ActingUser = {
+    id: currentUser.id,
+    email: currentUser.email,
+    roles: currentUser.roles || [],
+  };
+
   try {
-    if (!env?.AUTH_DB) {
-      console.warn("AUTH_DB not available in development mode");
+    // Fetch users via M2M API
+    const usersResponse = await listUsers(env, actingUser);
+
+    if (isErrorResponse(usersResponse)) {
+      console.error("Error fetching users:", usersResponse.error);
       return { users: [], allRoles: [] };
     }
 
-    // Fetch users with their RBAC roles
-    const usersResult = await env.AUTH_DB.prepare(`
-      SELECT
-        u.id,
-        u.email,
-        u.created_at,
-        GROUP_CONCAT(r.name) as role_names,
-        GROUP_CONCAT(r.id) as role_ids
-      FROM user u
-      LEFT JOIN rbac_user_roles ur ON u.id = ur.user_id
-        AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
-      LEFT JOIN rbac_roles r ON ur.role_id = r.id
-      GROUP BY u.id
-      ORDER BY u.created_at DESC
-    `).all<UserWithRoles>();
-
-    // Transform the data to split the concatenated role names and IDs
-    const users = (usersResult.results || []).map((user) => ({
+    // Transform the API response to match component expectations
+    const users = usersResponse.users.map((user) => ({
       id: user.id,
       email: user.email,
       created_at: user.created_at,
-      roles: user.role_names && user.role_ids
-        ? user.role_names.split(',').map((name, idx) => ({
-            name: name.trim(),
-            id: user.role_ids!.split(',')[idx].trim(),
-          }))
-        : [],
+      roles: user.roles || [],
     }));
 
     // Fetch all roles for the role manager
     const rolesResponse = await getAllRoles(request, env);
-    const allRoles = isErrorResponse(rolesResponse) ? [] : rolesResponse;
+    const allRoles = isRbacError(rolesResponse) ? [] : rolesResponse;
 
     return { users, allRoles };
   } catch (error) {
@@ -134,11 +124,14 @@ export async function action({ request, context }: LoaderFunctionArgs) {
     AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
   };
 
   // Require authentication for actions
+  let currentUser: { id: string; email: string; roles: string[] };
   try {
-    await requireAuth(request, env, true);
+    currentUser = await requireAuth(request, env, true) as { id: string; email: string; roles: string[] };
   } catch (error) {
     if (error instanceof Response) {
       throw error;
@@ -150,6 +143,13 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       },
     });
   }
+
+  // Construct acting user for M2M API calls
+  const actingUser: ActingUser = {
+    id: currentUser.id,
+    email: currentUser.email,
+    roles: currentUser.roles || [],
+  };
 
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
@@ -165,7 +165,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 
       const result = await assignRoleToUser(request, env, userId, roleId);
 
-      if (isErrorResponse(result)) {
+      if (isRbacError(result)) {
         return { error: result.error };
       }
 
@@ -182,7 +182,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 
       const result = await removeRoleFromUser(request, env, userId, roleId);
 
-      if (isErrorResponse(result)) {
+      if (isRbacError(result)) {
         return { error: result.error };
       }
 
@@ -196,11 +196,11 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: "Missing userId" };
       }
 
-      // Delete user from database
-      if (env?.AUTH_DB) {
-        await env.AUTH_DB.prepare(`DELETE FROM user WHERE id = ?`)
-          .bind(userId)
-          .run();
+      // Delete user via M2M API
+      const result = await deleteUser(env, actingUser, userId);
+
+      if (isErrorResponse(result)) {
+        return { error: result.error };
       }
 
       return { success: true };
