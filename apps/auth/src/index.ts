@@ -991,7 +991,7 @@ export default {
               });
 
               try {
-                const apiKey = await requireSecret(env.RESEND_API_KEY, 'RESEND_API_KEY', env as Record<string, unknown>);
+                const apiKey = await requireSecret(env.RESEND_API_KEY, 'RESEND_API_KEY', env as unknown as Record<string, unknown>);
 
                 logger.debug('Using RESEND_API_KEY from environment');
 
@@ -1134,12 +1134,11 @@ export default {
           // Note: userID is required by OpenAuth enterprise issuer for RBAC enrichment
           logger.info('[DEBUG] Calling authCtx.subject', {
             type: 'user',
-            properties: { id: user.id, userID: user.id, email, roles: user.roles },
+            properties: { id: user.id, email, roles: user.roles },
           });
 
           const subjectResponse = await authCtx.subject("user", {
             id: user.id,
-            userID: user.id, // Required by OpenAuth for RBAC token enrichment
             email,
             roles: user.roles,
           });

@@ -32,6 +32,7 @@
   "vars": {
     "ENVIRONMENT": "production",
     "PROFILE_APP_URL": "https://profile.auth.alummahnow.net/",
+    "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
     "ALLOWED_ORIGINS": "*.alummahnow.net,https://alummahnow.net,https://www.alummahnow.net",
     "OPENAUTH_ISSUER": "https://auth.alummahnow.net",
     "AUDIT_WEBHOOK_URL": "",

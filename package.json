@@ -60,6 +60,6 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.7-pr.5.46"
+    "@al-ummah-now/openauth": "1.0.7-pr.5.48"
   }
 }

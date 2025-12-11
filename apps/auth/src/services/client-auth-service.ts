@@ -41,7 +41,7 @@ export interface OAuthClient {
  * @throws Error if CLIENT_SECRET_SALT is not configured
  */
 export async function hashClientSecret(secret: string, env: Env): Promise<string> {
-	const salt = await requireSecret(env.CLIENT_SECRET_SALT, 'CLIENT_SECRET_SALT', env as Record<string, unknown>);
+	const salt = await requireSecret(env.CLIENT_SECRET_SALT, 'CLIENT_SECRET_SALT', env as unknown as Record<string, unknown>);
 
 	const encoder = new TextEncoder();
 	const secretData = encoder.encode(secret);

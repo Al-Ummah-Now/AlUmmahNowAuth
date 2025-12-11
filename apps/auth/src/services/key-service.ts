@@ -92,7 +92,7 @@ export class KeyService {
 		}
 
 		// Encrypt private key before storage
-		const masterKey = await requireSecret(env.KEY_ENCRYPTION_MASTER_KEY, 'KEY_ENCRYPTION_MASTER_KEY', env as Record<string, unknown>);
+		const masterKey = await requireSecret(env.KEY_ENCRYPTION_MASTER_KEY, 'KEY_ENCRYPTION_MASTER_KEY', env as unknown as Record<string, unknown>);
 		const encryptedPrivateKey = await encrypt(
 			JSON.stringify(privateJwk),
 			masterKey
@@ -163,7 +163,7 @@ export class KeyService {
 		}
 
 		// Decrypt the private key
-		const masterKey = await requireSecret(env.KEY_ENCRYPTION_MASTER_KEY, 'KEY_ENCRYPTION_MASTER_KEY', env as Record<string, unknown>);
+		const masterKey = await requireSecret(env.KEY_ENCRYPTION_MASTER_KEY, 'KEY_ENCRYPTION_MASTER_KEY', env as unknown as Record<string, unknown>);
 		const decryptedPrivateKey = await decrypt(
 			result.private_key_encrypted,
 			masterKey

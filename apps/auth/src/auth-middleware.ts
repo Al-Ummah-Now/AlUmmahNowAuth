@@ -1,7 +1,64 @@
 import { getUserSession } from './session';
 import { PermissionService } from './permission-service';
 import { logger } from './logger';
-import { verifyM2MAuth, hasM2MAuth, M2MAuthResult, M2MAuthError, createM2MAuthErrorResponse } from './middleware/m2m-auth';
+import { bearerAuth, extractBearerToken } from '@al-ummah-now/openauth';
+
+/**
+ * Check if request has Bearer token (M2M auth)
+ */
+function hasM2MAuth(request: Request): boolean {
+  const authHeader = request.headers.get('Authorization');
+  return extractBearerToken(authHeader) !== null;
+}
+
+/**
+ * M2M auth result interface
+ */
+interface M2MAuthResult {
+  clientId: string;
+  tenantId?: string;
+  scopes: string[];
+}
+
+/**
+ * Verify M2M token using OpenAuth's bearerAuth with JWKS
+ */
+async function verifyM2MAuth(
+  request: Request,
+  env: Env,
+  _requiredScope?: string
+): Promise<M2MAuthResult> {
+  const issuer = env.OPENAUTH_ISSUER || 'http://localhost:3301';
+  const jwksUrl = `${issuer}/.well-known/jwks.json`;
+
+  // Create a minimal context to run bearerAuth
+  const context: Record<string, unknown> = {};
+  const setFn = (key: string, value: unknown) => { context[key] = value; };
+  const getFn = (key: string) => context[key];
+
+  const mockC = {
+    req: {
+      header: (name: string) => request.headers.get(name),
+    },
+    set: setFn,
+    get: getFn,
+  };
+
+  const authMiddleware = bearerAuth({
+    jwksUrl,
+    issuer,
+    requireM2M: true,
+  });
+
+  // Run the middleware
+  await authMiddleware(mockC as never, async () => {});
+
+  return {
+    clientId: context.clientId as string,
+    tenantId: context.tenantId as string | undefined,
+    scopes: context.scopes as string[] || [],
+  };
+}
 
 /**
  * Authentication context that will be passed through the request
@@ -221,9 +278,6 @@ export async function verifyAdminRequest(
         },
       };
     } catch (error) {
-      if (error instanceof M2MAuthError) {
-        throw error;
-      }
       throw new Error(error instanceof Error ? error.message : 'M2M authentication failed');
     }
   }
