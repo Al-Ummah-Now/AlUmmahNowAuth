@@ -512,9 +512,8 @@ export interface Session {
   lastUsed: string;
   isActive: boolean;
   device: {
-    type: string;
-    name: string;
     ipAddress: string;
+    userAgent: string;
   };
   lastActivity: string;
 }
@@ -530,7 +529,7 @@ export interface SessionStats {
   totalSessions: number;
   activeSessions: number;
   loginsLast24h: number;
-  deviceBreakdown: Record<string, number>;
+  uniqueUsers: number;
 }
 
 export interface SuspiciousActivity {
@@ -554,12 +553,11 @@ export interface SuspiciousActivity {
 export async function listSessions(
   env: ApiEnv,
   actingUser: ActingUser,
-  params?: { limit?: number; offset?: number; device_type?: string; ip_address?: string; user_id?: string }
+  params?: { limit?: number; offset?: number; ip_address?: string; user_id?: string }
 ): Promise<SessionsResponse | ErrorResponse> {
   const searchParams = new URLSearchParams();
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.offset) searchParams.set('offset', String(params.offset));
-  if (params?.device_type) searchParams.set('device_type', params.device_type);
   if (params?.ip_address) searchParams.set('ip_address', params.ip_address);
   if (params?.user_id) searchParams.set('user_id', params.user_id);
 

@@ -3,8 +3,6 @@ import { useLoaderData, Link, useFetcher } from "react-router";
 import {
   Users,
   Monitor,
-  Smartphone,
-  Tablet,
   Activity,
   AlertTriangle,
   Clock,
@@ -91,12 +89,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const limit = parseInt(url.searchParams.get('limit') || '50');
   const offset = parseInt(url.searchParams.get('offset') || '0');
-  const deviceType = url.searchParams.get('device_type') || undefined;
   const userId = url.searchParams.get('user_id') || undefined;
 
   // Fetch data in parallel
   const [sessionsResult, statsResult, suspiciousResult] = await Promise.all([
-    listSessions(env, actingUser, { limit, offset, device_type: deviceType, user_id: userId }),
+    listSessions(env, actingUser, { limit, offset, user_id: userId }),
     getSessionStats(env, actingUser),
     getSuspiciousActivity(env, actingUser),
   ]);
@@ -105,7 +102,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     totalSessions: 0,
     activeSessions: 0,
     loginsLast24h: 0,
-    deviceBreakdown: {},
+    uniqueUsers: 0,
   };
 
   const defaultSuspicious: SuspiciousActivity = {
@@ -176,18 +173,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   return { success: false, error: "Unknown action" };
-}
-
-function getDeviceIcon(deviceType: string) {
-  switch (deviceType?.toLowerCase()) {
-    case 'mobile':
-      return <Smartphone className="h-4 w-4" />;
-    case 'tablet':
-      return <Tablet className="h-4 w-4" />;
-    case 'desktop':
-    default:
-      return <Monitor className="h-4 w-4" />;
-  }
 }
 
 function formatDate(dateString: string) {
@@ -309,25 +294,6 @@ export default function SessionsPage() {
           </Card>
         </div>
 
-        {/* Device Breakdown */}
-        {Object.keys(stats.deviceBreakdown).length > 0 && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="text-lg">Device Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-6 flex-wrap">
-                {Object.entries(stats.deviceBreakdown).map(([device, count]) => (
-                  <div key={device} className="flex items-center gap-2">
-                    {getDeviceIcon(device)}
-                    <span className="capitalize">{device || 'Unknown'}</span>
-                    <Badge variant="secondary">{count}</Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Suspicious Activity Alert */}
         {suspiciousCount > 0 && (
@@ -430,12 +396,12 @@ export default function SessionsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {getDeviceIcon(session.device?.type)}
-                          <span className="capitalize">{session.device?.type || 'Unknown'}</span>
+                          <Monitor className="h-4 w-4" />
+                          <span>Device</span>
                         </div>
-                        {session.device?.name && (
-                          <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                            {session.device.name}
+                        {session.device?.userAgent && (
+                          <div className="text-xs text-[rgb(var(--color-muted-foreground))] max-w-[200px] truncate" title={session.device.userAgent}>
+                            {session.device.userAgent}
                           </div>
                         )}
                       </TableCell>

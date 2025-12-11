@@ -375,7 +375,7 @@ sessionRoutes.delete('/devices/:sessionId', sessionRateLimit.remoteLogout, requi
 	const revokedTokens = await TokenService.revokeSessionTokens(sessionId, c.env);
 
 	// Then revoke the session
-	await c.env.AUTH_DB.prepare(`UPDATE account_sessions SET is_revoked = 1 WHERE id = ?`).bind(sessionId).run();
+	await c.env.AUTH_DB.prepare(`UPDATE account_sessions SET is_active = 0 WHERE id = ?`).bind(sessionId).run();
 
 	// Emit audit event
 	await emitAuditEvent({

@@ -74,13 +74,10 @@ adminSessionRoutes.get(
 			SELECT
 				a.id as session_id,
 				a.authenticated_at,
-				a.auth_method,
-				a.last_used,
 				a.is_active,
 				a.expires_at,
+				a.client_id,
 				b.id as browser_session_id,
-				b.device_type,
-				b.device_name,
 				b.ip_address,
 				b.user_agent,
 				b.created_at as browser_created_at,
@@ -88,10 +85,9 @@ adminSessionRoutes.get(
 			FROM account_sessions a
 			JOIN browser_sessions b ON a.browser_session_id = b.id
 			WHERE a.user_id = ?
-				AND a.is_revoked = 0
-				AND b.is_revoked = 0
+				AND a.is_active = 1
 				AND a.expires_at > datetime('now')
-			ORDER BY a.last_used DESC
+			ORDER BY b.last_activity DESC
 		`)
 			.bind(userId)
 			.all();
@@ -122,13 +118,11 @@ adminSessionRoutes.get(
 				id: s.session_id,
 				browserSessionId: s.browser_session_id,
 				authenticatedAt: s.authenticated_at,
-				authMethod: s.auth_method,
-				lastUsed: s.last_used,
+				clientId: s.client_id,
+				lastUsed: s.last_activity,
 				isActive: Boolean(s.is_active),
 				expiresAt: s.expires_at,
 				device: {
-					type: s.device_type,
-					name: s.device_name,
 					ipAddress: s.ip_address,
 					userAgent: s.user_agent,
 				},
@@ -155,13 +149,13 @@ adminSessionRoutes.delete(
 
 		// Verify session belongs to user
 		const session = await c.env.AUTH_DB.prepare(`
-			SELECT a.id, a.browser_session_id, b.device_name
+			SELECT a.id, a.browser_session_id, b.user_agent
 			FROM account_sessions a
 			JOIN browser_sessions b ON a.browser_session_id = b.id
 			WHERE a.id = ? AND a.user_id = ?
 		`)
 			.bind(sessionId, userId)
-			.first<{ id: string; browser_session_id: string; device_name: string }>();
+			.first<{ id: string; browser_session_id: string; user_agent: string }>();
 
 		if (!session) {
 			return c.json({ error: 'Session not found' }, 404);
@@ -169,7 +163,7 @@ adminSessionRoutes.delete(
 
 		// Revoke the account session
 		await c.env.AUTH_DB.prepare(`
-			UPDATE account_sessions SET is_revoked = 1 WHERE id = ?
+			UPDATE account_sessions SET is_active = 0 WHERE id = ?
 		`)
 			.bind(sessionId)
 			.run();
@@ -190,7 +184,7 @@ adminSessionRoutes.delete(
 				action: 'admin.terminate_session',
 				targetUserId: userId,
 				sessionId: sessionId,
-				deviceName: session.device_name,
+				userAgent: session.user_agent,
 				tokensRevoked: revokedTokens.revoked,
 			},
 			success: true,
@@ -220,7 +214,7 @@ adminSessionRoutes.delete(
 		// Get count of sessions before deletion
 		const countResult = await c.env.AUTH_DB.prepare(`
 			SELECT COUNT(*) as count FROM account_sessions
-			WHERE user_id = ? AND is_revoked = 0
+			WHERE user_id = ? AND is_active = 1
 		`)
 			.bind(userId)
 			.first<{ count: number }>();
@@ -230,7 +224,7 @@ adminSessionRoutes.delete(
 		// Get all session IDs for token revocation
 		const sessions = await c.env.AUTH_DB.prepare(`
 			SELECT id FROM account_sessions
-			WHERE user_id = ? AND is_revoked = 0
+			WHERE user_id = ? AND is_active = 1
 		`)
 			.bind(userId)
 			.all<{ id: string }>();
@@ -244,7 +238,7 @@ adminSessionRoutes.delete(
 
 		// Revoke all account sessions
 		await c.env.AUTH_DB.prepare(`
-			UPDATE account_sessions SET is_revoked = 1 WHERE user_id = ?
+			UPDATE account_sessions SET is_active = 0 WHERE user_id = ?
 		`)
 			.bind(userId)
 			.run();
@@ -307,19 +301,19 @@ adminSessionRoutes.post(
 			return c.json({ error: 'User not found' }, 404);
 		}
 
-		// Revoke all browser sessions containing user
+		// Clear active user from all browser sessions for this user
 		const browserSessions = await c.env.AUTH_DB.prepare(`
 			SELECT DISTINCT b.id
 			FROM browser_sessions b
 			JOIN account_sessions a ON b.id = a.browser_session_id
-			WHERE a.user_id = ? AND b.is_revoked = 0
+			WHERE a.user_id = ?
 		`)
 			.bind(userId)
 			.all<{ id: string }>();
 
 		for (const bs of browserSessions.results || []) {
 			await c.env.AUTH_DB.prepare(`
-				UPDATE browser_sessions SET is_revoked = 1 WHERE id = ?
+				UPDATE browser_sessions SET active_user_id = NULL WHERE id = ?
 			`)
 				.bind(bs.id)
 				.run();
@@ -327,7 +321,7 @@ adminSessionRoutes.post(
 
 		// Revoke all account sessions
 		const accountSessionsResult = await c.env.AUTH_DB.prepare(`
-			UPDATE account_sessions SET is_revoked = 1 WHERE user_id = ?
+			UPDATE account_sessions SET is_active = 0 WHERE user_id = ?
 		`)
 			.bind(userId)
 			.run();
@@ -392,17 +386,11 @@ adminSessionRoutes.get(
 		const tenantId = c.get('tenantId');
 		const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100);
 		const offset = parseInt(c.req.query('offset') || '0');
-		const deviceType = c.req.query('device_type');
 		const ipAddress = c.req.query('ip_address');
 		const queryUserId = c.req.query('user_id');
 
-		const whereConditions = ['b.tenant_id = ?', 'a.is_revoked = 0', 'b.is_revoked = 0'];
+		const whereConditions = ['b.tenant_id = ?', 'a.is_active = 1'];
 		const bindings: (string | number)[] = [tenantId];
-
-		if (deviceType) {
-			whereConditions.push('b.device_type = ?');
-			bindings.push(deviceType);
-		}
 
 		if (ipAddress) {
 			whereConditions.push('b.ip_address = ?');
@@ -433,17 +421,15 @@ adminSessionRoutes.get(
 				a.user_id,
 				u.email,
 				a.authenticated_at,
-				a.last_used,
 				a.is_active,
-				b.device_type,
-				b.device_name,
 				b.ip_address,
+				b.user_agent,
 				b.last_activity
 			FROM account_sessions a
 			JOIN browser_sessions b ON a.browser_session_id = b.id
 			JOIN user u ON a.user_id = u.id
 			WHERE ${whereClause}
-			ORDER BY a.last_used DESC
+			ORDER BY b.last_activity DESC
 			LIMIT ? OFFSET ?
 		`)
 			.bind(...bindings, limit, offset)
@@ -455,12 +441,11 @@ adminSessionRoutes.get(
 				userId: s.user_id,
 				email: s.email,
 				authenticatedAt: s.authenticated_at,
-				lastUsed: s.last_used,
+				lastUsed: s.last_activity,
 				isActive: Boolean(s.is_active),
 				device: {
-					type: s.device_type,
-					name: s.device_name,
 					ipAddress: s.ip_address,
+					userAgent: s.user_agent,
 				},
 				lastActivity: s.last_activity,
 			})),
@@ -489,29 +474,29 @@ adminSessionRoutes.get(
 					SELECT COUNT(*) as count
 					FROM account_sessions a
 					JOIN browser_sessions b ON a.browser_session_id = b.id
-					WHERE b.tenant_id = ? AND a.is_revoked = 0 AND b.is_revoked = 0
+					WHERE b.tenant_id = ? AND a.is_active = 1
 				`)
 					.bind(tenantId)
 					.first<{ count: number }>(),
 
-				// Currently active (used in last hour)
+				// Currently active (activity in last hour)
 				c.env.AUTH_DB.prepare(`
 					SELECT COUNT(*) as count
 					FROM account_sessions a
-					WHERE a.is_revoked = 0
-					AND a.last_used > datetime('now', '-1 hour')
+					JOIN browser_sessions b ON a.browser_session_id = b.id
+					WHERE a.is_active = 1
+					AND b.last_activity > unixepoch() - 3600
 				`).first<{ count: number }>(),
 
-				// Device type breakdown
+				// Unique users with active sessions
 				c.env.AUTH_DB.prepare(`
-					SELECT b.device_type, COUNT(*) as count
+					SELECT COUNT(DISTINCT a.user_id) as count
 					FROM account_sessions a
 					JOIN browser_sessions b ON a.browser_session_id = b.id
-					WHERE b.tenant_id = ? AND a.is_revoked = 0 AND b.is_revoked = 0
-					GROUP BY b.device_type
+					WHERE b.tenant_id = ? AND a.is_active = 1
 				`)
 					.bind(tenantId)
-					.all(),
+					.first<{ count: number }>(),
 
 				// Logins in last 24 hours
 				c.env.AUTH_DB.prepare(`
@@ -519,7 +504,7 @@ adminSessionRoutes.get(
 					FROM account_sessions a
 					JOIN browser_sessions b ON a.browser_session_id = b.id
 					WHERE b.tenant_id = ?
-					AND a.authenticated_at > datetime('now', '-24 hours')
+					AND a.authenticated_at > unixepoch() - 86400
 				`)
 					.bind(tenantId)
 					.first<{ count: number }>(),
@@ -528,14 +513,8 @@ adminSessionRoutes.get(
 		return c.json({
 			totalSessions: totalSessions?.count || 0,
 			activeSessions: activeSessions?.count || 0,
+			uniqueUsers: deviceBreakdown?.count || 0,
 			loginsLast24h: recentLogins?.count || 0,
-			deviceBreakdown: deviceBreakdown.results.reduce(
-				(acc, row) => {
-					acc[row.device_type as string] = row.count as number;
-					return acc;
-				},
-				{} as Record<string, number>
-			),
 		});
 	}
 );
@@ -626,7 +605,6 @@ adminSessionRoutes.post(
 		const tenantId = c.get('tenantId');
 
 		let filters: {
-			deviceType?: string;
 			ipAddress?: string;
 			olderThanDays?: number;
 		};
@@ -637,13 +615,8 @@ adminSessionRoutes.post(
 			return c.json({ error: 'Invalid JSON body' }, 400);
 		}
 
-		const whereConditions = ['b.tenant_id = ?', 'a.is_revoked = 0', 'b.is_revoked = 0'];
+		const whereConditions = ['b.tenant_id = ?', 'a.is_active = 1'];
 		const bindings: (string | number)[] = [tenantId];
-
-		if (filters.deviceType) {
-			whereConditions.push('b.device_type = ?');
-			bindings.push(filters.deviceType);
-		}
 
 		if (filters.ipAddress) {
 			whereConditions.push('b.ip_address = ?');
@@ -651,8 +624,10 @@ adminSessionRoutes.post(
 		}
 
 		if (filters.olderThanDays) {
-			whereConditions.push('a.last_used < datetime("now", ?))');
-			bindings.push(`-${filters.olderThanDays} days`);
+			// Use browser session last_activity to filter old sessions
+			const cutoffTime = Math.floor(Date.now() / 1000) - (filters.olderThanDays * 86400);
+			whereConditions.push('b.last_activity < ?');
+			bindings.push(cutoffTime);
 		}
 
 		const whereClause = whereConditions.join(' AND ');
@@ -688,7 +663,7 @@ adminSessionRoutes.post(
 		const sessionIds = sessions.results?.map((s) => s.id) || [];
 		const placeholders = sessionIds.map(() => '?').join(',');
 		await c.env.AUTH_DB.prepare(`
-			UPDATE account_sessions SET is_revoked = 1
+			UPDATE account_sessions SET is_active = 0
 			WHERE id IN (${placeholders})
 		`)
 			.bind(...sessionIds)

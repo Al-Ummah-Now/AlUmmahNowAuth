@@ -347,23 +347,23 @@ export class TokenRoutes {
 						const tokenHash = hashArray.map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
 						const appToken = await env.AUTH_DB.prepare(`
-							SELECT is_revoked FROM app_tokens WHERE access_token_hash = ?
-						`).bind(tokenHash).first<{ is_revoked: number }>();
+							SELECT revoked FROM app_tokens WHERE access_token_hash = ?
+						`).bind(tokenHash).first<{ revoked: number }>();
 
 						// Must exist in app_tokens and not be revoked
-						if (!appToken || appToken.is_revoked) {
+						if (!appToken || appToken.revoked) {
 							return new Response(JSON.stringify({ active: false }), {
 								status: 200,
 								headers: { 'Content-Type': 'application/json' },
 							});
 						}
 
-						// Verify session is still valid
+						// Verify session is still valid (is_active = 1 means not revoked)
 						const session = await env.AUTH_DB.prepare(`
-							SELECT is_revoked FROM account_sessions WHERE id = ?
-						`).bind(payload.session_id).first<{ is_revoked: number }>();
+							SELECT is_active FROM account_sessions WHERE id = ?
+						`).bind(payload.session_id).first<{ is_active: number }>();
 
-						if (!session || session.is_revoked) {
+						if (!session || !session.is_active) {
 							return new Response(JSON.stringify({ active: false }), {
 								status: 200,
 								headers: { 'Content-Type': 'application/json' },
