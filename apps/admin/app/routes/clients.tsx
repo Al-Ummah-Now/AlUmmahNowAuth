@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { Link, useLoaderData, useFetcher } from "react-router";
-import { ArrowLeft, Plus, Key, Trash2, RefreshCw, Copy, Check, Globe, Lock, Settings } from "lucide-react";
+import { useLoaderData, useFetcher } from "react-router";
+import { Plus, Key, Trash2, RefreshCw, Copy, Check, Globe, Lock, Settings } from "lucide-react";
+import { AdminLayout } from "../components/admin-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -55,6 +56,7 @@ interface OAuthClient {
 interface LoaderData {
   clients: OAuthClient[];
   authServerUrl: string;
+  user: { id: string; email: string } | null;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -95,6 +97,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   };
 
   const authServerUrl = getAuthServerUrl(request, env);
+  const user = { id: currentUser.id, email: currentUser.email };
 
   try {
     // Fetch clients via M2M API
@@ -102,13 +105,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     if (isErrorResponse(clientsResponse)) {
       logger.error("Error loading clients:", { error: clientsResponse.error });
-      return { clients: [], authServerUrl };
+      return { clients: [], authServerUrl, user };
     }
 
-    return { clients: clientsResponse.clients, authServerUrl };
+    return { clients: clientsResponse.clients, authServerUrl, user };
   } catch (error) {
     logger.error("Error loading clients:", { error });
-    return { clients: [], authServerUrl };
+    return { clients: [], authServerUrl, user };
   }
 }
 
@@ -206,7 +209,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
 }
 
 export default function ClientsPage() {
-  const { clients } = useLoaderData<LoaderData>();
+  const { clients, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher<{ success?: boolean; error?: string; client_secret?: string; newSecret?: string }>();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -344,16 +347,12 @@ export default function ClientsPage() {
   ];
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-6xl">
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-6">
-        <Link to="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Link>
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold">OAuth Clients</h1>
-            <p className="text-muted-foreground mt-1">Manage OAuth client applications</p>
+            <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">OAuth Clients</h2>
+            <p className="text-[rgb(var(--color-muted-foreground))]">Manage OAuth client applications</p>
           </div>
           <Button onClick={() => setCreateDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
@@ -663,6 +662,6 @@ export default function ClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminLayout>
   );
 }

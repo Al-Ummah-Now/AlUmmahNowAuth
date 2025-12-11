@@ -132,15 +132,21 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const userRoles = userInfo.properties.roles || [];
     logger.info('Token verified', { email: userInfo.properties.email, roles: userRoles });
 
-    // Verify user is admin
+    // Verify user is admin - redirect non-admins to forbidden page with account select link
     const hasAdminAccess = userRoles.includes("admin") || userRoles.includes("super_admin");
     if (!hasAdminAccess) {
-      logger.warn('Non-admin user attempted to access admin dashboard', {
+      logger.warn('Non-admin user attempted to access admin dashboard - redirecting to forbidden page', {
         email: userInfo.properties.email,
         roles: userRoles
       });
       await logger.finalizeRequest();
-      return redirect("/?error=admin_required");
+      // Build redirect URL for account selection
+      const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+      const selectAccountUrl = `${baseAuthorizeUrl}&prompt=select_account`;
+
+      // Redirect to forbidden page with params
+      const forbiddenUrl = `/forbidden?email=${encodeURIComponent(userInfo.properties.email)}&redirect=${encodeURIComponent(selectAccountUrl)}`;
+      return redirect(forbiddenUrl);
     }
 
     // Store session in KV

@@ -3,7 +3,7 @@ import { Link, useLoaderData } from "react-router";
 import { Users, ShieldCheck, Activity, Database, Shield, FileText, Key, Monitor } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { AccountSwitcher } from "@al-ummah-now/ui";
+import { AdminLayout } from "../components/admin-layout";
 import { getUserStats, getRoleStats, getUsersByRole } from "../lib/db.server";
 import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl, getAppUrl } from "../lib/config";
@@ -38,10 +38,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Get OpenAuth client
   const client = getOpenAuthClient(request, env);
 
-  // Generate authorize URL with prompt=select for account picker
+  // Generate authorize URL with prompt=select_account for account picker
   logger.debug('Generating authorize URL');
   const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
-  const authorizeUrl = `${baseAuthorizeUrl}&prompt=select`;
+  const authorizeUrl = `${baseAuthorizeUrl}&prompt=select_account`;
   logger.debug('Authorize URL generated', { authorizeUrl });
 
   // Check if user is authenticated
@@ -278,238 +278,119 @@ export default function Index() {
 
   // Show dashboard if authenticated
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))]">
-      {/* Navigation */}
-      <nav className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <img
-                src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                alt="Al Ummah Now"
-                className="h-10 w-10 rounded-lg"
-              />
-              <div>
-                <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">Al Ummah Now</h1>
-                <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Admin Dashboard</p>
-              </div>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" asChild>
-                <Link to="/users">Users</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link to="/sessions">Sessions</Link>
-              </Button>
-              <AccountSwitcher authServerUrl={data.authServerUrl} currentUser={data.user} clientId="1448ed27-39a6-417d-b4c8-07f881e81269" />
-            </div>
-          </div>
-        </div>
-      </nav>
+    <AdminLayout user={data.user} authServerUrl={data.authServerUrl}>
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Dashboard</h2>
+        <p className="text-[rgb(var(--color-muted-foreground))]">
+          Welcome to the Al Ummah Now administration panel
+        </p>
+      </div>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Dashboard</h2>
-          <p className="text-[rgb(var(--color-muted-foreground))]">
-            Welcome to the Al Ummah Now administration panel
-          </p>
-        </div>
+      {/* Stats Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+            <Users className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{data.totalUsers}</div>
+            <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              Registered users
+            </p>
+          </CardContent>
+        </Card>
 
-        {/* Stats Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Admin Users</CardTitle>
+            <ShieldCheck className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{data.adminUsers}</div>
+            <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              Users with admin role
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Roles</CardTitle>
+            <Shield className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{data.totalRoles}</div>
+            <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              {data.systemRoles} system / {data.customRoles} custom
+            </p>
+          </CardContent>
+        </Card>
+
+        <Link to="/sessions" className="block hover:opacity-80 transition-opacity">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-              <Users className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+              <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
+              <Activity className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{data.totalUsers}</div>
+              <div className="text-2xl font-bold">-</div>
               <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                Registered users
+                Click to manage sessions
               </p>
             </CardContent>
           </Card>
+        </Link>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Admin Users</CardTitle>
-              <ShieldCheck className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{data.adminUsers}</div>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                Users with admin role
-              </p>
-            </CardContent>
-          </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Database</CardTitle>
+            <Database className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-500">Connected</div>
+            <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              D1 Database Status
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Roles</CardTitle>
-              <Shield className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{data.totalRoles}</div>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                {data.systemRoles} system / {data.customRoles} custom
-              </p>
-            </CardContent>
-          </Card>
-
-          <Link to="/sessions" className="block hover:opacity-80 transition-opacity">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
-                <Activity className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">-</div>
-                <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                  Click to manage sessions
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Database</CardTitle>
-              <Database className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-500">Connected</div>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                D1 Database Status
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2 mb-2">
-                <Users className="h-5 w-5 text-[rgb(var(--color-primary))]" />
-                <CardTitle>User Management</CardTitle>
-              </div>
-              <CardDescription>
-                Create, edit, and manage user accounts
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild className="w-full">
-                <Link to="/users">Manage Users</Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2 mb-2">
-                <Shield className="h-5 w-5 text-[rgb(var(--color-primary))]" />
-                <CardTitle>Role Management</CardTitle>
-              </div>
-              <CardDescription>
-                Configure roles and permissions
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild className="w-full">
-                <Link to="/roles">Manage Roles</Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="h-5 w-5 text-[rgb(var(--color-primary))]" />
-                <CardTitle>Audit Logs</CardTitle>
-              </div>
-              <CardDescription>
-                View system audit logs and security events
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild className="w-full">
-                <Link to="/audit">View Audit Logs</Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2 mb-2">
-                <Key className="h-5 w-5 text-[rgb(var(--color-primary))]" />
-                <CardTitle>OAuth Clients</CardTitle>
-              </div>
-              <CardDescription>
-                Manage OAuth client applications
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild className="w-full">
-                <Link to="/clients">Manage Clients</Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2 mb-2">
-                <Monitor className="h-5 w-5 text-[rgb(var(--color-primary))]" />
-                <CardTitle>Session Management</CardTitle>
-              </div>
-              <CardDescription>
-                View and manage active user sessions
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild className="w-full">
-                <Link to="/sessions">Manage Sessions</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Users by Role */}
-        {data.usersByRole && data.usersByRole.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Users by Role</CardTitle>
-              <CardDescription>
-                Distribution of users across roles
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {data.usersByRole.map((role) => (
-                  <div key={role.name} className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-[rgb(var(--color-foreground))]">
-                        {role.name}
-                      </span>
-                      <span className="text-[rgb(var(--color-muted-foreground))]">
-                        {role.user_count} {role.user_count === 1 ? 'user' : 'users'}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-[rgb(var(--color-muted))] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[rgb(var(--color-primary))] rounded-full"
-                        style={{
-                          width: `${data.totalUsers > 0 ? (role.user_count / data.totalUsers) * 100 : 0}%`
-                        }}
-                      />
-                    </div>
+      {/* Users by Role */}
+      {data.usersByRole && data.usersByRole.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Users by Role</CardTitle>
+            <CardDescription>
+              Distribution of users across roles
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {data.usersByRole.map((role) => (
+                <div key={role.name} className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-[rgb(var(--color-foreground))]">
+                      {role.name}
+                    </span>
+                    <span className="text-[rgb(var(--color-muted-foreground))]">
+                      {role.user_count} {role.user_count === 1 ? 'user' : 'users'}
+                    </span>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </main>
-    </div>
+                  <div className="h-2 bg-[rgb(var(--color-muted))] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[rgb(var(--color-primary))] rounded-full"
+                      style={{
+                        width: `${data.totalUsers > 0 ? (role.user_count / data.totalUsers) * 100 : 0}%`
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </AdminLayout>
   );
 }

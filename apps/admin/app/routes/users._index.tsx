@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
-import { Link, useLoaderData, useFetcher, useRevalidator } from "react-router";
-import { ArrowLeft, Plus, Settings, Trash2, Mail, User, LogOut } from "lucide-react";
+import { useLoaderData, useFetcher, useRevalidator } from "react-router";
+import { Plus, Settings, Trash2, Mail, User } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -18,7 +18,9 @@ import {
 } from "../components/ui/dialog";
 import { UserRoleBadge } from "../components/user-role-badge";
 import { UserRoleManager } from "../components/user-role-manager";
+import { AdminLayout } from "../components/admin-layout";
 import { requireAuth } from "../lib/auth.server";
+import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import {
   getAllRoles,
@@ -48,6 +50,8 @@ interface LoaderData {
     roles: Array<{ id: string; name: string }>;
   }>;
   allRoles: Array<{ id: string; name: string; is_system: boolean; description?: string }>;
+  user: { id: string; email: string } | null;
+  authServerUrl: string;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -91,13 +95,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     roles: currentUser.roles || [],
   };
 
+  const authServerUrl = getAuthServerUrl(request, env);
+
   try {
     // Fetch users via M2M API
     const usersResponse = await listUsers(env, actingUser);
 
     if (isErrorResponse(usersResponse)) {
       console.error("Error fetching users:", usersResponse.error);
-      return { users: [], allRoles: [] };
+      return { users: [], allRoles: [], user: { id: currentUser.id, email: currentUser.email }, authServerUrl };
     }
 
     // Transform the API response to match component expectations
@@ -112,10 +118,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const rolesResponse = await getAllRoles(request, env);
     const allRoles = isRbacError(rolesResponse) ? [] : rolesResponse;
 
-    return { users, allRoles };
+    return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl };
   } catch (error) {
     console.error("Error loading users:", error);
-    return { users: [], allRoles: [] };
+    return { users: [], allRoles: [], user: { id: currentUser.id, email: currentUser.email }, authServerUrl };
   }
 }
 
@@ -214,7 +220,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 }
 
 export default function Users() {
-  const { users, allRoles } = useLoaderData<LoaderData>();
+  const { users, allRoles, user, authServerUrl } = useLoaderData<LoaderData>();
   const revalidator = useRevalidator();
   const fetcher = useFetcher();
   const [searchQuery, setSearchQuery] = useState("");
@@ -255,49 +261,15 @@ export default function Users() {
   };
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))]">
-      {/* Navigation */}
-      <nav className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/">
-                  <ArrowLeft className="h-5 w-5" />
-                </Link>
-              </Button>
-              <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <img
-                  src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                  alt="Al Ummah Now"
-                  className="h-10 w-10 rounded-lg"
-                />
-                <div>
-                  <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">User Management</h1>
-                  <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Al Ummah Now Admin</p>
-                </div>
-              </Link>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/roles">Roles</Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/audit">Audit Logs</Link>
-              </Button>
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/logout">
-                  <LogOut className="h-5 w-5" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
+      <div className="mb-6">
+        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">User Management</h2>
+        <p className="text-[rgb(var(--color-muted-foreground))]">
+          Manage user accounts and role assignments
+        </p>
+      </div>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        <Card>
+      <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -451,24 +423,23 @@ export default function Users() {
             )}
           </CardContent>
         </Card>
-      </main>
 
       {/* Role Manager Dialogs */}
-      {users.map((user) => (
+      {users.map((u) => (
         <UserRoleManager
-          key={user.id}
-          open={roleManagerOpen === user.id}
+          key={u.id}
+          open={roleManagerOpen === u.id}
           onOpenChange={(open) => {
             if (!open) {
               closeRoleManager();
             }
           }}
-          userId={user.id}
-          userEmail={user.email}
-          currentRoles={user.roles}
+          userId={u.id}
+          userEmail={u.email}
+          currentRoles={u.roles}
           allRoles={allRoles}
         />
       ))}
-    </div>
+    </AdminLayout>
   );
 }

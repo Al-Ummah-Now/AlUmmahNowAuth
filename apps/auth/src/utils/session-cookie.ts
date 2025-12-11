@@ -35,11 +35,12 @@ interface SessionCookieOptions {
  * ```
  */
 export function createSessionCookie(token: string, domain?: string, isLocalhost: boolean = false): string {
-	// For localhost: SameSite=Lax (no Secure needed, works with HTTP)
-	// For production: SameSite=None + Secure (required for cross-origin)
+	// Always use SameSite=None to support cross-origin requests from profile/admin apps
+	// For localhost: browsers allow SameSite=None without Secure flag
+	// For production: SameSite=None requires Secure flag
 	const options: SessionCookieOptions = {
 		secure: !isLocalhost,
-		sameSite: isLocalhost ? 'Lax' : 'None',
+		sameSite: 'None',
 		maxAge: 604800, // 7 days (matches SESSION_LIFETIME_DAYS)
 	};
 

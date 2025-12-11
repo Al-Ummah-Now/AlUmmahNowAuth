@@ -15,7 +15,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.7-pr.5.48",
+    "@al-ummah-now/openauth": "1.0.7-pr.5.50",
     "valibot": "^1.2.0"
   },
   "devDependencies": {

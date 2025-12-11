@@ -171,7 +171,40 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
       color: #333;
       font-size: 14px;
     }
+    .account:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
   </style>
+  <script>
+    async function switchAccount(userId, authorizeUrl) {
+      // Disable all buttons while switching
+      document.querySelectorAll('.account').forEach(btn => btn.disabled = true);
+
+      try {
+        // 1. Call /session/switch to switch the active account
+        const response = await fetch('/session/switch', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          alert('Failed to switch account: ' + (error.error || 'Unknown error'));
+          document.querySelectorAll('.account').forEach(btn => btn.disabled = false);
+          return;
+        }
+
+        // 2. Redirect to /authorize?prompt=none to get tokens silently
+        window.location.href = authorizeUrl;
+      } catch (error) {
+        alert('Failed to switch account: ' + error.message);
+        document.querySelectorAll('.account').forEach(btn => btn.disabled = false);
+      }
+    }
+  </script>
 </head>
 <body>
   <div class="container">
@@ -196,28 +229,35 @@ function renderAccountOption(
 	account: AccountSelectorAccount,
 	props: AccountSelectorProps
 ): string {
-	const hiddenFields = buildHiddenFields({
-		user_id: account.userId,
-		client_id: props.clientId,
-		redirect_uri: props.redirectUri,
-		state: props.state,
-		scope: props.scope,
-		code_challenge: props.codeChallenge,
-		code_challenge_method: props.codeChallengeMethod,
-		nonce: props.nonce,
-	});
+	// Build authorize URL for redirect after switch
+	const authorizeParams = new URLSearchParams();
+	authorizeParams.set('client_id', props.clientId);
+	authorizeParams.set('redirect_uri', props.redirectUri);
+	authorizeParams.set('response_type', 'code');
+	authorizeParams.set('prompt', 'none');
+	if (props.state) authorizeParams.set('state', props.state);
+	if (props.scope) authorizeParams.set('scope', props.scope);
+	if (props.codeChallenge) {
+		authorizeParams.set('code_challenge', props.codeChallenge);
+		authorizeParams.set('code_challenge_method', props.codeChallengeMethod || 'S256');
+	}
+	if (props.nonce) authorizeParams.set('nonce', props.nonce);
+	const authorizeUrl = `/authorize?${authorizeParams.toString()}`;
 
 	return `
-    <form method="POST" action="/select-account">
-      ${hiddenFields}
-      <button type="submit" class="account ${account.isActive ? 'active' : ''}">
-        <div class="avatar">${getInitials(account.email)}</div>
-        <div class="account-info">
-          <div class="account-email">${escapeHtml(account.email)}</div>
-          <div class="account-status">${account.isActive ? 'Active' : 'Signed in'}</div>
-        </div>
-      </button>
-    </form>
+    <button
+      type="button"
+      class="account ${account.isActive ? 'active' : ''}"
+      data-user-id="${escapeHtml(account.userId)}"
+      data-authorize-url="${encodeURIComponent(authorizeUrl)}"
+      onclick="switchAccount(this.dataset.userId, decodeURIComponent(this.dataset.authorizeUrl))"
+    >
+      <div class="avatar">${getInitials(account.email)}</div>
+      <div class="account-info">
+        <div class="account-email">${escapeHtml(account.email)}</div>
+        <div class="account-status">${account.isActive ? 'Active' : 'Signed in'}</div>
+      </div>
+    </button>
   `;
 }
 

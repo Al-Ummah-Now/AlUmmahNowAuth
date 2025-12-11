@@ -1,5 +1,5 @@
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { useLoaderData, Link, useFetcher } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
 import {
   Users,
   Monitor,
@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   Clock,
   Globe,
-  ArrowLeft,
   Trash2,
   RefreshCw,
   Search,
@@ -25,7 +24,9 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Badge } from "../components/ui/badge";
+import { AdminLayout } from "../components/admin-layout";
 import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
+import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import {
   listSessions,
@@ -53,6 +54,8 @@ type LoaderData = {
   suspicious: SuspiciousActivity;
   total: number;
   error?: string;
+  user: { id: string; email: string } | null;
+  authServerUrl: string;
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -78,6 +81,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (!user) {
     throw new Response("Unauthorized", { status: 401 });
   }
+
+  const authServerUrl = getAuthServerUrl(request, env);
 
   const actingUser = {
     id: user.id,
@@ -118,6 +123,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       suspicious: isErrorResponse(suspiciousResult) ? defaultSuspicious : suspiciousResult,
       total: 0,
       error: sessionsResult.error,
+      user: { id: user.id, email: user.email },
+      authServerUrl,
     };
   }
 
@@ -126,6 +133,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     stats: isErrorResponse(statsResult) ? defaultStats : statsResult,
     suspicious: isErrorResponse(suspiciousResult) ? defaultSuspicious : suspiciousResult,
     total: sessionsResult.total,
+    user: { id: user.id, email: user.email },
+    authServerUrl,
   };
 }
 
@@ -185,7 +194,7 @@ function formatDate(dateString: string) {
 }
 
 export default function SessionsPage() {
-  const { sessions, stats, suspicious, total, error } = useLoaderData<LoaderData>();
+  const { sessions, stats, suspicious, total, error, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
   const [searchUserId, setSearchUserId] = useState('');
 
@@ -194,42 +203,13 @@ export default function SessionsPage() {
     (suspicious?.failedThenSuccessfulLogins?.length || 0);
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))]">
-      {/* Navigation */}
-      <nav className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <img
-                src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                alt="Al Ummah Now"
-                className="h-10 w-10 rounded-lg"
-              />
-              <div>
-                <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">Al Ummah Now</h1>
-                <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Admin Dashboard</p>
-              </div>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" asChild>
-                <Link to="/">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Dashboard
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Session Management</h2>
-          <p className="text-[rgb(var(--color-muted-foreground))]">
-            Monitor and manage active user sessions across all devices
-          </p>
-        </div>
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Session Management</h2>
+        <p className="text-[rgb(var(--color-muted-foreground))]">
+          Monitor and manage active user sessions across all devices
+        </p>
+      </div>
 
         {error && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
@@ -445,7 +425,6 @@ export default function SessionsPage() {
             )}
           </CardContent>
         </Card>
-      </main>
-    </div>
+    </AdminLayout>
   );
 }

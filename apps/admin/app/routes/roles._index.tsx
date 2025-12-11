@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData, useFetcher } from "react-router";
-import { ArrowLeft, Plus, Pencil, Trash2, Shield, Users, LogOut } from "lucide-react";
+import { Plus, Pencil, Trash2, Shield, Users } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -27,7 +27,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
+import { AdminLayout } from "../components/admin-layout";
 import { requireAuth } from "../lib/auth.server";
+import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import {
   getAllRoles,
@@ -51,6 +53,8 @@ interface RoleWithUserCount extends Role {
 
 interface LoaderData {
   roles: RoleWithUserCount[];
+  user: { id: string; email: string } | null;
+  authServerUrl: string;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -68,8 +72,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   // Always require admin authentication
+  let currentUser: { id: string; email: string; roles?: string[] };
   try {
-    await requireAuth(request, env, true);
+    currentUser = await requireAuth(request, env, true) as { id: string; email: string; roles?: string[] };
   } catch (error) {
     // If it's a redirect response (from requireAuth), throw it
     if (error instanceof Response) {
@@ -84,10 +89,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
   }
 
+  const authServerUrl = getAuthServerUrl(request, env);
+  const user = { id: currentUser.id, email: currentUser.email };
+
   try {
     if (!env?.AUTH_DB) {
       console.warn("AUTH_DB not available in development mode");
-      return { roles: [] };
+      return { roles: [], user, authServerUrl };
     }
 
     // Fetch all roles from auth service
@@ -95,7 +103,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     if (isErrorResponse(rolesResponse)) {
       console.error("Error fetching roles:", rolesResponse.error);
-      return { roles: [] };
+      return { roles: [], user, authServerUrl };
     }
 
     // Get user counts for each role
@@ -115,10 +123,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       })
     );
 
-    return { roles: rolesWithCounts };
+    return { roles: rolesWithCounts, user, authServerUrl };
   } catch (error) {
     console.error("Error loading roles:", error);
-    return { roles: [] };
+    return { roles: [], user, authServerUrl };
   }
 }
 
@@ -205,7 +213,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 }
 
 export default function Roles() {
-  const { roles } = useLoaderData<LoaderData>();
+  const { roles, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
   const [searchQuery, setSearchQuery] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -259,48 +267,13 @@ export default function Roles() {
   );
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))]">
-      {/* Navigation */}
-      <nav className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/">
-                  <ArrowLeft className="h-5 w-5" />
-                </Link>
-              </Button>
-              <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <img
-                  src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                  alt="Al Ummah Now"
-                  className="h-10 w-10 rounded-lg"
-                />
-                <div>
-                  <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">Role Management</h1>
-                  <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Al Ummah Now Admin</p>
-                </div>
-              </Link>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/users">Users</Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/audit">Audit Logs</Link>
-              </Button>
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/logout">
-                  <LogOut className="h-5 w-5" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
+      <div className="mb-6">
+        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Role Management</h2>
+        <p className="text-[rgb(var(--color-muted-foreground))]">
+          Manage RBAC roles and permission assignments
+        </p>
+      </div>
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -456,7 +429,6 @@ export default function Roles() {
             )}
           </CardContent>
         </Card>
-      </main>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -486,6 +458,6 @@ export default function Roles() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AdminLayout>
   );
 }

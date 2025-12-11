@@ -1,5 +1,7 @@
 // Server-side authentication utilities for admin app
 import { logger } from "./logger.server";
+import { getAuthServerUrl, getAppUrl, getOAuthClientId } from "./config";
+import { getOpenAuthClient } from "./openauth.client.server";
 
 // Helper to fetch fresh roles from DB
 async function getUserRolesFromDB(db: D1Database, userId: string): Promise<string[]> {
@@ -79,9 +81,28 @@ export function redirectToLogin(request: Request) {
   return Response.redirect(redirectUrl.toString(), 302);
 }
 
+// Redirect to auth server with prompt=select_account to switch accounts
+export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SERVER_URL?: string }) {
+  const appUrl = getAppUrl(request, env);
+  const client = getOpenAuthClient(request, env);
+
+  // Generate authorize URL with prompt=select_account for account picker
+  const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  const authorizeUrl = `${baseAuthorizeUrl}&prompt=select_account`;
+
+  logger.info('Redirecting non-admin user to account select', { authorizeUrl });
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: authorizeUrl,
+    },
+  });
+}
+
 export async function requireAuth(
   request: Request,
-  env: { AUTH_STORAGE?: KVNamespace; AUTH_DB?: D1Database },
+  env: { AUTH_STORAGE?: KVNamespace; AUTH_DB?: D1Database; AUTH_SERVER_URL?: string },
   requireAdmin: boolean = false
 ) {
   const url = new URL(request.url);
@@ -110,8 +131,9 @@ export async function requireAuth(
     const hasAdminAccess = roles.includes("admin") || roles.includes("super_admin");
 
     if (!hasAdminAccess) {
-      logger.warn('Admin access denied', { userId: user.id, email: user.email, roles });
-      throw new Response("Forbidden: Admin access required", { status: 403 });
+      logger.warn('Admin access denied - redirecting to account select', { userId: user.id, email: user.email, roles });
+      // Redirect to auth server with prompt=select_account to allow switching to admin account
+      throw await redirectToAuthWithSelect(request, env);
     }
 
     // Return user with fresh roles

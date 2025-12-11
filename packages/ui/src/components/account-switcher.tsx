@@ -64,15 +64,30 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
 
   async function handleSwitchAccount(userId: string) {
     try {
-      const response = await fetch(`${authServerUrl}/session/accounts/${userId}/activate`, {
+      console.log('[AccountSwitcher] Switching to user:', userId);
+      const response = await fetch(`${authServerUrl}/session/switch`, {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
       });
+      console.log('[AccountSwitcher] Switch response:', response.status, response.statusText);
       if (response.ok) {
-        window.location.reload();
+        // Redirect to authorize with prompt=none to get new tokens for the switched user
+        // Include returnTo param so callback can redirect back to current page
+        const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+        const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback?returnTo=' + returnTo);
+        const authorizeUrl = `${authServerUrl}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&prompt=none`;
+        console.log('[AccountSwitcher] Redirecting to:', authorizeUrl);
+        window.location.href = authorizeUrl;
+      } else {
+        const errorText = await response.text();
+        console.error('[AccountSwitcher] Switch failed:', response.status, errorText);
       }
     } catch (error) {
-      console.error('Failed to switch account:', error);
+      console.error('[AccountSwitcher] Failed to switch account:', error);
     }
   }
 

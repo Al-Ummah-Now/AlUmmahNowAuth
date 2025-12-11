@@ -189,15 +189,15 @@ export async function handleSelectAccountPost(
 	const selectedAccount = sessionWithAccounts?.accounts.find(a => a.userId === userId);
 	const loginHint = selectedAccount?.user.email;
 
-	// Redirect to authorize - the session is already switched in D1
+	// Redirect to authorize with prompt=none - the session is already switched in D1
 	// OpenAuth's enterprise issuer will use the D1SessionAdapter to find the active account
 	// and issue tokens without requiring re-login (silent auth via D1 session)
 	const authorizeUrl = new URL('/authorize', url.origin);
 	authorizeUrl.searchParams.set('client_id', clientId);
 	authorizeUrl.searchParams.set('redirect_uri', redirectUri);
 	authorizeUrl.searchParams.set('response_type', 'code');
-	// No prompt parameter - let OpenAuth detect existing session and issue tokens silently
-	// If refresh_token exists for this account, tokens will be issued without re-login
+	// Use prompt=none to get tokens silently for the already-active session
+	authorizeUrl.searchParams.set('prompt', 'none');
 	if (loginHint) authorizeUrl.searchParams.set('login_hint', loginHint);
 	if (state) authorizeUrl.searchParams.set('state', state);
 	if (scope) authorizeUrl.searchParams.set('scope', scope);
