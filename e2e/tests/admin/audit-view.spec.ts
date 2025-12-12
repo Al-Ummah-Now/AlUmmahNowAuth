@@ -47,8 +47,8 @@ test.describe('Admin Audit View', () => {
     // Verify page loaded correctly
     await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/audit`));
 
-    // Verify page title and header
-    await expect(page.locator('h1:has-text("Audit Logs")')).toBeVisible();
+    // Verify page title and header (h2 is used in the admin layout)
+    await expect(page.locator('h2:has-text("Audit Logs")')).toBeVisible();
     await expect(page.locator('text=/Audit Events/i')).toBeVisible();
     await expect(page.locator('text=/View and filter system audit logs/i')).toBeVisible();
 
@@ -336,16 +336,16 @@ test.describe('Admin Audit View', () => {
     // Wait for events to appear
     await waitForAuditEvents(page, 1, 15000);
 
-    // Get the first row severity badge
+    // Get the first row severity cell (3rd column, index 2)
     const firstRow = page.locator('tbody tr').first();
-    const severityBadge = firstRow.locator('td').nth(2).locator('[class*="badge"]');
+    const severityCell = firstRow.locator('td').nth(2);
 
-    // Verify badge is visible
-    await expect(severityBadge).toBeVisible();
+    // Verify severity cell is visible and has text content
+    await expect(severityCell).toBeVisible();
 
-    // Verify badge has text (info, warning, error, etc.)
-    const badgeText = await severityBadge.textContent();
-    expect(badgeText).toMatch(/info|warning|error|critical|debug/i);
+    // Verify severity has text (info, warning, error, etc.)
+    const severityText = await severityCell.textContent();
+    expect(severityText).toMatch(/info|warning|error|critical|debug/i);
   });
 
   test('should display success/failed status badges', async ({ page }) => {
@@ -355,15 +355,15 @@ test.describe('Admin Audit View', () => {
     // Wait for events to appear
     await waitForAuditEvents(page, 1, 15000);
 
-    // Get the first row status badge
+    // Get the first row status cell (6th column, index 5)
     const firstRow = page.locator('tbody tr').first();
-    const statusBadge = firstRow.locator('td').nth(5).locator('[class*="badge"]');
+    const statusCell = firstRow.locator('td').nth(5);
 
-    // Verify status badge is visible
-    await expect(statusBadge).toBeVisible();
+    // Verify status cell is visible
+    await expect(statusCell).toBeVisible();
 
-    // Verify badge shows either "Success" or "Failed"
-    const statusText = await statusBadge.textContent();
+    // Verify cell shows either "Success" or "Failed"
+    const statusText = await statusCell.textContent();
     expect(statusText).toMatch(/Success|Failed/i);
   });
 

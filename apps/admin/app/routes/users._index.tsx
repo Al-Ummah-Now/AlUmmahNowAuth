@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useRevalidator } from "react-router";
-import { Plus, Settings, Trash2, Mail, User } from "lucide-react";
+import { Plus, Settings, Trash2, Mail, User, Pencil } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -30,7 +30,10 @@ import {
 } from "../lib/rbac-api.server";
 import {
   listUsers,
+  createUser,
+  updateUser,
   deleteUser,
+  assignUserRole,
   isErrorResponse,
   type ActingUser,
 } from "../lib/admin-api.server";
@@ -195,6 +198,51 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       return { success: true };
     }
 
+    if (intent === "createUser") {
+      const email = formData.get("email") as string;
+      const roleIds = formData.getAll("roleId") as string[];
+
+      if (!email) {
+        return { error: "Email is required" };
+      }
+
+      // Create user via M2M API
+      const result = await createUser(env, actingUser, {
+        email,
+        initialRole: roleIds[0], // First role as initial
+        sendInvite: false, // Don't send invite for now
+      });
+
+      if (isErrorResponse(result)) {
+        return { error: result.error };
+      }
+
+      // Assign additional roles if more than one selected
+      for (const roleId of roleIds.slice(1)) {
+        await assignUserRole(env, actingUser, result.id, roleId);
+      }
+
+      return { success: true, userId: result.id };
+    }
+
+    if (intent === "updateUser") {
+      const userId = formData.get("userId") as string;
+      const email = formData.get("email") as string;
+
+      if (!userId) {
+        return { error: "Missing userId" };
+      }
+
+      // Update user via M2M API
+      const result = await updateUser(env, actingUser, userId, { email });
+
+      if (isErrorResponse(result)) {
+        return { error: result.error };
+      }
+
+      return { success: true };
+    }
+
     if (intent === "deleteUser") {
       const userId = formData.get("userId") as string;
 
@@ -228,22 +276,88 @@ export default function Users() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [roleManagerOpen, setRoleManagerOpen] = useState<string | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<{ id: string; email: string; roles: Array<{ id: string; name: string }> } | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editRole, setEditRole] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
-  const handleCreateUser = async () => {
-    // TODO: Implement user creation API call with selected roles
-    console.info("Creating user:", { email: newUserEmail, roles: selectedRoles });
+  const handleCreateUser = () => {
+    // Submit form data for createUser action
+    const formData = new FormData();
+    formData.append("intent", "createUser");
+    formData.append("email", newUserEmail);
+    selectedRoles.forEach((roleId) => formData.append("roleId", roleId));
+
+    fetcher.submit(formData, { method: "POST" });
     setCreateDialogOpen(false);
     setNewUserEmail("");
     setSelectedRoles([]);
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    if (confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
-      fetcher.submit(
-        { intent: "deleteUser", userId },
-        { method: "POST" }
-      );
+  const handleEditUser = (user: { id: string; email: string; roles: Array<{ id: string; name: string }> }) => {
+    setEditingUser(user);
+    setEditEmail(user.email);
+    // Set the current role (take the first one or default to user)
+    const currentRole = user.roles.length > 0 ? user.roles[0].name : 'user';
+    setEditRole(currentRole);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingUser) return;
+
+    // First update user email
+    fetcher.submit(
+      { intent: "updateUser", userId: editingUser.id, email: editEmail },
+      { method: "POST" }
+    );
+
+    // Then update role if changed
+    const currentRole = editingUser.roles.length > 0 ? editingUser.roles[0].name : 'user';
+    if (editRole !== currentRole) {
+      // Find role IDs
+      const targetRoleId = allRoles.find((r) => r.name === editRole)?.id;
+      const currentRoleId = editingUser.roles.length > 0 ? editingUser.roles[0].id : null;
+
+      // Remove old role if exists
+      if (currentRoleId) {
+        fetcher.submit(
+          { intent: "removeRole", userId: editingUser.id, roleId: currentRoleId },
+          { method: "POST" }
+        );
+      }
+
+      // Add new role
+      if (targetRoleId) {
+        fetcher.submit(
+          { intent: "assignRole", userId: editingUser.id, roleId: targetRoleId },
+          { method: "POST" }
+        );
+      }
     }
+
+    setEditDialogOpen(false);
+    setEditingUser(null);
+    setEditEmail("");
+    setEditRole("");
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deletingUserId) return;
+
+    fetcher.submit(
+      { intent: "deleteUser", userId: deletingUserId },
+      { method: "POST" }
+    );
+    setDeleteDialogOpen(false);
+    setDeletingUserId(null);
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    setDeletingUserId(userId);
+    setDeleteDialogOpen(true);
   };
 
   const filteredUsers = users.filter((user) =>
@@ -400,6 +514,15 @@ export default function Users() {
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditUser(user)}
+                            title="Edit User"
+                          >
+                            <Pencil className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
                             size="icon"
                             onClick={() => openRoleManager(user.id)}
                             title="Manage Roles"
@@ -408,11 +531,12 @@ export default function Users() {
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             onClick={() => handleDeleteUser(user.id)}
                             title="Delete User"
                           >
-                            <Trash2 className="h-4 w-4 text-[rgb(var(--color-destructive))]" />
+                            <Trash2 className="h-4 w-4 mr-1 text-[rgb(var(--color-destructive))]" />
+                            Delete
                           </Button>
                         </div>
                       </TableCell>
@@ -440,6 +564,67 @@ export default function Users() {
           allRoles={allRoles}
         />
       ))}
+
+      {/* Edit User Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Update user information.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="role">Role</Label>
+              <select
+                id="role"
+                className="flex h-10 w-full rounded-md border border-[rgb(var(--color-input))] bg-[rgb(var(--color-background))] px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--color-ring))] focus-visible:ring-offset-2"
+                value={editRole}
+                onChange={(e) => setEditRole(e.target.value)}
+              >
+                <option value="user">user</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" onClick={handleSaveEdit}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete User</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this user? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

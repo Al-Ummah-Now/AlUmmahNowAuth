@@ -34,6 +34,7 @@ import { logger } from "./logger";
 import { getUserSession, deleteSession, clearSessionCookie } from "./session";
 import { subjects as _clientSubjects } from "./auth-client";
 import { checkRateLimit, getClientIP } from "./rate-limit";
+import { getEndpointRateLimit } from "./services/rate-limit-config";
 import { AdminRBACRoutes } from "./admin-rbac-routes";
 import { RBACRoutes } from "./rbac-routes";
 import { AdminEnterpriseRoutes } from "./admin-enterprise-routes";
@@ -1151,17 +1152,20 @@ export default {
               // https://resend.com/docs/send-with-cloudflare-workers
               logger.info('Sending login code', { email, codeLength: code.length });
 
-              // Rate limiting: 5 attempts per 5 minutes per IP (production)
-              // or 100 attempts per 5 minutes for localhost (E2E tests)
+              // Rate limiting: configurable via KV, with environment-specific defaults
               const clientIP = getClientIP(request);
               const rateLimitKey = `login:${clientIP}`;
+              const rateLimitConfig = await getEndpointRateLimit(env.AUTH_STORAGE, 'login', env.ENVIRONMENT);
+
+              // Allow higher limits for localhost development
               const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-              const limit = isLocalhost ? 100 : 5; // Higher limit for local development/testing
+              const limit = isLocalhost ? 100 : rateLimitConfig.limit;
+
               const rateLimit = await checkRateLimit(
                 env.AUTH_STORAGE,
                 rateLimitKey,
                 limit,
-                300 // 5 minutes in seconds
+                rateLimitConfig.windowSeconds
               );
 
               if (!rateLimit.allowed) {

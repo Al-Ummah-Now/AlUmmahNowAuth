@@ -46,9 +46,9 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   // Now navigate to admin dashboard and authenticate there
   await page.goto(TEST_URLS.adminDashboard);
 
-  // Check if already logged in to admin dashboard by looking for "Manage Users" link
-  const manageUsersLink = page.locator('a:has-text("Manage Users")');
-  const isLoggedIn = await manageUsersLink.isVisible().catch(() => false);
+  // Check if already logged in to admin dashboard by looking for "Users" link in sidebar
+  const usersLink = page.locator('a:has-text("Users")');
+  const isLoggedIn = await usersLink.isVisible().catch(() => false);
 
   if (isLoggedIn) {
     // Already logged in to admin dashboard
@@ -75,9 +75,9 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   // Wait for redirect back to admin dashboard (successful login)
   await expect(page).toHaveURL(new RegExp(TEST_URLS.adminDashboard), { timeout: 10000 });
 
-  // Verify login succeeded by checking for admin-specific elements (dashboard heading and Manage Users link)
+  // Verify login succeeded by checking for admin-specific elements (dashboard heading and Users link)
   await expect(page.locator('heading:has-text("Dashboard"), h2:has-text("Dashboard")')).toBeVisible({ timeout: 10000 });
-  await expect(manageUsersLink).toBeVisible({ timeout: 10000 });
+  await expect(usersLink).toBeVisible({ timeout: 10000 });
 }
 
 /**
@@ -109,7 +109,11 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
 
   // Fill in user details
   await page.fill('input[id="email"]', user.email);
-  await page.selectOption('select[id="role"]', user.role);
+
+  // Select role using checkbox (new UI uses checkboxes instead of select dropdown)
+  // Check the checkbox for the specified role
+  const roleCheckbox = page.locator(`label:has-text("${user.role}") input[type="checkbox"]`);
+  await roleCheckbox.check();
 
   // Submit form
   await page.click('button:has-text("Create User")');
@@ -152,10 +156,10 @@ export async function editUser(
     await page.selectOption('select[id="role"]', updates.role);
   }
 
-  // Submit form
-  await page.click('button[type="submit"]:has-text("Save")');
+  // Submit form (click Save button in dialog)
+  await page.locator('[role="dialog"]').locator('button:has-text("Save")').click();
 
-  // Wait for success
+  // Wait for success (dialog should close)
   await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5000 });
 }
 

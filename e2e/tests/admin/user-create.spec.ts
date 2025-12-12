@@ -55,7 +55,8 @@ test.describe('Admin User Creation', () => {
 
     // Enter invalid email
     await page.fill('input[id="email"]', 'not-an-email');
-    await page.selectOption('select[id="role"]', 'user');
+    // Select role using checkbox (new UI uses checkboxes)
+    await page.locator('label:has-text("user") input[type="checkbox"]').check();
 
     // Try to submit
     await page.click('button:has-text("Create User")');
@@ -76,7 +77,8 @@ test.describe('Admin User Creation', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
     await page.fill('input[id="email"]', duplicateEmail);
-    await page.selectOption('select[id="role"]', 'user');
+    // Select role using checkbox (new UI uses checkboxes)
+    await page.locator('label:has-text("user") input[type="checkbox"]').check();
     await page.click('button:has-text("Create User")');
 
     // Verify error message
