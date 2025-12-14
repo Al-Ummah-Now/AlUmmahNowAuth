@@ -52,18 +52,27 @@ export async function setupDatabase() {
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id)`).run();
 
   // ============================================================================
-  // OpenAuth RBAC tables (matching 004_rbac_schema.sql)
+  // OpenAuth RBAC tables (matching 001_schema.sql)
   // ============================================================================
 
-  // rbac_apps
+  // tenants (required for oauth_clients FK)
   await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS rbac_apps (
+    CREATE TABLE IF NOT EXISTS tenants (
       id TEXT PRIMARY KEY,
+      domain TEXT UNIQUE,
       name TEXT NOT NULL,
-      description TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      branding TEXT,
+      settings TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     )
+  `).run();
+
+  // Insert default tenant
+  await env.AUTH_DB.prepare(`
+    INSERT OR IGNORE INTO tenants (id, name, status, branding, settings, created_at, updated_at)
+    VALUES ('default', 'Default Tenant', 'active', '{}', '{}', unixepoch() * 1000, unixepoch() * 1000)
   `).run();
 
   // rbac_roles
@@ -80,19 +89,18 @@ export async function setupDatabase() {
     )
   `).run();
 
-  // rbac_permissions
+  // rbac_permissions (scoped to oauth_clients)
   await env.AUTH_DB.prepare(`
     CREATE TABLE IF NOT EXISTS rbac_permissions (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      app_id TEXT NOT NULL,
+      client_id TEXT NOT NULL,
       description TEXT,
       resource TEXT NOT NULL,
       action TEXT NOT NULL,
-      scope TEXT DEFAULT '*',
       created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-      UNIQUE(name, app_id)
+      FOREIGN KEY (client_id) REFERENCES oauth_clients(id) ON DELETE CASCADE,
+      UNIQUE(name, client_id)
     )
   `).run();
 
@@ -101,8 +109,11 @@ export async function setupDatabase() {
     CREATE TABLE IF NOT EXISTS rbac_role_permissions (
       role_id TEXT NOT NULL,
       permission_id TEXT NOT NULL,
-      assigned_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-      PRIMARY KEY (role_id, permission_id)
+      granted_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      granted_by TEXT NOT NULL DEFAULT 'system',
+      PRIMARY KEY (role_id, permission_id),
+      FOREIGN KEY (role_id) REFERENCES rbac_roles(id) ON DELETE CASCADE,
+      FOREIGN KEY (permission_id) REFERENCES rbac_permissions(id) ON DELETE CASCADE
     )
   `).run();
 
@@ -150,12 +161,8 @@ export async function setupDatabase() {
       description,
       resource,
       action,
-      scope,
-      0 AS is_system,
-      '{}' AS metadata,
-      app_id,
-      created_at,
-      updated_at
+      client_id,
+      created_at
     FROM rbac_permissions
   `).run();
 
@@ -166,9 +173,9 @@ export async function setupDatabase() {
       role_id || '_' || permission_id AS id,
       role_id,
       permission_id,
-      NULL AS granted_by,
-      assigned_at AS granted_at,
-      assigned_at AS created_at
+      granted_by,
+      granted_at,
+      granted_at AS created_at
     FROM rbac_role_permissions
   `).run();
 
@@ -222,17 +229,15 @@ export async function setupDatabase() {
     CREATE TRIGGER IF NOT EXISTS permissions_insert
     INSTEAD OF INSERT ON permissions
     BEGIN
-      INSERT INTO rbac_permissions (id, name, app_id, description, resource, action, scope, created_at, updated_at)
+      INSERT INTO rbac_permissions (id, name, client_id, description, resource, action, created_at)
       VALUES (
         NEW.id,
         NEW.name,
-        COALESCE(NEW.app_id, 'default'),
+        COALESCE(NEW.client_id, 'test-client'),
         NEW.description,
         COALESCE(NEW.resource, '*'),
         COALESCE(NEW.action, '*'),
-        COALESCE(NEW.scope, '*'),
-        COALESCE(NEW.created_at, unixepoch() * 1000),
-        COALESCE(NEW.updated_at, unixepoch() * 1000)
+        COALESCE(NEW.created_at, unixepoch() * 1000)
       );
     END
   `).run();
@@ -246,9 +251,7 @@ export async function setupDatabase() {
       SET name = NEW.name,
           description = NEW.description,
           resource = NEW.resource,
-          action = NEW.action,
-          scope = NEW.scope,
-          updated_at = COALESCE(NEW.updated_at, unixepoch() * 1000)
+          action = NEW.action
       WHERE id = OLD.id;
     END
   `).run();
@@ -267,11 +270,12 @@ export async function setupDatabase() {
     CREATE TRIGGER IF NOT EXISTS role_permissions_insert
     INSTEAD OF INSERT ON role_permissions
     BEGIN
-      INSERT INTO rbac_role_permissions (role_id, permission_id, assigned_at)
+      INSERT INTO rbac_role_permissions (role_id, permission_id, granted_at, granted_by)
       VALUES (
         NEW.role_id,
         NEW.permission_id,
-        COALESCE(NEW.created_at, unixepoch() * 1000)
+        COALESCE(NEW.granted_at, NEW.created_at, unixepoch() * 1000),
+        COALESCE(NEW.granted_by, 'system')
       );
     END
   `).run();
@@ -304,20 +308,6 @@ export async function setupDatabase() {
   `).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp ON audit_events(timestamp)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_events_user_id ON audit_events(user_id)`).run();
-
-  // Migration 0015: Create oauth_clients table
-  await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS oauth_clients (
-      id TEXT PRIMARY KEY,
-      client_id TEXT UNIQUE NOT NULL,
-      client_secret_hash TEXT,
-      client_type TEXT NOT NULL CHECK(client_type IN ('public', 'confidential')),
-      allowed_grants TEXT NOT NULL,
-      redirect_uris TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    )
-  `).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_oauth_clients_client_id ON oauth_clients(client_id)`).run();
 
   // Migration 0012: Create refresh_tokens table
   await env.AUTH_DB.prepare(`

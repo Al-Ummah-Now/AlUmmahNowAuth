@@ -54,6 +54,7 @@ export interface PaginatedUsers {
 export interface OAuthClient {
   id: string;
   client_id: string;
+  name: string;
   client_type: 'public' | 'confidential';
   allowed_grants: string[];
   redirect_uris: string[];
@@ -422,19 +423,33 @@ export async function getClient(
 }
 
 /**
+ * Response from createClient including generated credentials
+ */
+export interface CreateClientResponse extends OAuthClient {
+  client_secret: string;
+  warning: string;
+}
+
+/**
  * POST /admin/clients - Create OAuth client
+ *
+ * The backend uses OpenAuth ClientService which auto-generates:
+ * - client_id (UUID)
+ * - client_secret (for confidential clients)
  */
 export async function createClient(
   env: ApiEnv,
   actingUser: ActingUser,
   data: {
-    client_id: string;
-    client_type: 'public' | 'confidential';
-    allowed_grants: string[];
-    redirect_uris: string[];
+    name: string;
+    grant_types?: string[];
+    scopes?: string[];
+    redirect_uris?: string[];
+    metadata?: Record<string, unknown>;
+    enabled?: boolean;
   }
-): Promise<OAuthClient & { client_secret?: string } | ErrorResponse> {
-  return m2mRequest<OAuthClient & { client_secret?: string }>(
+): Promise<CreateClientResponse | ErrorResponse> {
+  return m2mRequest<CreateClientResponse>(
     env,
     '/admin/clients',
     actingUser,
@@ -453,8 +468,12 @@ export async function updateClient(
   actingUser: ActingUser,
   clientId: string,
   data: Partial<{
-    allowed_grants: string[];
+    name: string;
+    grant_types: string[];
+    scopes: string[];
     redirect_uris: string[];
+    metadata: Record<string, unknown>;
+    enabled: boolean;
   }>
 ): Promise<OAuthClient | ErrorResponse> {
   return m2mRequest<OAuthClient>(

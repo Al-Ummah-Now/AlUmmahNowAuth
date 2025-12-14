@@ -38,8 +38,8 @@ SELECT
 FROM rbac_roles;
 
 -- View: permissions -> rbac_permissions
--- App expects: id, name, description, resource, action, scope, created_at, updated_at
--- OpenAuth has: id, name, app_id, description, resource, action, scope, created_at, updated_at
+-- App expects: id, name, description, resource, action, scope, created_at
+-- OpenAuth has: id, name, client_id, description, resource, action, created_at
 CREATE VIEW IF NOT EXISTS permissions AS
 SELECT
     id,
@@ -47,10 +47,8 @@ SELECT
     description,
     resource,
     action,
-    scope,
-    app_id,
-    created_at,
-    updated_at
+    client_id,
+    created_at
 FROM rbac_permissions;
 
 -- View: role_permissions -> rbac_role_permissions
@@ -58,7 +56,8 @@ CREATE VIEW IF NOT EXISTS role_permissions AS
 SELECT
     role_id,
     permission_id,
-    assigned_at AS created_at
+    granted_at AS created_at,
+    granted_by
 FROM rbac_role_permissions;
 
 -- ============================================================================

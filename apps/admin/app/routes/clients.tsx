@@ -22,7 +22,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "../components/ui/select";
 import { requireAuth } from "../lib/auth.server";
 import { logger } from "../lib/logger.server";
@@ -47,7 +46,8 @@ export const meta: MetaFunction = () => {
 interface OAuthClient {
   id: string;
   client_id: string;
-  client_type: "public" | "confidential";
+  name: string;
+  client_type: 'public' | 'confidential';
   allowed_grants: string[];
   redirect_uris: string[];
   created_at: number;
@@ -145,23 +145,27 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const intent = formData.get("intent");
 
   if (intent === "create") {
-    const clientId = formData.get("client_id") as string;
-    const clientType = formData.get("client_type") as "public" | "confidential";
-    const redirectUris = (formData.get("redirect_uris") as string).split("\n").filter(u => u.trim());
-    const allowedGrants = formData.getAll("allowed_grants") as string[];
+    const name = formData.get("name") as string;
+    const redirectUrisStr = formData.get("redirect_uris") as string;
+    const redirectUris = redirectUrisStr ? redirectUrisStr.split("\n").filter(u => u.trim()) : [];
+    const grantTypes = formData.getAll("grant_types") as string[];
 
     const result = await createClient(env, actingUser, {
-      client_id: clientId,
-      client_type: clientType,
-      redirect_uris: redirectUris,
-      allowed_grants: allowedGrants.length > 0 ? allowedGrants : ["authorization_code", "refresh_token"],
+      name,
+      redirect_uris: redirectUris.length > 0 ? redirectUris : undefined,
+      grant_types: grantTypes.length > 0 ? grantTypes : ["authorization_code", "refresh_token"],
     });
 
     if (isErrorResponse(result)) {
       return { error: result.error };
     }
 
-    return { success: true, client_secret: result.client_secret };
+    // Return both client_id and client_secret for the confirmation dialog
+    return {
+      success: true,
+      created_client_id: result.client_id,
+      client_secret: result.client_secret,
+    };
   }
 
   if (intent === "delete") {
@@ -191,11 +195,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (intent === "update") {
     const clientId = formData.get("client_id") as string;
     const redirectUris = (formData.get("redirect_uris") as string).split("\n").filter(u => u.trim());
-    const allowedGrants = formData.getAll("allowed_grants") as string[];
+    const grantTypes = formData.getAll("grant_types") as string[];
 
     const result = await updateClient(env, actingUser, clientId, {
       redirect_uris: redirectUris,
-      allowed_grants: allowedGrants,
+      grant_types: grantTypes,
     });
 
     if (isErrorResponse(result)) {
@@ -208,24 +212,57 @@ export async function action({ request, context }: ActionFunctionArgs) {
   return { error: "Unknown action" };
 }
 
+interface FetcherData {
+  success?: boolean;
+  error?: string;
+  created_client_id?: string;
+  client_secret?: string;
+  newSecret?: string;
+}
+
 export default function ClientsPage() {
   const { clients, user, authServerUrl } = useLoaderData<LoaderData>();
-  const fetcher = useFetcher<{ success?: boolean; error?: string; client_secret?: string; newSecret?: string }>();
+  const fetcher = useFetcher<FetcherData>();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<OAuthClient | null>(null);
+  const [createdClientId, setCreatedClientId] = useState<string | null>(null);
   const [newClientSecret, setNewClientSecret] = useState<string | null>(null);
+  const [copiedClientId, setCopiedClientId] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Form state for create
-  const [newClientId, setNewClientId] = useState("");
-  const [newClientType, setNewClientType] = useState<"public" | "confidential">("public");
+  const [newClientName, setNewClientName] = useState("");
   const [newRedirectUris, setNewRedirectUris] = useState("");
-  const [newAllowedGrants, setNewAllowedGrants] = useState<string[]>(["authorization_code", "refresh_token"]);
+  const [newGrantTypes, setNewGrantTypes] = useState<string[]>(["authorization_code", "refresh_token"]);
+
+  // Open create dialog
+  const openCreateDialog = () => {
+    setNewClientName("");
+    setNewRedirectUris("");
+    setNewGrantTypes(["authorization_code", "refresh_token"]);
+    setCreateDialogOpen(true);
+  };
+
+  const copyClientId = () => {
+    if (createdClientId) {
+      navigator.clipboard.writeText(createdClientId);
+      setCopiedClientId(true);
+      setTimeout(() => setCopiedClientId(false), 2000);
+    }
+  };
+
+  const copySecret = () => {
+    if (newClientSecret) {
+      navigator.clipboard.writeText(newClientSecret);
+      setCopiedSecret(true);
+      setTimeout(() => setCopiedSecret(false), 2000);
+    }
+  };
 
   // Form state for edit
   const [editRedirectUris, setEditRedirectUris] = useState("");
@@ -233,7 +270,8 @@ export default function ClientsPage() {
 
   const isLoading = fetcher.state !== "idle";
 
-  // Handle fetcher responses
+  // Handle fetcher responses - setState in effect is valid for React Router fetcher pattern
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (fetcher.data) {
       if (fetcher.data.error) {
@@ -241,19 +279,20 @@ export default function ClientsPage() {
       } else if (fetcher.data.success) {
         setError(null);
 
-        // Handle client secret from create
-        if (fetcher.data.client_secret) {
+        // Handle new client creation - show both client_id and client_secret
+        if (fetcher.data.created_client_id && fetcher.data.client_secret) {
+          setCreatedClientId(fetcher.data.created_client_id);
           setNewClientSecret(fetcher.data.client_secret);
           setSecretDialogOpen(true);
           setCreateDialogOpen(false);
-          setNewClientId("");
-          setNewClientType("public");
+          setNewClientName("");
           setNewRedirectUris("");
-          setNewAllowedGrants(["authorization_code", "refresh_token"]);
+          setNewGrantTypes(["authorization_code", "refresh_token"]);
         }
 
-        // Handle client secret from rotate
+        // Handle client secret from rotate (only secret, no client_id change)
         if (fetcher.data.newSecret) {
+          setCreatedClientId(null); // Clear since this is just a rotation
           setNewClientSecret(fetcher.data.newSecret);
           setSecretDialogOpen(true);
         }
@@ -270,15 +309,15 @@ export default function ClientsPage() {
       }
     }
   }, [fetcher.data, deleteDialogOpen, editDialogOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleCreate = () => {
     setError(null);
     const formData = new FormData();
     formData.append("intent", "create");
-    formData.append("client_id", newClientId);
-    formData.append("client_type", newClientType);
+    formData.append("name", newClientName);
     formData.append("redirect_uris", newRedirectUris);
-    newAllowedGrants.forEach(grant => formData.append("allowed_grants", grant));
+    newGrantTypes.forEach(grant => formData.append("grant_types", grant));
 
     fetcher.submit(formData, { method: "POST" });
   };
@@ -302,7 +341,7 @@ export default function ClientsPage() {
     formData.append("intent", "update");
     formData.append("client_id", selectedClient.client_id);
     formData.append("redirect_uris", editRedirectUris);
-    editAllowedGrants.forEach(grant => formData.append("allowed_grants", grant));
+    editAllowedGrants.forEach(grant => formData.append("grant_types", grant));
 
     fetcher.submit(formData, { method: "POST" });
   };
@@ -315,14 +354,6 @@ export default function ClientsPage() {
     formData.append("client_id", client.client_id);
 
     fetcher.submit(formData, { method: "POST" });
-  };
-
-  const copySecret = () => {
-    if (newClientSecret) {
-      navigator.clipboard.writeText(newClientSecret);
-      setCopiedSecret(true);
-      setTimeout(() => setCopiedSecret(false), 2000);
-    }
   };
 
   const openEditDialog = (client: OAuthClient) => {
@@ -354,7 +385,7 @@ export default function ClientsPage() {
             <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">OAuth Clients</h2>
             <p className="text-[rgb(var(--color-muted-foreground))]">Manage OAuth client applications</p>
           </div>
-          <Button onClick={() => setCreateDialogOpen(true)}>
+          <Button onClick={openCreateDialog}>
             <Plus className="mr-2 h-4 w-4" />
             Add Client
           </Button>
@@ -383,6 +414,7 @@ export default function ClientsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Name</TableHead>
                   <TableHead>Client ID</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Grants</TableHead>
@@ -394,7 +426,8 @@ export default function ClientsPage() {
               <TableBody>
                 {clients.map((client) => (
                   <TableRow key={client.id}>
-                    <TableCell className="font-mono text-sm">{client.client_id}</TableCell>
+                    <TableCell className="font-medium">{client.name}</TableCell>
+                    <TableCell className="font-mono text-sm text-muted-foreground">{client.client_id}</TableCell>
                     <TableCell>
                       <Badge variant={client.client_type === "confidential" ? "default" : "secondary"}>
                         {client.client_type === "confidential" ? (
@@ -478,44 +511,20 @@ export default function ClientsPage() {
           <DialogHeader>
             <DialogTitle>Create OAuth Client</DialogTitle>
             <DialogDescription>
-              Register a new OAuth client application
+              Register a new OAuth client application. Client ID and secret will be generated automatically.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="client_id">Client ID</Label>
+              <Label htmlFor="client_name">Client Name *</Label>
               <Input
-                id="client_id"
-                placeholder="my-app"
-                value={newClientId}
-                onChange={(e) => setNewClientId(e.target.value)}
+                id="client_name"
+                value={newClientName}
+                onChange={(e) => setNewClientName(e.target.value)}
+                placeholder="My Application"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="client_type">Client Type</Label>
-              <Select value={newClientType} onValueChange={(v) => setNewClientType(v as "public" | "confidential")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="public">
-                    <div className="flex items-center">
-                      <Globe className="mr-2 h-4 w-4" />
-                      Public (SPAs, Mobile Apps)
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="confidential">
-                    <div className="flex items-center">
-                      <Lock className="mr-2 h-4 w-4" />
-                      Confidential (Server-side)
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
               <p className="text-xs text-muted-foreground">
-                {newClientType === "public"
-                  ? "For apps that cannot securely store secrets"
-                  : "For server-side apps that can store secrets securely"}
+                A descriptive name for this OAuth client
               </p>
             </div>
             <div className="space-y-2">
@@ -529,14 +538,14 @@ export default function ClientsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Allowed Grants</Label>
+              <Label>Grant Types</Label>
               <div className="space-y-2">
                 {availableGrants.map((grant) => (
                   <label key={grant.value} className="flex items-center space-x-2">
                     <input
                       type="checkbox"
-                      checked={newAllowedGrants.includes(grant.value)}
-                      onChange={() => toggleGrant(grant.value, newAllowedGrants, setNewAllowedGrants)}
+                      checked={newGrantTypes.includes(grant.value)}
+                      onChange={() => toggleGrant(grant.value, newGrantTypes, setNewGrantTypes)}
                       className="rounded border-gray-300"
                     />
                     <span className="text-sm">{grant.label}</span>
@@ -549,7 +558,7 @@ export default function ClientsPage() {
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={isLoading || !newClientId || !newRedirectUris}>
+            <Button onClick={handleCreate} disabled={isLoading || !newClientName.trim()}>
               {isLoading ? "Creating..." : "Create Client"}
             </Button>
           </DialogFooter>
@@ -560,9 +569,9 @@ export default function ClientsPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Client: {selectedClient?.client_id}</DialogTitle>
+            <DialogTitle>Edit Client: {selectedClient?.name}</DialogTitle>
             <DialogDescription>
-              Update client configuration
+              Update client configuration for {selectedClient?.client_id}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -609,7 +618,7 @@ export default function ClientsPage() {
           <DialogHeader>
             <DialogTitle>Delete Client</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the client "{selectedClient?.client_id}"?
+              Are you sure you want to delete the client "{selectedClient?.name}" ({selectedClient?.client_id})?
               This action cannot be undone and will invalidate all tokens issued to this client.
             </DialogDescription>
           </DialogHeader>
@@ -624,37 +633,62 @@ export default function ClientsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Secret Display Dialog */}
+      {/* Credentials Display Dialog (shown after client creation or secret rotation) */}
       <Dialog open={secretDialogOpen} onOpenChange={(open) => {
         setSecretDialogOpen(open);
-        if (!open) setNewClientSecret(null);
+        if (!open) {
+          setCreatedClientId(null);
+          setNewClientSecret(null);
+        }
       }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
               <Key className="inline mr-2 h-5 w-5" />
-              Client Secret
+              {createdClientId ? "Client Credentials" : "New Client Secret"}
             </DialogTitle>
             <DialogDescription>
-              Copy this secret now. It will not be shown again.
+              {createdClientId
+                ? "Your OAuth client has been created. Copy these credentials now - they will not be shown again."
+                : "Copy this new secret now. It will not be shown again."
+              }
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <div className="flex items-center gap-2">
-              <code className="flex-1 p-3 bg-muted rounded-md font-mono text-sm break-all">
-                {newClientSecret}
-              </code>
-              <Button variant="outline" size="sm" onClick={copySecret}>
-                {copiedSecret ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </Button>
+          <div className="py-4 space-y-4">
+            {/* Show Client ID only for new client creation */}
+            {createdClientId && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Client ID</Label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 p-3 bg-muted rounded-md font-mono text-sm break-all">
+                    {createdClientId}
+                  </code>
+                  <Button variant="outline" size="sm" onClick={copyClientId}>
+                    {copiedClientId ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {/* Always show Client Secret */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Client Secret</Label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 p-3 bg-muted rounded-md font-mono text-sm break-all">
+                  {newClientSecret}
+                </code>
+                <Button variant="outline" size="sm" onClick={copySecret}>
+                  {copiedSecret ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
-            <p className="mt-3 text-sm text-amber-600 dark:text-amber-500">
-              Store this secret securely. You will need to rotate it if lost.
+            <p className="text-sm text-amber-600 dark:text-amber-500">
+              Store these credentials securely. The secret will not be shown again.
             </p>
           </div>
           <DialogFooter>
             <Button onClick={() => {
               setSecretDialogOpen(false);
+              setCreatedClientId(null);
               setNewClientSecret(null);
             }}>
               Done

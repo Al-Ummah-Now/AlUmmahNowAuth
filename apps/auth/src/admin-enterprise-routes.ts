@@ -13,6 +13,7 @@ import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter-enhanced';
 import { AuditEventType, AuditEventSeverity, createSecurityAlertEvent } from './audit-events';
 import { checkRateLimit, getClientIP } from './rate-limit';
+import { ClientService } from '@al-ummah-now/openauth';
 import * as v from 'valibot';
 
 // ============================================================================
@@ -41,15 +42,21 @@ const TokenAuditQuerySchema = v.object({
 });
 
 const CreateClientSchema = v.object({
-  client_id: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
-  client_type: v.picklist(['public', 'confidential']),
-  allowed_grants: v.array(v.string()),
-  redirect_uris: v.array(v.pipe(v.string(), v.url())),
+  name: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+  grant_types: v.optional(v.array(v.string())),
+  scopes: v.optional(v.array(v.string())),
+  redirect_uris: v.optional(v.array(v.pipe(v.string(), v.url()))),
+  metadata: v.optional(v.record(v.string(), v.unknown())),
+  enabled: v.optional(v.boolean()),
 });
 
 const UpdateClientSchema = v.object({
-  allowed_grants: v.optional(v.array(v.string())),
+  name: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(100))),
+  grant_types: v.optional(v.array(v.string())),
+  scopes: v.optional(v.array(v.string())),
   redirect_uris: v.optional(v.array(v.pipe(v.string(), v.url()))),
+  metadata: v.optional(v.record(v.string(), v.unknown())),
+  enabled: v.optional(v.boolean()),
 });
 
 const RevokeUserTokensSchema = v.object({
@@ -74,16 +81,6 @@ interface AuditEvent {
   success: number;
   error_message: string | null;
   created_at: string;
-}
-
-interface OAuthClient {
-  id: string;
-  client_id: string;
-  client_secret_hash: string | null;
-  client_type: string;
-  allowed_grants: string;
-  redirect_uris: string;
-  created_at: number;
 }
 
 interface TokenUsageRecord {
@@ -609,37 +606,16 @@ export class AdminEnterpriseRoutes {
       const body = await request.json();
       const validated = v.parse(CreateClientSchema, body);
 
-      // Generate ID and optionally client secret
-      const id = crypto.randomUUID();
-      let clientSecretHash: string | null = null;
-      let clientSecret: string | undefined;
-
-      if (validated.client_type === 'confidential') {
-        // Generate secure client secret
-        const secretBytes = new Uint8Array(32);
-        crypto.getRandomValues(secretBytes);
-        clientSecret = Array.from(secretBytes, b => b.toString(16).padStart(2, '0')).join('');
-
-        // Hash the secret for storage
-        const encoder = new TextEncoder();
-        const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(clientSecret));
-        clientSecretHash = Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
-      }
-
-      // OpenAuth schema: id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at
-      const now = Date.now();
-      await this.db.prepare(`
-        INSERT INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at)
-        VALUES (?, 'default', ?, ?, ?, '[]', ?, '{}', 1, ?, ?)
-      `).bind(
-        id,
-        validated.client_id, // Use client_id as the name
-        clientSecretHash,
-        JSON.stringify(validated.allowed_grants),
-        JSON.stringify(validated.redirect_uris),
-        now,
-        now
-      ).run();
+      // Use OpenAuth ClientService to create the client
+      const clientService = new ClientService(this.db);
+      const { client, secret } = await clientService.createClient('default', {
+        name: validated.name,
+        grant_types: validated.grant_types,
+        scopes: validated.scopes,
+        redirect_uris: validated.redirect_uris,
+        metadata: validated.metadata,
+        enabled: validated.enabled,
+      });
 
       // Emit audit event
       await emitAuditEvent({
@@ -653,31 +629,24 @@ export class AdminEnterpriseRoutes {
         success: true,
         errorMessage: null,
         metadata: {
-          client_id: validated.client_id,
-          client_type: validated.client_type,
+          client_id: client.id,
+          name: client.name,
         },
       });
 
       logger.info('OAuth client created', {
-        clientId: validated.client_id,
+        clientId: client.id,
+        name: client.name,
         createdBy: userId,
       });
 
-      // Return client info (and secret ONLY on creation for confidential clients)
-      const response: Record<string, unknown> = {
-        id,
-        client_id: validated.client_id,
-        client_type: validated.client_type,
-        allowed_grants: validated.allowed_grants,
-        redirect_uris: validated.redirect_uris,
-      };
-
-      if (clientSecret) {
-        response.client_secret = clientSecret;
-        response.warning = 'Store the client_secret securely. It will not be shown again.';
-      }
-
-      return new Response(JSON.stringify(response), {
+      // Return client info with generated ID and secret
+      return new Response(JSON.stringify({
+        ...client,
+        client_id: client.id,
+        client_secret: secret,
+        warning: 'Store the client_id and client_secret securely. The secret will not be shown again.',
+      }), {
         status: 201,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -690,9 +659,14 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('Invalid request: ' + error.message, 400);
       }
 
+      // Handle OpenAuth ClientNameConflictError
+      if (error instanceof Error && error.name === 'ClientNameConflictError') {
+        return createAuthErrorResponse('A client with this name already exists', 409);
+      }
+
       return createAuthErrorResponse(
         error instanceof Error ? error.message : 'Failed to create client',
-        error instanceof Error && error.message.includes('UNIQUE') ? 409 : 500
+        500
       );
     }
   }
@@ -751,36 +725,24 @@ export class AdminEnterpriseRoutes {
       const body = await request.json();
       const validated = v.parse(UpdateClientSchema, body);
 
-      // Build update query dynamically (OpenAuth schema uses grant_types, not allowed_grants)
-      const updates: string[] = [];
-      const bindParams: unknown[] = [];
+      // Check if any updates provided
+      const hasUpdates = validated.name || validated.grant_types || validated.scopes ||
+        validated.redirect_uris || validated.metadata || validated.enabled !== undefined;
 
-      if (validated.allowed_grants) {
-        updates.push('grant_types = ?');
-        bindParams.push(JSON.stringify(validated.allowed_grants));
-      }
-      if (validated.redirect_uris) {
-        updates.push('redirect_uris = ?');
-        bindParams.push(JSON.stringify(validated.redirect_uris));
-      }
-
-      if (updates.length === 0) {
+      if (!hasUpdates) {
         return createAuthErrorResponse('No updates provided', 400);
       }
 
-      // Add updated_at timestamp
-      updates.push('updated_at = ?');
-      bindParams.push(Date.now());
-
-      bindParams.push(clientId);
-
-      const result = await this.db.prepare(`
-        UPDATE oauth_clients SET ${updates.join(', ')} WHERE id = ?
-      `).bind(...bindParams).run();
-
-      if (!result.meta?.changes || result.meta.changes === 0) {
-        return createAuthErrorResponse('Client not found', 404);
-      }
+      // Use OpenAuth ClientService to update the client
+      const clientService = new ClientService(this.db);
+      const updatedClient = await clientService.updateClient(clientId, 'default', {
+        name: validated.name,
+        grant_types: validated.grant_types,
+        scopes: validated.scopes,
+        redirect_uris: validated.redirect_uris,
+        metadata: validated.metadata,
+        enabled: validated.enabled,
+      });
 
       // Emit audit event
       await emitAuditEvent({
@@ -804,7 +766,7 @@ export class AdminEnterpriseRoutes {
         updatedBy: userId,
       });
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify(updatedClient), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -818,9 +780,14 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('Invalid request: ' + error.message, 400);
       }
 
+      // Handle OpenAuth ClientNotFoundError
+      if (error instanceof Error && error.name === 'ClientNotFoundError') {
+        return createAuthErrorResponse('Client not found', 404);
+      }
+
       return createAuthErrorResponse(
         error instanceof Error ? error.message : 'Failed to update client',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
+        500
       );
     }
   }
@@ -840,13 +807,9 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('Rate limit exceeded', 429);
       }
 
-      const result = await this.db.prepare(
-        'DELETE FROM oauth_clients WHERE id = ?'
-      ).bind(clientId).run();
-
-      if (!result.meta?.changes || result.meta.changes === 0) {
-        return createAuthErrorResponse('Client not found', 404);
-      }
+      // Use OpenAuth ClientService to delete the client
+      const clientService = new ClientService(this.db);
+      await clientService.deleteClient(clientId, 'default');
 
       // Emit audit event
       await emitAuditEvent({
@@ -879,9 +842,14 @@ export class AdminEnterpriseRoutes {
         error: error instanceof Error ? error.message : String(error),
       });
 
+      // Handle OpenAuth ClientNotFoundError
+      if (error instanceof Error && error.name === 'ClientNotFoundError') {
+        return createAuthErrorResponse('Client not found', 404);
+      }
+
       return createAuthErrorResponse(
         error instanceof Error ? error.message : 'Failed to delete client',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
+        500
       );
     }
   }
@@ -901,33 +869,9 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('Rate limit exceeded', 429);
       }
 
-      // Check client exists and is confidential (has client_secret_hash)
-      const client = await this.db.prepare(
-        'SELECT id, client_secret_hash FROM oauth_clients WHERE id = ?'
-      ).bind(clientId).first<{ id: string; client_secret_hash: string | null }>();
-
-      if (!client) {
-        return createAuthErrorResponse('Client not found', 404);
-      }
-
-      if (!client.client_secret_hash) {
-        return createAuthErrorResponse('Cannot rotate secret for public clients', 400);
-      }
-
-      // Generate new secret
-      const secretBytes = new Uint8Array(32);
-      crypto.getRandomValues(secretBytes);
-      const newSecret = Array.from(secretBytes, b => b.toString(16).padStart(2, '0')).join('');
-
-      // Hash the secret
-      const encoder = new TextEncoder();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(newSecret));
-      const newSecretHash = Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
-
-      // Update in database
-      await this.db.prepare(
-        'UPDATE oauth_clients SET client_secret_hash = ?, updated_at = ? WHERE id = ?'
-      ).bind(newSecretHash, Date.now(), clientId).run();
+      // Use OpenAuth ClientService to rotate the secret
+      const clientService = new ClientService(this.db);
+      const { client, secret } = await clientService.rotateSecret(clientId, 'default');
 
       // Emit audit event
       await emitAuditEvent({
@@ -951,8 +895,9 @@ export class AdminEnterpriseRoutes {
       });
 
       return new Response(JSON.stringify({
-        client_id: clientId,
-        client_secret: newSecret,
+        ...client,
+        client_id: client.id,
+        client_secret: secret,
         warning: 'Store the client_secret securely. It will not be shown again.',
       }), {
         status: 200,
@@ -964,9 +909,17 @@ export class AdminEnterpriseRoutes {
         error: error instanceof Error ? error.message : String(error),
       });
 
+      // Handle OpenAuth errors
+      if (error instanceof Error && error.name === 'ClientNotFoundError') {
+        return createAuthErrorResponse('Client not found', 404);
+      }
+      if (error instanceof Error && error.name === 'PublicClientError') {
+        return createAuthErrorResponse('Cannot rotate secret for public clients', 400);
+      }
+
       return createAuthErrorResponse(
         error instanceof Error ? error.message : 'Failed to rotate client secret',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
+        500
       );
     }
   }

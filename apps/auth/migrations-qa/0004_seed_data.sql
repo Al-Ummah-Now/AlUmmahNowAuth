@@ -5,7 +5,8 @@
 UPDATE tenants SET domain = 'auth.qa.alummahnow.net' WHERE id = 'default';
 
 -- Insert OAuth clients for profile and admin apps (QA environment)
-INSERT OR IGNORE INTO oauth_clients (client_id, client_secret_hash, client_name, redirect_uris, grant_types, scopes, created_at, updated_at, tenant_id)
+-- Schema: id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at
+INSERT OR IGNORE INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at)
 VALUES
-    ('profile-app', NULL, 'Profile Application', '["http://localhost:3302/callback","https://profile.auth.qa.alummahnow.net/callback"]', '["authorization_code","refresh_token"]', '["openid","profile","email"]', unixepoch() * 1000, unixepoch() * 1000, 'default'),
-    ('admin-dashboard', NULL, 'Admin Dashboard', '["http://localhost:3303/callback","https://admin.auth.qa.alummahnow.net/callback"]', '["authorization_code","refresh_token"]', '["openid","profile","email","admin"]', unixepoch() * 1000, unixepoch() * 1000, 'default');
+    ('profile-app-qa', 'default', 'Profile Application', NULL, '["authorization_code","refresh_token"]', '["openid","profile","email"]', '["http://localhost:3302/callback","https://profile.auth.qa.alummahnow.net/callback"]', '{}', 1, unixepoch() * 1000, unixepoch() * 1000),
+    ('admin-dashboard-qa', 'default', 'Admin Dashboard', NULL, '["authorization_code","refresh_token","client_credentials"]', '["openid","profile","email","admin","admin:users","admin:roles","admin:clients"]', '["http://localhost:3303/callback","https://admin.auth.qa.alummahnow.net/callback"]', '{}', 1, unixepoch() * 1000, unixepoch() * 1000);

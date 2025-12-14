@@ -82,7 +82,7 @@ export function redirectToLogin(request: Request) {
 }
 
 // Redirect to auth server with prompt=select_account to switch accounts
-export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SERVER_URL?: string }) {
+export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SERVER_URL?: string; APP_URL?: string }) {
   const appUrl = getAppUrl(request, env);
   const client = getOpenAuthClient(request, env);
 

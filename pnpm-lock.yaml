@@ -58,8 +58,8 @@ importers:
   apps/admin:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.7-pr.5.50
-        version: 1.0.7-pr.5.50(arctic@3.7.0)(hono@4.10.7)
+        specifier: 1.0.7-pr.5.54
+        version: 1.0.7-pr.5.54(arctic@3.7.0)(hono@4.10.7)
       '@al-ummah-now/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -179,8 +179,8 @@ importers:
   apps/audit-consumer:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.7-pr.5.50
-        version: 1.0.7-pr.5.50(arctic@3.7.0)(hono@4.10.7)
+        specifier: 1.0.7-pr.5.54
+        version: 1.0.7-pr.5.54(arctic@3.7.0)(hono@4.10.7)
       '@types/node':
         specifier: ^24.8.1
         version: 24.10.1
@@ -207,8 +207,8 @@ importers:
   apps/auth:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.7-pr.5.50
-        version: 1.0.7-pr.5.50(arctic@3.7.0)(hono@4.10.7)
+        specifier: 1.0.7-pr.5.54
+        version: 1.0.7-pr.5.54(arctic@3.7.0)(hono@4.10.7)
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
@@ -247,8 +247,8 @@ importers:
   apps/profile:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.7-pr.5.50
-        version: 1.0.7-pr.5.50(arctic@3.7.0)(hono@4.10.7)
+        specifier: 1.0.7-pr.5.54
+        version: 1.0.7-pr.5.54(arctic@3.7.0)(hono@4.10.7)
       valibot:
         specifier: ^1.2.0
         version: 1.2.0(typescript@5.9.3)
@@ -275,8 +275,8 @@ importers:
   packages/ui:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.7-pr.5.50
-        version: 1.0.7-pr.5.50(arctic@3.7.0)(hono@4.10.7)
+        specifier: 1.0.7-pr.5.54
+        version: 1.0.7-pr.5.54(arctic@3.7.0)(hono@4.10.7)
       lucide-react:
         specifier: '>=0.400.0'
         version: 0.555.0(react@19.2.0)
@@ -295,6 +295,13 @@ packages:
 
   '@al-ummah-now/openauth@1.0.7-pr.5.50':
     resolution: {integrity: sha512-L0usPdy33t0+V1q/YTrIhTP+mtJC4/ezb/QzVtt9TiuEhyEcrwMUKJ8MRxOvimMBPVF+FEovPlBqXPkx+15UGQ==, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.7-pr.5.50/c2b101a55f54f0dbcfd43decca53fa499096ba06}
+    hasBin: true
+    peerDependencies:
+      arctic: ^2.2.2
+      hono: ^4.0.0
+
+  '@al-ummah-now/openauth@1.0.7-pr.5.54':
+    resolution: {integrity: sha512-1ihV5ORMFU22eMi6ev5U0zZJ9KmeE5Nt5jNFq3EJSr5Jak+aqDBwV1dN97nAI3zx/MABjzLpWsUiYIRjRNx2qw==, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.7-pr.5.54/f960f5e664b4b2adc7288c36de07cbaf106480b5}
     hasBin: true
     peerDependencies:
       arctic: ^2.2.2
@@ -3592,6 +3599,14 @@ packages:
 snapshots:
 
   '@al-ummah-now/openauth@1.0.7-pr.5.50(arctic@3.7.0)(hono@4.10.7)':
+    dependencies:
+      '@standard-schema/spec': 1.0.0-beta.3
+      arctic: 3.7.0
+      aws4fetch: 1.0.20
+      hono: 4.10.7
+      jose: 5.9.6
+
+  '@al-ummah-now/openauth@1.0.7-pr.5.54(arctic@3.7.0)(hono@4.10.7)':
     dependencies:
       '@standard-schema/spec': 1.0.0-beta.3
       arctic: 3.7.0

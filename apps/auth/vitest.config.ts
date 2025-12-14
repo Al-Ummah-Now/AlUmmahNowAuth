@@ -4,17 +4,13 @@ export default defineWorkersConfig({
   test: {
     poolOptions: {
       workers: {
-        // Don't use wrangler config to avoid loading the main worker
-        // This prevents OpenAuth issuer from being imported during tests
+        // Use wrangler config to get D1 bindings with local persistence
+        wrangler: {
+          configPath: "./wrangler.json",
+        },
         miniflare: {
-          // Add D1 database binding for testing
-          d1Databases: ["AUTH_DB"],
-          // Add KV namespace binding for testing
-          kvNamespaces: ["AUTH_STORAGE"],
-          // Enable nodejs_compat for node:* imports in dependencies
-          compatibilityFlags: ["nodejs_compat"],
-          // Set a compatibility date
-          compatibilityDate: "2024-12-30",
+          // Use local D1 database (apply migrations first with: pnpm migrations:local)
+          d1Persist: ".wrangler/state/v3/d1",
         },
       },
     },
