@@ -1004,7 +1004,8 @@ export default {
             const roles = user.roles || [];
             roles.forEach(role => {
                 const roleBadge = document.createElement('span');
-                roleBadge.className = role === 'admin' || role === 'super_admin' ? 'badge badge-admin' : 'badge badge-user';
+                const roleLower = role.toLowerCase();
+                roleBadge.className = roleLower === 'admin' || roleLower === 'super admin' ? 'badge badge-admin' : 'badge badge-user';
                 roleBadge.textContent = role.toUpperCase();
                 roleBadge.style.marginRight = '8px';
                 roleDiv.appendChild(roleBadge);
@@ -1014,7 +1015,7 @@ export default {
             }
 
             // Update nav menu - show admin link for admin users
-            const isAdmin = roles.some(r => r === 'admin' || r === 'super_admin');
+            const isAdmin = roles.some(r => r.toLowerCase() === 'admin' || r.toLowerCase() === 'super admin');
             navMenu.innerHTML = \`
                 \${isAdmin && adminUrl ? \`<a href="\${adminUrl}" class="btn btn-primary">⚙️ Admin</a>\` : ''}
             \`;
