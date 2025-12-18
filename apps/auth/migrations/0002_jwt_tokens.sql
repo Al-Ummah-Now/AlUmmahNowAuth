@@ -32,8 +32,9 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     expires_at INTEGER NOT NULL,
     revoked INTEGER NOT NULL DEFAULT 0,
     revoked_at INTEGER,
+    revoked_reason TEXT,
     created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
@@ -76,7 +77,7 @@ CREATE TABLE IF NOT EXISTS authorization_codes (
     used INTEGER NOT NULL DEFAULT 0,
     used_at INTEGER,
     created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 

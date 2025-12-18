@@ -104,7 +104,7 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 				}
 
 				// Get user email
-				const user = await c.env.AUTH_DB.prepare(`SELECT email FROM user WHERE id = ?`)
+				const user = await c.env.AUTH_DB.prepare(`SELECT email FROM users WHERE id = ?`)
 					.bind(actingUserId)
 					.first<{ email: string }>();
 
@@ -136,7 +136,7 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 		// Get user with roles
 		const user = await c.env.AUTH_DB.prepare(`
 			SELECT u.id, u.email
-			FROM user u
+			FROM users u
 			WHERE u.id = ?
 		`)
 			.bind(activeAccount.userId)

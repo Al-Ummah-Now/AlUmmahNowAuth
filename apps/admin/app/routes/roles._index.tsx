@@ -35,6 +35,7 @@ import {
   getAllRoles,
   createRole,
   deleteRole,
+  getRoleUsers,
   isErrorResponse,
   type Role,
   type RoleData,
@@ -59,17 +60,14 @@ interface LoaderData {
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
 
   // Always require admin authentication
   let currentUser: { id: string; email: string; roles?: string[] };
@@ -93,11 +91,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const user = { id: currentUser.id, email: currentUser.email };
 
   try {
-    if (!env?.AUTH_DB) {
-      console.warn("AUTH_DB not available in development mode");
-      return { roles: [], user, authServerUrl };
-    }
-
     // Fetch all roles from auth service
     const rolesResponse = await getAllRoles(request, env);
 
@@ -106,19 +99,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       return { roles: [], user, authServerUrl };
     }
 
-    // Get user counts for each role
+    // Get user counts for each role via API
     const rolesWithCounts = await Promise.all(
       rolesResponse.map(async (role) => {
-        const countResult = await env.AUTH_DB.prepare(`
-          SELECT COUNT(*) as count
-          FROM rbac_user_roles
-          WHERE role_id = ?
-            AND (expires_at IS NULL OR expires_at > unixepoch() * 1000)
-        `).bind(role.id).first<{ count: number }>();
+        // Call API to get users for this role
+        const usersResponse = await getRoleUsers(request, env, role.id);
+        const userCount = isErrorResponse(usersResponse) ? 0 : usersResponse.length;
 
         return {
           ...role,
-          user_count: countResult?.count || 0,
+          user_count: userCount,
         };
       })
     );
@@ -132,7 +122,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export async function action({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
   };
@@ -185,17 +174,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: "Missing roleId" };
       }
 
-      // Check if role is system role (additional safety check)
-      if (env?.AUTH_DB) {
-        const role = await env.AUTH_DB.prepare(`
-          SELECT is_system_role FROM rbac_roles WHERE id = ?
-        `).bind(roleId).first<{ is_system_role: number }>();
-
-        if (role?.is_system_role) {
-          return { error: "Cannot delete system roles" };
-        }
-      }
-
+      // The API endpoint will check if it's a system role
       const result = await deleteRole(request, env, roleId);
 
       if (isErrorResponse(result)) {
@@ -254,7 +233,7 @@ export default function Roles() {
   };
 
   const openDeleteDialog = (role: RoleWithUserCount) => {
-    if (role.is_system) {
+    if (role.is_system_role) {
       return; // Should not happen due to disabled button, but extra safety
     }
     setRoleToDelete(role);
@@ -383,8 +362,8 @@ export default function Roles() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={role.is_system ? "default" : "secondary"}>
-                          {role.is_system ? "System" : "Custom"}
+                        <Badge variant={role.is_system_role ? "default" : "secondary"}>
+                          {role.is_system_role ? "System" : "Custom"}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -409,12 +388,12 @@ export default function Roles() {
                             variant="ghost"
                             size="icon"
                             onClick={() => openDeleteDialog(role)}
-                            disabled={role.is_system}
-                            title={role.is_system ? "Cannot delete system roles" : "Delete Role"}
+                            disabled={role.is_system_role}
+                            title={role.is_system_role ? "Cannot delete system roles" : "Delete Role"}
                           >
                             <Trash2
                               className={`h-4 w-4 ${
-                                role.is_system
+                                role.is_system_role
                                   ? "text-[rgb(var(--color-muted-foreground))]"
                                   : "text-[rgb(var(--color-destructive))]"
                               }`}

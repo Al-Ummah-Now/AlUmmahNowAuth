@@ -61,7 +61,6 @@ interface LoaderData {
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
@@ -70,10 +69,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
 
   // Always require authentication
   let currentUser: { id: string; email: string; roles: string[] };
@@ -117,7 +114,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;

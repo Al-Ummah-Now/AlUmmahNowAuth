@@ -1,7 +1,25 @@
 import { getUserSession } from './session';
-import { PermissionService } from './permission-service';
 import { logger } from './logger';
-import { bearerAuth, extractBearerToken } from '@al-ummah-now/openauth';
+import { bearerAuth, extractBearerToken, RBACServiceImpl, RBACAdapter } from '@al-ummah-now/openauth';
+import { CloudflareStorage } from '@al-ummah-now/openauth/storage/cloudflare';
+
+/**
+ * Default client ID and tenant ID for RBAC operations
+ * In a multi-tenant system, these would come from the request context
+ * Note: OpenAuth RBAC uses 'clientId' not 'appId' in version 1.0.9
+ */
+const DEFAULT_CLIENT_ID = 'default-app';
+const DEFAULT_TENANT_ID = 'default';
+
+/**
+ * Get RBAC service instance
+ * Creates a new instance for each request - could be optimized with singleton pattern
+ */
+function getRBACService(env: Env): RBACServiceImpl {
+  const adapter = new RBACAdapter(env.AUTH_DB);
+  const storage = CloudflareStorage({ namespace: env.AUTH_STORAGE });
+  return new RBACServiceImpl(adapter, storage);
+}
 
 /**
  * Check if request has Bearer token (M2M auth)
@@ -156,21 +174,25 @@ export async function verifyAdminAuth(
     return authContext;
   }
 
-  // Check RBAC permissions
-  const permissionService = new PermissionService(env.AUTH_DB, env.AUTH_STORAGE);
+  // Check RBAC permissions using OpenAuth
+  const rbacService = getRBACService(env);
 
   // Check for admin permissions
-  const hasAdminPermission = await permissionService.hasPermission(
-    authContext.user.id,
-    'system:manage:all'
-  );
+  const hasAdminPermission = await rbacService.checkPermission({
+    userId: authContext.user.id,
+    clientId: DEFAULT_CLIENT_ID,
+    tenantId: DEFAULT_TENANT_ID,
+    permission: 'system:manage:all',
+  });
 
   if (!hasAdminPermission) {
     // Also check for role management permission as alternative
-    const hasRoleManagement = await permissionService.hasPermission(
-      authContext.user.id,
-      'roles:manage:all'
-    );
+    const hasRoleManagement = await rbacService.checkPermission({
+      userId: authContext.user.id,
+      clientId: DEFAULT_CLIENT_ID,
+      tenantId: DEFAULT_TENANT_ID,
+      permission: 'roles:manage:all',
+    });
 
     if (!hasRoleManagement) {
       logger.warn('Admin access denied', {
@@ -370,12 +392,16 @@ export async function verifyPermission(
 ): Promise<AuthContext> {
   const authContext = await verifyAuth(request, env);
 
-  const permissionService = new PermissionService(env.AUTH_DB, env.AUTH_STORAGE);
-  const hasPermission = await permissionService.hasPermission(
-    authContext.user.id,
+  const rbacService = getRBACService(env);
+
+  // Note: OpenAuth RBAC doesn't support resource-level permissions yet
+  // The resource parameter is ignored for now - could be implemented with custom logic
+  const hasPermission = await rbacService.checkPermission({
+    userId: authContext.user.id,
+    clientId: DEFAULT_CLIENT_ID,
+    tenantId: DEFAULT_TENANT_ID,
     permission,
-    resource
-  );
+  });
 
   if (!hasPermission) {
     logger.warn('Permission denied', {
@@ -392,17 +418,11 @@ export async function verifyPermission(
   });
 
   // Load all user permissions for context
-  const effectivePermissions = await permissionService.getUserPermissions(authContext.user.id);
-
-  // Combine all permission names from permissions, directGrants, excluding directDenies
-  const allPermissions = [
-    ...effectivePermissions.permissions,
-    ...effectivePermissions.directGrants,
-  ];
-
-  const permissionNames = allPermissions
-    .map(p => p.name)
-    .filter(name => !effectivePermissions.directDenies.some(d => d.name === name));
+  const permissionNames = await rbacService.getUserPermissions({
+    userId: authContext.user.id,
+    clientId: DEFAULT_CLIENT_ID,
+    tenantId: DEFAULT_TENANT_ID,
+  });
 
   return {
     ...authContext,
@@ -419,10 +439,17 @@ export async function verifyGranterPermission(
   permissionToGrant: string,
   env: Env
 ): Promise<boolean> {
-  const permissionService = new PermissionService(env.AUTH_DB, env.AUTH_STORAGE);
+  const rbacService = getRBACService(env);
 
   // Super admins can grant any permission
-  if (await permissionService.hasPermission(granterId, '*:*:*')) {
+  const isSuperAdmin = await rbacService.checkPermission({
+    userId: granterId,
+    clientId: DEFAULT_CLIENT_ID,
+    tenantId: DEFAULT_TENANT_ID,
+    permission: '*:*:*',
+  });
+
+  if (isSuperAdmin) {
     logger.debug('Super admin granting permission', {
       granterId,
       permissionToGrant,
@@ -431,7 +458,12 @@ export async function verifyGranterPermission(
   }
 
   // Check if granter has the permission they're trying to grant
-  const hasPermission = await permissionService.hasPermission(granterId, permissionToGrant);
+  const hasPermission = await rbacService.checkPermission({
+    userId: granterId,
+    clientId: DEFAULT_CLIENT_ID,
+    tenantId: DEFAULT_TENANT_ID,
+    permission: permissionToGrant,
+  });
 
   if (!hasPermission) {
     logger.warn('Granter lacks permission to grant', {
@@ -442,8 +474,19 @@ export async function verifyGranterPermission(
   }
 
   // Also check if granter has role/permission management rights
-  const canManageRoles = await permissionService.hasPermission(granterId, 'roles:manage:all');
-  const canManageUsers = await permissionService.hasPermission(granterId, 'users:manage:all');
+  const canManageRoles = await rbacService.checkPermission({
+    userId: granterId,
+    clientId: DEFAULT_CLIENT_ID,
+    tenantId: DEFAULT_TENANT_ID,
+    permission: 'roles:manage:all',
+  });
+
+  const canManageUsers = await rbacService.checkPermission({
+    userId: granterId,
+    clientId: DEFAULT_CLIENT_ID,
+    tenantId: DEFAULT_TENANT_ID,
+    permission: 'users:manage:all',
+  });
 
   if (!canManageRoles && !canManageUsers) {
     logger.warn('Granter lacks management permissions', {

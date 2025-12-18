@@ -371,7 +371,7 @@ export class AdminTenantRoutes {
       const result = await env.AUTH_DB.prepare(`
         SELECT ta.*, u.email as user_email
         FROM tenant_admins ta
-        JOIN user u ON ta.user_id = u.id
+        JOIN users u ON ta.user_id = u.id
         WHERE ta.tenant_id = ?
         ORDER BY ta.role, ta.granted_at
       `).bind(tenantId).all();

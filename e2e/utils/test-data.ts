@@ -4,6 +4,14 @@
  * Utilities for generating consistent test data across E2E tests.
  */
 
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Load .env.test in worker processes (playwright.config.ts only loads in main process)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../../.env.test') });
+
 export interface TestUser {
   email: string;
   role: 'admin' | 'user';

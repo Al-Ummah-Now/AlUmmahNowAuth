@@ -10,16 +10,18 @@
  * 2. Request body parameters (client_id and client_secret)
  *
  * Security considerations:
- * - Public clients (client_type='public') can authenticate with client_id only
- * - Confidential clients (client_type='confidential') MUST provide client_secret
+ * - All clients with a secret hash are treated as confidential
  * - Client secrets are verified using constant-time comparison
  * - Returns proper OAuth 2.0 error responses (invalid_client)
  */
 
 /// <reference types="@cloudflare/workers-types" />
 
-import { getOAuthClient, verifyClientSecret, type OAuthClient } from '../services/client-auth-service';
+import { ClientD1Adapter, verifyClientSecret } from '@al-ummah-now/openauth';
 import { logger } from '../logger';
+
+// OAuthClient type inferred from OpenAuth client adapter
+export type OAuthClient = NonNullable<Awaited<ReturnType<ClientD1Adapter['getClientById']>>>;
 
 /**
  * OAuth 2.0 error response for client authentication failures
@@ -71,10 +73,9 @@ function parseBasicAuth(authHeader: string): { client_id: string; client_secret:
  *
  * This middleware:
  * 1. Extracts client credentials from HTTP Basic Auth or request body
- * 2. Validates the client exists in the database
- * 3. For confidential clients, verifies the client_secret
- * 4. For public clients, allows authentication with client_id only
- * 5. Attaches the authenticated client to the request context
+ * 2. Validates the client exists in the database using OpenAuth ClientD1Adapter
+ * 3. Verifies the client_secret (all OpenAuth clients have secrets)
+ * 4. Attaches the authenticated client to the request context
  *
  * @returns Middleware function that authenticates OAuth 2.0 clients
  */
@@ -133,8 +134,9 @@ export function createClientAuthMiddleware() {
 			};
 		}
 
-		// Retrieve client from database
-		const client = await getOAuthClient(clientId, env.AUTH_DB);
+		// Retrieve client from database using OpenAuth adapter
+		const clientAdapter = new ClientD1Adapter(env.AUTH_DB);
+		const client = await clientAdapter.getClientById(clientId);
 
 		if (!client) {
 			const errorResponse: OAuth2ErrorResponse = {
@@ -155,72 +157,74 @@ export function createClientAuthMiddleware() {
 			};
 		}
 
-		// Validate client type and authentication
-		if (client.client_type === 'confidential') {
-			// Confidential clients MUST provide client_secret
-			if (!clientSecret) {
-				const errorResponse: OAuth2ErrorResponse = {
-					error: 'invalid_client',
-					error_description: 'Client authentication failed: confidential clients must provide client_secret',
-				};
-				return {
-					authenticated: false,
-					response: new Response(JSON.stringify(errorResponse), {
-						status: 401,
-						headers: {
-							'Content-Type': 'application/json',
-							'WWW-Authenticate': 'Basic realm="OAuth 2.0 Client Authentication"',
-							'Cache-Control': 'no-store',
-							Pragma: 'no-cache',
-						},
-					}),
-				};
-			}
-
-			// Verify client_secret
-			if (!client.client_secret_hash) {
-				logger.error('Confidential client has no secret hash stored', { client_id: clientId });
-				const errorResponse: OAuth2ErrorResponse = {
-					error: 'invalid_client',
-					error_description: 'Client authentication failed: server misconfiguration',
-				};
-				return {
-					authenticated: false,
-					response: new Response(JSON.stringify(errorResponse), {
-						status: 401,
-						headers: {
-							'Content-Type': 'application/json',
-							'WWW-Authenticate': 'Basic realm="OAuth 2.0 Client Authentication"',
-							'Cache-Control': 'no-store',
-							Pragma: 'no-cache',
-						},
-					}),
-				};
-			}
-
-			const secretValid = await verifyClientSecret(clientSecret, client.client_secret_hash, env);
-
-			if (!secretValid) {
-				const errorResponse: OAuth2ErrorResponse = {
-					error: 'invalid_client',
-					error_description: 'Client authentication failed: invalid client_secret',
-				};
-				return {
-					authenticated: false,
-					response: new Response(JSON.stringify(errorResponse), {
-						status: 401,
-						headers: {
-							'Content-Type': 'application/json',
-							'WWW-Authenticate': 'Basic realm="OAuth 2.0 Client Authentication"',
-							'Cache-Control': 'no-store',
-							Pragma: 'no-cache',
-						},
-					}),
-				};
-			}
+		// Check if client is enabled
+		if (!client.enabled) {
+			const errorResponse: OAuth2ErrorResponse = {
+				error: 'invalid_client',
+				error_description: 'Client authentication failed: client is disabled',
+			};
+			return {
+				authenticated: false,
+				response: new Response(JSON.stringify(errorResponse), {
+					status: 401,
+					headers: {
+						'Content-Type': 'application/json',
+						'WWW-Authenticate': 'Basic realm="OAuth 2.0 Client Authentication"',
+						'Cache-Control': 'no-store',
+						Pragma: 'no-cache',
+					},
+				}),
+			};
 		}
 
-		// For public clients, client_id is sufficient (no secret required)
+		// All OpenAuth clients have secrets - verify the client_secret
+		if (!clientSecret) {
+			const errorResponse: OAuth2ErrorResponse = {
+				error: 'invalid_client',
+				error_description: 'Client authentication failed: client_secret is required',
+			};
+			return {
+				authenticated: false,
+				response: new Response(JSON.stringify(errorResponse), {
+					status: 401,
+					headers: {
+						'Content-Type': 'application/json',
+						'WWW-Authenticate': 'Basic realm="OAuth 2.0 Client Authentication"',
+						'Cache-Control': 'no-store',
+						Pragma: 'no-cache',
+					},
+				}),
+			};
+		}
+
+		// Verify client_secret (supports secret rotation with previous_secret_hash)
+		const secretValid = await verifyClientSecret(clientSecret, client.client_secret_hash);
+		const previousSecretValid =
+			client.previous_secret_hash &&
+			client.previous_secret_expires_at &&
+			client.previous_secret_expires_at > Date.now()
+				? await verifyClientSecret(clientSecret, client.previous_secret_hash)
+				: false;
+
+		if (!secretValid && !previousSecretValid) {
+			const errorResponse: OAuth2ErrorResponse = {
+				error: 'invalid_client',
+				error_description: 'Client authentication failed: invalid client_secret',
+			};
+			return {
+				authenticated: false,
+				response: new Response(JSON.stringify(errorResponse), {
+					status: 401,
+					headers: {
+						'Content-Type': 'application/json',
+						'WWW-Authenticate': 'Basic realm="OAuth 2.0 Client Authentication"',
+						'Cache-Control': 'no-store',
+						Pragma: 'no-cache',
+					},
+				}),
+			};
+		}
+
 		// Authentication successful - return the authenticated client
 		return {
 			authenticated: true,

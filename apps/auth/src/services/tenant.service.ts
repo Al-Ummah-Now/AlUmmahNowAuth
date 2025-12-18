@@ -469,7 +469,7 @@ export class TenantService {
     const result = await this.db.prepare(`
       SELECT ta.*, u.email as user_email
       FROM tenant_admins ta
-      JOIN user u ON ta.user_id = u.id
+      JOIN users u ON ta.user_id = u.id
       WHERE ta.id = ?
     `).bind(id).first();
 

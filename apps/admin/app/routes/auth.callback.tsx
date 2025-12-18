@@ -7,19 +7,13 @@ import { logger } from "../lib/logger.server";
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const requestId = crypto.randomUUID();
 
-  // Initialize logger with D1 database (if available in Cloudflare Workers context)
+  // Initialize logger
   const env = context?.cloudflare?.env as {
-    AUTH_DB?: D1Database;
     AUTH_STORAGE?: KVNamespace;
     AUTH_SERVER_URL?: string;
     APP_URL?: string;
   };
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-  } else {
-    // Running in dev mode without Cloudflare bindings - console only
-    logger.setDatabase(null, false);
-  }
+  logger.setDatabase(null, false);
 
   // Set execution context if available
   if (context?.cloudflare?.ctx) {

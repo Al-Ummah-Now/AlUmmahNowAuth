@@ -13,7 +13,6 @@ const subjects = createSubjects({
 
 interface Env {
   AUTH_STORAGE: KVNamespace;
-  AUTH_DB: D1Database;
   AUTH_SERVER_URL?: string;
   APP_URL?: string;
   ADMIN_URL?: string;
@@ -202,7 +201,7 @@ export default {
       }
     }
 
-    // API endpoint to get fresh user info with roles directly from the database
+    // API endpoint to get user info from session (roles come from JWT)
     if (url.pathname === '/api/me') {
       const session = await getSession(request, env.AUTH_STORAGE);
 
@@ -213,50 +212,15 @@ export default {
         });
       }
 
-      try {
-        // Fetch roles directly from the database for the most up-to-date data
-        const rolesResult = await env.AUTH_DB.prepare(`
-          SELECT r.name
-          FROM rbac_user_roles ur
-          JOIN rbac_roles r ON ur.role_id = r.id
-          WHERE ur.user_id = ?
-            AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
-          ORDER BY r.name
-        `).bind(session.user.id).all<{ name: string }>();
-
-        const roles = rolesResult.results?.map(r => r.name) || [];
-
-        const freshUser = {
-          id: session.user.id,
-          email: session.user.email,
-          roles,
-        };
-
-        // Update session with fresh roles
-        const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
-        if (sessionToken) {
-          const updatedSession = {
-            ...session,
-            user: freshUser,
-          };
-          await env.AUTH_STORAGE.put(
-            `session:${sessionToken}`,
-            JSON.stringify(updatedSession),
-            { expirationTtl: 7 * 24 * 60 * 60 }
-          );
-        }
-
-        return new Response(JSON.stringify(freshUser), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (error) {
-        console.error('Error fetching user info:', error);
-        return new Response(JSON.stringify({ error: 'Failed to fetch user info' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
+      // Return user info from session (roles are from JWT, refreshed on token refresh)
+      return new Response(JSON.stringify({
+        id: session.user.id,
+        email: session.user.email,
+        roles: session.user.roles || [],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     // Handle OAuth callback

@@ -4,7 +4,7 @@ import { Users, ShieldCheck, Activity, Database, Shield, FileText, Key, Monitor 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { AdminLayout } from "../components/admin-layout";
-import { getUserStats, getRoleStats, getUsersByRole } from "../lib/db.server";
+import { getUserStats, getRoleStats, getUsersByRole, isErrorResponse } from "../lib/admin-api.server";
 import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl, getAppUrl } from "../lib/config";
 import { getOpenAuthClient } from "../lib/openauth.client.server";
@@ -18,14 +18,18 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_DB: D1Database; AUTH_STORAGE: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string };
+  const env = context?.cloudflare?.env as {
+    AUTH_STORAGE: KVNamespace;
+    AUTH_SERVER_URL?: string;
+    APP_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
+  };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
 
   logger.logLoader('index', request);
 
@@ -46,7 +50,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // Check if user is authenticated
   let isAuthenticated = false;
-  let user = null;
+  let user: { id: string; email: string; roles: string[] } | null = null;
 
   try {
     logger.debug('Checking authentication');
@@ -78,12 +82,45 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   // If authenticated, return dashboard data
+  // At this point user is guaranteed to be non-null because isAuthenticated is true
+  if (!user) {
+    logger.error('User is null despite isAuthenticated being true');
+    return {
+      isAuthenticated: true,
+      user: null,
+      totalUsers: 0,
+      adminUsers: 0,
+      totalRoles: 0,
+      systemRoles: 0,
+      customRoles: 0,
+      usersByRole: [],
+      authServerUrl,
+      appUrl,
+      authorizeUrl: "",
+    };
+  }
+
   try {
-    if (!env?.AUTH_DB) {
-      logger.warn("AUTH_DB not available in development mode");
+    // Build acting user context for API calls
+    const actingUser = {
+      id: user.id,
+      email: user.email,
+      roles: user.roles || [],
+    };
+
+    logger.info('Loading dashboard stats via API', { userId: user.id });
+
+    // Call stats APIs
+    const stats = await getUserStats(env, actingUser);
+    const roleStats = await getRoleStats(env, actingUser);
+    const usersByRoleResult = await getUsersByRole(env, actingUser, 5);
+
+    // Handle errors gracefully
+    if (isErrorResponse(stats)) {
+      logger.error('Error loading user stats', { error: stats.error });
       return {
         isAuthenticated: true,
-        user: user ? { id: user.id, email: user.email } : null,
+        user: { id: user.id, email: user.email },
         totalUsers: 0,
         adminUsers: 0,
         totalRoles: 0,
@@ -93,24 +130,34 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         authServerUrl,
         appUrl,
         authorizeUrl: "",
+        error: stats.error,
       };
     }
-    logger.logDB('Loading user stats');
-    const stats = await getUserStats(env.AUTH_DB);
-    logger.logDB('Loading role stats');
-    const roleStats = await getRoleStats(env.AUTH_DB);
-    logger.logDB('Loading users by role');
-    const usersByRole = await getUsersByRole(env.AUTH_DB);
-    logger.info('Dashboard data loaded', {
+
+    if (isErrorResponse(roleStats)) {
+      logger.error('Error loading role stats', { error: roleStats.error });
+    }
+
+    if (isErrorResponse(usersByRoleResult)) {
+      logger.error('Error loading users by role', { error: usersByRoleResult.error });
+    }
+
+    const usersByRole = isErrorResponse(usersByRoleResult) ? [] : usersByRoleResult;
+
+    logger.info('Dashboard data loaded via API', {
       totalUsers: stats.totalUsers,
       adminUsers: stats.adminUsers,
-      totalRoles: roleStats.totalRoles
+      totalRoles: isErrorResponse(roleStats) ? 0 : roleStats.totalRoles,
     });
+
     return {
       isAuthenticated: true,
-      user: user ? { id: user.id, email: user.email } : null,
-      ...stats,
-      ...roleStats,
+      user: { id: user.id, email: user.email },
+      totalUsers: stats.totalUsers,
+      adminUsers: stats.adminUsers,
+      totalRoles: isErrorResponse(roleStats) ? 0 : roleStats.totalRoles,
+      systemRoles: isErrorResponse(roleStats) ? 0 : roleStats.systemRoles,
+      customRoles: isErrorResponse(roleStats) ? 0 : roleStats.customRoles,
       usersByRole,
       authServerUrl,
       appUrl,

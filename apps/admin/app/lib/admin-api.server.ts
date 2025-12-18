@@ -14,7 +14,7 @@ import { getAuthServerUrl } from './config';
 export interface User {
   id: string;
   email: string;
-  created_at: string;
+  created_at: number;
   password_reset_required: boolean;
   roles: Array<{
     id: string;
@@ -44,10 +44,10 @@ export interface UserRole {
 export interface PaginatedUsers {
   users: User[];
   pagination: {
-    page: number;
+    cursor?: string;
+    nextCursor?: string;
     limit: number;
-    total: number;
-    totalPages: number;
+    hasMore: boolean;
   };
 }
 
@@ -55,7 +55,6 @@ export interface OAuthClient {
   id: string;
   client_id: string;
   name: string;
-  client_type: 'public' | 'confidential';
   allowed_grants: string[];
   redirect_uris: string[];
   created_at: number;
@@ -248,15 +247,15 @@ export function isErrorResponse(response: unknown): response is ErrorResponse {
 // ============================================================================
 
 /**
- * GET /admin/users - List all users with pagination
+ * GET /admin/users - List all users with cursor-based pagination
  */
 export async function listUsers(
   env: ApiEnv,
   actingUser: ActingUser,
-  params?: { page?: number; limit?: number; search?: string; role?: string }
+  params?: { cursor?: string; limit?: number; search?: string; role?: string }
 ): Promise<PaginatedUsers | ErrorResponse> {
   const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.cursor) searchParams.set('cursor', params.cursor);
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.search) searchParams.set('search', params.search);
   if (params?.role) searchParams.set('role', params.role);
@@ -357,9 +356,9 @@ export async function assignUserRole(
   actingUser: ActingUser,
   userId: string,
   roleId: string,
-  expiresAt?: string
+  expiresAt?: number
 ): Promise<SuccessResponse | ErrorResponse> {
-  const body: { roleId: string; expiresAt?: string } = { roleId };
+  const body: { roleId: string; expiresAt?: number } = { roleId };
   if (expiresAt) body.expiresAt = expiresAt;
 
   return m2mRequest<SuccessResponse>(
@@ -527,14 +526,14 @@ export interface Session {
   id: string;
   userId: string;
   email: string;
-  authenticatedAt: string;
-  lastUsed: string;
+  authenticatedAt: number;
+  lastUsed: number;
   isActive: boolean;
   device: {
     ipAddress: string;
     userAgent: string;
   };
-  lastActivity: string;
+  lastActivity: number;
 }
 
 export interface SessionsResponse {
@@ -562,7 +561,7 @@ export interface SuspiciousActivity {
     userId: string;
     email: string;
     failedAttempts: number;
-    lastFailure: string;
+    lastFailure: number;
   }>;
 }
 
@@ -640,6 +639,181 @@ export async function terminateAllUserSessions(
 }
 
 // ============================================================================
+// Stats APIs (Dashboard)
+// ============================================================================
+
+export interface UserStats {
+  totalUsers: number;
+  adminUsers: number;
+}
+
+export interface RoleStats {
+  totalRoles: number;
+  systemRoles: number;
+  customRoles: number;
+}
+
+export interface UsersByRole {
+  name: string;
+  user_count: number;
+}
+
+/**
+ * GET /admin/stats/users - Get user statistics
+ *
+ * NOTE: This endpoint needs to be implemented on the auth server.
+ * For now, this returns placeholder data.
+ */
+export async function getUserStats(
+  env: ApiEnv,
+  actingUser: ActingUser
+): Promise<UserStats | ErrorResponse> {
+  // TODO: Implement /admin/stats/users endpoint on auth server
+  // For now, return from listUsers API
+  try {
+    const result = await listUsers(env, actingUser, { limit: 1000 });
+    if (isErrorResponse(result)) {
+      return result;
+    }
+
+    // Count admin users from roles
+    const adminUsers = result.users.filter(user =>
+      user.roles.some(role =>
+        role.id === 'role_admin_default' || role.id === 'role_super_admin_default'
+      )
+    ).length;
+
+    return {
+      totalUsers: result.users.length,
+      adminUsers,
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'Failed to fetch user stats',
+    };
+  }
+}
+
+/**
+ * GET /admin/stats/roles - Get role statistics
+ *
+ * NOTE: This endpoint needs to be implemented on the auth server.
+ * For now, this returns placeholder data.
+ */
+export async function getRoleStats(
+  env: ApiEnv,
+  actingUser: ActingUser
+): Promise<RoleStats | ErrorResponse> {
+  // TODO: Implement /admin/stats/roles endpoint on auth server
+  return {
+    totalRoles: 0,
+    systemRoles: 0,
+    customRoles: 0,
+  };
+}
+
+/**
+ * GET /admin/stats/users-by-role - Get user distribution by role
+ *
+ * NOTE: This endpoint needs to be implemented on the auth server.
+ * For now, this returns placeholder data.
+ */
+export async function getUsersByRole(
+  env: ApiEnv,
+  actingUser: ActingUser,
+  limit: number = 5
+): Promise<UsersByRole[] | ErrorResponse> {
+  // TODO: Implement /admin/stats/users-by-role endpoint on auth server
+  try {
+    const result = await listUsers(env, actingUser, { limit: 1000 });
+    if (isErrorResponse(result)) {
+      return result;
+    }
+
+    // Count users by role
+    const roleCounts = new Map<string, number>();
+    for (const user of result.users) {
+      for (const role of user.roles) {
+        const count = roleCounts.get(role.name) || 0;
+        roleCounts.set(role.name, count + 1);
+      }
+    }
+
+    // Convert to array and sort by count
+    const usersByRole: UsersByRole[] = Array.from(roleCounts.entries())
+      .map(([name, user_count]) => ({ name, user_count }))
+      .sort((a, b) => b.user_count - a.user_count)
+      .slice(0, limit);
+
+    return usersByRole;
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'Failed to fetch users by role',
+    };
+  }
+}
+
+// ============================================================================
+// Audit Log APIs
+// ============================================================================
+
+export interface AuditEvent {
+  id: number;
+  timestamp: string;
+  event_type: string;
+  severity: string;
+  user_id: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  request_id: string | null;
+  metadata: Record<string, unknown>;
+  success: boolean;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface AuditLogsResponse {
+  data: AuditEvent[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+/**
+ * GET /admin/audit-logs - Get audit logs with filtering and pagination
+ */
+export async function getAuditLogs(
+  env: ApiEnv,
+  actingUser: ActingUser,
+  params?: {
+    page?: number;
+    limit?: number;
+    event_type?: string;
+    severity?: string;
+    user_id?: string;
+    start_date?: string;
+    end_date?: string;
+  }
+): Promise<AuditLogsResponse | ErrorResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.event_type) searchParams.set('event_type', params.event_type);
+  if (params?.severity) searchParams.set('severity', params.severity);
+  if (params?.user_id) searchParams.set('user_id', params.user_id);
+  if (params?.start_date) searchParams.set('start_date', params.start_date);
+  if (params?.end_date) searchParams.set('end_date', params.end_date);
+
+  const query = searchParams.toString();
+  const endpoint = `/admin/audit-logs${query ? `?${query}` : ''}`;
+
+  return m2mRequest<AuditLogsResponse>(env, endpoint, actingUser, { method: 'GET' });
+}
+
+// ============================================================================
 // Export all as default object for convenient usage
 // ============================================================================
 
@@ -671,6 +845,14 @@ export const adminApi = {
   getSuspiciousActivity,
   terminateSession,
   terminateAllUserSessions,
+
+  // Stats
+  getUserStats,
+  getRoleStats,
+  getUsersByRole,
+
+  // Audit logs
+  getAuditLogs,
 
   // Utilities
   isErrorResponse,

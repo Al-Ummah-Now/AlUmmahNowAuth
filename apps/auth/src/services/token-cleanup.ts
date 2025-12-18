@@ -10,9 +10,9 @@
 /**
  * Configuration constants for cleanup
  */
-const CLEANUP_BATCH_SIZE = 1000; // Process tokens in batches (Lane 4: increased from 100)
+const CLEANUP_BATCH_SIZE = 1000; // Process tokens in batches
 const ANALYTICS_RETENTION_DAYS = 90; // Keep analytics for 90 days
-const MAX_EXECUTION_MS = 10000; // 10 seconds max execution time for cleanup jobs (Lane 4)
+const MAX_EXECUTION_MS = 10000; // 10 seconds max execution time for cleanup jobs
 
 /**
  * Service for cleaning up expired and old tokens
@@ -26,7 +26,6 @@ export class TokenCleanupService {
 	 */
 	static async runCleanup(env: Env): Promise<{
 		expiredTokensDeleted: number;
-		expiredAppTokensDeleted: number;
 		expiredBrowserSessionsDeleted: number;
 		oldAnalyticsDeleted: number;
 		duration: number;
@@ -34,14 +33,11 @@ export class TokenCleanupService {
 	}> {
 		const startTime = Date.now();
 
-		// Lane 4: Clean up expired browser sessions (cascades to account_sessions via FK)
+		// Clean up expired browser sessions (cascades to account_sessions via FK)
 		const expiredBrowserSessionsDeleted = await this.cleanupExpiredBrowserSessions(env, startTime);
 
 		// Clean up expired refresh tokens
 		const expiredTokensDeleted = await this.cleanupExpiredTokens(env, startTime);
-
-		// Lane 4: Clean up expired app tokens
-		const expiredAppTokensDeleted = await this.cleanupExpiredAppTokens(env, startTime);
 
 		// Clean up old analytics
 		const oldAnalyticsDeleted = await this.cleanupOldAnalytics(env, startTime);
@@ -51,7 +47,6 @@ export class TokenCleanupService {
 
 		console.info('Token cleanup completed', {
 			expiredTokensDeleted,
-			expiredAppTokensDeleted,
 			expiredBrowserSessionsDeleted,
 			oldAnalyticsDeleted,
 			duration,
@@ -60,7 +55,6 @@ export class TokenCleanupService {
 
 		return {
 			expiredTokensDeleted,
-			expiredAppTokensDeleted,
 			expiredBrowserSessionsDeleted,
 			oldAnalyticsDeleted,
 			duration,
@@ -141,7 +135,7 @@ export class TokenCleanupService {
 	}
 
 	/**
-	 * Lane 4: Removes expired browser sessions from the database
+	 * Removes expired browser sessions from the database
 	 * Cascade deletes account_sessions via foreign key constraint
 	 *
 	 * @param env - Cloudflare Workers environment
@@ -158,42 +152,6 @@ export class TokenCleanupService {
 				`DELETE FROM browser_sessions
          WHERE id IN (
            SELECT id FROM browser_sessions
-           WHERE expires_at < ? OR is_revoked = 1
-           LIMIT ?
-         )`
-			)
-				.bind(now, CLEANUP_BATCH_SIZE)
-				.run();
-
-			const deleted = result.meta?.changes ?? 0;
-			totalDeleted += deleted;
-
-			// If we deleted fewer records than the batch size, we're done
-			if (deleted < CLEANUP_BATCH_SIZE) {
-				break;
-			}
-		}
-
-		return totalDeleted;
-	}
-
-	/**
-	 * Lane 4: Removes expired app tokens from the database
-	 *
-	 * @param env - Cloudflare Workers environment
-	 * @param startTime - Start time for time-boxing
-	 * @returns Number of app tokens deleted
-	 */
-	private static async cleanupExpiredAppTokens(env: Env, startTime: number): Promise<number> {
-		const now = new Date().toISOString();
-		let totalDeleted = 0;
-
-		// Delete expired app tokens in batches with time-boxing
-		while (Date.now() - startTime < MAX_EXECUTION_MS) {
-			const result = await env.AUTH_DB.prepare(
-				`DELETE FROM app_tokens
-         WHERE id IN (
-           SELECT id FROM app_tokens
            WHERE expires_at < ? OR is_revoked = 1
            LIMIT ?
          )`

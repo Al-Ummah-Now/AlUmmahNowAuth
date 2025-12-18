@@ -60,7 +60,6 @@ type LoaderData = {
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
@@ -68,20 +67,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
 
   logger.logLoader('sessions', request);
 
   await requireAuth(request, env);
-  const user = await getAuthenticatedUser(request, env);
+  const sessionData = await getAuthenticatedUser(request, env);
 
-  if (!user) {
+  if (!sessionData) {
     throw new Response("Unauthorized", { status: 401 });
   }
 
+  const user = sessionData.user;
   const authServerUrl = getAuthServerUrl(request, env);
 
   const actingUser = {
@@ -140,7 +138,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
@@ -148,12 +145,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   };
 
   await requireAuth(request, env);
-  const user = await getAuthenticatedUser(request, env);
+  const sessionData = await getAuthenticatedUser(request, env);
 
-  if (!user) {
+  if (!sessionData) {
     return { success: false, error: "Unauthorized" };
   }
 
+  const user = sessionData.user;
   const actingUser = {
     id: user.id,
     email: user.email,
@@ -184,12 +182,15 @@ export async function action({ request, context }: ActionFunctionArgs) {
   return { success: false, error: "Unknown action" };
 }
 
-function formatDate(dateString: string) {
-  if (!dateString) return 'N/A';
+function formatDate(dateValue: string | number) {
+  if (!dateValue) return 'N/A';
   try {
-    return new Date(dateString).toLocaleString();
+    const date = typeof dateValue === 'number'
+      ? new Date(dateValue * 1000)  // Unix seconds to milliseconds
+      : new Date(dateValue);
+    return date.toLocaleString();
   } catch {
-    return dateString;
+    return String(dateValue);
   }
 }
 

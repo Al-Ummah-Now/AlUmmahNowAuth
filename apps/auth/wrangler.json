@@ -16,7 +16,7 @@
       "binding": "AUTH_DB",
       "database_name": "al-ummah-now-d1",
       "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56",
-      "preview_database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56",
+      "preview_database_id": "e19ee76a-db77-46e0-be59-24d58a4bd7df",
       "migrations_dir": "migrations",
       "remote": true
     }

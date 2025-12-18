@@ -4,22 +4,7 @@
 
 PRAGMA foreign_keys = ON;
 
--- User table for storing user profile data
-CREATE TABLE IF NOT EXISTS user (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-    email TEXT UNIQUE NOT NULL,
-    name TEXT,
-    avatar_url TEXT,
-    password_reset_required INTEGER NOT NULL DEFAULT 0,
-    tenant_id TEXT DEFAULT 'default',
-    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_email ON user(email);
-CREATE INDEX IF NOT EXISTS idx_user_tenant_id ON user(tenant_id);
-
+-- Note: User table is created by OpenAuth (users table)
 -- Note: OAuth clients are managed by OpenAuth via oauth_clients table
 -- The legacy 'clients' table has been removed - use OpenAuth's client management APIs
 

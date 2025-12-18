@@ -12,65 +12,14 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { TenantService as D1TenantService } from '../services/tenant.service';
 import type { Tenant as D1Tenant } from '../types/tenant';
-
-// OpenAuth contract types (defined locally to avoid module resolution issues)
-type TenantStatus = 'active' | 'suspended' | 'pending' | 'deleted';
-
-interface OpenAuthTheme {
-	primary?: string;
-	secondary?: string;
-	background?: string;
-	text?: string;
-	logo?: string;
-	fontFamily?: string;
-}
-
-interface OpenAuthTenantBranding {
-	theme?: Partial<OpenAuthTheme>;
-	logoLight?: string;
-	logoDark?: string;
-	favicon?: string;
-	customCss?: string;
-}
-
-interface OpenAuthTenantSettings {
-	maxAccountsPerSession?: number;
-	sessionLifetime?: number;
-	allowPublicRegistration?: boolean;
-	requireEmailVerification?: boolean;
-	allowedProviders?: string[];
-	mfaRequired?: boolean;
-}
-
-interface OpenAuthTenant {
-	id: string;
-	domain?: string;
-	name: string;
-	status: TenantStatus;
-	branding: OpenAuthTenantBranding;
-	settings: OpenAuthTenantSettings;
-	created_at: number;
-	updated_at: number;
-}
-
-interface OpenAuthTenantService {
-	createTenant(params: {
-		id: string;
-		name: string;
-		domain?: string;
-		branding?: OpenAuthTenantBranding;
-		settings?: OpenAuthTenantSettings;
-	}): Promise<OpenAuthTenant>;
-	getTenant(tenantId: string): Promise<OpenAuthTenant | null>;
-	getTenantByDomain(domain: string): Promise<OpenAuthTenant | null>;
-	updateTenant(tenantId: string, updates: Partial<OpenAuthTenant>): Promise<OpenAuthTenant>;
-	deleteTenant(tenantId: string): Promise<void>;
-	listTenants(params?: {
-		status?: TenantStatus;
-		limit?: number;
-		offset?: number;
-	}): Promise<OpenAuthTenant[]>;
-}
+import type { Theme, ColorScheme } from '@al-ummah-now/openauth/ui/theme';
+import type {
+	TenantBranding,
+	TenantSettings,
+	TenantStatus,
+	Tenant as OpenAuthTenant,
+	TenantService as OpenAuthTenantService,
+} from '@al-ummah-now/openauth/contracts/types';
 
 /**
  * Convert ISO string timestamp to Unix timestamp (seconds)
@@ -90,27 +39,37 @@ export class D1TenantAdapter implements OpenAuthTenantService {
 	}
 
 	/**
+	 * Helper to extract string value from Theme color (handles string | ColorScheme)
+	 */
+	private extractColorValue(value: string | ColorScheme | undefined, mode: 'light' | 'dark' = 'light'): string | undefined {
+		if (!value) return undefined;
+		if (typeof value === 'string') return value;
+		return value[mode];
+	}
+
+	/**
 	 * Create a new tenant
 	 */
 	async createTenant(params: {
 		id: string;
 		name: string;
 		domain?: string;
-		branding?: OpenAuthTenantBranding;
-		settings?: OpenAuthTenantSettings;
+		branding?: TenantBranding;
+		settings?: TenantSettings;
 	}): Promise<OpenAuthTenant> {
+		const theme = params.branding?.theme;
+
 		const d1Tenant = await this.tenantService.createTenant({
 			id: params.id, // Use provided ID directly
 			name: params.name,
 			domain: params.domain,
-			branding: params.branding
+			branding: theme
 				? {
-						logoUrl: params.branding.logoLight,
-						faviconUrl: params.branding.favicon,
-						primaryColor: params.branding.theme?.primary,
-						secondaryColor: params.branding.theme?.secondary,
-						backgroundColor: params.branding.theme?.background,
-						fontFamily: params.branding.theme?.fontFamily,
+						logoUrl: this.extractColorValue(theme.logo),
+						faviconUrl: theme.favicon,
+						primaryColor: this.extractColorValue(theme.primary),
+						backgroundColor: this.extractColorValue(theme.background),
+						fontFamily: theme.font?.family,
 					}
 				: undefined,
 			settings: params.settings
@@ -172,13 +131,13 @@ export class D1TenantAdapter implements OpenAuthTenantService {
 		}
 
 		if (updates.branding !== undefined) {
+			const theme = updates.branding.theme;
 			updateParams.branding = {
-				logoUrl: updates.branding.logoLight,
-				faviconUrl: updates.branding.favicon,
-				primaryColor: updates.branding.theme?.primary,
-				secondaryColor: updates.branding.theme?.secondary,
-				backgroundColor: updates.branding.theme?.background,
-				fontFamily: updates.branding.theme?.fontFamily,
+				logoUrl: this.extractColorValue(theme?.logo),
+				faviconUrl: theme?.favicon,
+				primaryColor: this.extractColorValue(theme?.primary),
+				backgroundColor: this.extractColorValue(theme?.background),
+				fontFamily: theme?.font?.family,
 			};
 		}
 
@@ -226,23 +185,47 @@ export class D1TenantAdapter implements OpenAuthTenantService {
 	}
 
 	/**
-	 * Map our D1 Tenant to OpenAuth's Tenant format
+	 * Map our D1 Tenant to OpenAuth's Tenant format (NEW theme format from ui/theme.d.ts)
+	 *
+	 * IMPORTANT: Only sets branding.theme if tenant has explicit custom branding
+	 * (logo or favicon). This allows config theme to be used as fallback when
+	 * tenant doesn't have explicit branding. Without this, tenants with just
+	 * primary/background colors would override the config theme's logo.
 	 */
 	private mapToOpenAuthTenant(tenant: D1Tenant): OpenAuthTenant {
+		// Build theme object using the NEW Theme format
+		const theme: Partial<Theme> = {
+			title: tenant.name,
+		};
+
+		if (tenant.primaryColor) {
+			theme.primary = tenant.primaryColor;
+		}
+		if (tenant.backgroundColor) {
+			theme.background = tenant.backgroundColor;
+		}
+		if (tenant.logoUrl) {
+			theme.logo = tenant.logoUrl;
+		}
+		if (tenant.faviconUrl) {
+			theme.favicon = tenant.faviconUrl;
+		}
+		if (tenant.fontFamily) {
+			theme.font = { family: tenant.fontFamily };
+		}
+
+		// Only set branding.theme if tenant has EXPLICIT custom branding (logo or favicon).
+		// This allows config theme (with logo) to be used as fallback.
+		// Without this check, tenants with only default colors would override config theme.
+		const hasExplicitBranding = tenant.logoUrl || tenant.faviconUrl;
+
 		return {
 			id: tenant.id,
 			name: tenant.name,
 			domain: tenant.domain || undefined,
 			status: tenant.status as TenantStatus,
 			branding: {
-				theme: {
-					primary: tenant.primaryColor,
-					secondary: tenant.secondaryColor,
-					background: tenant.backgroundColor,
-					fontFamily: tenant.fontFamily,
-				},
-				logoLight: tenant.logoUrl || undefined,
-				favicon: tenant.faviconUrl || undefined,
+				theme: hasExplicitBranding && Object.keys(theme).length > 1 ? theme : undefined,
 			},
 			settings: {
 				// Map D1 settings to OpenAuth settings

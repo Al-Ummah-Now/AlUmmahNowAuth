@@ -30,13 +30,7 @@ config.kv_namespaces = [
     id: '14fd32ab385b496c88b5dba88c2492ea'
   }
 ];
-config.d1_databases = [
-  {
-    binding: 'AUTH_DB',
-    database_name: 'al-ummah-now-d1-qa',
-    database_id: '28590f3c-dd92-4c26-a803-d73a9bbe2b58'
-  }
-];
+// D1 database binding removed - admin app now uses auth server APIs
 
 // Remove production-specific fields
 delete config.configPath;

@@ -30,10 +30,13 @@ interface AnalyticsEvent {
   success?: boolean;
 }
 
+/** Environment type for analytics - only requires AUTH_ANALYTICS */
+type AnalyticsEnv = { AUTH_ANALYTICS?: AnalyticsEngineDataset };
+
 /**
  * Write an analytics event to the Analytics Engine
  */
-export function trackEvent(env: Env, event: AnalyticsEvent): void {
+export function trackEvent(env: AnalyticsEnv, event: AnalyticsEvent): void {
   if (!env.AUTH_ANALYTICS) {
     return; // Analytics not configured
   }
@@ -70,7 +73,7 @@ export function trackEvent(env: Env, event: AnalyticsEvent): void {
  * Track request timing
  */
 export function trackRequestTiming(
-  env: Env,
+  env: AnalyticsEnv,
   path: string,
   method: string,
   statusCode: number,

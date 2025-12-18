@@ -3,6 +3,28 @@
  */
 
 /**
+ * Convert hex string to Uint8Array (32 bytes for session secret)
+ *
+ * @param hex - A 64-character hex string (32 bytes)
+ * @returns Uint8Array of 32 bytes
+ * @throws Error if hex string is not exactly 64 characters
+ *
+ * @example
+ * const secret = hexToSecret('a1b2c3...'); // 64 chars
+ * // Returns: Uint8Array(32)
+ */
+export function hexToSecret(hex: string): Uint8Array {
+	if (hex.length !== 64) {
+		throw new Error('Hex string must be exactly 64 characters (32 bytes)');
+	}
+	const bytes = new Uint8Array(32);
+	for (let i = 0; i < 32; i++) {
+		bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+	}
+	return bytes;
+}
+
+/**
  * Hash a token using SHA-256
  *
  * @param token - The token string to hash

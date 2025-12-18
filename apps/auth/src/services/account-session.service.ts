@@ -370,7 +370,7 @@ export class AccountSessionService {
 
 		// Clear active_user_id for any browser sessions that had this user active
 		await this.db
-			.prepare(`UPDATE browser_sessions SET active_user_id = NULL WHERE active_user_id IN (SELECT id FROM user WHERE id = ?)`)
+			.prepare(`UPDATE browser_sessions SET active_user_id = NULL WHERE active_user_id IN (SELECT id FROM users WHERE id = ?)`)
 			.bind(userId)
 			.run();
 

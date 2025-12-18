@@ -9,32 +9,30 @@
 import { getAuthServerUrl } from './config';
 
 /**
- * Permission definition following resource:action:scope format
+ * Permission definition following resource:action format
  */
 export interface Permission {
   id: string;
-  name: string; // Format: resource:action:scope (e.g., "users:read:all")
+  name: string; // Format: resource:action (e.g., "users:read")
   resource: string;
   action: string;
-  scope: string;
   description?: string;
   is_system: boolean;
   metadata?: Record<string, string | number | boolean | null>;
-  created_at: string;
+  created_at: number;
 }
 
 /**
- * Role definition with hierarchical support
+ * Role definition
  */
 export interface Role {
   id: string;
   name: string;
   description?: string;
-  parent_role_id?: string;
-  is_system: boolean;
+  is_system_role: boolean;
   metadata?: Record<string, string | number | boolean | null>;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
   created_by?: string;
   updated_by?: string;
 }
@@ -61,7 +59,7 @@ export interface UserRoleWithDetails {
     id: string;
     name: string;
     description?: string;
-    is_system: boolean;
+    is_system_role: boolean;
   };
 }
 
@@ -71,7 +69,6 @@ export interface UserRoleWithDetails {
 export interface RoleData {
   name: string;
   description?: string;
-  parent_role_id?: string;
   metadata?: Record<string, string | number | boolean | null>;
 }
 
@@ -165,33 +162,33 @@ export function isErrorResponse(response: unknown): response is ErrorResponse {
 // ============================================================================
 
 /**
- * GET /admin/roles - List all roles
+ * GET /admin/rbac/roles - List all roles
  */
 export async function getAllRoles(
   request: Request,
   env: { AUTH_SERVER_URL?: string }
 ): Promise<Role[] | ErrorResponse> {
-  return authRequest<Role[]>(request, env, '/admin/roles', {
+  return authRequest<Role[]>(request, env, '/admin/rbac/roles', {
     method: 'GET',
   });
 }
 
 /**
- * POST /admin/roles - Create a new role
+ * POST /admin/rbac/roles - Create a new role
  */
 export async function createRole(
   request: Request,
   env: { AUTH_SERVER_URL?: string },
   roleData: RoleData
 ): Promise<Role | ErrorResponse> {
-  return authRequest<Role>(request, env, '/admin/roles', {
+  return authRequest<Role>(request, env, '/admin/rbac/roles', {
     method: 'POST',
     body: JSON.stringify(roleData),
   });
 }
 
 /**
- * GET /admin/roles/:id - Get role details with permissions
+ * GET /admin/rbac/roles/:id - Get role details with permissions
  */
 export async function getRoleById(
   request: Request,
@@ -201,7 +198,7 @@ export async function getRoleById(
   return authRequest<RoleWithPermissions>(
     request,
     env,
-    `/admin/roles/${encodeURIComponent(roleId)}`,
+    `/admin/rbac/roles/${encodeURIComponent(roleId)}`,
     {
       method: 'GET',
     }
@@ -209,7 +206,7 @@ export async function getRoleById(
 }
 
 /**
- * PUT /admin/roles/:id - Update a role
+ * PATCH /admin/rbac/roles/:id - Update a role
  */
 export async function updateRole(
   request: Request,
@@ -220,16 +217,16 @@ export async function updateRole(
   return authRequest<Role>(
     request,
     env,
-    `/admin/roles/${encodeURIComponent(roleId)}`,
+    `/admin/rbac/roles/${encodeURIComponent(roleId)}`,
     {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(updates),
     }
   );
 }
 
 /**
- * DELETE /admin/roles/:id - Delete a role
+ * DELETE /admin/rbac/roles/:id - Delete a role
  */
 export async function deleteRole(
   request: Request,
@@ -239,7 +236,7 @@ export async function deleteRole(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/admin/roles/${encodeURIComponent(roleId)}`,
+    `/admin/rbac/roles/${encodeURIComponent(roleId)}`,
     {
       method: 'DELETE',
     }
@@ -247,7 +244,7 @@ export async function deleteRole(
 }
 
 /**
- * POST /admin/roles/:id/permissions - Grant permission to a role
+ * POST /admin/rbac/roles/:id/permissions - Grant permission to a role
  */
 export async function grantPermissionToRole(
   request: Request,
@@ -258,7 +255,7 @@ export async function grantPermissionToRole(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/admin/roles/${encodeURIComponent(roleId)}/permissions`,
+    `/admin/rbac/roles/${encodeURIComponent(roleId)}/permissions`,
     {
       method: 'POST',
       body: JSON.stringify({ permissionId }),
@@ -267,7 +264,7 @@ export async function grantPermissionToRole(
 }
 
 /**
- * DELETE /admin/roles/:id/permissions/:permissionId - Revoke permission from a role
+ * DELETE /admin/rbac/roles/:id/permissions/:permissionId - Revoke permission from a role
  */
 export async function revokePermissionFromRole(
   request: Request,
@@ -278,7 +275,7 @@ export async function revokePermissionFromRole(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/admin/roles/${encodeURIComponent(roleId)}/permissions/${encodeURIComponent(permissionId)}`,
+    `/admin/rbac/roles/${encodeURIComponent(roleId)}/permissions/${encodeURIComponent(permissionId)}`,
     {
       method: 'DELETE',
     }
@@ -399,6 +396,53 @@ export async function getUserPermissions(
     `/api/users/${encodeURIComponent(userId)}/permissions`,
     {
       method: 'GET',
+    }
+  );
+}
+
+/**
+ * GET /admin/rbac/roles/:id/users - Get users assigned to a role
+ */
+export async function getRoleUsers(
+  request: Request,
+  env: { AUTH_SERVER_URL?: string },
+  roleId: string
+): Promise<Array<{
+  id: string;
+  email: string;
+  assigned_at: number;
+  assigned_by: string | null;
+}> | ErrorResponse> {
+  return authRequest<Array<{
+    id: string;
+    email: string;
+    assigned_at: number;
+    assigned_by: string | null;
+  }>>(
+    request,
+    env,
+    `/admin/rbac/roles/${encodeURIComponent(roleId)}/users`,
+    {
+      method: 'GET',
+    }
+  );
+}
+
+/**
+ * DELETE /admin/rbac/roles/:roleId/users/:userId - Remove user from role
+ */
+export async function removeUserFromRole(
+  request: Request,
+  env: { AUTH_SERVER_URL?: string },
+  roleId: string,
+  userId: string
+): Promise<SuccessResponse | ErrorResponse> {
+  return authRequest<SuccessResponse>(
+    request,
+    env,
+    `/admin/rbac/roles/${encodeURIComponent(roleId)}/users/${encodeURIComponent(userId)}`,
+    {
+      method: 'DELETE',
     }
   );
 }

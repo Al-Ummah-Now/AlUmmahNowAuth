@@ -16,7 +16,7 @@
 import { Hono } from 'hono';
 import { BrowserSessionService } from '../services/browser-session.service';
 import { AccountSessionService } from '../services/account-session.service';
-import { TokenService } from '../services/token-service';
+import { revokeSessionTokens } from '../custom/token-revocation';
 import { requireSession } from '../middleware/session';
 import { clearSessionCookie } from '../utils/session-cookie';
 import { emitAuditEvent } from '../audit-emitter';
@@ -186,7 +186,7 @@ sessionRoutes.delete('/accounts/:userId', sessionRateLimit.signOut, requireSessi
 	const result = await accountSessionService.removeAccountFromSession(browserSession.id, userId);
 
 	// CRITICAL: Revoke all tokens for this account session
-	const revokedTokens = await TokenService.revokeSessionTokens(accountSession.id, c.env);
+	const revokedTokens = await revokeSessionTokens(accountSession.id, c.env.AUTH_DB);
 
 	// Emit audit event
 	await emitAuditEvent({
@@ -246,7 +246,7 @@ sessionRoutes.delete('/all', sessionRateLimit.signOutAll, requireSession, async 
 	let totalTokensRevoked = 0;
 
 	for (const accountSession of accountSessions) {
-		const result = await TokenService.revokeSessionTokens(accountSession.id, c.env);
+		const result = await revokeSessionTokens(accountSession.id, c.env.AUTH_DB);
 		totalTokensRevoked += result.revoked;
 	}
 
@@ -300,7 +300,7 @@ sessionRoutes.get('/check', sessionRateLimit.check, async (c) => {
 	}
 
 	// Get user details
-	const user = await c.env.AUTH_DB.prepare(`SELECT id, email FROM user WHERE id = ?`).bind(activeAccount.userId).first<{ id: string; email: string }>();
+	const user = await c.env.AUTH_DB.prepare(`SELECT id, email FROM users WHERE id = ?`).bind(activeAccount.userId).first<{ id: string; email: string }>();
 
 	if (!user) {
 		return c.json({
@@ -372,7 +372,7 @@ sessionRoutes.delete('/devices/:sessionId', sessionRateLimit.remoteLogout, requi
 	}
 
 	// CRITICAL: Revoke all tokens for this session FIRST
-	const revokedTokens = await TokenService.revokeSessionTokens(sessionId, c.env);
+	const revokedTokens = await revokeSessionTokens(sessionId, c.env.AUTH_DB);
 
 	// Then revoke the session
 	await c.env.AUTH_DB.prepare(`UPDATE account_sessions SET is_active = 0 WHERE id = ?`).bind(sessionId).run();

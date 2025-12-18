@@ -1,26 +1,26 @@
 // Server-side authentication utilities for admin app
 import { logger } from "./logger.server";
 import { getAuthServerUrl, getAppUrl, getOAuthClientId } from "./config";
-import { getOpenAuthClient } from "./openauth.client.server";
+import { getOpenAuthClient, subjects } from "./openauth.client.server";
 
-// Helper to fetch fresh roles from DB
-async function getUserRolesFromDB(db: D1Database, userId: string): Promise<string[]> {
-  const rolesResult = await db.prepare(`
-    SELECT r.name
-    FROM rbac_user_roles ur
-    JOIN rbac_roles r ON ur.role_id = r.id
-    WHERE ur.user_id = ?
-      AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
-    ORDER BY r.name
-  `).bind(userId).all<{ name: string }>();
-
-  return rolesResult.results?.map(r => r.name) || [];
+// Session data structure stored in KV
+interface SessionData {
+  user: {
+    id: string;
+    email: string;
+    roles: string[];
+  };
+  tokens: {
+    access: string;
+    refresh?: string;
+  };
+  expiresAt: string;
 }
 
 export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE: KVNamespace }) {
   const url = new URL(request.url);
   logger.debug('getAuthenticatedUser called', { path: url.pathname });
-  
+
   // Get session cookie
   const cookieHeader = request.headers.get("Cookie");
   if (!cookieHeader) {
@@ -49,7 +49,7 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
     }
 
     // Parse session data with error handling
-    let session: { user?: { id: string; email: string; roles?: string[] }; expiresAt?: string };
+    let session: SessionData;
     try {
       session = JSON.parse(sessionData);
     } catch (parseError) {
@@ -66,7 +66,12 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
       await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
       return null;
     }
-    return session.user;
+
+    // Return both user data and tokens for verification
+    return {
+      user: session.user,
+      tokens: session.tokens
+    };
   } catch (error) {
     logger.error("Error verifying session", { error: error instanceof Error ? error.message : String(error) });
     return null;
@@ -102,7 +107,7 @@ export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SER
 
 export async function requireAuth(
   request: Request,
-  env: { AUTH_STORAGE?: KVNamespace; AUTH_DB?: D1Database; AUTH_SERVER_URL?: string },
+  env: { AUTH_STORAGE?: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string },
   requireAdmin: boolean = false
 ) {
   const url = new URL(request.url);
@@ -113,32 +118,76 @@ export async function requireAuth(
     throw redirectToLogin(request);
   }
 
-  const user = await getAuthenticatedUser(request, env as { AUTH_STORAGE: KVNamespace });
+  const sessionData = await getAuthenticatedUser(request, env as { AUTH_STORAGE: KVNamespace });
 
-  if (!user) {
+  if (!sessionData) {
     logger.info('Unauthenticated access attempt', { path: url.pathname });
     throw redirectToLogin(request);
   }
 
   if (requireAdmin) {
-    // Always query DB for fresh roles - don't trust cached session roles
-    if (!env?.AUTH_DB) {
-      logger.error('AUTH_DB not available for admin check', { path: url.pathname });
-      throw new Response("Forbidden: Database not available", { status: 403 });
+    // Verify access token to get fresh roles from claims
+    try {
+      const client = getOpenAuthClient(request, env);
+
+      logger.debug('Verifying access token for admin check', {
+        userId: sessionData.user.id,
+        email: sessionData.user.email
+      });
+
+      const verified = await client.verify(subjects, sessionData.tokens.access, {
+        refresh: sessionData.tokens.refresh,
+      });
+
+      // Check if verification returned an error
+      if (verified?.err) {
+        logger.error('Token verification failed during admin check', {
+          error: verified.err,
+          userId: sessionData.user.id
+        });
+        throw redirectToLogin(request);
+      }
+
+      if (!verified || !verified.subject) {
+        logger.error('Token verification failed - no subject', {
+          userId: sessionData.user.id
+        });
+        throw redirectToLogin(request);
+      }
+
+      // Extract roles from verified token
+      const userRoles = verified.subject.properties.roles || [];
+      const hasAdminAccess = userRoles.includes("admin") || userRoles.includes("super_admin");
+
+      if (!hasAdminAccess) {
+        logger.warn('Admin access denied - redirecting to account select', {
+          userId: sessionData.user.id,
+          email: sessionData.user.email,
+          roles: userRoles
+        });
+        // Redirect to auth server with prompt=select_account to allow switching to admin account
+        throw await redirectToAuthWithSelect(request, env);
+      }
+
+      // Return user with fresh roles from token
+      return {
+        id: sessionData.user.id,
+        email: sessionData.user.email,
+        roles: userRoles
+      };
+    } catch (error) {
+      // If error is already a Response (redirect), rethrow it
+      if (error instanceof Response) {
+        throw error;
+      }
+
+      logger.error('Error during token verification for admin check', {
+        error: error instanceof Error ? error.message : String(error),
+        userId: sessionData.user.id
+      });
+      throw redirectToLogin(request);
     }
-
-    const roles = await getUserRolesFromDB(env.AUTH_DB, user.id);
-    const hasAdminAccess = roles.includes("admin") || roles.includes("super_admin");
-
-    if (!hasAdminAccess) {
-      logger.warn('Admin access denied - redirecting to account select', { userId: user.id, email: user.email, roles });
-      // Redirect to auth server with prompt=select_account to allow switching to admin account
-      throw await redirectToAuthWithSelect(request, env);
-    }
-
-    // Return user with fresh roles
-    return { ...user, roles };
   }
 
-  return user;
+  return sessionData.user;
 }

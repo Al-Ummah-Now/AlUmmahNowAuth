@@ -6,14 +6,12 @@ import { logger } from "../lib/logger.server";
 
 // Redirect directly to auth server instead of showing a login page
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database; APP_URL?: string; AUTH_SERVER_URL?: string };
+  const env = context?.cloudflare?.env as { APP_URL?: string; AUTH_SERVER_URL?: string };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
-  
+
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
   
   logger.logLoader('login', request);
 

@@ -29,7 +29,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.7-pr.5.54",
+    "@al-ummah-now/openauth": "1.0.14-pr.12.98",
     "@types/node": "^24.10.1",
     "jose": "^6.1.0",
     "resend": "^6.5.2",

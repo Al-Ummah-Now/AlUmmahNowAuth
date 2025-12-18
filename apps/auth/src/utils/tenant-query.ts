@@ -46,8 +46,8 @@ export class TenantQueryBuilder {
    */
   users() {
     return {
-      select: `SELECT * FROM user WHERE tenant_id = ?`,
-      count: `SELECT COUNT(*) as count FROM user WHERE tenant_id = ?`,
+      select: `SELECT * FROM users WHERE tenant_id = ?`,
+      count: `SELECT COUNT(*) as count FROM users WHERE tenant_id = ?`,
       bindings: [this.tenantId],
     };
   }

@@ -13,6 +13,12 @@ import { Badge } from "../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { requireAuth } from "../lib/auth.server";
 import { logger } from "../lib/logger.server";
+import {
+  getAuditLogs,
+  isErrorResponse,
+  type ActingUser,
+  type AuditEvent,
+} from "../lib/admin-api.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -20,21 +26,6 @@ export const meta: MetaFunction = () => {
     { name: "description", content: "View system audit logs and security events" },
   ];
 };
-
-interface AuditEvent {
-  id: number;
-  timestamp: string;
-  event_type: string;
-  severity: string;
-  user_id: string | null;
-  ip_address: string | null;
-  user_agent: string | null;
-  request_id: string | null;
-  metadata: string;
-  success: number | boolean;  // D1 may return integer or boolean
-  error_message: string | null;
-  created_at: string;
-}
 
 interface LoaderData {
   events: Array<{
@@ -68,17 +59,16 @@ interface LoaderData {
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
 
   // Always require admin authentication
   let currentUser: { id: string; email: string; roles?: string[] };
@@ -99,6 +89,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const authServerUrl = getAuthServerUrl(request, env);
   const user = { id: currentUser.id, email: currentUser.email };
 
+  // Construct acting user for M2M API calls
+  const actingUser: ActingUser = {
+    id: currentUser.id,
+    email: currentUser.email,
+    roles: currentUser.roles || [],
+  };
+
   try {
     // Get query parameters
     const url = new URL(request.url);
@@ -110,46 +107,32 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const start_date = url.searchParams.get("start_date") || undefined;
     const end_date = url.searchParams.get("end_date") || undefined;
 
-    // Get AUTH_SERVER_URL
-    const authServerUrl = env?.AUTH_SERVER_URL || `https://${url.host}`;
-
-    // Build query params for the API call
-    const apiUrl = new URL(`${authServerUrl}/admin/audit-logs`);
-    apiUrl.searchParams.set("page", page.toString());
-    apiUrl.searchParams.set("limit", limit.toString());
-    if (event_type) apiUrl.searchParams.set("event_type", event_type);
-    if (severity) apiUrl.searchParams.set("severity", severity);
-    if (search) {
-      // Search across user_id, client_id, ip_address
-      apiUrl.searchParams.set("user_id", search);
-    }
-    if (start_date) apiUrl.searchParams.set("start_date", start_date);
-    if (end_date) apiUrl.searchParams.set("end_date", end_date);
-
-    // Get session cookie for auth
-    const cookieHeader = request.headers.get("Cookie");
-
-    // Call the auth server API
-    const response = await fetch(apiUrl.toString(), {
-      headers: {
-        Cookie: cookieHeader || "",
-      },
+    // Call the audit logs API
+    const response = await getAuditLogs(env, actingUser, {
+      page,
+      limit,
+      event_type,
+      severity,
+      user_id: search, // Search is used for user_id filtering
+      start_date,
+      end_date,
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch audit logs: ${response.statusText}`);
+    if (isErrorResponse(response)) {
+      logger.error("Error loading audit logs", { error: response.error });
+      return {
+        events: [],
+        pagination: { page: 1, limit: 50, total: 0, pages: 0 },
+        filters: { event_type, severity, search, start_date, end_date },
+        user,
+        authServerUrl,
+      };
     }
 
-    const data = await response.json() as {
-      data?: AuditEvent[];
-      pagination?: { page: number; limit: number; total: number; pages: number };
-    };
-
-    // Parse metadata JSON strings
-    const events = (data.data || []).map((event: AuditEvent) => ({
+    // The API already returns properly formatted events
+    const events = response.data.map((event) => ({
       ...event,
-      // Handle both integer (1/0) and boolean values from D1
-      success: event.success === 1 || event.success === true,
+      // Ensure metadata is an object
       metadata: typeof event.metadata === "string"
         ? JSON.parse(event.metadata || "{}")
         : event.metadata || {},
@@ -157,7 +140,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     return {
       events,
-      pagination: data.pagination || { page: 1, limit: 50, total: 0, pages: 0 },
+      pagination: response.pagination,
       filters: { event_type, severity, search, start_date, end_date },
       user,
       authServerUrl,

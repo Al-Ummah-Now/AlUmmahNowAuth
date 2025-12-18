@@ -15,7 +15,7 @@
  */
 
 import { Hono } from 'hono';
-import { TokenService } from '../services/token-service';
+import { revokeSessionTokens, revokeUserTokens } from '../custom/token-revocation';
 import { requireAdmin, requirePermission } from '../middleware/admin-auth';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventType, AuditEventSeverity } from '../audit-events';
@@ -60,7 +60,7 @@ adminSessionRoutes.get(
 
 		// Verify user exists and belongs to tenant
 		const user = await c.env.AUTH_DB.prepare(`
-			SELECT id, email FROM user WHERE id = ? AND tenant_id = ?
+			SELECT id, email FROM users WHERE id = ? AND tenant_id = ?
 		`)
 			.bind(userId, tenantId)
 			.first<{ id: string; email: string }>();
@@ -169,7 +169,7 @@ adminSessionRoutes.delete(
 			.run();
 
 		// Revoke associated tokens
-		const revokedTokens = await TokenService.revokeSessionTokens(sessionId, c.env);
+		const revokedTokens = await revokeSessionTokens(sessionId, c.env.AUTH_DB);
 
 		// Emit audit event
 		await emitAuditEvent({
@@ -232,7 +232,7 @@ adminSessionRoutes.delete(
 		// Revoke all tokens for all sessions
 		let totalTokensRevoked = 0;
 		for (const session of sessions.results || []) {
-			const result = await TokenService.revokeSessionTokens(session.id, c.env);
+			const result = await revokeSessionTokens(session.id, c.env.AUTH_DB);
 			totalTokensRevoked += result.revoked;
 		}
 
@@ -292,7 +292,7 @@ adminSessionRoutes.post(
 
 		// Get user info
 		const user = await c.env.AUTH_DB.prepare(`
-			SELECT id, email FROM user WHERE id = ?
+			SELECT id, email FROM users WHERE id = ?
 		`)
 			.bind(userId)
 			.first<{ id: string; email: string }>();
@@ -336,7 +336,7 @@ adminSessionRoutes.post(
 			.run();
 
 		// Revoke all app tokens via user tokens method
-		const tokenResult = await TokenService.revokeUserTokens(userId, c.env);
+		const tokenResult = await revokeUserTokens(userId, c.env.AUTH_DB);
 
 		// Emit critical audit event
 		await emitAuditEvent({
@@ -427,7 +427,7 @@ adminSessionRoutes.get(
 				b.last_activity
 			FROM account_sessions a
 			JOIN browser_sessions b ON a.browser_session_id = b.id
-			JOIN user u ON a.user_id = u.id
+			JOIN users u ON a.user_id = u.id
 			WHERE ${whereClause}
 			ORDER BY b.last_activity DESC
 			LIMIT ? OFFSET ?
@@ -542,7 +542,7 @@ adminSessionRoutes.get(
 				GROUP_CONCAT(DISTINCT b.ip_address) as ip_addresses
 			FROM account_sessions a
 			JOIN browser_sessions b ON a.browser_session_id = b.id
-			JOIN user u ON a.user_id = u.id
+			JOIN users u ON a.user_id = u.id
 			WHERE b.tenant_id = ?
 			AND a.authenticated_at > datetime('now', '-24 hours')
 			GROUP BY a.user_id
@@ -560,7 +560,7 @@ adminSessionRoutes.get(
 				COUNT(*) as failed_attempts,
 				MAX(ae.timestamp) as last_failure
 			FROM audit_events ae
-			JOIN user u ON ae.user_id = u.id
+			JOIN users u ON ae.user_id = u.id
 			WHERE ae.event_type = 'auth.login.failed'
 			AND ae.timestamp > datetime('now', '-1 hour')
 			AND EXISTS (
@@ -655,7 +655,7 @@ adminSessionRoutes.post(
 		// Revoke all sessions and tokens
 		let totalTokensRevoked = 0;
 		for (const session of sessions.results || []) {
-			const result = await TokenService.revokeSessionTokens(session.id, c.env);
+			const result = await revokeSessionTokens(session.id, c.env.AUTH_DB);
 			totalTokensRevoked += result.revoked;
 		}
 

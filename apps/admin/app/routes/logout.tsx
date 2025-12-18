@@ -3,14 +3,12 @@ import { redirect } from "react-router";
 import { logger } from "../lib/logger.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database; AUTH_STORAGE?: KVNamespace };
+  const env = context?.cloudflare?.env as { AUTH_STORAGE?: KVNamespace };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
 
   logger.logLoader('logout', request);
 

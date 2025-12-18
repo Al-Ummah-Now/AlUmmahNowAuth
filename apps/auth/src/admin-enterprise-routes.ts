@@ -936,11 +936,12 @@ export class AdminEnterpriseRoutes {
       await verifyAdminAuth(request, env);
 
       // Get active tokens
+      // OpenAuth schema: id, token_hash, user_id, client_id, tenant_id, scope, expires_at, revoked, revoked_at, created_at
       const activeTokens = await this.db.prepare(`
-        SELECT id, client_id, issued_at, expires_at, last_used_at, ip_address, user_agent, rotation_count
+        SELECT id, client_id, created_at, expires_at, scope, revoked
         FROM refresh_tokens
         WHERE user_id = ? AND revoked = 0 AND expires_at > ?
-        ORDER BY issued_at DESC
+        ORDER BY created_at DESC
       `).bind(userId, Math.floor(Date.now() / 1000)).all();
 
       // Get token count stats
@@ -1010,9 +1011,10 @@ export class AdminEnterpriseRoutes {
       }
 
       // Revoke all active tokens
+      // Note: OpenAuth schema doesn't have revoked_reason column
       await this.db.prepare(`
         UPDATE refresh_tokens
-        SET revoked = 1, revoked_at = ?, revoked_reason = 'admin_force_logout'
+        SET revoked = 1, revoked_at = ?
         WHERE user_id = ? AND revoked = 0
       `).bind(now, userId).run();
 
@@ -1098,11 +1100,13 @@ export class AdminEnterpriseRoutes {
       }
 
       // Revoke tokens
+      // Note: OpenAuth schema doesn't have revoked_reason column
+      // The reason is logged in the audit event metadata instead
       await this.db.prepare(`
         UPDATE refresh_tokens
-        SET revoked = 1, revoked_at = ?, revoked_reason = ?
+        SET revoked = 1, revoked_at = ?
         WHERE user_id = ? AND revoked = 0
-      `).bind(now, reason, validated.user_id).run();
+      `).bind(now, validated.user_id).run();
 
       // Emit audit event
       await emitAuditEvent({
@@ -1211,9 +1215,9 @@ export class AdminEnterpriseRoutes {
       // Get user counts
       const userStats = await this.db.prepare(`
         SELECT
-          (SELECT COUNT(*) FROM user) as total_users,
-          (SELECT COUNT(*) FROM user WHERE created_at >= datetime('now', '-24 hours')) as users_24h,
-          (SELECT COUNT(*) FROM user WHERE created_at >= datetime('now', '-7 days')) as users_7d
+          (SELECT COUNT(*) FROM users) as total_users,
+          (SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-24 hours')) as users_24h,
+          (SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-7 days')) as users_7d
       `).first<{ total_users: number; users_24h: number; users_7d: number }>();
 
       // Get token stats
@@ -1240,11 +1244,12 @@ export class AdminEnterpriseRoutes {
       `).first<{ events_24h: number; errors_24h: number; failed_24h: number }>();
 
       // Get client stats
+      // OpenAuth schema: client type is derived from client_secret_hash (NULL = public, NOT NULL = confidential)
       const clientStats = await this.db.prepare(`
         SELECT
           COUNT(*) as total_clients,
-          SUM(CASE WHEN client_type = 'public' THEN 1 ELSE 0 END) as public_clients,
-          SUM(CASE WHEN client_type = 'confidential' THEN 1 ELSE 0 END) as confidential_clients
+          SUM(CASE WHEN client_secret_hash IS NULL THEN 1 ELSE 0 END) as public_clients,
+          SUM(CASE WHEN client_secret_hash IS NOT NULL THEN 1 ELSE 0 END) as confidential_clients
         FROM oauth_clients
       `).first<{ total_clients: number; public_clients: number; confidential_clients: number }>();
 
