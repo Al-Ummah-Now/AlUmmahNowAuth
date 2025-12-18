@@ -124,6 +124,18 @@ function getAppUrl(request: Request, env: Env): string {
   return url.origin;
 }
 
+// Get admin URL (localhost-aware)
+function getAdminUrl(request: Request, env: Env): string {
+  const url = new URL(request.url);
+  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
+  if (isLocalhost) {
+    return 'http://localhost:3303';
+  }
+
+  return env.ADMIN_URL || '';
+}
+
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -307,7 +319,7 @@ export default {
       const isLoggedIn = session !== null;
       const userData = session ? JSON.stringify(session.user) : 'null';
       const appUrl = getAppUrl(request, env);
-      const adminUrl = env.ADMIN_URL || '';
+      const adminUrl = getAdminUrl(request, env);
 
       const html = `<!DOCTYPE html>
 <html lang="en">
