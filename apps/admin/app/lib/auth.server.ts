@@ -157,7 +157,10 @@ export async function requireAuth(
 
       // Extract roles from verified token
       const userRoles = verified.subject.properties.roles || [];
-      const hasAdminAccess = userRoles.includes("admin") || userRoles.includes("super_admin");
+      // Case-insensitive check - OpenAuth roles are "Admin" and "Super Admin"
+      const hasAdminAccess = userRoles.some(r =>
+        r.toLowerCase() === "admin" || r.toLowerCase() === "super admin"
+      );
 
       if (!hasAdminAccess) {
         logger.warn('Admin access denied - redirecting to account select', {
