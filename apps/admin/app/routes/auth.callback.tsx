@@ -3,6 +3,7 @@ import { redirect } from "react-router";
 import { getAppUrl, getAuthServerUrl } from "../lib/config";
 import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
+import { hasAdminRole } from "../lib/auth.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const requestId = crypto.randomUUID();
@@ -127,8 +128,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     logger.info('Token verified', { email: userInfo.properties.email, roles: userRoles });
 
     // Verify user is admin - redirect non-admins to forbidden page with account select link
-    const hasAdminAccess = userRoles.includes("admin") || userRoles.includes("super_admin");
-    if (!hasAdminAccess) {
+    if (!hasAdminRole(userRoles)) {
       logger.warn('Non-admin user attempted to access admin dashboard - redirecting to forbidden page', {
         email: userInfo.properties.email,
         roles: userRoles

@@ -22,6 +22,6 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.14-pr.12.94"
+    "@al-ummah-now/openauth": "1.0.14-pr.12.103"
   }
 }

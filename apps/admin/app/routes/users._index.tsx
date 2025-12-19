@@ -99,7 +99,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   try {
     // Fetch users via M2M API
-    const usersResponse = await listUsers(env, actingUser);
+    const usersResponse = await listUsers(env, actingUser, undefined, request);
 
     if (isErrorResponse(usersResponse)) {
       console.error("Error fetching users:", usersResponse.error);

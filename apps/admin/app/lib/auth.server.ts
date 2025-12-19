@@ -3,6 +3,16 @@ import { logger } from "./logger.server";
 import { getAuthServerUrl, getAppUrl, getOAuthClientId } from "./config";
 import { getOpenAuthClient, subjects } from "./openauth.client.server";
 
+/**
+ * Check if user has admin access based on their roles
+ * Case-insensitive check - OpenAuth roles are "Admin" and "Super Admin"
+ */
+export function hasAdminRole(roles: string[]): boolean {
+  return roles.some(r =>
+    r.toLowerCase() === "admin" || r.toLowerCase() === "super admin"
+  );
+}
+
 // Session data structure stored in KV
 interface SessionData {
   user: {
@@ -157,12 +167,8 @@ export async function requireAuth(
 
       // Extract roles from verified token
       const userRoles = verified.subject.properties.roles || [];
-      // Case-insensitive check - OpenAuth roles are "Admin" and "Super Admin"
-      const hasAdminAccess = userRoles.some(r =>
-        r.toLowerCase() === "admin" || r.toLowerCase() === "super admin"
-      );
 
-      if (!hasAdminAccess) {
+      if (!hasAdminRole(userRoles)) {
         logger.warn('Admin access denied - redirecting to account select', {
           userId: sessionData.user.id,
           email: sessionData.user.email,

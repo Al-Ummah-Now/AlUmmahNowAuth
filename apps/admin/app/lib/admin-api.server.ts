@@ -86,14 +86,15 @@ let tokenCache: TokenCache | null = null;
  * Get M2M access token, using cache if valid
  */
 async function getAccessToken(
-  env: { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; ADMIN_CLIENT_SECRET?: string }
+  env: { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; ADMIN_CLIENT_SECRET?: string },
+  request?: Request
 ): Promise<string> {
   // Check cache
   if (tokenCache && Date.now() < tokenCache.expiresAt) {
     return tokenCache.accessToken;
   }
 
-  const authServerUrl = env.AUTH_SERVER_URL || 'http://localhost:3301';
+  const authServerUrl = getAuthServerUrl(request, env);
   const clientId = env.ADMIN_CLIENT_ID;
   const clientSecret = env.ADMIN_CLIENT_SECRET;
 
@@ -167,16 +168,18 @@ export interface ActingUser {
  * @param endpoint - API endpoint to call
  * @param actingUser - The admin user who initiated this request (required for audit and authorization)
  * @param options - Fetch options
+ * @param request - Optional request for localhost detection
  */
 async function m2mRequest<T>(
   env: ApiEnv,
   endpoint: string,
   actingUser: ActingUser,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  request?: Request
 ): Promise<T | ErrorResponse> {
   try {
-    const accessToken = await getAccessToken(env);
-    const authServerUrl = env.AUTH_SERVER_URL || 'http://localhost:3301';
+    const accessToken = await getAccessToken(env, request);
+    const authServerUrl = getAuthServerUrl(request, env);
     const url = `${authServerUrl}${endpoint}`;
 
     const headers: Record<string, string> = {
@@ -252,7 +255,8 @@ export function isErrorResponse(response: unknown): response is ErrorResponse {
 export async function listUsers(
   env: ApiEnv,
   actingUser: ActingUser,
-  params?: { cursor?: string; limit?: number; search?: string; role?: string }
+  params?: { cursor?: string; limit?: number; search?: string; role?: string },
+  request?: Request
 ): Promise<PaginatedUsers | ErrorResponse> {
   const searchParams = new URLSearchParams();
   if (params?.cursor) searchParams.set('cursor', params.cursor);
@@ -263,7 +267,7 @@ export async function listUsers(
   const query = searchParams.toString();
   const endpoint = `/admin/users${query ? `?${query}` : ''}`;
 
-  return m2mRequest<PaginatedUsers>(env, endpoint, actingUser, { method: 'GET' });
+  return m2mRequest<PaginatedUsers>(env, endpoint, actingUser, { method: 'GET' }, request);
 }
 
 /**
@@ -666,12 +670,13 @@ export interface UsersByRole {
  */
 export async function getUserStats(
   env: ApiEnv,
-  actingUser: ActingUser
+  actingUser: ActingUser,
+  request?: Request
 ): Promise<UserStats | ErrorResponse> {
   // TODO: Implement /admin/stats/users endpoint on auth server
   // For now, return from listUsers API
   try {
-    const result = await listUsers(env, actingUser, { limit: 1000 });
+    const result = await listUsers(env, actingUser, { limit: 1000 }, request);
     if (isErrorResponse(result)) {
       return result;
     }
@@ -721,11 +726,12 @@ export async function getRoleStats(
 export async function getUsersByRole(
   env: ApiEnv,
   actingUser: ActingUser,
-  limit: number = 5
+  limit: number = 5,
+  request?: Request
 ): Promise<UsersByRole[] | ErrorResponse> {
   // TODO: Implement /admin/stats/users-by-role endpoint on auth server
   try {
-    const result = await listUsers(env, actingUser, { limit: 1000 });
+    const result = await listUsers(env, actingUser, { limit: 1000 }, request);
     if (isErrorResponse(result)) {
       return result;
     }
