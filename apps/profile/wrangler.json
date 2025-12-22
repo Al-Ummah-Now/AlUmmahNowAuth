@@ -20,5 +20,14 @@
   "observability": {
     "enabled": true
   },
-  "compatibility_flags": ["nodejs_compat"]
+  "routes": [
+    {
+      "pattern": "profile.auth.alummahnow.net",
+      "zone_name": "alummahnow.net",
+      "custom_domain": true
+    }
+  ],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
 }

@@ -50,6 +50,9 @@ interface OAuthClient {
   client_type: 'public' | 'confidential';
   allowed_grants: string[];
   redirect_uris: string[];
+  scopes: string[];
+  metadata: Record<string, unknown>;
+  enabled: boolean;
   created_at: number;
 }
 
@@ -145,11 +148,24 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const redirectUrisStr = formData.get("redirect_uris") as string;
     const redirectUris = redirectUrisStr ? redirectUrisStr.split("\n").filter(u => u.trim()) : [];
     const grantTypes = formData.getAll("grant_types") as string[];
+    const scopes = formData.getAll("scopes") as string[];
+    const metadataStr = formData.get("metadata") as string;
+
+    let metadata: Record<string, unknown> = {};
+    try {
+      if (metadataStr && metadataStr.trim()) {
+        metadata = JSON.parse(metadataStr);
+      }
+    } catch {
+      return { error: "Invalid metadata JSON" };
+    }
 
     const result = await createClient(env, actingUser, {
       name,
       redirect_uris: redirectUris.length > 0 ? redirectUris : undefined,
       grant_types: grantTypes.length > 0 ? grantTypes : ["authorization_code", "refresh_token"],
+      scopes: scopes.length > 0 ? scopes : ["openid", "profile", "email"],
+      metadata,
     });
 
     if (isErrorResponse(result)) {
@@ -192,10 +208,23 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const clientId = formData.get("client_id") as string;
     const redirectUris = (formData.get("redirect_uris") as string).split("\n").filter(u => u.trim());
     const grantTypes = formData.getAll("grant_types") as string[];
+    const scopes = formData.getAll("scopes") as string[];
+    const metadataStr = formData.get("metadata") as string;
+
+    let metadata: Record<string, unknown> = {};
+    try {
+      if (metadataStr && metadataStr.trim()) {
+        metadata = JSON.parse(metadataStr);
+      }
+    } catch {
+      return { error: "Invalid metadata JSON" };
+    }
 
     const result = await updateClient(env, actingUser, clientId, {
       redirect_uris: redirectUris,
       grant_types: grantTypes,
+      scopes,
+      metadata,
     });
 
     if (isErrorResponse(result)) {
@@ -235,12 +264,16 @@ export default function ClientsPage() {
   const [newClientName, setNewClientName] = useState("");
   const [newRedirectUris, setNewRedirectUris] = useState("");
   const [newGrantTypes, setNewGrantTypes] = useState<string[]>(["authorization_code", "refresh_token"]);
+  const [newScopes, setNewScopes] = useState<string[]>(["openid", "profile", "email"]);
+  const [newMetadata, setNewMetadata] = useState("{}");
 
   // Open create dialog
   const openCreateDialog = () => {
     setNewClientName("");
     setNewRedirectUris("");
     setNewGrantTypes(["authorization_code", "refresh_token"]);
+    setNewScopes(["openid", "profile", "email"]);
+    setNewMetadata("{}");
     setCreateDialogOpen(true);
   };
 
@@ -263,6 +296,8 @@ export default function ClientsPage() {
   // Form state for edit
   const [editRedirectUris, setEditRedirectUris] = useState("");
   const [editAllowedGrants, setEditAllowedGrants] = useState<string[]>([]);
+  const [editScopes, setEditScopes] = useState<string[]>([]);
+  const [editMetadata, setEditMetadata] = useState("{}");
 
   const isLoading = fetcher.state !== "idle";
 
@@ -284,6 +319,8 @@ export default function ClientsPage() {
           setNewClientName("");
           setNewRedirectUris("");
           setNewGrantTypes(["authorization_code", "refresh_token"]);
+          setNewScopes(["openid", "profile", "email"]);
+          setNewMetadata("{}");
         }
 
         // Handle client secret from rotate (only secret, no client_id change)
@@ -314,6 +351,8 @@ export default function ClientsPage() {
     formData.append("name", newClientName);
     formData.append("redirect_uris", newRedirectUris);
     newGrantTypes.forEach(grant => formData.append("grant_types", grant));
+    newScopes.forEach(scope => formData.append("scopes", scope));
+    formData.append("metadata", newMetadata);
 
     fetcher.submit(formData, { method: "POST" });
   };
@@ -338,6 +377,8 @@ export default function ClientsPage() {
     formData.append("client_id", selectedClient.client_id);
     formData.append("redirect_uris", editRedirectUris);
     editAllowedGrants.forEach(grant => formData.append("grant_types", grant));
+    editScopes.forEach(scope => formData.append("scopes", scope));
+    formData.append("metadata", editMetadata);
 
     fetcher.submit(formData, { method: "POST" });
   };
@@ -356,6 +397,8 @@ export default function ClientsPage() {
     setSelectedClient(client);
     setEditRedirectUris(client.redirect_uris.join("\n"));
     setEditAllowedGrants(client.allowed_grants);
+    setEditScopes(client.scopes || []);
+    setEditMetadata(JSON.stringify(client.metadata || {}, null, 2));
     setEditDialogOpen(true);
   };
 
@@ -372,6 +415,26 @@ export default function ClientsPage() {
     { value: "refresh_token", label: "Refresh Token" },
     { value: "client_credentials", label: "Client Credentials" },
   ];
+
+  const availableScopes = [
+    { value: "openid", label: "OpenID", description: "Required for OIDC" },
+    { value: "profile", label: "Profile", description: "User profile info" },
+    { value: "email", label: "Email", description: "Email address" },
+    { value: "offline_access", label: "Offline Access", description: "Refresh tokens" },
+    { value: "admin", label: "Admin", description: "Admin access" },
+    { value: "admin:users", label: "Admin: Users", description: "Manage users" },
+    { value: "admin:roles", label: "Admin: Roles", description: "Manage roles" },
+    { value: "admin:clients", label: "Admin: Clients", description: "Manage clients" },
+    { value: "admin:audit", label: "Admin: Audit", description: "View audit logs" },
+  ];
+
+  const toggleScope = (scope: string, scopes: string[], setScopes: (s: string[]) => void) => {
+    if (scopes.includes(scope)) {
+      setScopes(scopes.filter(s => s !== scope));
+    } else {
+      setScopes([...scopes, scope]);
+    }
+  };
 
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
@@ -414,6 +477,7 @@ export default function ClientsPage() {
                   <TableHead>Client ID</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Grants</TableHead>
+                  <TableHead>Scopes</TableHead>
                   <TableHead>Redirect URIs</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -440,6 +504,20 @@ export default function ClientsPage() {
                             {grant.replace(/_/g, " ")}
                           </Badge>
                         ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1 max-w-[150px]">
+                        {(client.scopes || []).slice(0, 3).map((scope) => (
+                          <Badge key={scope} variant="secondary" className="text-xs">
+                            {scope}
+                          </Badge>
+                        ))}
+                        {(client.scopes || []).length > 3 && (
+                          <Badge variant="secondary" className="text-xs">
+                            +{client.scopes.length - 3}
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -549,6 +627,35 @@ export default function ClientsPage() {
                 ))}
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>Scopes</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {availableScopes.map((scope) => (
+                  <label key={scope.value} className="flex items-center space-x-2" title={scope.description}>
+                    <input
+                      type="checkbox"
+                      checked={newScopes.includes(scope.value)}
+                      onChange={() => toggleScope(scope.value, newScopes, setNewScopes)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">{scope.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new_metadata">Metadata (JSON)</Label>
+              <textarea
+                id="new_metadata"
+                className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                placeholder="{}"
+                value={newMetadata}
+                onChange={(e) => setNewMetadata(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional custom data in JSON format
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
@@ -595,6 +702,32 @@ export default function ClientsPage() {
                   </label>
                 ))}
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Scopes</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {availableScopes.map((scope) => (
+                  <label key={scope.value} className="flex items-center space-x-2" title={scope.description}>
+                    <input
+                      type="checkbox"
+                      checked={editScopes.includes(scope.value)}
+                      onChange={() => toggleScope(scope.value, editScopes, setEditScopes)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">{scope.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit_metadata">Metadata (JSON)</Label>
+              <textarea
+                id="edit_metadata"
+                className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                placeholder="{}"
+                value={editMetadata}
+                onChange={(e) => setEditMetadata(e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>

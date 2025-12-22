@@ -21,9 +21,10 @@ import {
   userApiRoutes,
   createUserService,
   D1UserAdapter,
+  clientAdminRoutes,
 } from "@al-ummah-now/openauth";
 import { userRoleRoutes } from "./custom/user-role-routes";
-import { adminContextMiddleware, methodCompatMiddleware } from "./custom/admin-context-middleware";
+import { adminContextMiddleware, methodCompatMiddleware, clientResponseCompatMiddleware } from "./custom/admin-context-middleware";
 import { handleTokenCron } from "./cron/token-cron";
 import { routeRequest, type RouterContext } from "./router";
 
@@ -111,6 +112,17 @@ export default {
     // These should be set by the parent app's auth middleware before calling rbacApp
     rbacApp.route('/', rbacEndpoints(rbacService));
 
+    // Create admin client app (Phase 4: OpenAuth client management)
+    // Uses OpenAuth's clientAdminRoutes with middleware for:
+    // - Auth context (adminContextMiddleware)
+    // - PUT->PATCH translation (methodCompatMiddleware)
+    // - Backward compat response aliases: client_id, allowed_grants (clientResponseCompatMiddleware)
+    const adminClientApp = new Hono();
+    adminClientApp.use('*', clientResponseCompatMiddleware); // Response transform (runs last in response phase)
+    adminClientApp.use('*', adminContextMiddleware);
+    adminClientApp.use('*', methodCompatMiddleware);
+    adminClientApp.route('/', clientAdminRoutes(env.AUTH_DB));
+
     // Route request through extracted router
     // Router handles: admin routes, session routes, API routes, redirects, test endpoints
     const routerContext: RouterContext = {
@@ -122,6 +134,7 @@ export default {
       isProduction,
       adminUserApp,
       adminRbacApp,
+      adminClientApp,
       rbacApp,
       adminEnterpriseRoutes,
     };

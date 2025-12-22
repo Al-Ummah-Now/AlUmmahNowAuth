@@ -110,3 +110,72 @@ export async function methodCompatMiddleware(c: Context, next: Next): Promise<vo
 
 	await next();
 }
+
+/**
+ * Middleware to add backward-compatibility aliases to client responses
+ *
+ * OpenAuth's clientAdminRoutes returns:
+ * - id, grant_types, etc.
+ *
+ * Admin app expects:
+ * - client_id (alias for id)
+ * - allowed_grants (alias for grant_types)
+ *
+ * This middleware transforms JSON responses to add these aliases.
+ *
+ * @param c - Hono context
+ * @param next - Next middleware function
+ */
+export async function clientResponseCompatMiddleware(c: Context, next: Next): Promise<Response | void> {
+	await next();
+
+	// Only transform JSON responses
+	const contentType = c.res.headers.get('Content-Type') || '';
+	if (!contentType.includes('application/json')) {
+		return;
+	}
+
+	// Don't transform error responses
+	if (c.res.status >= 400) {
+		return;
+	}
+
+	try {
+		const body = await c.res.clone().json();
+
+		// Transform single client object
+		const transformClient = (client: Record<string, unknown>) => {
+			if (client && typeof client === 'object' && 'id' in client) {
+				return {
+					...client,
+					client_id: client.id, // Backward compat alias
+					allowed_grants: client.grant_types || [], // Backward compat alias
+				};
+			}
+			return client;
+		};
+
+		let transformedBody = body;
+
+		// Handle list response (has 'clients' array)
+		if (body && typeof body === 'object' && 'clients' in body && Array.isArray(body.clients)) {
+			transformedBody = {
+				...body,
+				clients: body.clients.map(transformClient),
+			};
+		}
+		// Handle single client response (has 'id' directly)
+		else if (body && typeof body === 'object' && 'id' in body) {
+			transformedBody = transformClient(body);
+		}
+
+		// Return new response with transformed body
+		c.res = new Response(JSON.stringify(transformedBody), {
+			status: c.res.status,
+			statusText: c.res.statusText,
+			headers: c.res.headers,
+		});
+	} catch {
+		// If JSON parsing fails, leave response unchanged
+	}
+}

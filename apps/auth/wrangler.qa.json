@@ -3,6 +3,13 @@
   "main": "src/index.ts",
   "name": "al-ummah-now-auth-qa",
   "upload_source_maps": true,
+  "routes": [
+    {
+      "pattern": "auth.qa.alummahnow.net",
+      "zone_name": "alummahnow.net",
+      "custom_domain": true
+    }
+  ],
   "kv_namespaces": [
     {
       "binding": "AUTH_STORAGE",

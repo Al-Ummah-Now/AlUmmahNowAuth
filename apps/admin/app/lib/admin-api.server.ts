@@ -58,6 +58,9 @@ export interface OAuthClient {
   name: string;
   allowed_grants: string[];
   redirect_uris: string[];
+  scopes: string[];
+  metadata: Record<string, unknown>;
+  enabled: boolean;
   created_at: number;
 }
 
@@ -465,7 +468,9 @@ export async function createClient(
 }
 
 /**
- * PUT /admin/clients/:clientId - Update OAuth client
+ * PATCH /admin/clients/:clientId - Update OAuth client
+ *
+ * Uses PATCH method to match OpenAuth's clientAdminRoutes API.
  */
 export async function updateClient(
   env: ApiEnv,
@@ -485,7 +490,7 @@ export async function updateClient(
     `/admin/clients/${encodeURIComponent(clientId)}`,
     actingUser,
     {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     }
   );
@@ -508,7 +513,9 @@ export async function deleteClient(
 }
 
 /**
- * POST /admin/clients/:clientId/rotate-secret - Rotate client secret
+ * POST /admin/clients/:clientId/rotate - Rotate client secret
+ *
+ * Uses /rotate path to match OpenAuth's clientAdminRoutes API.
  */
 export async function rotateClientSecret(
   env: ApiEnv,
@@ -517,7 +524,7 @@ export async function rotateClientSecret(
 ): Promise<{ client_secret: string } | ErrorResponse> {
   return m2mRequest<{ client_secret: string }>(
     env,
-    `/admin/clients/${encodeURIComponent(clientId)}/rotate-secret`,
+    `/admin/clients/${encodeURIComponent(clientId)}/rotate`,
     actingUser,
     { method: 'POST' }
   );

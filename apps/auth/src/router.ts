@@ -42,6 +42,7 @@ export interface RouterContext {
 	// Hono apps for delegating
 	adminUserApp: Hono;
 	adminRbacApp: Hono;
+	adminClientApp: Hono;
 	rbacApp: Hono;
 	// Services
 	adminEnterpriseRoutes: AdminEnterpriseRoutes;
@@ -115,7 +116,30 @@ async function handleAdminUserRoutes(rctx: RouterContext): Promise<RouteResult> 
 }
 
 /**
- * Handle admin enterprise routes (audit, clients, tokens, health, metrics)
+ * Handle admin client routes (/admin/clients/*)
+ * Uses OpenAuth's clientAdminRoutes for proper scopes/metadata handling
+ */
+async function handleAdminClientRoutes(rctx: RouterContext): Promise<RouteResult> {
+	const { url, request, env, ctx, adminClientApp, isProduction } = rctx;
+
+	if (!url.pathname.startsWith('/admin/clients')) {
+		return null;
+	}
+
+	// Rewrite /admin/clients/* -> /clients/*
+	const rewrittenPath = url.pathname.replace(/^\/admin\/clients/, '/clients') || '/clients';
+	const rewrittenRequest = rewriteRequest(request, url.pathname, rewrittenPath);
+
+	const response = await adminClientApp.fetch(rewrittenRequest, env, ctx);
+	if (response.status !== 404) {
+		return addSecurityHeaders(response, isProduction);
+	}
+
+	return null;
+}
+
+/**
+ * Handle admin enterprise routes (audit, tokens, health, metrics)
  */
 async function handleAdminEnterpriseRoutes(rctx: RouterContext): Promise<RouteResult> {
 	const { url, request, env, ctx, adminEnterpriseRoutes, isProduction } = rctx;
@@ -127,7 +151,7 @@ async function handleAdminEnterpriseRoutes(rctx: RouterContext): Promise<RouteRe
 	const shouldHandle =
 		url.pathname === '/admin/audit' ||
 		url.pathname.startsWith('/admin/audit-logs') ||
-		url.pathname.startsWith('/admin/clients') ||
+		// Client routes now handled by adminClientApp (OpenAuth's clientAdminRoutes)
 		isTokenManagementPath ||
 		url.pathname === '/admin/health' ||
 		url.pathname === '/admin/metrics';
@@ -570,7 +594,11 @@ async function routeAdminPaths(rctx: RouterContext): Promise<RouteResult> {
 		return await handleAdminUserRoutes(rctx);
 	}
 
-	if (pathname.startsWith('/admin/audit-logs') || pathname.startsWith('/admin/clients')) {
+	if (pathname.startsWith('/admin/clients')) {
+		return await handleAdminClientRoutes(rctx);
+	}
+
+	if (pathname.startsWith('/admin/audit-logs')) {
 		return await handleAdminEnterpriseRoutes(rctx);
 	}
 

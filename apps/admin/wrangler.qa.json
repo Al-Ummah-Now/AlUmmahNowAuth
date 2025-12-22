@@ -22,5 +22,12 @@
   "observability": {
     "enabled": true
   },
+  "routes": [
+    {
+      "pattern": "admin.auth.qa.alummahnow.net",
+      "zone_name": "alummahnow.net",
+      "custom_domain": true
+    }
+  ],
   "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"]
 }
