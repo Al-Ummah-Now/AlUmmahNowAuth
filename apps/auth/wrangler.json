@@ -3,12 +3,14 @@
   "main": "src/index.ts",
   "name": "al-ummah-now-auth",
   "upload_source_maps": true,
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "kv_namespaces": [
     {
       "binding": "AUTH_STORAGE",
       "id": "c3f796d40db8420c920aef1ce10a7f13",
-      "preview_id": "c9f1b1f1492e4a61b5e20d1872aa14fb",
-      "remote": true
+      "preview_id": "c9f1b1f1492e4a61b5e20d1872aa14fb"
     }
   ],
   "d1_databases": [
@@ -17,8 +19,7 @@
       "database_name": "al-ummah-now-d1",
       "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56",
       "preview_database_id": "e19ee76a-db77-46e0-be59-24d58a4bd7df",
-      "migrations_dir": "migrations",
-      "remote": true
+      "migrations_dir": "migrations"
     }
   ],
   "queues": {
@@ -30,11 +31,11 @@
     ]
   },
   "vars": {
-    "ENVIRONMENT": "production",
-    "PROFILE_APP_URL": "https://profile.auth.alummahnow.net/",
+    "ENVIRONMENT": "development",
+    "PROFILE_APP_URL": "http://localhost:3302/",
     "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
-    "ALLOWED_ORIGINS": "*.alummahnow.net,https://alummahnow.net,https://www.alummahnow.net",
-    "OPENAUTH_ISSUER": "https://auth.alummahnow.net",
+    "ALLOWED_ORIGINS": "localhost,127.0.0.1",
+    "OPENAUTH_ISSUER": "http://localhost:3300",
     "AUDIT_WEBHOOK_URL": "",
     "AUDIT_WEBHOOK_SECRET": ""
   },
@@ -47,7 +48,6 @@
       "dataset": "auth_events"
     }
   ],
-    "compatibility_flags": ["nodejs_compat"],
   "tail_consumers": [
     {
       "service": "al-ummah-now-auth-tail"
@@ -56,6 +56,55 @@
   "env": {
     "production": {
       "name": "al-ummah-now-auth",
+      "routes": [
+        {
+          "pattern": "auth.alummahnow.net",
+          "zone_name": "alummahnow.net",
+          "custom_domain": true
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_STORAGE",
+          "id": "c3f796d40db8420c920aef1ce10a7f13"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "AUTH_DB",
+          "database_name": "al-ummah-now-d1",
+          "database_id": "af76f007-e21e-43aa-88de-ebfefe46fb56",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-events"
+          }
+        ]
+      },
+      "vars": {
+        "ENVIRONMENT": "production",
+        "PROFILE_APP_URL": "https://profile.auth.alummahnow.net/",
+        "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
+        "ALLOWED_ORIGINS": "*.alummahnow.net,https://alummahnow.net,https://www.alummahnow.net",
+        "OPENAUTH_ISSUER": "https://auth.alummahnow.net",
+        "AUDIT_WEBHOOK_URL": "",
+        "AUDIT_WEBHOOK_SECRET": ""
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "AUTH_ANALYTICS",
+          "dataset": "auth_events"
+        }
+      ],
+      "tail_consumers": [
+        {
+          "service": "al-ummah-now-auth-tail"
+        }
+      ],
       "secrets_store_secrets": [
         {
           "binding": "CLIENT_SECRET_SALT",

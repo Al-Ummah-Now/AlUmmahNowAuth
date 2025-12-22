@@ -14,6 +14,7 @@ import { getAuthServerUrl } from './config';
 export interface User {
   id: string;
   email: string;
+  name?: string;
   created_at: number;
   password_reset_required: boolean;
   roles: Array<{

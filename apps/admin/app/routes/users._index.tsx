@@ -49,6 +49,7 @@ interface LoaderData {
   users: Array<{
     id: string;
     email: string;
+    name?: string;
     created_at: string;
     roles: Array<{ id: string; name: string }>;
   }>;
@@ -110,6 +111,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const users = usersResponse.users.map((user) => ({
       id: user.id,
       email: user.email,
+      name: user.name,
       created_at: user.created_at,
       roles: user.roles || [],
     }));
@@ -273,7 +275,7 @@ export default function Users() {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [roleManagerOpen, setRoleManagerOpen] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<{ id: string; email: string; roles: Array<{ id: string; name: string }> } | null>(null);
+  const [editingUser, setEditingUser] = useState<{ id: string; email: string; name?: string; roles: Array<{ id: string; name: string }> } | null>(null);
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -292,7 +294,7 @@ export default function Users() {
     setSelectedRoles([]);
   };
 
-  const handleEditUser = (user: { id: string; email: string; roles: Array<{ id: string; name: string }> }) => {
+  const handleEditUser = (user: { id: string; email: string; name?: string; roles: Array<{ id: string; name: string }> }) => {
     setEditingUser(user);
     setEditEmail(user.email);
     // Set the current role (take the first one or default to user)
@@ -357,7 +359,8 @@ export default function Users() {
   };
 
   const filteredUsers = users.filter((user) =>
-    user.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const openRoleManager = (userId: string) => {
@@ -452,7 +455,7 @@ export default function Users() {
           <CardContent>
             <div className="mb-4">
               <Input
-                placeholder="Search users by email..."
+                placeholder="Search users by name or email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="max-w-sm"
@@ -475,6 +478,7 @@ export default function Users() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>RBAC Roles</TableHead>
                     <TableHead>Created At</TableHead>
@@ -485,6 +489,12 @@ export default function Users() {
                   {filteredUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+                          {user.name || '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-2">
                           <Mail className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
                           {user.email}

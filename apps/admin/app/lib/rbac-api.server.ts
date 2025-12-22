@@ -168,7 +168,7 @@ export async function getAllRoles(
   request: Request,
   env: { AUTH_SERVER_URL?: string }
 ): Promise<Role[] | ErrorResponse> {
-  return authRequest<Role[]>(request, env, '/admin/rbac/roles', {
+  return authRequest<Role[]>(request, env, '/admin/roles', {
     method: 'GET',
   });
 }
@@ -181,7 +181,7 @@ export async function createRole(
   env: { AUTH_SERVER_URL?: string },
   roleData: RoleData
 ): Promise<Role | ErrorResponse> {
-  return authRequest<Role>(request, env, '/admin/rbac/roles', {
+  return authRequest<Role>(request, env, '/admin/roles', {
     method: 'POST',
     body: JSON.stringify(roleData),
   });
@@ -198,7 +198,7 @@ export async function getRoleById(
   return authRequest<RoleWithPermissions>(
     request,
     env,
-    `/admin/rbac/roles/${encodeURIComponent(roleId)}`,
+    `/admin/roles/${encodeURIComponent(roleId)}`,
     {
       method: 'GET',
     }
@@ -217,7 +217,7 @@ export async function updateRole(
   return authRequest<Role>(
     request,
     env,
-    `/admin/rbac/roles/${encodeURIComponent(roleId)}`,
+    `/admin/roles/${encodeURIComponent(roleId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify(updates),
@@ -236,7 +236,7 @@ export async function deleteRole(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/admin/rbac/roles/${encodeURIComponent(roleId)}`,
+    `/admin/roles/${encodeURIComponent(roleId)}`,
     {
       method: 'DELETE',
     }
@@ -255,7 +255,7 @@ export async function grantPermissionToRole(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/admin/rbac/roles/${encodeURIComponent(roleId)}/permissions`,
+    `/admin/roles/${encodeURIComponent(roleId)}/permissions`,
     {
       method: 'POST',
       body: JSON.stringify({ permissionId }),
@@ -275,7 +275,7 @@ export async function revokePermissionFromRole(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/admin/rbac/roles/${encodeURIComponent(roleId)}/permissions/${encodeURIComponent(permissionId)}`,
+    `/admin/roles/${encodeURIComponent(roleId)}/permissions/${encodeURIComponent(permissionId)}`,
     {
       method: 'DELETE',
     }
@@ -421,7 +421,7 @@ export async function getRoleUsers(
   }>>(
     request,
     env,
-    `/admin/rbac/roles/${encodeURIComponent(roleId)}/users`,
+    `/admin/roles/${encodeURIComponent(roleId)}/users`,
     {
       method: 'GET',
     }
@@ -440,7 +440,7 @@ export async function removeUserFromRole(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/admin/rbac/roles/${encodeURIComponent(roleId)}/users/${encodeURIComponent(userId)}`,
+    `/admin/roles/${encodeURIComponent(roleId)}/users/${encodeURIComponent(userId)}`,
     {
       method: 'DELETE',
     }

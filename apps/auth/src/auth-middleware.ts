@@ -265,7 +265,11 @@ export async function verifyAdminRequest(
       const actualRoles = await fetchUserRolesFromDB(env.AUTH_DB, actingUserId);
 
       // AND logic: Acting user MUST be an admin (verified against DB)
-      const isActingUserAdmin = actualRoles.includes('admin') || actualRoles.includes('super_admin');
+      // Check case-insensitively for Admin/admin, Super Admin/super_admin
+      const isActingUserAdmin = actualRoles.some(role => {
+        const lowerRole = role.toLowerCase();
+        return lowerRole === 'admin' || lowerRole === 'super admin' || lowerRole === 'super_admin';
+      });
       if (!isActingUserAdmin) {
         logger.warn('M2M acting user is not admin (verified from DB)', {
           clientId: m2mAuth.clientId,

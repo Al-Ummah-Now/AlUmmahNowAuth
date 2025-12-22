@@ -237,7 +237,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getTokenAudit(request: Request, url: URL, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:audit');
 
       // Parse query parameters
       const queryParams = Object.fromEntries(url.searchParams);
@@ -360,7 +360,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getAuditLogs(request: Request, url: URL, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:audit');
 
       // Parse query parameters
       const queryParams = Object.fromEntries(url.searchParams);
@@ -444,7 +444,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getAuditStats(request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:audit');
 
       // Get counts by severity
       const severityCounts = await this.db.prepare(`
@@ -498,7 +498,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getUserAuditTrail(userId: string, request: Request, url: URL, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:audit');
 
       const page = parseInt(url.searchParams.get('page') || '1');
       const limit = parseInt(url.searchParams.get('limit') || '50');
@@ -933,7 +933,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getUserTokens(userId: string, request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:users');
 
       // Get active tokens
       // OpenAuth schema: id, token_hash, user_id, client_id, tenant_id, scope, expires_at, revoked, revoked_at, created_at
@@ -983,7 +983,8 @@ export class AdminEnterpriseRoutes {
    */
   private async revokeAllUserTokens(userId: string, request: Request, env: Env): Promise<Response> {
     try {
-      const authContext = await verifyAdminAuth(request, env);
+      const authResult = await verifyAdminRequest(request, env, 'admin:users');
+      const authContext = authResult.type === 'user' ? authResult : { user: authResult.actingUser, isAdmin: true };
 
       // Rate limiting for destructive operations
       const rateLimitIP = getClientIP(request);
@@ -1076,7 +1077,8 @@ export class AdminEnterpriseRoutes {
    */
   private async revokeUserTokens(request: Request, env: Env): Promise<Response> {
     try {
-      const authContext = await verifyAdminAuth(request, env);
+      const authResult = await verifyAdminRequest(request, env, 'admin:users');
+      const authContext = authResult.type === 'user' ? authResult : { user: authResult.actingUser, isAdmin: true };
 
       const body = await request.json();
       const validated = v.parse(RevokeUserTokensSchema, body);
@@ -1165,7 +1167,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getHealth(request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:*');
 
       const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
 
@@ -1210,7 +1212,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getMetrics(request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:*');
 
       // Get user counts
       const userStats = await this.db.prepare(`
