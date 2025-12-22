@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "compatibility_date": "2025-04-19",
   "name": "al-ummah-now-auth-admin-qa",
+  "workers_dev": true,
   "main": "build/server/index.js",
   "no_bundle": true,
   "assets": {

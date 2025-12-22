@@ -118,12 +118,14 @@ case "$1" in
     echo "Next steps:"
     echo "  1. Run OpenAuth migrations: npx openauth migrate AUTH_DB -c wrangler.qa.json --remote"
     echo "  2. Run Wrangler migrations: npx wrangler d1 migrations apply AUTH_DB -c wrangler.qa.json --remote"
-    echo "  3. Deploy: npx wrangler deploy -c wrangler.qa.json"
+    echo "  3. Bootstrap secrets: npx openauth bootstrap-secrets AUTH_DB -c wrangler.qa.json --remote"
+    echo "  4. Deploy: npx wrangler deploy -c wrangler.qa.json"
     ;;
   --preview|--prod)
     echo "Next steps:"
     echo "  1. Run OpenAuth migrations: npx openauth migrate AUTH_DB --remote"
     echo "  2. Run Wrangler migrations: npx wrangler d1 migrations apply AUTH_DB --remote"
-    echo "  3. Deploy: npx wrangler deploy"
+    echo "  3. Bootstrap secrets: npx openauth bootstrap-secrets AUTH_DB --remote"
+    echo "  4. Deploy: npx wrangler deploy"
     ;;
 esac

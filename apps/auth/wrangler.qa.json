@@ -3,6 +3,7 @@
   "main": "src/index.ts",
   "name": "al-ummah-now-auth-qa",
   "upload_source_maps": true,
+  "workers_dev": true,
   "routes": [
     {
       "pattern": "auth.qa.alummahnow.net",

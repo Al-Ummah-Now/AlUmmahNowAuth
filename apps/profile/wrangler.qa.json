@@ -3,6 +3,7 @@
   "main": "src/index.ts",
   "name": "al-ummah-now-profile-qa",
   "upload_source_maps": true,
+  "workers_dev": true,
   "kv_namespaces": [
     {
       "binding": "AUTH_STORAGE",

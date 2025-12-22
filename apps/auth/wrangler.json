@@ -3,6 +3,7 @@
   "main": "src/index.ts",
   "name": "al-ummah-now-auth",
   "upload_source_maps": true,
+  "workers_dev": true,
   "compatibility_flags": [
     "nodejs_compat"
   ],
