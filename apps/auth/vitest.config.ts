@@ -18,6 +18,9 @@ export default defineWorkersConfig({
         // Disable isolation to share DB across test files
         // (required because test-setup.ts module caching causes isolation issues)
         isolatedStorage: false,
+        // Force all tests into a single worker to share D1 database state
+        // This ensures setupDatabase() creates tables once and they persist
+        singleWorker: true,
       },
     },
     coverage: {
