@@ -72,6 +72,6 @@
     "wrangler": "^4.55.0"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.14-pr.12.106"
+    "@al-ummah-now/openauth": "1.0.15"
   }
 }
