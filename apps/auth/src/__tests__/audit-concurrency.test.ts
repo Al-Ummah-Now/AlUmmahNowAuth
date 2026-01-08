@@ -294,7 +294,7 @@ describe('Audit Logging - Concurrency Tests', () => {
 
       // Events should be flushed by timeout, not batch size
       expect(mockDb.batch).toHaveBeenCalled();
-    }, 1000); // 1 second test timeout
+    }, 5000); // 5 second test timeout for Workers environment
 
     it('should cancel timer when batch size reached', async () => {
       const mockDb = createMockD1Database();

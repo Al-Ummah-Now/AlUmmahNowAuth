@@ -677,14 +677,12 @@ export class AdminEnterpriseRoutes {
         });
       }
 
-      // Revoke tokens
-      // Note: OpenAuth schema doesn't have revoked_reason column
-      // The reason is logged in the audit event metadata instead
+      // Revoke tokens with reason
       await this.db.prepare(`
         UPDATE refresh_tokens
-        SET revoked = 1, revoked_at = ?
+        SET revoked = 1, revoked_at = ?, revoked_reason = ?
         WHERE user_id = ? AND revoked = 0
-      `).bind(now, validated.user_id).run();
+      `).bind(now, reason, validated.user_id).run();
 
       // Emit audit event
       await emitAuditEvent({

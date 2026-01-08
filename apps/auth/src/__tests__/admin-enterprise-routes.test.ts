@@ -2,10 +2,13 @@
  * Admin Enterprise Routes Test Suite
  *
  * Tests for:
- * - Audit log viewing and filtering
- * - OAuth client management (CRUD)
+ * - Token audit (token_usage) viewing and filtering
+ * - Audit log (audit_events) viewing and filtering
  * - User token management (force logout)
  * - Health and metrics endpoints
+ *
+ * Note: OAuth client management routes were moved to OpenAuth's clientAdminRoutes
+ * and are tested in oauth-client-e2e.test.ts
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -15,6 +18,12 @@ import { AdminEnterpriseRoutes } from '../admin-enterprise-routes';
 
 // Mock the auth middleware
 vi.mock('../auth-middleware', () => ({
+  verifyAdminRequest: vi.fn().mockResolvedValue({
+    type: 'user',
+    user: { id: 'admin-user', email: 'admin@test.com', roles: ['admin'] },
+    permissions: [],
+    isAdmin: true,
+  }),
   verifyAdminAuth: vi.fn().mockResolvedValue({
     user: { id: 'admin-user', email: 'admin@test.com', roles: ['admin'] },
     isAdmin: true,
@@ -288,166 +297,6 @@ describe('AdminEnterpriseRoutes', () => {
   });
 
   // ==========================================================================
-  // OAuth Client Tests
-  // ==========================================================================
-
-  describe('OAuth Client Management', () => {
-    it('GET /admin/clients should return empty list initially', async () => {
-      const request = new Request('http://localhost/admin/clients', { method: 'GET' });
-      const response = await routes.handle(request, mockEnv, mockCtx);
-
-      expect(response.status).toBe(200);
-      const data = await response.json() as any;
-      expect(data.clients).toEqual([]);
-    });
-
-    it('POST /admin/clients should create a public client', async () => {
-      const request = new Request('http://localhost/admin/clients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: 'test-public-client',
-          client_type: 'public',
-          allowed_grants: ['authorization_code'],
-          redirect_uris: ['http://localhost:3000/callback'],
-        }),
-      });
-
-      const response = await routes.handle(request, mockEnv, mockCtx);
-      expect(response.status).toBe(201);
-
-      const data = await response.json() as any;
-      expect(data.client_id).toBe('test-public-client');
-      expect(data.client_type).toBe('public');
-      expect(data.client_secret).toBeUndefined(); // Public clients don't get secrets
-    });
-
-    it('POST /admin/clients should create a confidential client with secret', async () => {
-      const request = new Request('http://localhost/admin/clients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: 'test-confidential-client',
-          client_type: 'confidential',
-          allowed_grants: ['client_credentials'],
-          redirect_uris: ['http://localhost:3000/callback'],
-        }),
-      });
-
-      const response = await routes.handle(request, mockEnv, mockCtx);
-      expect(response.status).toBe(201);
-
-      const data = await response.json() as any;
-      expect(data.client_id).toBe('test-confidential-client');
-      expect(data.client_type).toBe('confidential');
-      expect(data.client_secret).toBeDefined();
-      expect(data.client_secret.length).toBe(64); // 32 bytes hex encoded
-      expect(data.warning).toContain('Store the client_secret securely');
-    });
-
-    it('GET /admin/clients/:clientId should return client details', async () => {
-      // First create a client
-      await env.AUTH_DB.prepare(`
-        INSERT INTO oauth_clients (id, tenant_id, name, grant_types, scopes, redirect_uris, enabled, created_at, updated_at)
-        VALUES (?, 'default', 'My Test Client', '["authorization_code"]', '["openid","profile","email"]', '["http://localhost/cb"]', 1, ?, ?)
-      `).bind('my-client', Date.now(), Date.now()).run();
-
-      const request = new Request('http://localhost/admin/clients/my-client', { method: 'GET' });
-      const response = await routes.handle(request, mockEnv, mockCtx);
-
-      expect(response.status).toBe(200);
-      const data = await response.json() as any;
-      expect(data.client_id).toBe('my-client');
-      expect(data.allowed_grants).toEqual(['authorization_code']);
-    });
-
-    it('GET /admin/clients/:clientId should return 404 for non-existent client', async () => {
-      const request = new Request('http://localhost/admin/clients/non-existent', { method: 'GET' });
-      const response = await routes.handle(request, mockEnv, mockCtx);
-
-      expect(response.status).toBe(404);
-    });
-
-    it('PUT /admin/clients/:clientId should update client', async () => {
-      // First create a client
-      await env.AUTH_DB.prepare(`
-        INSERT INTO oauth_clients (id, tenant_id, name, grant_types, scopes, redirect_uris, enabled, created_at, updated_at)
-        VALUES (?, 'default', 'Update Test Client', '["authorization_code"]', '["openid","profile","email"]', '["http://localhost/cb"]', 1, ?, ?)
-      `).bind('update-client', Date.now(), Date.now()).run();
-
-      const request = new Request('http://localhost/admin/clients/update-client', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          redirect_uris: ['http://localhost/new-callback', 'http://localhost/cb2'],
-        }),
-      });
-
-      const response = await routes.handle(request, mockEnv, mockCtx);
-      expect(response.status).toBe(200);
-
-      // Verify the update
-      const client = await env.AUTH_DB.prepare('SELECT redirect_uris FROM oauth_clients WHERE client_id = ?')
-        .bind('update-client').first<{ redirect_uris: string }>();
-      expect(JSON.parse(client!.redirect_uris)).toEqual(['http://localhost/new-callback', 'http://localhost/cb2']);
-    });
-
-    it('DELETE /admin/clients/:clientId should delete client', async () => {
-      // First create a client
-      await env.AUTH_DB.prepare(`
-        INSERT INTO oauth_clients (id, tenant_id, name, grant_types, scopes, redirect_uris, enabled, created_at, updated_at)
-        VALUES (?, 'default', 'Delete Test Client', '["authorization_code"]', '["openid","profile","email"]', '["http://localhost/cb"]', 1, ?, ?)
-      `).bind('delete-client', Date.now(), Date.now()).run();
-
-      const request = new Request('http://localhost/admin/clients/delete-client', { method: 'DELETE' });
-      const response = await routes.handle(request, mockEnv, mockCtx);
-
-      expect(response.status).toBe(200);
-
-      // Verify deletion
-      const client = await env.AUTH_DB.prepare('SELECT * FROM oauth_clients WHERE client_id = ?')
-        .bind('delete-client').first();
-      expect(client).toBeNull();
-    });
-
-    it('POST /admin/clients/:clientId/rotate-secret should rotate confidential client secret', async () => {
-      // Create a confidential client with a secret
-      const oldSecretHash = 'oldhash123';
-      await env.AUTH_DB.prepare(`
-        INSERT INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, enabled, created_at, updated_at)
-        VALUES (?, 'default', 'Rotate Test Client', ?, '["client_credentials"]', '["openid","profile","email"]', '["http://localhost/cb"]', 1, ?, ?)
-      `).bind('rotate-client', oldSecretHash, Date.now(), Date.now()).run();
-
-      const request = new Request('http://localhost/admin/clients/rotate-client/rotate-secret', { method: 'POST' });
-      const response = await routes.handle(request, mockEnv, mockCtx);
-
-      expect(response.status).toBe(200);
-      const data = await response.json() as any;
-      expect(data.client_secret).toBeDefined();
-      expect(data.client_secret.length).toBe(64);
-
-      // Verify the hash was updated
-      const client = await env.AUTH_DB.prepare('SELECT client_secret_hash FROM oauth_clients WHERE client_id = ?')
-        .bind('rotate-client').first<{ client_secret_hash: string }>();
-      expect(client!.client_secret_hash).not.toBe(oldSecretHash);
-    });
-
-    it('POST /admin/clients/:clientId/rotate-secret should fail for public clients', async () => {
-      await env.AUTH_DB.prepare(`
-        INSERT INTO oauth_clients (id, tenant_id, name, grant_types, scopes, redirect_uris, enabled, created_at, updated_at)
-        VALUES (?, 'default', 'Public Test Client', '["authorization_code"]', '["openid","profile","email"]', '["http://localhost/cb"]', 1, ?, ?)
-      `).bind('public-client', Date.now(), Date.now()).run();
-
-      const request = new Request('http://localhost/admin/clients/public-client/rotate-secret', { method: 'POST' });
-      const response = await routes.handle(request, mockEnv, mockCtx);
-
-      expect(response.status).toBe(400);
-      const data = await response.json() as any;
-      expect(data.error).toContain('public clients');
-    });
-  });
-
-  // ==========================================================================
   // User Token Management Tests
   // ==========================================================================
 
@@ -562,14 +411,16 @@ describe('AdminEnterpriseRoutes', () => {
 
     it('GET /admin/metrics should return service metrics', async () => {
       // Seed some data for metrics
+      // Public client (no client_secret_hash)
       await env.AUTH_DB.prepare(`
         INSERT INTO oauth_clients (id, tenant_id, name, grant_types, scopes, redirect_uris, enabled, created_at, updated_at)
         VALUES ('id-1', 'default', 'Metrics Test Client 1', '[]', '["openid","profile","email"]', '[]', 1, ?, ?)
       `).bind(Date.now(), Date.now()).run();
 
+      // Confidential client (has client_secret_hash)
       await env.AUTH_DB.prepare(`
-        INSERT INTO oauth_clients (id, tenant_id, name, grant_types, scopes, redirect_uris, enabled, created_at, updated_at)
-        VALUES ('id-2', 'default', 'Metrics Test Client 2', '[]', '["openid","profile","email"]', '[]', 1, ?, ?)
+        INSERT INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, enabled, created_at, updated_at)
+        VALUES ('id-2', 'default', 'Metrics Test Client 2', 'hashed_secret_value', '[]', '["openid","profile","email"]', '[]', 1, ?, ?)
       `).bind(Date.now(), Date.now()).run();
 
       const request = new Request('http://localhost/admin/metrics', { method: 'GET' });

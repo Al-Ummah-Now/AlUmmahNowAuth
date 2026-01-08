@@ -3,6 +3,9 @@ import { env } from "cloudflare:test";
 
 // Create the database schema for testing
 export async function setupDatabase() {
+  // Disable foreign keys temporarily for clean schema rebuild
+  await env.AUTH_DB.prepare(`PRAGMA foreign_keys = OFF`).run();
+
   // Drop any existing views OR tables that might conflict
   // (legacy compatibility objects no longer needed)
   const conflictingObjects = ['user_permissions'];
@@ -11,9 +14,27 @@ export async function setupDatabase() {
     await env.AUTH_DB.prepare(`DROP TABLE IF EXISTS ${name}`).run().catch(() => {});
   }
 
-  // Drop tables that have schema conflicts between migrations and test setup
-  // (migrations have different schema for token_usage than what tests expect)
-  await env.AUTH_DB.prepare(`DROP TABLE IF EXISTS token_usage`).run();
+  // Drop ALL tables that may have schema conflicts with OpenAuth 1.0.15
+  // Order matters due to foreign key dependencies (drop dependents first)
+  const tablesToRebuild = [
+    'rbac_user_roles',
+    'rbac_role_permissions',
+    'rbac_permissions',
+    'rbac_roles',
+    'account_sessions',
+    'browser_sessions',
+    'oauth_clients',
+    'users',
+    'tenants',
+    'token_usage',
+  ];
+
+  for (const table of tablesToRebuild) {
+    await env.AUTH_DB.prepare(`DROP TABLE IF EXISTS ${table}`).run().catch(() => {});
+  }
+
+  // Re-enable foreign keys
+  await env.AUTH_DB.prepare(`PRAGMA foreign_keys = ON`).run();
 
   // Users table (matches OpenAuth schema)
   await env.AUTH_DB.prepare(`
