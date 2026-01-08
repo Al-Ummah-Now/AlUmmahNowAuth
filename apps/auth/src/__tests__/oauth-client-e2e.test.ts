@@ -8,7 +8,7 @@
  * 4. Rotate client secret
  * 5. Delete client
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { issuer, hashClientSecret } from "@al-ummah-now/openauth";
 import { createClient } from "@al-ummah-now/openauth/client";
@@ -16,7 +16,7 @@ import { MemoryStorage } from "@al-ummah-now/openauth/storage/memory";
 import { createSubjects } from "@al-ummah-now/openauth/subject";
 import type { Provider } from "@al-ummah-now/openauth/provider/provider";
 import * as v from "valibot";
-import "../test-setup";
+import { setupDatabase } from "../test-setup";
 
 // Mock logger
 vi.mock("../logger", () => ({
@@ -42,6 +42,10 @@ describe("OAuth Client Management E2E", () => {
   let storage: ReturnType<typeof MemoryStorage>;
   const issuerUrl = "http://localhost";
 
+  // Ensure database schema is set up before tests run
+  beforeAll(async () => {
+    await setupDatabase();
+  });
 
   /**
    * Helper to create an OAuth client in the database

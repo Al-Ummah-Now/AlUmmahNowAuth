@@ -15,7 +15,7 @@ import { MemoryStorage } from "@al-ummah-now/openauth/storage/memory";
 import { createSubjects } from "@al-ummah-now/openauth/subject";
 import type { Provider } from "@al-ummah-now/openauth/provider/provider";
 import * as v from "valibot";
-import "../test-setup"; // Setup database schema
+import { setupDatabase } from "../test-setup"; // Setup database schema
 
 // Mock logger
 vi.mock("../logger", () => ({
@@ -44,6 +44,9 @@ describe("Token Revocation E2E", () => {
   const issuerUrl = "http://localhost";
 
   beforeAll(async () => {
+    // Ensure database schema is set up
+    await setupDatabase();
+
     // Create OAuth client in database with proper PBKDF2 hash using OpenAuth's hashClientSecret
     const secretHash = await hashClientSecret(testClientSecret);
 

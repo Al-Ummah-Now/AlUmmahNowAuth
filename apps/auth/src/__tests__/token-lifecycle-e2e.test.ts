@@ -9,7 +9,7 @@
  * 5. Token revocation
  * 6. Refresh token rotation
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { issuer, hashClientSecret } from "@al-ummah-now/openauth";
 import { createClient } from "@al-ummah-now/openauth/client";
@@ -17,7 +17,7 @@ import { MemoryStorage } from "@al-ummah-now/openauth/storage/memory";
 import { createSubjects } from "@al-ummah-now/openauth/subject";
 import type { Provider } from "@al-ummah-now/openauth/provider/provider";
 import * as v from "valibot";
-import "../test-setup";
+import { setupDatabase } from "../test-setup";
 
 // Mock logger
 vi.mock("../logger", () => ({
@@ -44,6 +44,10 @@ describe("Token Lifecycle E2E", () => {
   const testClientSecret = "lifecycle-test-secret-12345";
   const issuerUrl = "http://localhost";
 
+  // Ensure database schema is set up before tests run
+  beforeAll(async () => {
+    await setupDatabase();
+  });
 
   function basicAuth(clientId: string, clientSecret: string): string {
     return `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
