@@ -169,7 +169,7 @@ test.describe('Session Management', () => {
 
     // Verify shows logged out state
     await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('button:has-text("Sign In")')).toBeVisible();
+    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible();
   });
 
   test('should create new session after logout and login', async ({

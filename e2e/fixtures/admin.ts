@@ -56,7 +56,7 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   }
 
   // Set up email interception to capture verification code
-  setupEmailInterception(page);
+  const emailInterceptor = setupEmailInterception();
 
   // Click "Admin Sign In" or "Sign In" link to start auth flow
   const signInLink = page.locator('a:has-text("Admin Sign In"), a:has-text("Sign In")').first();

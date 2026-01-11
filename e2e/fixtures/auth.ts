@@ -146,11 +146,14 @@ export async function login(page: Page, email: string): Promise<void> {
  * @param page - Playwright page object
  */
 export async function logout(page: Page): Promise<void> {
-  // Click logout button
-  await page.click('button:has-text("Sign Out")');
+  // Wait for logout button to be visible and click it
+  // Button text is "🚪 Sign Out" with emoji, but has-text matches partial text
+  const logoutButton = page.locator('#loggedInView button:has-text("Sign Out")');
+  await expect(logoutButton).toBeVisible({ timeout: 5000 });
+  await logoutButton.click();
 
   // Verify redirected to logged out state
-  await expect(page.locator('#loggedOutView')).toBeVisible();
+  await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 10000 });
 }
 
 /**

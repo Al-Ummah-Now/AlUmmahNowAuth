@@ -14,7 +14,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env.test') });
 
 export interface TestUser {
   email: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'member';  // OpenAuth uses 'member' as default role, not 'user'
 }
 
 /**
@@ -37,11 +37,11 @@ export const TEST_USERS = {
   }),
   user: () => ({
     email: generateTestEmail('user'),
-    role: 'user' as const,
+    role: 'member' as const,  // OpenAuth assigns 'member' role to new users
   }),
   newUser: () => ({
     email: generateTestEmail('new-user'),
-    role: 'user' as const,
+    role: 'member' as const,  // OpenAuth assigns 'member' role to new users
   }),
   newAdmin: () => ({
     email: generateTestEmail('new-admin'),
