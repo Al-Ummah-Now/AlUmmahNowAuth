@@ -32,6 +32,15 @@ config.kv_namespaces = [
 ];
 // D1 database binding removed - admin app now uses auth server APIs
 
+// Patch routes for QA domain
+config.routes = [
+  {
+    pattern: 'admin.auth.qa.alummahnow.net',
+    zone_name: 'alummahnow.net',
+    custom_domain: true
+  }
+];
+
 // Remove production-specific fields
 delete config.configPath;
 delete config.userConfigPath;
