@@ -281,15 +281,11 @@ jobs:
           done
           echo "✅ Warmup complete - encryption keys should now be loaded"
 
-  # Parallel E2E test shards (run after deploy completes)
-  e2e-tests:
+  # Parallel E2E test jobs by category
+  e2e-admin-audit:
     runs-on: ubuntu-latest
-    name: E2E Tests (Shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    name: E2E Admin Audit (12 tests)
     needs: [deploy-qa]
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -314,8 +310,8 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E tests (Shard ${{ matrix.shard }}/4)
-        run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
+      - name: Run Admin Audit tests
+        run: pnpm exec playwright test e2e/tests/admin/audit-view.spec.ts
         env:
           CI: true
           SKIP_WEB_SERVER: true
@@ -324,22 +320,156 @@ jobs:
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
 
-      - name: Upload E2E test results
+      - name: Upload test results
         uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: e2e-test-results-shard-${{ matrix.shard }}
+          name: e2e-results-admin-audit
           path: |
             e2e-report/
-            e2e-results.json
-            e2e-results.xml
             test-results/
-          retention-days: 30
+          retention-days: 7
 
-      - name: Upload E2E test videos
-        uses: actions/upload-artifact@v5
-        if: failure()
+  e2e-admin-users:
+    runs-on: ubuntu-latest
+    name: E2E Admin Users (23 tests)
+    needs: [deploy-qa]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
-          name: e2e-test-videos-shard-${{ matrix.shard }}
-          path: test-results/**/*.webm
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Admin User tests
+        run: pnpm exec playwright test e2e/tests/admin/user-create.spec.ts e2e/tests/admin/user-edit.spec.ts e2e/tests/admin/user-delete.spec.ts
+        env:
+          CI: true
+          SKIP_WEB_SERVER: true
+          E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results-admin-users
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 7
+
+  e2e-auth:
+    runs-on: ubuntu-latest
+    name: E2E Auth (21 tests)
+    needs: [deploy-qa]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Auth tests
+        run: pnpm exec playwright test e2e/tests/auth/
+        env:
+          CI: true
+          SKIP_WEB_SERVER: true
+          E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results-auth
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 7
+
+  e2e-profile-integration:
+    runs-on: ubuntu-latest
+    name: E2E Profile & Integration (13 tests)
+    needs: [deploy-qa]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Profile & Integration tests
+        run: pnpm exec playwright test e2e/tests/profile/ e2e/tests/integration/
+        env:
+          CI: true
+          SKIP_WEB_SERVER: true
+          E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results-profile-integration
+          path: |
+            e2e-report/
+            test-results/
           retention-days: 7
