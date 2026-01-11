@@ -111,8 +111,9 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   await page.fill('input[id="email"]', user.email);
 
   // Select role using checkbox (new UI uses checkboxes instead of select dropdown)
-  // Check the checkbox for the specified role
-  const roleCheckbox = page.locator(`label:has-text("${user.role}") input[type="checkbox"]`);
+  // Use case-insensitive regex to match role name (e.g., "member" matches "Member")
+  const roleCheckbox = page.locator(`label`).filter({ hasText: new RegExp(`^${user.role}`, 'i') }).locator('input[type="checkbox"]');
+  await expect(roleCheckbox).toBeVisible({ timeout: 5000 });
   await roleCheckbox.check();
 
   // Submit form

@@ -18,7 +18,7 @@ test.describe('Admin User Editing', () => {
   test('should edit user email address', async ({ page }) => {
     // Create a test user
     const originalEmail = generateTestEmail('original');
-    await createUser(page, { email: originalEmail, role: 'user' });
+    await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit user email
     const newEmail = generateTestEmail('updated');
@@ -37,7 +37,7 @@ test.describe('Admin User Editing', () => {
   test('should edit user role from user to admin', async ({ page }) => {
     // Create a test user
     const userEmail = generateTestEmail('role-change');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Edit user role
     await editUser(page, userEmail, { role: 'admin' });
@@ -53,7 +53,7 @@ test.describe('Admin User Editing', () => {
     const adminEmail = generateTestEmail('admin-to-user');
     await createUser(page, { email: adminEmail, role: 'admin' });
 
-    // Edit user role
+    // Edit user role (dropdown uses 'user' not 'member')
     await editUser(page, adminEmail, { role: 'user' });
 
     // Verify role updated in list
@@ -65,7 +65,7 @@ test.describe('Admin User Editing', () => {
   test('should edit both email and role simultaneously', async ({ page }) => {
     // Create a test user
     const originalEmail = generateTestEmail('both-change');
-    await createUser(page, { email: originalEmail, role: 'user' });
+    await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit both fields
     const newEmail = generateTestEmail('both-updated');
@@ -83,7 +83,7 @@ test.describe('Admin User Editing', () => {
   }) => {
     // Create a test user
     const userEmail = generateTestEmail('validation-test');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Try to edit with invalid email
     // Already on /users page from previous action
@@ -102,7 +102,7 @@ test.describe('Admin User Editing', () => {
   test('should cancel edit without saving changes', async ({ page }) => {
     // Create a test user
     const userEmail = generateTestEmail('cancel-test');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Open edit dialog
     // Already on /users page from previous action
@@ -127,7 +127,7 @@ test.describe('Admin User Editing', () => {
   test('should persist changes after page reload', async ({ page }) => {
     // Create a test user
     const originalEmail = generateTestEmail('persist-test');
-    await createUser(page, { email: originalEmail, role: 'user' });
+    await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit user
     const newEmail = generateTestEmail('persisted');
@@ -144,8 +144,8 @@ test.describe('Admin User Editing', () => {
     // Create two test users
     const user1Email = generateTestEmail('user1');
     const user2Email = generateTestEmail('user2');
-    await createUser(page, { email: user1Email, role: 'user' });
-    await createUser(page, { email: user2Email, role: 'user' });
+    await createUser(page, { email: user1Email, role: 'member' });
+    await createUser(page, { email: user2Email, role: 'member' });
 
     // Try to edit user2 to have user1's email
     // Already on /users page from previous action

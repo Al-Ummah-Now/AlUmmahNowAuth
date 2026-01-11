@@ -18,7 +18,7 @@ test.describe('Admin User Deletion', () => {
   test('should delete a user successfully', async ({ page }) => {
     // Create a test user
     const userEmail = generateTestEmail('delete-test');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Delete user
     await deleteUser(page, userEmail);
@@ -32,7 +32,7 @@ test.describe('Admin User Deletion', () => {
   test('should show confirmation dialog before deleting', async ({ page }) => {
     // Create a test user
     const userEmail = generateTestEmail('confirm-test');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Click delete button
     // Already on /users page from previous action
@@ -49,7 +49,7 @@ test.describe('Admin User Deletion', () => {
   test('should cancel deletion when clicking cancel', async ({ page }) => {
     // Create a test user
     const userEmail = generateTestEmail('cancel-delete');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Click delete button
     // Already on /users page from previous action
@@ -76,7 +76,7 @@ test.describe('Admin User Deletion', () => {
 
     // Create and delete a user
     const userEmail = generateTestEmail('count-delete');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
     await deleteUser(page, userEmail);
 
     // Navigate back to dashboard
@@ -125,7 +125,7 @@ test.describe('Admin User Deletion', () => {
   test('should persist deletion after page reload', async ({ page }) => {
     // Create a test user
     const userEmail = generateTestEmail('persist-delete');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Delete user
     await deleteUser(page, userEmail);
@@ -145,9 +145,9 @@ test.describe('Admin User Deletion', () => {
     const user2Email = generateTestEmail('multi-2');
     const user3Email = generateTestEmail('multi-3');
 
-    await createUser(page, { email: user1Email, role: 'user' });
-    await createUser(page, { email: user2Email, role: 'user' });
-    await createUser(page, { email: user3Email, role: 'user' });
+    await createUser(page, { email: user1Email, role: 'member' });
+    await createUser(page, { email: user2Email, role: 'member' });
+    await createUser(page, { email: user3Email, role: 'member' });
 
     // Delete all users
     await deleteUser(page, user1Email);

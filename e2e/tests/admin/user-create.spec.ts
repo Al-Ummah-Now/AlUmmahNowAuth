@@ -14,10 +14,10 @@ test.describe('Admin User Creation', () => {
     await loginAdmin(page, TEST_USERS.admin().email);
   });
 
-  test('should create a new user with role "user"', async ({ page }) => {
+  test('should create a new user with role "member"', async ({ page }) => {
     const newUser = {
       email: generateTestEmail('new-user'),
-      role: 'user' as const,
+      role: 'member' as const,  // OpenAuth uses 'member' as default role
     };
 
     // Create user
@@ -55,8 +55,8 @@ test.describe('Admin User Creation', () => {
 
     // Enter invalid email
     await page.fill('input[id="email"]', 'not-an-email');
-    // Select role using checkbox (new UI uses checkboxes)
-    await page.locator('label:has-text("user") input[type="checkbox"]').check();
+    // Select role using checkbox (case-insensitive to match "Member")
+    await page.locator('label').filter({ hasText: /^member/i }).locator('input[type="checkbox"]').check();
 
     // Try to submit
     await page.click('button:has-text("Create User")');
@@ -69,7 +69,7 @@ test.describe('Admin User Creation', () => {
     const duplicateEmail = generateTestEmail('duplicate');
 
     // Create first user
-    await createUser(page, { email: duplicateEmail, role: 'user' });
+    await createUser(page, { email: duplicateEmail, role: 'member' });
 
     // Try to create user with same email
     await page.goto(`${TEST_URLS.adminDashboard}/users`);
@@ -77,8 +77,8 @@ test.describe('Admin User Creation', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
     await page.fill('input[id="email"]', duplicateEmail);
-    // Select role using checkbox (new UI uses checkboxes)
-    await page.locator('label:has-text("user") input[type="checkbox"]').check();
+    // Select role using checkbox (case-insensitive to match "Member")
+    await page.locator('label').filter({ hasText: /^member/i }).locator('input[type="checkbox"]').check();
     await page.click('button:has-text("Create User")');
 
     // Verify error message
@@ -92,7 +92,7 @@ test.describe('Admin User Creation', () => {
   }) => {
     const newUser = {
       email: generateTestEmail('reset-test'),
-      role: 'user' as const,
+      role: 'member' as const,  // OpenAuth uses 'member' as default role
     };
 
     // Create user
@@ -135,7 +135,7 @@ test.describe('Admin User Creation', () => {
     // Create new user
     const newUser = {
       email: generateTestEmail('count-test'),
-      role: 'user' as const,
+      role: 'member' as const,  // OpenAuth uses 'member' as default role
     };
     await createUser(page, newUser);
 
