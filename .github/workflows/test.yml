@@ -155,9 +155,10 @@ jobs:
             apps/*/coverage/
           retention-days: 30
 
-  e2e-tests:
+  # Deploy to QA environment (runs once, before parallel E2E tests)
+  deploy-qa:
     runs-on: ubuntu-latest
-    name: E2E Tests (QA Environment)
+    name: Deploy to QA
     needs: [lint-and-type-check, unit-tests]
     steps:
       - name: Checkout code
@@ -180,9 +181,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
       - name: Validate required secrets
         run: |
           if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
@@ -193,7 +191,6 @@ jobs:
             echo "❌ ERROR: CLOUDFLARE_ACCOUNT_ID secret is not configured"
             exit 1
           fi
-          # RESEND_API_KEY is configured via Cloudflare Secrets Store
           echo "✅ Required secrets are configured"
 
       - name: Apply QA database migrations
@@ -213,7 +210,6 @@ jobs:
       - name: Set Auth Server QA secrets
         working-directory: apps/auth
         run: |
-          # RESEND_API_KEY is configured via secrets_store in wrangler.qa.json
           echo "test-secret-for-e2e" | npx wrangler secret put TEST_PROMOTE_SECRET --config wrangler.qa.json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -236,8 +232,6 @@ jobs:
       - name: Set Admin Dashboard QA secrets
         working-directory: apps/admin
         run: |
-          # Set ADMIN_CLIENT_SECRET for M2M authentication to auth server
-          # This matches the client_secret_hash in the Auth Admin client (seed data)
           echo "e2e-admin-client-secret-12345" | npx wrangler secret put ADMIN_CLIENT_SECRET --config wrangler.qa.json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -274,10 +268,6 @@ jobs:
       - name: Warm up QA auth server (pre-load encryption keys)
         run: |
           echo "Warming up auth server to pre-load cryptographic keys..."
-          # The first /authorize request triggers encryption key loading which can be slow
-          # Make a dummy request to warm up the keys before tests run
-          # This request will fail (missing redirect_uri) but will trigger key initialization
-
           echo "Making warmup requests..."
           for i in 1 2 3; do
             echo "Warmup request $i..."
@@ -289,11 +279,43 @@ jobs:
             echo "  Request $i took ${duration}ms"
             sleep 1
           done
-
           echo "✅ Warmup complete - encryption keys should now be loaded"
 
-      - name: Run E2E tests against QA
-        run: pnpm exec playwright test
+  # Parallel E2E test shards (run after deploy completes)
+  e2e-tests:
+    runs-on: ubuntu-latest
+    name: E2E Tests (Shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: [deploy-qa]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests (Shard ${{ matrix.shard }}/4)
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
         env:
           CI: true
           SKIP_WEB_SERVER: true
@@ -306,7 +328,7 @@ jobs:
         uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: e2e-test-results
+          name: e2e-test-results-shard-${{ matrix.shard }}
           path: |
             e2e-report/
             e2e-results.json
@@ -318,6 +340,6 @@ jobs:
         uses: actions/upload-artifact@v5
         if: failure()
         with:
-          name: e2e-test-videos
+          name: e2e-test-videos-shard-${{ matrix.shard }}
           path: test-results/**/*.webm
           retention-days: 7
