@@ -41,3 +41,8 @@ VALUES ('c1770235-e4b6-42f3-9eb4-3c03ca111b02', 'default', 'API Videos', NULL, '
 -- WebSocket Server (M2M client for real-time communication server)
 INSERT OR IGNORE INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at)
 VALUES ('bdea61f1-5720-44cd-9e61-18dbf3aee72e', 'default', 'WebSocket Server', NULL, '["client_credentials"]', '["openid","profile","email"]', '[]', '{"type":"m2m"}', 1, unixepoch() * 1000, unixepoch() * 1000);
+
+-- RBAC Roles for QA Environment
+-- Member role (basic user access) - required for E2E tests
+INSERT OR IGNORE INTO rbac_roles (id, name, tenant_id, description, is_system_role, created_at, updated_at)
+VALUES ('role_member', 'Member', 'default', 'Basic member access', 0, unixepoch() * 1000, unixepoch() * 1000);
