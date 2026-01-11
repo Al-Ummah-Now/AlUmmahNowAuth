@@ -23,19 +23,20 @@ import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import {
-  getAllRoles,
   assignRoleToUser,
   removeRoleFromUser,
   isErrorResponse as isRbacError,
 } from "../lib/rbac-api.server";
 import {
   listUsers,
+  listRoles,
   createUser,
   updateUser,
   deleteUser,
   assignUserRole,
   isErrorResponse,
   type ActingUser,
+  type Role,
 } from "../lib/admin-api.server";
 
 export const meta: MetaFunction = () => {
@@ -116,9 +117,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       roles: user.roles || [],
     }));
 
-    // Fetch all roles for the role manager
-    const rolesResponse = await getAllRoles(request, env);
-    const allRoles = isRbacError(rolesResponse) ? [] : rolesResponse;
+    // Fetch all roles for the role manager (using M2M auth)
+    const rolesResponse = await listRoles(env, actingUser, request);
+    const allRoles: Role[] = isErrorResponse(rolesResponse) ? [] : rolesResponse;
 
     return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl };
   } catch (error) {

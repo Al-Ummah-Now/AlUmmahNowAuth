@@ -42,6 +42,21 @@ export interface UserRole {
   assigned_by: string;
 }
 
+/**
+ * Role definition for listing all roles
+ */
+export interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  is_system_role: boolean;
+  metadata?: Record<string, string | number | boolean | null>;
+  created_at: number;
+  updated_at: number;
+  created_by?: string;
+  updated_by?: string;
+}
+
 export interface PaginatedUsers {
   users: User[];
   pagination: {
@@ -353,6 +368,24 @@ export async function getUserRoles(
     `/admin/users/${encodeURIComponent(userId)}/roles`,
     actingUser,
     { method: 'GET' }
+  );
+}
+
+
+/**
+ * List all available roles in the system
+ */
+export async function listRoles(
+  env: ApiEnv,
+  actingUser: ActingUser,
+  request?: Request
+): Promise<Role[] | ErrorResponse> {
+  return m2mRequest<Role[]>(
+    env,
+    '/admin/roles',
+    actingUser,
+    { method: 'GET' },
+    request
   );
 }
 
@@ -843,6 +876,7 @@ export const adminApi = {
   updateUser,
   deleteUser,
   getUserRoles,
+  listRoles,
   assignUserRole,
   removeUserRole,
 

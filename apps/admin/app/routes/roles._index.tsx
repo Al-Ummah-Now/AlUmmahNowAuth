@@ -32,14 +32,18 @@ import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import {
-  getAllRoles,
   createRole,
   deleteRole,
   getRoleUsers,
-  isErrorResponse,
-  type Role,
+  isErrorResponse as isRbacError,
   type RoleData,
 } from "../lib/rbac-api.server";
+import {
+  listRoles,
+  isErrorResponse,
+  type ActingUser,
+  type Role,
+} from "../lib/admin-api.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -62,6 +66,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
@@ -90,9 +96,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const authServerUrl = getAuthServerUrl(request, env);
   const user = { id: currentUser.id, email: currentUser.email };
 
+  // Construct acting user for M2M API calls
+  const actingUser: ActingUser = {
+    id: currentUser.id,
+    email: currentUser.email,
+    roles: currentUser.roles || [],
+  };
+
   try {
-    // Fetch all roles from auth service
-    const rolesResponse = await getAllRoles(request, env);
+    // Fetch all roles from auth service (using M2M auth)
+    const rolesResponse = await listRoles(env, actingUser, request);
 
     if (isErrorResponse(rolesResponse)) {
       console.error("Error fetching roles:", rolesResponse.error);
@@ -104,7 +117,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       rolesResponse.map(async (role) => {
         // Call API to get users for this role
         const usersResponse = await getRoleUsers(request, env, role.id);
-        const userCount = isErrorResponse(usersResponse) ? 0 : usersResponse.length;
+        const userCount = isRbacError(usersResponse) ? 0 : usersResponse.length;
 
         return {
           ...role,
@@ -160,7 +173,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 
       const result = await createRole(request, env, roleData);
 
-      if (isErrorResponse(result)) {
+      if (isRbacError(result)) {
         return { error: result.error };
       }
 
@@ -177,7 +190,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       // The API endpoint will check if it's a system role
       const result = await deleteRole(request, env, roleId);
 
-      if (isErrorResponse(result)) {
+      if (isRbacError(result)) {
         return { error: result.error };
       }
 
