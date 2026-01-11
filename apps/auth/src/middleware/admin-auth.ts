@@ -97,7 +97,9 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 					.all<{ name: string }>();
 
 				const roles = rolesResult.results?.map((r) => r.name) || [];
-				const isAdmin = roles.includes('admin') || roles.includes('super_admin');
+				// Case-insensitive role check - OpenAuth seeds 'Admin' and 'Super Admin' (capitalized)
+				const roleNamesLower = roles.map((r) => r.toLowerCase());
+				const isAdmin = roleNamesLower.includes('admin') || roleNamesLower.includes('super admin');
 
 				if (!isAdmin) {
 					return c.json({ error: 'Forbidden: Acting user must be admin' }, 403);
@@ -159,8 +161,9 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 
 		const roles = rolesResult.results?.map((r) => r.name) || [];
 
-		// Check for admin role
-		const isAdmin = roles.includes('admin') || roles.includes('super_admin');
+		// Check for admin role (case-insensitive - OpenAuth seeds 'Admin' and 'Super Admin')
+		const roleNamesLower = roles.map((r) => r.toLowerCase());
+		const isAdmin = roleNamesLower.includes('admin') || roleNamesLower.includes('super admin');
 
 		if (!isAdmin) {
 			return c.json({ error: 'Forbidden: Admin access required' }, 403);
@@ -205,7 +208,9 @@ export function requirePermission(_permission: string): MiddlewareHandler<{
 		}
 
 		// All admins pass through - scope checking is done by requireScope
-		if (adminUser.roles.includes('super_admin') || adminUser.roles.includes('admin')) {
+		// Case-insensitive role check (OpenAuth seeds 'Admin' and 'Super Admin')
+		const roleNamesLower = adminUser.roles.map((r) => r.toLowerCase());
+		if (roleNamesLower.includes('super admin') || roleNamesLower.includes('admin')) {
 			await next();
 			return;
 		}
