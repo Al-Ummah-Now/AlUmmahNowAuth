@@ -113,9 +113,10 @@ export async function handleTestPromotePost(
 		}
 
 		// Assign admin role via RBAC (using OpenAuth's rbac_user_roles directly for upsert)
+		// Note: OpenAuth seeds role_admin (not role_admin_default) in 002_seed.sql
 		await env.AUTH_DB.prepare(
 			`INSERT INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by)
-       VALUES (?, 'role_admin_default', 'default', ?, 'system')
+       VALUES (?, 'role_admin', 'default', ?, 'system')
        ON CONFLICT(user_id, role_id, tenant_id) DO UPDATE SET assigned_by = 'system'`
 		)
 			.bind(user.id, Date.now())

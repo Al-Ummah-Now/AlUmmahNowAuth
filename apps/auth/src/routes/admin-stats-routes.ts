@@ -58,8 +58,8 @@ adminStatsRoutes.use('*', requireAdmin());
  *     "customRoles": 5
  *   },
  *   "usersByRole": [
- *     { "roleId": "role_user_default", "roleName": "user", "userCount": 145 },
- *     { "roleId": "role_admin_default", "roleName": "admin", "userCount": 5 }
+ *     { "roleId": "role_member", "roleName": "Member", "userCount": 145 },
+ *     { "roleId": "role_admin", "roleName": "Admin", "userCount": 5 }
  *   ]
  * }
  */

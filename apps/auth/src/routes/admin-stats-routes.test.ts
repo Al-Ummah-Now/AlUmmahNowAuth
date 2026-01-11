@@ -152,7 +152,8 @@ describe('AdminStatsRoutes', () => {
 				`SELECT id FROM rbac_roles WHERE name = 'admin' AND tenant_id = 'default'`
 			).first<{ id: string }>();
 
-			const adminRoleId = adminRole?.id || 'role_admin_default';
+			// OpenAuth seeds role_admin (not role_admin_default) in 002_seed.sql
+			const adminRoleId = adminRole?.id || 'role_admin';
 
 			// If no admin role exists, create it (for test environment)
 			if (!adminRole) {

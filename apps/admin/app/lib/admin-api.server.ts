@@ -690,9 +690,10 @@ export async function getUserStats(
     }
 
     // Count admin users from roles
+    // Note: OpenAuth seeds role_admin and role_super_admin (not _default suffix)
     const adminUsers = result.users.filter(user =>
       user.roles.some(role =>
-        role.id === 'role_admin_default' || role.id === 'role_super_admin_default'
+        role.id === 'role_admin' || role.id === 'role_super_admin'
       )
     ).length;
 
