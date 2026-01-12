@@ -6,7 +6,7 @@ import { logger } from "../lib/logger.server";
 
 // Redirect directly to auth server instead of showing a login page
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { APP_URL?: string; AUTH_SERVER_URL?: string };
+  const env = context?.cloudflare?.env as { APP_URL?: string; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger

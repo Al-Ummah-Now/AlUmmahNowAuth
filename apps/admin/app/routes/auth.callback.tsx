@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
-import { getAppUrl, getAuthServerUrl } from "../lib/config";
+import { getAppUrl, getAuthServerUrl, getOAuthClientId } from "../lib/config";
 import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 import { hasAdminRole } from "../lib/auth.server";
@@ -13,6 +13,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     AUTH_STORAGE?: KVNamespace;
     AUTH_SERVER_URL?: string;
     APP_URL?: string;
+    ADMIN_CLIENT_ID?: string;
   };
   logger.setDatabase(null, false);
 
@@ -59,7 +60,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       appUrl,
       authServerUrl,
       redirectUri: `${appUrl}/auth/callback`,
-      clientId: '1448ed27-39a6-417d-b4c8-07f881e81269',
+      clientId: getOAuthClientId(env),
       tokenEndpoint: `${authServerUrl}/token`
     });
 

@@ -12,8 +12,9 @@ export const config = {
 } as const;
 
 // Get OAuth client ID from environment or use default
-export function getOAuthClientId(env?: { OAUTH_CLIENT_ID?: string }): string {
-  return env?.OAUTH_CLIENT_ID || DEFAULT_CLIENT_ID;
+// Supports both ADMIN_CLIENT_ID (wrangler config) and OAUTH_CLIENT_ID (legacy)
+export function getOAuthClientId(env?: { ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_ID?: string }): string {
+  return env?.ADMIN_CLIENT_ID || env?.OAUTH_CLIENT_ID || DEFAULT_CLIENT_ID;
 }
 
 // Get the auth server URL from environment variables

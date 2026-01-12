@@ -11,12 +11,15 @@ VALUES ('209a1087-6626-40f7-8a7f-7f42f83f4f30', 'default', 'Auth Profile', NULL,
 
 -- Auth Admin client with M2M support (client_secret required for admin API calls)
 -- Plain secret: e2e-admin-client-secret-12345 (set as ADMIN_CLIENT_SECRET in CI)
+-- NOTE: redirect_uris use /auth/callback to match React Router's route
 INSERT OR IGNORE INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at)
-VALUES ('2448ed27-39a6-417d-b4c8-07f881e81269', 'default', 'Auth Admin', '$pbkdf2-sha256$100000$c7HVjbQIu83H8MVouSq3Sg$Cn_m6839hln5O4X1CuxMhIyq5fUKkIuk6osyhd8izTE', '["authorization_code","refresh_token","client_credentials"]', '["openid","profile","email","admin","admin:users","admin:roles","admin:clients"]', '["http://localhost:3303/callback","https://admin.auth.qa.alummahnow.net/callback"]', '{"type":"confidential"}', 1, unixepoch() * 1000, unixepoch() * 1000);
+VALUES ('2448ed27-39a6-417d-b4c8-07f881e81269', 'default', 'Auth Admin', '$pbkdf2-sha256$100000$c7HVjbQIu83H8MVouSq3Sg$Cn_m6839hln5O4X1CuxMhIyq5fUKkIuk6osyhd8izTE', '["authorization_code","refresh_token","client_credentials"]', '["openid","profile","email","admin","admin:users","admin:roles","admin:clients"]', '["http://localhost:3303/auth/callback","https://admin.auth.qa.alummahnow.net/auth/callback"]', '{"type":"confidential"}', 1, unixepoch() * 1000, unixepoch() * 1000);
 
 -- Update Auth Admin in case it already exists without secret (idempotent)
+-- Also update redirect_uris to use correct /auth/callback path
 UPDATE oauth_clients SET
   client_secret_hash = '$pbkdf2-sha256$100000$c7HVjbQIu83H8MVouSq3Sg$Cn_m6839hln5O4X1CuxMhIyq5fUKkIuk6osyhd8izTE',
+  redirect_uris = '["http://localhost:3303/auth/callback","https://admin.auth.qa.alummahnow.net/auth/callback"]',
   metadata = '{"type":"confidential"}'
 WHERE id = '2448ed27-39a6-417d-b4c8-07f881e81269';
 

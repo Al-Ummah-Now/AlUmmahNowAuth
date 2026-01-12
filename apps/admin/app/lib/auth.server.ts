@@ -97,7 +97,7 @@ export function redirectToLogin(request: Request) {
 }
 
 // Redirect to auth server with prompt=select_account to switch accounts
-export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SERVER_URL?: string; APP_URL?: string }) {
+export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SERVER_URL?: string; APP_URL?: string; ADMIN_CLIENT_ID?: string }) {
   const appUrl = getAppUrl(request, env);
   const client = getOpenAuthClient(request, env);
 
@@ -117,7 +117,7 @@ export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SER
 
 export async function requireAuth(
   request: Request,
-  env: { AUTH_STORAGE?: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string },
+  env: { AUTH_STORAGE?: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string; ADMIN_CLIENT_ID?: string },
   requireAdmin: boolean = false
 ) {
   const url = new URL(request.url);
