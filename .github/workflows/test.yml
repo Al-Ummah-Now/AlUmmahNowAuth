@@ -336,6 +336,36 @@ jobs:
           all_clients=$(curl -s "https://auth.qa.alummahnow.net/test/debug/clients")
           echo "$all_clients" | jq '.clients[] | {id, tenant_id, name}'
 
+      - name: Verify Admin M2M authentication flow
+        run: |
+          echo "Testing Admin app M2M authentication to Auth server..."
+          response=$(curl -s "https://admin.auth.qa.alummahnow.net/debug/m2m")
+          echo "M2M debug response: $response"
+
+          success=$(echo "$response" | jq -r '.success // false')
+          roles_count=$(echo "$response" | jq -r '.m2mTest.rolesCount // 0')
+          error=$(echo "$response" | jq -r '.error // "none"')
+
+          echo "Success: $success"
+          echo "Roles count: $roles_count"
+          echo "Error: $error"
+
+          if [ "$success" != "true" ]; then
+            echo "❌ ERROR: M2M authentication failed!"
+            echo "Config check:"
+            echo "$response" | jq '.config'
+            echo "Error details:"
+            echo "$response" | jq '.m2mTest.error // .error'
+            exit 1
+          fi
+
+          if [ "$roles_count" -lt 8 ]; then
+            echo "❌ ERROR: Expected at least 8 roles via M2M, got $roles_count"
+            exit 1
+          fi
+
+          echo "✅ Admin M2M authentication working! Retrieved $roles_count roles"
+
   # Parallel E2E test jobs by category
   e2e-admin-audit:
     runs-on: ubuntu-latest
