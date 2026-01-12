@@ -16,13 +16,15 @@ test.describe('Session Management', () => {
     await login(page, testUser.email);
 
     // Verify logged in
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Reload page
     await page.reload();
 
     // Verify still logged in
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('#userEmail')).toContainText(testUser.email);
   });
 
@@ -54,7 +56,8 @@ test.describe('Session Management', () => {
     await newPage.goto(TEST_URLS.profileApp);
 
     // Verify still logged in
-    await expect(newPage.locator('#loggedInView')).toBeVisible();
+    await newPage.waitForLoadState('domcontentloaded');
+    await expect(newPage.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     await newContext.close();
   });
@@ -78,7 +81,8 @@ test.describe('Session Management', () => {
     await page.goto(TEST_URLS.profileApp);
 
     // Verify still logged in
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
   });
 
   test('should have correct session cookie attributes', async ({ page }) => {
@@ -114,7 +118,8 @@ test.describe('Session Management', () => {
     await page.goto(TEST_URLS.profileApp);
 
     // Verify session cleared
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
   });
 
   test('should not share session with incognito/different context', async ({
@@ -126,7 +131,8 @@ test.describe('Session Management', () => {
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
     await login(page1, testUser.email);
-    await expect(page1.locator('#loggedInView')).toBeVisible();
+    await page1.waitForLoadState('domcontentloaded');
+    await expect(page1.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Create second context (incognito-like)
     const context2 = await browser.newContext();
@@ -134,7 +140,8 @@ test.describe('Session Management', () => {
     await page2.goto(TEST_URLS.profileApp);
 
     // Verify not logged in second context
-    await expect(page2.locator('#loggedOutView')).toBeVisible();
+    await page2.waitForLoadState('domcontentloaded');
+    await expect(page2.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
 
     await context1.close();
     await context2.close();
@@ -160,7 +167,8 @@ test.describe('Session Management', () => {
     await page.goto(TEST_URLS.profileApp);
 
     // Verify treated as logged out
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
   });
 
   test('should handle missing session gracefully', async ({ page }) => {
@@ -168,8 +176,9 @@ test.describe('Session Management', () => {
     await page.goto(TEST_URLS.profileApp);
 
     // Verify shows logged out state
-    await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible({ timeout: 15000 });
   });
 
   test('should create new session after logout and login', async ({

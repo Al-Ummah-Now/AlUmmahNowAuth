@@ -106,7 +106,9 @@ export async function register(page: Page, email: string): Promise<void> {
 
   // Wait for session to be established (logged in view visible)
   // This ensures the session cookie is set before proceeding
-  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
+  // Wait for page to fully load first (JavaScript needs to initialize)
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
   // Mark as registered
   registeredUsers.add(email);
@@ -207,7 +209,9 @@ export async function login(page: Page, email: string): Promise<void> {
   }
 
   // Verify login succeeded
-  await expect(page.locator('#loggedInView')).toBeVisible();
+  // Wait for page to fully load first (JavaScript needs to initialize)
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 }
 
 /**

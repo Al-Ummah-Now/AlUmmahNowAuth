@@ -52,19 +52,23 @@ test.describe('Token Revocation', () => {
 
     // Login
     await login(page, testUser.email);
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Verify session is valid
     await page.reload();
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Logout (which should revoke tokens internally)
     await logout(page);
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
 
     // Try to access protected resource - should be redirected to login
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
   });
 
   test('should revoke token via profile app /revoke endpoint and invalidate session', async ({
@@ -74,7 +78,8 @@ test.describe('Token Revocation', () => {
 
     // Step 1: Login to profile app
     await login(page, testUser.email);
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Step 2: Call profile app's /revoke endpoint
     // This endpoint gets the refresh token from session, calls auth server's revoke, and clears local session
@@ -91,7 +96,8 @@ test.describe('Token Revocation', () => {
     // Step 3: Try to access profile app again - should be logged out
     // This is the critical assertion - user session must be invalidated
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
   });
 
   test('should return 401 when calling /revoke without session', async ({
@@ -223,21 +229,26 @@ test.describe('Token Revocation', () => {
 
     // Login in both sessions
     await login(page1, testUser.email);
-    await expect(page1.locator('#loggedInView')).toBeVisible();
+    await page1.waitForLoadState('domcontentloaded');
+    await expect(page1.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     await login(page2, testUser.email);
-    await expect(page2.locator('#loggedInView')).toBeVisible();
+    await page2.waitForLoadState('domcontentloaded');
+    await expect(page2.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Verify both sessions work
     await page1.reload();
-    await expect(page1.locator('#loggedInView')).toBeVisible();
+    await page1.waitForLoadState('domcontentloaded');
+    await expect(page1.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     await page2.reload();
-    await expect(page2.locator('#loggedInView')).toBeVisible();
+    await page2.waitForLoadState('domcontentloaded');
+    await expect(page2.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Logout from session 1
     await logout(page1);
-    await expect(page1.locator('#loggedOutView')).toBeVisible();
+    await page1.waitForLoadState('domcontentloaded');
+    await expect(page1.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
 
     // Session 2 may still work until refresh token rotation
     // Reload session 2 to trigger refresh

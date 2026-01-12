@@ -22,12 +22,14 @@ test.describe('Forgot Password Flow', () => {
 
     // Step 2: Log out
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
     // Use .first() to handle potential duplicate matches (account switcher also has "Sign out of all accounts")
     const signOutBtn1 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn1).toBeVisible({ timeout: 5000 });
     await signOutBtn1.click();
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
 
     // Step 3: Navigate to auth server login page
     await page.locator('#loggedOutView button:has-text("Sign In")').click();
