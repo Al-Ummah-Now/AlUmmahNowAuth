@@ -305,7 +305,8 @@ export async function getUserRoles(
 }
 
 /**
- * POST /api/users/:id/roles - Assign role to a user
+ * POST /admin/users/:id/roles - Assign role to a user
+ * Note: The user-role-routes are mounted on adminUserApp which handles /admin/users/*
  */
 export async function assignRoleToUser(
   request: Request,
@@ -322,7 +323,7 @@ export async function assignRoleToUser(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/api/users/${encodeURIComponent(userId)}/roles`,
+    `/admin/users/${encodeURIComponent(userId)}/roles`,
     {
       method: 'POST',
       body: JSON.stringify(body),
@@ -331,7 +332,7 @@ export async function assignRoleToUser(
 }
 
 /**
- * DELETE /api/users/:id/roles/:roleId - Remove role from a user
+ * DELETE /admin/users/:id/roles/:roleId - Remove role from a user
  */
 export async function removeRoleFromUser(
   request: Request,
@@ -342,7 +343,7 @@ export async function removeRoleFromUser(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/api/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(roleId)}`,
+    `/admin/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(roleId)}`,
     {
       method: 'DELETE',
     }

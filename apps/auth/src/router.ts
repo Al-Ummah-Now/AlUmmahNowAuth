@@ -18,6 +18,7 @@ import {
 } from './handlers/session-ui-handlers';
 import { handleSelectAccountGet, handleSelectAccountPost } from './routes/select-account';
 import { checkRateLimit, getClientIP } from './rate-limit';
+import { getEndpointRateLimit } from './services/rate-limit-config';
 import { getAuditEmitter } from './audit-emitter';
 import { createRateLimitExceededEvent } from './audit-events';
 import { trackEvent } from './utils/analytics';
@@ -463,11 +464,22 @@ async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
 	const clientIP = getClientIP(request);
 	const rateLimitKey = `token:${url.pathname}:${clientIP}`;
 
+	// Get configurable rate limit based on environment
+	const rateLimitConfig = await getEndpointRateLimit(
+		env.AUTH_STORAGE,
+		'token',
+		env.ENVIRONMENT
+	);
+
+	// Allow higher limits for localhost development
+	const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+	const limit = isLocalhost ? 100 : rateLimitConfig.limit;
+
 	const rateLimit = await checkRateLimit(
 		env.AUTH_STORAGE,
 		rateLimitKey,
-		10, // 10 requests per window
-		60 // 60 seconds (1 minute)
+		limit,
+		rateLimitConfig.windowSeconds
 	);
 
 	if (!rateLimit.allowed) {
@@ -479,7 +491,7 @@ async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
 		});
 
 		// Emit rate limit exceeded audit event
-		const auditEvent = createRateLimitExceededEvent(url.pathname, 10, 60, retryAfter, {
+		const auditEvent = createRateLimitExceededEvent(url.pathname, limit, rateLimitConfig.windowSeconds, retryAfter, {
 			ipAddress: clientIP,
 			userAgent: request.headers.get('User-Agent') ?? undefined,
 			requestId,

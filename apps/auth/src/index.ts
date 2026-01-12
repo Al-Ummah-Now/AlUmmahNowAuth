@@ -24,6 +24,7 @@ import {
   clientAdminRoutes,
 } from "@al-ummah-now/openauth";
 import { userRoleRoutes } from "./custom/user-role-routes";
+import { userListRoutes } from "./custom/user-list-routes";
 import { adminContextMiddleware, methodCompatMiddleware, clientResponseCompatMiddleware } from "./custom/admin-context-middleware";
 import { requireAdmin } from "./middleware/admin-auth";
 import { handleTokenCron } from "./cron/token-cron";
@@ -99,7 +100,11 @@ export default {
     adminUserApp.use('*', requireAdmin());  // M2M auth required
     adminUserApp.use('*', adminContextMiddleware);
     adminUserApp.use('*', methodCompatMiddleware);
+    // Mount custom user listing route FIRST - provides users with RBAC roles
+    adminUserApp.route('/', userListRoutes(env.AUTH_DB));
+    // Then OpenAuth's user CRUD routes (GET /:id, POST /, PATCH /:id, DELETE /:id, etc.)
     adminUserApp.route('/', userApiRoutes(userService));
+    // Finally custom role management routes (GET /:id/roles, POST /:id/roles, DELETE /:id/roles/:roleId)
     adminUserApp.route('/', userRoleRoutes(env.AUTH_DB, env.AUTH_STORAGE));
 
     // Create admin RBAC app (Phase 3: OpenAuth migration)

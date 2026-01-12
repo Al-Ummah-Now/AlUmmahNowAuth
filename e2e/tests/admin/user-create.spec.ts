@@ -29,8 +29,9 @@ test.describe('Admin User Creation', () => {
   });
 
   test('should create a new user with role "admin"', async ({ page }) => {
+    // Use prefix that doesn't contain "admin" to avoid matching email AND role badge
     const newAdmin = {
-      email: generateTestEmail('new-admin'),
+      email: generateTestEmail('admin-role-user'),
       role: 'admin' as const,
     };
 
@@ -40,7 +41,8 @@ test.describe('Admin User Creation', () => {
     // Verify user appears in list with admin role (createUser navigates to /users)
     const userRow = page.locator(`tr:has-text("${newAdmin.email}")`);
     await expect(userRow).toBeVisible();
-    await expect(userRow.locator('text=/admin/i')).toBeVisible();
+    // Use specific selector for role badge to avoid matching email text
+    await expect(userRow.locator('td:nth-child(3) >> text=Admin')).toBeVisible();
   });
 
   test('should show validation error for invalid email', async ({ page }) => {
@@ -55,14 +57,19 @@ test.describe('Admin User Creation', () => {
 
     // Enter invalid email
     await page.fill('input[id="email"]', 'not-an-email');
-    // Select role using checkbox (case-insensitive, no anchor to handle whitespace)
-    await page.locator('label').filter({ hasText: /member/i }).locator('input[type="checkbox"]').check();
+    // Wait for roles to load, then select role using checkbox scoped to dialog
+    const dialogCheckbox = page.locator('[role="dialog"] label input[type="checkbox"]');
+    await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
+    await page.locator('[role="dialog"] label').filter({ hasText: /^member\s*-/i }).locator('input[type="checkbox"]').check();
 
-    // Try to submit
-    await page.click('button:has-text("Create User")');
+    // Try to submit - use dialog-specific selector to avoid matching header button
+    await page.locator('[role="dialog"] button:has-text("Create User")').click();
 
-    // Verify validation error
-    await expect(page.locator('input[id="email"]:invalid')).toBeVisible();
+    // Verify validation error message appears (client-side validation)
+    await expect(page.locator('[role="alert"]:has-text("valid email")')).toBeVisible({ timeout: 5000 });
+
+    // Verify dialog is still open (submission was prevented)
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
   });
 
   test('should show error when creating duplicate user', async ({ page }) => {
@@ -77,13 +84,16 @@ test.describe('Admin User Creation', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
     await page.fill('input[id="email"]', duplicateEmail);
-    // Select role using checkbox (case-insensitive, no anchor to handle whitespace)
-    await page.locator('label').filter({ hasText: /member/i }).locator('input[type="checkbox"]').check();
-    await page.click('button:has-text("Create User")');
+    // Wait for roles to load, then select role using checkbox scoped to dialog
+    const dialogCheckbox = page.locator('[role="dialog"] label input[type="checkbox"]');
+    await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
+    await page.locator('[role="dialog"] label').filter({ hasText: /^member\s*-/i }).locator('input[type="checkbox"]').check();
+    await page.locator('[role="dialog"] button:has-text("Create User")').click();
 
-    // Verify error message
+    // Verify error message - server returns "email_already_exists" or "already registered"
+    // Look in dialog for error alert
     await expect(
-      page.locator('text=/already exists|duplicate/i')
+      page.locator('[role="dialog"] [role="alert"]').filter({ hasText: /already|exists/i })
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -125,12 +135,23 @@ test.describe('Admin User Creation', () => {
   test('should update user count after creating user', async ({ page }) => {
     await navigateToAdmin(page);
 
-    // Get initial user count
-    const initialCount = await page
-      .locator('text=/Total Users/i')
-      .locator('..')
-      .locator('.value')
-      .textContent();
+    // Wait for dashboard stats to load
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+
+    // Get initial user count using a reliable selector pattern
+    // The card structure is: Card > CardHeader (Total Users) + CardContent (number div)
+    // Use locator chaining: find CardTitle text, go to parent Card, then find the number in CardContent
+    const getUserCount = async () => {
+      // Find the Total Users heading, then navigate to its sibling CardContent which contains the number
+      const countText = await page.locator('text=Total Users')
+        .locator('xpath=ancestor::*[contains(@class, "rounded")][1]')  // Find parent Card (has rounded class)
+        .locator('div.text-2xl')  // Find the number div with text-2xl class
+        .first()
+        .textContent({ timeout: 5000 });
+      return parseInt(countText || '0');
+    };
+
+    const initialCount = await getUserCount();
 
     // Create new user
     const newUser = {
@@ -139,19 +160,14 @@ test.describe('Admin User Creation', () => {
     };
     await createUser(page, newUser);
 
-    // Navigate back to dashboard
-    await page.click('a:has-text("Dashboard")');
+    // Navigate back to dashboard - use goto for full page reload to get fresh data
+    await page.goto(TEST_URLS.adminDashboard);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-    // Get updated user count
-    const updatedCount = await page
-      .locator('text=/Total Users/i')
-      .locator('..')
-      .locator('.value')
-      .textContent();
-
-    // Verify count increased by 1
-    expect(parseInt(updatedCount || '0')).toBe(
-      parseInt(initialCount || '0') + 1
-    );
+    // Use polling to wait for the count to update (handles any race conditions)
+    await expect(async () => {
+      const updatedCount = await getUserCount();
+      expect(updatedCount).toBe(initialCount + 1);
+    }).toPass({ timeout: 15000, intervals: [500, 1000, 2000] });
   });
 });

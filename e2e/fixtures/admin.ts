@@ -180,9 +180,10 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
 
   // Select role using checkbox (new UI uses checkboxes instead of select dropdown)
-  // Match role name anywhere in the label text (no anchor, case-insensitive)
-  // This handles potential whitespace in the label's text content
-  const roleCheckbox = page.locator('[role="dialog"] label').filter({ hasText: new RegExp(`^${user.role}$`, 'i') }).locator('input[type="checkbox"]');
+  // Match role name at START of label text, before the description dash
+  // Labels include description, e.g., "Member - Standard member with basic access"
+  // Using ^${role}\\s*- to ensure exact role match (e.g., "Admin" doesn't match "Super Admin")
+  const roleCheckbox = page.locator('[role="dialog"] label').filter({ hasText: new RegExp(`^${user.role}\\s*-`, 'i') }).locator('input[type="checkbox"]');
   await expect(roleCheckbox).toBeVisible({ timeout: 5000 });
   await roleCheckbox.check();
 
@@ -241,6 +242,9 @@ export async function editUser(
 
   // Wait for success (dialog should close)
   await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10000 });
+
+  // Wait for page to refresh data after successful edit
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 }
 
 /**

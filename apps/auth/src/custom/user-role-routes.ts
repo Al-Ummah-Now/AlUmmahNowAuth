@@ -48,9 +48,11 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
   const app = new Hono();
 
   /**
-   * GET /users/:userId/roles - Get user's roles
+   * GET /:userId/roles - Get user's roles
+   * Note: Mounted on adminUserApp which handles /admin/users/*
+   * The router rewrites /admin/users/* to /* so paths should be without /users prefix
    */
-  app.get('/users/:userId/roles', async (c) => {
+  app.get('/:userId/roles', async (c) => {
     const userId = c.req.param('userId');
 
     try {
@@ -98,10 +100,10 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
   });
 
   /**
-   * POST /users/:userId/roles - Assign role to user
+   * POST /:userId/roles - Assign role to user
    * Supports both session auth and M2M auth
    */
-  app.post('/users/:userId/roles', async (c) => {
+  app.post('/:userId/roles', async (c) => {
     const userId = c.req.param('userId');
 
     try {
@@ -132,10 +134,10 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
 
       // Check if already assigned
       const existing = await db.prepare(`
-        SELECT id FROM rbac_user_roles
+        SELECT 1 as exists_flag FROM rbac_user_roles
         WHERE user_id = ? AND role_id = ?
           AND (expires_at IS NULL OR expires_at > unixepoch() * 1000)
-      `).bind(userId, validated.roleId).first<{ id: string }>();
+      `).bind(userId, validated.roleId).first<{ exists_flag: number }>();
 
       if (existing) {
         return createAuthErrorResponse('Role already assigned to user', 409);
@@ -195,10 +197,10 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
   });
 
   /**
-   * DELETE /users/:userId/roles/:roleId - Remove role from user
+   * DELETE /:userId/roles/:roleId - Remove role from user
    * Supports both session auth and M2M auth
    */
-  app.delete('/users/:userId/roles/:roleId', async (c) => {
+  app.delete('/:userId/roles/:roleId', async (c) => {
     const userId = c.req.param('userId');
     const roleId = c.req.param('roleId');
 

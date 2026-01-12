@@ -59,6 +59,7 @@ export interface Role {
 
 export interface PaginatedUsers {
   users: User[];
+  total_count?: number;  // Total count from API (not capped by pagination limit)
   pagination: {
     cursor?: string;
     nextCursor?: string;
@@ -243,7 +244,8 @@ async function m2mRequest<T>(
       console.error(`M2M API error: ${response.status} ${endpoint}`, errorText);
       try {
         const errorJson = JSON.parse(errorText);
-        return { error: errorJson.error || errorJson.message || 'Request failed' };
+        // Prefer error_description (human-readable) over error code
+        return { error: errorJson.error_description || errorJson.error || errorJson.message || 'Request failed' };
       } catch {
         return { error: errorText || `Request failed with status ${response.status}` };
       }
@@ -321,7 +323,8 @@ export async function createUser(
 }
 
 /**
- * PUT /admin/users/:id - Update user
+ * PATCH /admin/users/:id - Update user (partial update)
+ * Note: OpenAuth uses PATCH for partial updates, not PUT
  */
 export async function updateUser(
   env: ApiEnv,
@@ -334,7 +337,7 @@ export async function updateUser(
     `/admin/users/${encodeURIComponent(userId)}`,
     actingUser,
     {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     }
   );
@@ -733,21 +736,25 @@ export async function getUserStats(
   // TODO: Implement /admin/stats/users endpoint on auth server
   // For now, return from listUsers API
   try {
-    const result = await listUsers(env, actingUser, { limit: 1000 }, request);
+    // Note: API caps results at 100, but provides total_count with actual count
+    const result = await listUsers(env, actingUser, { limit: 100 }, request);
     if (isErrorResponse(result)) {
       return result;
     }
 
-    // Count admin users from roles
+    // Count admin users from the returned users (this is approximate for >100 users)
     // Note: OpenAuth seeds role_admin and role_super_admin (not _default suffix)
+    // Use optional chaining since some users may not have roles assigned
     const adminUsers = result.users.filter(user =>
-      user.roles.some(role =>
+      user.roles?.some(role =>
         role.id === 'role_admin' || role.id === 'role_super_admin'
       )
     ).length;
 
+    // Use total_count from API response for accurate user count
+    // Fall back to users.length if total_count not provided
     return {
-      totalUsers: result.users.length,
+      totalUsers: result.total_count ?? result.users.length,
       adminUsers,
     };
   } catch (error) {
@@ -795,9 +802,10 @@ export async function getUsersByRole(
     }
 
     // Count users by role
+    // Handle users that may not have roles assigned
     const roleCounts = new Map<string, number>();
     for (const user of result.users) {
-      for (const role of user.roles) {
+      for (const role of user.roles || []) {
         const count = roleCounts.get(role.name) || 0;
         roleCounts.set(role.name, count + 1);
       }

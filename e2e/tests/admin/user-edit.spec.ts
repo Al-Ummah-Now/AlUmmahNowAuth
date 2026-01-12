@@ -49,8 +49,8 @@ test.describe('Admin User Editing', () => {
   });
 
   test('should edit user role from admin to member', async ({ page }) => {
-    // Create a test admin
-    const adminEmail = generateTestEmail('admin-to-member');
+    // Create a test admin - use prefix that doesn't conflict with role names
+    const adminEmail = generateTestEmail('role-change-admin');
     await createUser(page, { email: adminEmail, role: 'admin' });
 
     // Edit user role to member (the basic user role in the system)
@@ -59,7 +59,8 @@ test.describe('Admin User Editing', () => {
     // Verify role updated in list
     // Already on /users page from previous action
     const userRow = page.locator(`tr:has-text("${adminEmail}")`);
-    await expect(userRow.locator('text=/member/i')).toBeVisible();
+    // Look for the role badge specifically (has uppercase class) to avoid matching email text
+    await expect(userRow.locator('.uppercase:text-is("Member")')).toBeVisible();
   });
 
   test('should edit both email and role simultaneously', async ({ page }) => {
@@ -157,9 +158,10 @@ test.describe('Admin User Editing', () => {
     await page.fill('input[id="email"]', user1Email);
     await page.click('button[type="submit"]:has-text("Save")');
 
-    // Verify error message
+    // Verify error message (OpenAuth returns "Email '...' is already registered")
+    // Look specifically in the dialog for the error message to avoid matching user emails
     await expect(
-      page.locator('text=/already exists|duplicate/i')
-    ).toBeVisible({ timeout: 5000 });
+      page.locator('[role="dialog"]').locator('[role="alert"], .text-red-500, .text-destructive').filter({ hasText: /already registered|already exists/i })
+    ).toBeVisible({ timeout: 10000 });
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useRevalidator } from "react-router";
 import { Plus, Settings, Trash2, Mail, User, Pencil } from "lucide-react";
@@ -22,11 +22,7 @@ import { AdminLayout } from "../components/admin-layout";
 import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
-import {
-  assignRoleToUser,
-  removeRoleFromUser,
-  isErrorResponse as isRbacError,
-} from "../lib/rbac-api.server";
+// Role assignment uses M2M auth through admin-api.server.ts
 import {
   listUsers,
   listRoles,
@@ -34,6 +30,7 @@ import {
   updateUser,
   deleteUser,
   assignUserRole,
+  removeUserRole,
   isErrorResponse,
   type ActingUser,
   type Role,
@@ -176,9 +173,9 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: "Missing userId or roleId" };
       }
 
-      const result = await assignRoleToUser(request, env, userId, roleId);
+      const result = await assignUserRole(env, actingUser, userId, roleId);
 
-      if (isRbacError(result)) {
+      if (isErrorResponse(result)) {
         return { error: result.error };
       }
 
@@ -193,9 +190,9 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: "Missing userId or roleId" };
       }
 
-      const result = await removeRoleFromUser(request, env, userId, roleId);
+      const result = await removeUserRole(env, actingUser, userId, roleId);
 
-      if (isRbacError(result)) {
+      if (isErrorResponse(result)) {
         return { error: result.error };
       }
 
@@ -211,9 +208,9 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       }
 
       // Create user via M2M API
+      // Note: OpenAuth's userApiRoutes doesn't support initialRole, so we assign roles separately
       const result = await createUser(env, actingUser, {
         email,
-        initialRole: roleIds[0], // First role as initial
         sendInvite: false, // Don't send invite for now
       });
 
@@ -221,9 +218,12 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: result.error };
       }
 
-      // Assign additional roles if more than one selected
-      for (const roleId of roleIds.slice(1)) {
-        await assignUserRole(env, actingUser, result.id, roleId);
+      // Assign all selected roles after user creation
+      for (const roleId of roleIds) {
+        const roleResult = await assignUserRole(env, actingUser, result.id, roleId);
+        if (isErrorResponse(roleResult)) {
+          console.warn(`Failed to assign role ${roleId} to user ${result.id}:`, roleResult.error);
+        }
       }
 
       return { success: true, userId: result.id };
@@ -242,6 +242,45 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 
       if (isErrorResponse(result)) {
         return { error: result.error };
+      }
+
+      return { success: true };
+    }
+
+    // Combined edit user action - handles email AND role changes in one call
+    if (intent === "editUser") {
+      const userId = formData.get("userId") as string;
+      const email = formData.get("email") as string;
+      const newRoleId = formData.get("newRoleId") as string | null;
+      const oldRoleId = formData.get("oldRoleId") as string | null;
+
+      if (!userId) {
+        return { error: "Missing userId" };
+      }
+
+      // Update email first
+      const emailResult = await updateUser(env, actingUser, userId, { email });
+      if (isErrorResponse(emailResult)) {
+        return { error: emailResult.error };
+      }
+
+      // Handle role change if requested
+      if (newRoleId !== oldRoleId) {
+        // Remove old role if exists
+        if (oldRoleId) {
+          const removeResult = await removeUserRole(env, actingUser, userId, oldRoleId);
+          if (isErrorResponse(removeResult)) {
+            // Log but don't fail - user update succeeded
+            console.warn('Failed to remove old role:', removeResult.error);
+          }
+        }
+        // Assign new role
+        if (newRoleId) {
+          const assignResult = await assignUserRole(env, actingUser, userId, newRoleId);
+          if (isErrorResponse(assignResult)) {
+            return { error: assignResult.error };
+          }
+        }
       }
 
       return { success: true };
@@ -286,18 +325,104 @@ export default function Users() {
   const [editRole, setEditRole] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [editServerError, setEditServerError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  // Track previous fetcher state to detect state transitions (not just idle with old data)
+  // Use separate refs for create and edit to avoid interference
+  const prevFetcherStateForCreateRef = useRef<string>(fetcher.state);
+  const prevFetcherStateForEditRef = useRef<string>(fetcher.state);
+
+  // Handle fetcher response for create user
+  useEffect(() => {
+    const prevState = prevFetcherStateForCreateRef.current;
+    prevFetcherStateForCreateRef.current = fetcher.state;
+
+    // Only process response when transitioning from loading/submitting to idle
+    // This prevents reacting to stale fetcher.data when isSubmitting first becomes true
+    if (isSubmitting && fetcher.state === "idle" && prevState !== "idle" && fetcher.data) {
+      setIsSubmitting(false);
+      const data = fetcher.data as { success?: boolean; error?: string };
+      if (data.success) {
+        // Success - close dialog and reset form
+        setCreateDialogOpen(false);
+        setNewUserEmail("");
+        setSelectedRoles([]);
+        setEmailError(null);
+        setServerError(null);
+        // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
+        revalidator.revalidate();
+      } else if (data.error) {
+        // Server error - show error in dialog
+        setServerError(data.error);
+      }
+    }
+  }, [fetcher.state, fetcher.data, isSubmitting, revalidator]);
+
+  // Handle fetcher response for edit user
+  useEffect(() => {
+    const prevState = prevFetcherStateForEditRef.current;
+    prevFetcherStateForEditRef.current = fetcher.state;
+
+    // Only process response when transitioning from loading/submitting to idle
+    if (isEditSubmitting && fetcher.state === "idle" && prevState !== "idle") {
+      setIsEditSubmitting(false);
+      const data = fetcher.data as { success?: boolean; error?: string } | undefined;
+      if (data?.success) {
+        // Success - close dialog and reset form
+        setEditDialogOpen(false);
+        setEditingUser(null);
+        setEditEmail("");
+        setEditRole("");
+        setEditServerError(null);
+        // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
+        revalidator.revalidate();
+      } else if (data?.error) {
+        // Server error - show error in dialog
+        setEditServerError(data.error);
+      } else {
+        // No explicit success/error but operation completed - assume success
+        setEditDialogOpen(false);
+        setEditingUser(null);
+        setEditEmail("");
+        setEditRole("");
+        setEditServerError(null);
+        // Revalidate to fetch fresh data
+        revalidator.revalidate();
+      }
+    }
+  }, [fetcher.state, fetcher.data, isEditSubmitting, revalidator]);
+
+  // Simple email format validation
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
   const handleCreateUser = () => {
+    // Validate email format before submitting
+    if (!newUserEmail.trim()) {
+      setEmailError("Email is required");
+      return;
+    }
+    if (!isValidEmail(newUserEmail)) {
+      setEmailError("Please enter a valid email address");
+      return;
+    }
+    setEmailError(null);
+    setServerError(null);
+
     // Submit form data for createUser action
     const formData = new FormData();
     formData.append("intent", "createUser");
     formData.append("email", newUserEmail);
     selectedRoles.forEach((roleId) => formData.append("roleId", roleId));
 
+    setIsSubmitting(true);
     fetcher.submit(formData, { method: "POST" });
-    setCreateDialogOpen(false);
-    setNewUserEmail("");
-    setSelectedRoles([]);
+    // Dialog stays open - will be closed by useEffect on success
   };
 
   const handleEditUser = (user: { id: string; email: string; name?: string; roles: Array<{ id: string; name: string }> }) => {
@@ -306,46 +431,31 @@ export default function Users() {
     // Set the current role (take the first one or default to user)
     const currentRole = user.roles.length > 0 ? user.roles[0].name : 'user';
     setEditRole(currentRole);
+    setEditServerError(null);
     setEditDialogOpen(true);
   };
 
   const handleSaveEdit = () => {
     if (!editingUser) return;
 
-    // First update user email
-    fetcher.submit(
-      { intent: "updateUser", userId: editingUser.id, email: editEmail },
-      { method: "POST" }
-    );
+    setEditServerError(null);
+    setIsEditSubmitting(true);
 
-    // Then update role if changed
-    const currentRole = editingUser.roles.length > 0 ? editingUser.roles[0].name : 'user';
-    if (editRole !== currentRole) {
-      // Find role IDs
-      const targetRoleId = allRoles.find((r) => r.name === editRole)?.id;
-      const currentRoleId = editingUser.roles.length > 0 ? editingUser.roles[0].id : null;
+    // Find role IDs for the combined action
+    const targetRoleId = allRoles.find((r) => r.name === editRole)?.id || null;
+    const currentRoleId = editingUser.roles.length > 0 ? editingUser.roles[0].id : null;
 
-      // Remove old role if exists
-      if (currentRoleId) {
-        fetcher.submit(
-          { intent: "removeRole", userId: editingUser.id, roleId: currentRoleId },
-          { method: "POST" }
-        );
-      }
+    // Use the combined editUser action that handles email AND role in one call
+    const formData = new FormData();
+    formData.append("intent", "editUser");
+    formData.append("userId", editingUser.id);
+    formData.append("email", editEmail);
+    if (targetRoleId) formData.append("newRoleId", targetRoleId);
+    if (currentRoleId) formData.append("oldRoleId", currentRoleId);
 
-      // Add new role
-      if (targetRoleId) {
-        fetcher.submit(
-          { intent: "assignRole", userId: editingUser.id, roleId: targetRoleId },
-          { method: "POST" }
-        );
-      }
-    }
+    fetcher.submit(formData, { method: "POST" });
 
-    setEditDialogOpen(false);
-    setEditingUser(null);
-    setEditEmail("");
-    setEditRole("");
+    // Dialog stays open - will be closed by useEffect on success
   };
 
   const handleConfirmDelete = () => {
@@ -417,9 +527,21 @@ export default function Users() {
                         type="email"
                         placeholder="user@example.com"
                         value={newUserEmail}
-                        onChange={(e) => setNewUserEmail(e.target.value)}
+                        onChange={(e) => {
+                          setNewUserEmail(e.target.value);
+                          setEmailError(null); // Clear error when user types
+                        }}
+                        className={emailError ? "border-red-500" : ""}
                       />
+                      {emailError && (
+                        <p className="text-sm text-red-500" role="alert">{emailError}</p>
+                      )}
                     </div>
+                    {serverError && (
+                      <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md" role="alert">
+                        {serverError}
+                      </div>
+                    )}
                     <div className="grid gap-2">
                       <Label htmlFor="roles">Initial Roles</Label>
                       <div className="space-y-2">
@@ -449,10 +571,18 @@ export default function Users() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                    <Button variant="outline" onClick={() => {
+                      setCreateDialogOpen(false);
+                      setEmailError(null);
+                      setServerError(null);
+                      setNewUserEmail("");
+                      setSelectedRoles([]);
+                    }}>
                       Cancel
                     </Button>
-                    <Button onClick={handleCreateUser}>Create User</Button>
+                    <Button onClick={handleCreateUser} disabled={isSubmitting}>
+                      {isSubmitting ? "Creating..." : "Create User"}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -594,6 +724,7 @@ export default function Users() {
                 type="email"
                 value={editEmail}
                 onChange={(e) => setEditEmail(e.target.value)}
+                disabled={isEditSubmitting}
               />
             </div>
             <div className="grid gap-2">
@@ -603,18 +734,26 @@ export default function Users() {
                 className="flex h-10 w-full rounded-md border border-[rgb(var(--color-input))] bg-[rgb(var(--color-background))] px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--color-ring))] focus-visible:ring-offset-2"
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value)}
+                disabled={isEditSubmitting}
               >
                   {allRoles.map((role) => (
                   <option key={role.id} value={role.name}>{role.name}</option>
                 ))}
               </select>
             </div>
+            {editServerError && (
+              <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md" role="alert">
+                {editServerError}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={isEditSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" onClick={handleSaveEdit}>Save</Button>
+            <Button type="submit" onClick={handleSaveEdit} disabled={isEditSubmitting}>
+              {isEditSubmitting ? "Saving..." : "Save"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

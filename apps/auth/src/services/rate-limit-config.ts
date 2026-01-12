@@ -25,6 +25,8 @@ export interface RateLimitEndpointConfig {
 export interface RateLimitConfiguration {
 	/** Login/registration rate limits */
 	login: RateLimitEndpointConfig;
+	/** Token endpoint rate limits (OAuth token exchange) */
+	token: RateLimitEndpointConfig;
 	/** Token introspection rate limits */
 	tokenIntrospection: RateLimitEndpointConfig;
 	/** Admin API rate limits */
@@ -42,6 +44,11 @@ const DEFAULT_CONFIG: RateLimitConfiguration = {
 	login: {
 		limit: 5,
 		windowSeconds: 300,
+		enabled: true,
+	},
+	token: {
+		limit: 10,
+		windowSeconds: 60,
 		enabled: true,
 	},
 	tokenIntrospection: {
@@ -73,6 +80,11 @@ const QA_CONFIG: RateLimitConfiguration = {
 	login: {
 		limit: 100,
 		windowSeconds: 300,
+		enabled: true,
+	},
+	token: {
+		limit: 100,
+		windowSeconds: 60,
 		enabled: true,
 	},
 	tokenIntrospection: {
@@ -121,8 +133,9 @@ export async function getRateLimitConfig(
 	}
 
 	// Return environment-specific defaults
-	if (environment === 'qa') {
-		logger.debug('Using QA rate limit config');
+	// Use higher limits for development and qa environments (for E2E tests)
+	if (environment === 'qa' || environment === 'development') {
+		logger.debug('Using QA/development rate limit config');
 		return QA_CONFIG;
 	}
 
