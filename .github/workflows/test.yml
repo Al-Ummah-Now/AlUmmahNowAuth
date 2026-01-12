@@ -284,8 +284,12 @@ jobs:
   # Parallel E2E test jobs by category
   e2e-admin-audit:
     runs-on: ubuntu-latest
-    name: E2E Admin Audit (12 tests)
+    name: E2E Admin Audit (${{ matrix.shard }}/2)
     needs: [deploy-qa]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -310,8 +314,8 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run Admin Audit tests
-        run: pnpm exec playwright test e2e/tests/admin/audit-view.spec.ts
+      - name: Run Admin Audit tests (shard ${{ matrix.shard }}/2)
+        run: pnpm exec playwright test e2e/tests/admin/audit-view.spec.ts --shard=${{ matrix.shard }}/2
         env:
           CI: true
           SKIP_WEB_SERVER: true
@@ -325,7 +329,7 @@ jobs:
         uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: e2e-results-admin-audit
+          name: e2e-results-admin-audit-${{ matrix.shard }}
           path: |
             e2e-report/
             test-results/
