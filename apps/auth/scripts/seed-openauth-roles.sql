@@ -101,3 +101,30 @@ VALUES (
     strftime('%s', 'now') * 1000,
     strftime('%s', 'now') * 1000
 );
+
+-- ============================================================================
+-- SEED SYSTEM ADMIN USER (For M2M and testing)
+-- ============================================================================
+-- Create a known system admin user that can be used for M2M authentication
+-- and testing purposes. This user has a predictable ID for easy reference.
+-- ============================================================================
+
+-- System Admin User
+INSERT OR IGNORE INTO users (id, email, email_verified, created_at, updated_at)
+VALUES (
+    'system_admin_user',
+    'system-admin@internal.local',
+    1,
+    strftime('%s', 'now') * 1000,
+    strftime('%s', 'now') * 1000
+);
+
+-- Assign Super Admin role to system admin user
+INSERT OR IGNORE INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by)
+VALUES (
+    'system_admin_user',
+    'role_super_admin',
+    'default',
+    strftime('%s', 'now') * 1000,
+    'system'
+);

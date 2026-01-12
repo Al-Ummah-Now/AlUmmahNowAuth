@@ -46,11 +46,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   try {
-    // Create a mock acting user for the API call
+    // Use the seeded system admin user for the API call
+    // This user is created by seed-openauth-roles.sql with Super Admin role
     const actingUser = {
-      id: 'debug-user',
-      email: 'debug@test.local',
-      roles: ['admin'],
+      id: 'system_admin_user',
+      email: 'system-admin@internal.local',
+      roles: ['Super Admin'],
     };
 
     // Call listRoles to test the full M2M flow
