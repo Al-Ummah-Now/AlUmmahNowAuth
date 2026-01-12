@@ -103,13 +103,34 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
       throw new Error('Failed to capture verification code from email during admin login. Check that email interception is working correctly.');
     }
 
-    // Enter verification code and submit
-    await page.fill('input[name="code"]', verificationCode);
-    await page.click('button:has-text("Continue")');
-  }
+    // Enter verification code with retry logic
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page.fill('input[name="code"]', '');
+      await page.fill('input[name="code"]', verificationCode);
+      await page.waitForTimeout(100);
 
-  // Wait for redirect back to admin dashboard (successful login)
-  await expect(page).toHaveURL(new RegExp(TEST_URLS.adminDashboard), { timeout: 15000 });
+      const continueBtn = page.locator('button:has-text("Continue")');
+      await expect(continueBtn).toBeEnabled({ timeout: 5000 });
+      await continueBtn.click();
+
+      try {
+        await expect(page).toHaveURL(new RegExp(TEST_URLS.adminDashboard), { timeout: 12000 });
+        break;
+      } catch {
+        const stillOnCodePage = await page.locator('input[name="code"]').isVisible().catch(() => false);
+        if (stillOnCodePage && attempt < 3) {
+          console.log(`Admin verification code attempt ${attempt} failed, retrying...`);
+          continue;
+        }
+        if (attempt === 3) {
+          throw new Error(`Admin verification code submission failed after ${attempt} attempts. Page URL: ${page.url()}`);
+        }
+      }
+    }
+  } else {
+    // No verification code needed - wait for redirect
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.adminDashboard), { timeout: 15000 });
+  }
 
   // Verify login succeeded by checking for admin-specific elements (dashboard heading and Users link)
   await expect(page.locator('h1:has-text("Dashboard"), h2:has-text("Dashboard"), h3:has-text("Dashboard")')).toBeVisible({ timeout: 10000 });

@@ -47,7 +47,7 @@ export class ResendTestClient {
     console.log(`Waiting for verification email to ${email} (max ${maxAttempts} attempts)`);
 
     let rateLimitRetries = 0;
-    const maxRateLimitRetries = 3;
+    const maxRateLimitRetries = 5; // Increased from 3 to handle burst rate limits in parallel tests
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {

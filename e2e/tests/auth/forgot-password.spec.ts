@@ -56,9 +56,32 @@ test.describe('Forgot Password Flow', () => {
 
     console.log(`Got reset code for ${testUser.email}: ${resetCode}`);
 
-    // Step 8: Enter verification code
-    await page.fill('input[name="code"]', resetCode);
-    await page.click('button:has-text("Continue")');
+    // Step 8: Enter verification code with retry logic
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page.fill('input[name="code"]', '');
+      await page.fill('input[name="code"]', resetCode);
+      await page.waitForTimeout(100);
+
+      const continueBtn = page.locator('button:has-text("Continue")');
+      await expect(continueBtn).toBeEnabled({ timeout: 5000 });
+      await continueBtn.click();
+
+      // Check if password fields are now visible (code accepted)
+      const passwordVisible = await page.locator('input[type="password"]').first().isVisible({ timeout: 8000 }).catch(() => false);
+      if (passwordVisible) {
+        break;
+      }
+
+      // If still on code page and not last attempt, retry
+      const stillOnCodePage = await page.locator('input[name="code"]').isVisible().catch(() => false);
+      if (stillOnCodePage && attempt < 3) {
+        console.log(`Reset code submission attempt ${attempt} failed, retrying...`);
+        continue;
+      }
+      if (attempt === 3 && !passwordVisible) {
+        throw new Error(`Reset code submission failed after ${attempt} attempts. Page URL: ${page.url()}`);
+      }
+    }
 
     // Step 9: Enter new password
     await expect(page.locator('input[type="password"]').first()).toBeVisible({ timeout: 10000 });
@@ -176,8 +199,25 @@ test.describe('Forgot Password Flow', () => {
       throw new Error('Failed to capture password reset verification code');
     }
 
-    await page.fill('input[name="code"]', resetCode);
-    await page.click('button:has-text("Continue")');
+    // Enter verification code with retry logic
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page.fill('input[name="code"]', '');
+      await page.fill('input[name="code"]', resetCode);
+      await page.waitForTimeout(100);
+
+      const continueBtn = page.locator('button:has-text("Continue")');
+      await expect(continueBtn).toBeEnabled({ timeout: 5000 });
+      await continueBtn.click();
+
+      const passwordVisible = await page.locator('input[type="password"]').first().isVisible({ timeout: 8000 }).catch(() => false);
+      if (passwordVisible) break;
+
+      const stillOnCodePage = await page.locator('input[name="code"]').isVisible().catch(() => false);
+      if (stillOnCodePage && attempt < 3) continue;
+      if (attempt === 3 && !passwordVisible) {
+        throw new Error(`Reset code submission failed after ${attempt} attempts`);
+      }
+    }
 
     // Enter new password
     const passwordFields = page.locator('input[type="password"]');
