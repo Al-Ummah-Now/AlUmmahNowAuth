@@ -165,7 +165,8 @@ export async function login(page: Page, email: string): Promise<void> {
 export async function logout(page: Page): Promise<void> {
   // Wait for logout button to be visible and click it
   // Button text is "🚪 Sign Out" with emoji, but has-text matches partial text
-  const logoutButton = page.locator('#loggedInView button:has-text("Sign Out")');
+  // Use .first() to avoid strict mode violation if account switcher has "Sign out of all accounts"
+  const logoutButton = page.locator('#loggedInView button:has-text("Sign Out")').first();
   await expect(logoutButton).toBeVisible({ timeout: 5000 });
   await logoutButton.click();
 

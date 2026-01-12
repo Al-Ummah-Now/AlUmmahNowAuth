@@ -23,7 +23,8 @@ test.describe('Forgot Password Flow', () => {
     // Step 2: Log out
     await page.goto(TEST_URLS.profileApp);
     await expect(page.locator('#loggedInView')).toBeVisible();
-    const signOutBtn1 = page.locator('button:has-text("Sign Out")');
+    // Use .first() to handle potential duplicate matches (account switcher also has "Sign out of all accounts")
+    const signOutBtn1 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn1).toBeVisible({ timeout: 5000 });
     await signOutBtn1.click();
     await expect(page.locator('#loggedOutView')).toBeVisible();
@@ -77,7 +78,7 @@ test.describe('Forgot Password Flow', () => {
 
     // Step 11: Log out to verify we can log back in with the NEW password
     // Wait for button to be visible and stable before clicking
-    const signOutBtn = page.locator('button:has-text("Sign Out")');
+    const signOutBtn = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn).toBeVisible({ timeout: 10000 });
     await signOutBtn.click();
     await expect(page.locator('#loggedOutView')).toBeVisible();
@@ -120,7 +121,7 @@ test.describe('Forgot Password Flow', () => {
     // Step 2: Log out
     await page.goto(TEST_URLS.profileApp);
     await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
-    const signOutBtn2 = page.locator('button:has-text("Sign Out")');
+    const signOutBtn2 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn2).toBeVisible({ timeout: 5000 });
     await signOutBtn2.click();
     await expect(page.locator('#loggedOutView')).toBeVisible();
@@ -156,7 +157,7 @@ test.describe('Forgot Password Flow', () => {
     await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
 
     // Log out to test old password rejection
-    const signOutBtn3 = page.locator('button:has-text("Sign Out")');
+    const signOutBtn3 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn3).toBeVisible({ timeout: 5000 });
     await signOutBtn3.click();
     await expect(page.locator('#loggedOutView')).toBeVisible();
@@ -215,7 +216,7 @@ test.describe('Forgot Password Flow', () => {
     // Log out
     await page.goto(TEST_URLS.profileApp);
     await expect(page.locator('#loggedInView')).toBeVisible();
-    const signOutBtn4 = page.locator('button:has-text("Sign Out")');
+    const signOutBtn4 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn4).toBeVisible({ timeout: 5000 });
     await signOutBtn4.click();
     await expect(page.locator('#loggedOutView')).toBeVisible();

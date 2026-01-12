@@ -172,7 +172,10 @@ export async function editUser(
     await page.fill('input[id="email"]', updates.email);
   }
   if (updates.role) {
-    await page.selectOption('select[id="role"]', updates.role);
+    // Select role using checkbox (same pattern as createUser)
+    const roleCheckbox = page.locator('label').filter({ hasText: new RegExp(`${updates.role}`, 'i') }).locator('input[type="checkbox"]');
+    await expect(roleCheckbox).toBeVisible({ timeout: 5000 });
+    await roleCheckbox.check();
   }
 
   // Submit form (click Save button in dialog)
