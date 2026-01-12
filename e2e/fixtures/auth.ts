@@ -70,7 +70,11 @@ export async function register(page: Page, email: string): Promise<void> {
   await page.click('button:has-text("Continue")');
 
   // Wait for successful registration (redirect to profile app)
-  await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
+  await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+
+  // Wait for session to be established (logged in view visible)
+  // This ensures the session cookie is set before proceeding
+  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
 
   // Mark as registered
   registeredUsers.add(email);
@@ -85,17 +89,30 @@ export async function register(page: Page, email: string): Promise<void> {
  */
 export async function login(page: Page, email: string): Promise<void> {
   // Register user first if not already registered
+  // register() now ensures #loggedInView is visible before returning
   await register(page, email);
 
-  // Navigate to profile app
+  // Verify we're still on profile app and logged in
+  // (register() leaves us on profile app with session established)
+  const currentUrl = page.url();
+  if (currentUrl.includes(TEST_URLS.profileApp)) {
+    const loggedInView = page.locator('#loggedInView');
+    const isAlreadyLoggedIn = await loggedInView.isVisible();
+    if (isAlreadyLoggedIn) {
+      // User is already logged in from registration
+      return;
+    }
+  }
+
+  // If not on profile app or not logged in, navigate and check again
   await page.goto(TEST_URLS.profileApp);
 
-  // Check if already logged in (registration logs user in automatically)
+  // Check if already logged in
   const loggedInView = page.locator('#loggedInView');
   const isAlreadyLoggedIn = await loggedInView.isVisible();
 
   if (isAlreadyLoggedIn) {
-    // User is already logged in from registration, no need to log in again
+    // User is logged in
     return;
   }
 
