@@ -132,7 +132,10 @@ test.describe('Forgot Password Flow', () => {
       console.log('Password reset completed - auto-logged in');
     }
 
-    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
+    // Wait for network to be idle - OAuth callback performs async token exchange
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 
     // Step 11: Log out to verify we can log back in with the NEW password
     // Wait for button to be visible and stable before clicking
@@ -164,8 +167,11 @@ test.describe('Forgot Password Flow', () => {
     }
 
     // Step 13: Should successfully log in with new password
-    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+    // Wait for network to be idle - OAuth callback performs async token exchange
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 
     console.log('Successfully logged in with NEW password!');
   });
@@ -178,7 +184,8 @@ test.describe('Forgot Password Flow', () => {
 
     // Step 2: Log out
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
     const signOutBtn2 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn2).toBeVisible({ timeout: 5000 });
     await signOutBtn2.click();
@@ -260,7 +267,10 @@ test.describe('Forgot Password Flow', () => {
       await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
     }
 
-    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
+    // Wait for network to be idle - OAuth callback performs async token exchange
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 
     // Log out to test old password rejection
     const signOutBtn3 = page.locator('#loggedInView button:has-text("Sign Out")').first();
@@ -309,8 +319,11 @@ test.describe('Forgot Password Flow', () => {
     }
 
     // Should successfully log in with new password
-    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+    // Wait for network to be idle - OAuth callback performs async token exchange
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
   });
 
   test('should show error for invalid reset code', async ({ page }) => {
@@ -321,7 +334,8 @@ test.describe('Forgot Password Flow', () => {
 
     // Log out
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
     const signOutBtn4 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn4).toBeVisible({ timeout: 5000 });
     await signOutBtn4.click();

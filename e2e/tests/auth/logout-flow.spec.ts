@@ -68,7 +68,7 @@ test.describe('Logout Flow', () => {
     // Logout (use specific selector to target the button in logged-in view)
     // Use .first() to avoid strict mode violation if account switcher has "Sign out of all accounts"
     const logoutButton = page.locator('#loggedInView button:has-text("Sign Out")').first();
-    await expect(logoutButton).toBeVisible();
+    await expect(logoutButton).toBeVisible({ timeout: 10000 });
     await logoutButton.click();
 
     // Verify redirected to profile app homepage

@@ -161,7 +161,8 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/users`));
 
   // Wait for the "Create User" button to be visible (page is loaded)
-  const createUserBtn = page.locator('button:has-text("Create User")');
+  // Use .first() because there are 2 buttons: one trigger button in header, one submit button in dialog
+  const createUserBtn = page.locator('button:has-text("Create User")').first();
   await expect(createUserBtn).toBeVisible({ timeout: 10000 });
   await createUserBtn.click();
 

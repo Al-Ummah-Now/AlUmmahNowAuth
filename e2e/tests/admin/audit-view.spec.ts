@@ -16,7 +16,7 @@ import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
  * Note: In QA environment, audit events may take longer to process due to queue latency.
  * We increase timeouts and add network idle waits to handle this.
  */
-async function waitForAuditEvents(page: any, minCount: number = 1, maxWaitMs: number = 20000): Promise<void> {
+async function waitForAuditEvents(page: any, minCount: number = 1, maxWaitMs: number = 45000): Promise<void> {
   const startTime = Date.now();
   let lastRowCount = 0;
 
@@ -50,6 +50,9 @@ async function waitForAuditEvents(page: any, minCount: number = 1, maxWaitMs: nu
 }
 
 test.describe('Admin Audit View', () => {
+  // Increase timeout for audit tests - audit queue in QA may have latency
+  test.setTimeout(90000);
+
   test.beforeEach(async ({ page }) => {
     // Login as admin - this will create login-related audit events
     await loginAdmin(page, TEST_USERS.admin().email);
