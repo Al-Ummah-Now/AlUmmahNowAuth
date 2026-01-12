@@ -83,7 +83,21 @@ async function handleAdminRbacRoutes(rctx: RouterContext): Promise<RouteResult> 
 	const rewrittenPath = url.pathname.replace(/^\/admin/, '');
 	const rewrittenRequest = rewriteRequest(request, url.pathname, rewrittenPath);
 
+	logger.debug('[RBAC] Handling admin RBAC request', {
+		originalPath: url.pathname,
+		rewrittenPath,
+		method: request.method,
+		hasAuth: !!request.headers.get('Authorization'),
+		actingUserId: request.headers.get('X-Acting-User-Id') || 'missing',
+	});
+
 	const response = await adminRbacApp.fetch(rewrittenRequest, env, ctx);
+
+	logger.debug('[RBAC] Admin RBAC response', {
+		status: response.status,
+		path: rewrittenPath,
+	});
+
 	if (response.status !== 404) {
 		return addSecurityHeaders(response, isProduction);
 	}

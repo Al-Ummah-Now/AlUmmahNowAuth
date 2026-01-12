@@ -240,6 +240,7 @@ async function m2mRequest<T>(
       }
 
       const errorText = await response.text();
+      console.error(`M2M API error: ${response.status} ${endpoint}`, errorText);
       try {
         const errorJson = JSON.parse(errorText);
         return { error: errorJson.error || errorJson.message || 'Request failed' };

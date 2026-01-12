@@ -119,6 +119,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     // Fetch all roles for the role manager (using M2M auth)
     const rolesResponse = await listRoles(env, actingUser, request);
+    if (isErrorResponse(rolesResponse)) {
+      console.error("Error fetching roles for user management:", rolesResponse.error);
+    }
     const allRoles: Role[] = isErrorResponse(rolesResponse) ? [] : rolesResponse;
 
     return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl };

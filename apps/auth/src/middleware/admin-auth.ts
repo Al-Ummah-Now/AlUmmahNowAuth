@@ -12,6 +12,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import type { AccountSession } from '../types/sessions';
 import { bearerAuth, extractBearerToken, requireScope, requireAnyScope } from '@al-ummah-now/openauth';
+import { logger } from '../logger';
 
 // Re-export OpenAuth's scope middleware for use in routes
 export { requireScope, requireAnyScope };
@@ -64,6 +65,7 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 	return async (c: AdminContext, next) => {
 		// Check for M2M auth first (Bearer token)
 		if (hasM2MAuth(c.req.raw)) {
+			logger.debug('[requireAdmin] M2M auth detected');
 			try {
 				// Use OpenAuth's bearerAuth with JWKS
 				const issuer = c.env.OPENAUTH_ISSUER || 'http://localhost:3301';
@@ -79,9 +81,15 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 				// Run the middleware - it will set token, tenantId, clientId, scopes
 				await authMiddleware(c, async () => {});
 
+				logger.debug('[requireAdmin] bearerAuth passed', {
+					tenantId: c.get('tenantId'),
+					clientId: c.get('clientId'),
+				});
+
 				// Get acting user from header (required for M2M)
 				const actingUserId = c.req.header('X-Acting-User-Id');
 				if (!actingUserId) {
+					logger.warn('[requireAdmin] Missing X-Acting-User-Id header');
 					return c.json({ error: 'M2M requests must include X-Acting-User-Id header' }, 401);
 				}
 
@@ -97,11 +105,18 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 					.all<{ name: string }>();
 
 				const roles = rolesResult.results?.map((r) => r.name) || [];
+				logger.debug('[requireAdmin] Acting user roles', {
+					actingUserId,
+					roles,
+					rolesCount: roles.length,
+				});
+
 				// Case-insensitive role check - OpenAuth seeds 'Admin' and 'Super Admin' (capitalized)
 				const roleNamesLower = roles.map((r) => r.toLowerCase());
 				const isAdmin = roleNamesLower.includes('admin') || roleNamesLower.includes('super admin');
 
 				if (!isAdmin) {
+					logger.warn('[requireAdmin] Acting user not admin', { actingUserId, roles });
 					return c.json({ error: 'Forbidden: Acting user must be admin' }, 403);
 				}
 
