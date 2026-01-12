@@ -823,7 +823,7 @@ export default {
     </div>
 
     <footer class="footer">
-        <p>&copy; 2025 Al Ummah Now. Built with OpenAuth and Cloudflare Workers.</p>
+        <p>&copy; 2025 Al Ummah Now.</p>
     </footer>
 
     <script>
