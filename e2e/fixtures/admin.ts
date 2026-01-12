@@ -156,32 +156,41 @@ export async function navigateToAdmin(page: Page): Promise<void> {
 export async function createUser(page: Page, user: TestUser): Promise<void> {
   // Navigate to users page (not just the dashboard home)
   await page.goto(`${TEST_URLS.adminDashboard}/users`);
+  // Wait for network requests to complete (roles are loaded asynchronously)
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/users`));
 
-  // Click "Create User" button
-  await page.click('button:has-text("Create User")');
+  // Wait for the "Create User" button to be visible (page is loaded)
+  const createUserBtn = page.locator('button:has-text("Create User")');
+  await expect(createUserBtn).toBeVisible({ timeout: 10000 });
+  await createUserBtn.click();
 
   // Wait for dialog to open
-  await expect(page.locator('[role="dialog"]')).toBeVisible();
+  await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
 
   // Fill in user details
   await page.fill('input[id="email"]', user.email);
 
+  // Wait for roles to load - look for any checkbox in the dialog first
+  // Roles are loaded from API asynchronously after dialog opens
+  const dialogCheckbox = page.locator('[role="dialog"] label input[type="checkbox"]');
+  await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
+
   // Select role using checkbox (new UI uses checkboxes instead of select dropdown)
   // Match role name anywhere in the label text (no anchor, case-insensitive)
   // This handles potential whitespace in the label's text content
-  const roleCheckbox = page.locator(`label`).filter({ hasText: new RegExp(`${user.role}`, 'i') }).locator('input[type="checkbox"]');
+  const roleCheckbox = page.locator('[role="dialog"] label').filter({ hasText: new RegExp(`^${user.role}$`, 'i') }).locator('input[type="checkbox"]');
   await expect(roleCheckbox).toBeVisible({ timeout: 5000 });
   await roleCheckbox.check();
 
-  // Submit form
-  await page.click('button:has-text("Create User")');
+  // Submit form - use dialog-specific selector to avoid matching header button
+  await page.locator('[role="dialog"] button:has-text("Create User")').click();
 
   // Wait for success message or dialog to close
-  await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5000 });
+  await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10000 });
 
-  // Verify user appears in list
-  await expect(page.locator(`text=${user.email}`)).toBeVisible();
+  // Verify user appears in list (wait for table to update)
+  await expect(page.locator(`text=${user.email}`)).toBeVisible({ timeout: 10000 });
 }
 
 /**
@@ -198,14 +207,17 @@ export async function editUser(
 ): Promise<void> {
   // Navigate to users page
   await page.goto(`${TEST_URLS.adminDashboard}/users`);
+  // Wait for network requests to complete
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/users`));
 
-  // Find user row and click edit button
+  // Wait for users table to load - find user row and click edit button
   const userRow = page.locator(`tr:has-text("${email}")`);
+  await expect(userRow).toBeVisible({ timeout: 10000 });
   await userRow.locator('button:has-text("Edit")').click();
 
   // Wait for dialog to open
-  await expect(page.locator('[role="dialog"]')).toBeVisible();
+  await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
 
   // Update fields
   if (updates.email) {
@@ -213,16 +225,19 @@ export async function editUser(
   }
   if (updates.role) {
     // Select role using the dropdown (edit dialog uses select, not checkboxes)
+    // Wait for the select to be visible and have options loaded
+    const roleSelect = page.locator('select[id="role"]');
+    await expect(roleSelect).toBeVisible({ timeout: 5000 });
     // Capitalize first letter to match actual role names (e.g., 'member' -> 'Member')
     const normalizedRole = updates.role.charAt(0).toUpperCase() + updates.role.slice(1).toLowerCase();
-    await page.selectOption('select[id="role"]', { label: normalizedRole });
+    await roleSelect.selectOption({ label: normalizedRole });
   }
 
   // Submit form (click Save button in dialog)
   await page.locator('[role="dialog"]').locator('button:has-text("Save")').click();
 
   // Wait for success (dialog should close)
-  await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5000 });
+  await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10000 });
 }
 
 /**
@@ -234,17 +249,22 @@ export async function editUser(
 export async function deleteUser(page: Page, email: string): Promise<void> {
   // Navigate to users page
   await page.goto(`${TEST_URLS.adminDashboard}/users`);
+  // Wait for network requests to complete
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/users`));
 
-  // Find user row and click delete button
+  // Wait for users table to load - find user row and click delete button
   const userRow = page.locator(`tr:has-text("${email}")`);
+  await expect(userRow).toBeVisible({ timeout: 10000 });
   await userRow.locator('button:has-text("Delete")').click();
 
-  // Confirm deletion
-  await page.click('button:has-text("Confirm")');
+  // Wait for confirmation dialog and confirm deletion
+  const confirmBtn = page.locator('button:has-text("Confirm")');
+  await expect(confirmBtn).toBeVisible({ timeout: 5000 });
+  await confirmBtn.click();
 
   // Verify user is removed from list
-  await expect(page.locator(`text=${email}`)).toBeHidden({ timeout: 5000 });
+  await expect(page.locator(`text=${email}`)).toBeHidden({ timeout: 10000 });
 }
 
 /**

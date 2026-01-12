@@ -12,26 +12,41 @@ import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 /**
  * Helper function to wait for audit events to be processed
  * Audit events go through a queue, so we need to wait for them to appear in the database
+ *
+ * Note: In QA environment, audit events may take longer to process due to queue latency.
+ * We increase timeouts and add network idle waits to handle this.
  */
-async function waitForAuditEvents(page: any, minCount: number = 1, maxWaitMs: number = 10000): Promise<void> {
+async function waitForAuditEvents(page: any, minCount: number = 1, maxWaitMs: number = 20000): Promise<void> {
   const startTime = Date.now();
+  let lastRowCount = 0;
+
   while (Date.now() - startTime < maxWaitMs) {
+    // Wait for network to be idle before checking
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+
     // Reload the page to get fresh data
     await page.reload();
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 
     // Check if we have events in the table
     const tableRows = page.locator('tbody tr');
     const rowCount = await tableRows.count();
 
+    // Log progress for debugging
+    if (rowCount !== lastRowCount) {
+      console.log(`Audit events found: ${rowCount} (waiting for ${minCount})`);
+      lastRowCount = rowCount;
+    }
+
     if (rowCount >= minCount) {
       return;
     }
 
-    // Wait 500ms before trying again
-    await page.waitForTimeout(500);
+    // Wait 1000ms before trying again (increased from 500ms for QA latency)
+    await page.waitForTimeout(1000);
   }
 
-  throw new Error(`Timed out waiting for ${minCount} audit events to appear`);
+  throw new Error(`Timed out waiting for ${minCount} audit events to appear (found ${lastRowCount} after ${maxWaitMs}ms)`);
 }
 
 test.describe('Admin Audit View', () => {
@@ -54,7 +69,7 @@ test.describe('Admin Audit View', () => {
 
     // Wait for audit events to be processed before checking table headers
     // The login creates audit events asynchronously, and the table only renders when events exist
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Verify table headers are present (table only shows when events exist)
     await expect(page.locator('th:has-text("Timestamp")')).toBeVisible();
@@ -71,7 +86,7 @@ test.describe('Admin Audit View', () => {
 
     // Wait for audit events to be processed through the queue
     // Login creates multiple events: token_issued, login_success, etc.
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Verify at least one event is displayed in the table
     const tableRows = page.locator('tbody tr');
@@ -91,7 +106,7 @@ test.describe('Admin Audit View', () => {
     await page.goto(`${TEST_URLS.adminDashboard}/audit`);
 
     // Wait for events to appear
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Click "Show Filters" button
     await page.click('button:has-text("Show Filters")');
@@ -136,7 +151,7 @@ test.describe('Admin Audit View', () => {
     await page.goto(`${TEST_URLS.adminDashboard}/audit`);
 
     // Wait for events to appear
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Click "Show Filters" button
     await page.click('button:has-text("Show Filters")');
@@ -169,7 +184,7 @@ test.describe('Admin Audit View', () => {
     await page.goto(`${TEST_URLS.adminDashboard}/audit`);
 
     // Wait for events to appear
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Get a user ID from the first row to search for
     const firstRow = page.locator('tbody tr').first();
@@ -243,7 +258,7 @@ test.describe('Admin Audit View', () => {
     await page.goto(`${TEST_URLS.adminDashboard}/audit`);
 
     // Wait for events to appear
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Check if pagination is available
     const paginationInfo = page.locator('text=/Page \\d+ of \\d+/');
@@ -338,7 +353,7 @@ test.describe('Admin Audit View', () => {
     await page.goto(`${TEST_URLS.adminDashboard}/audit`);
 
     // Wait for events to appear
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Get the first row severity cell (3rd column, index 2)
     const firstRow = page.locator('tbody tr').first();
@@ -357,7 +372,7 @@ test.describe('Admin Audit View', () => {
     await page.goto(`${TEST_URLS.adminDashboard}/audit`);
 
     // Wait for events to appear
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Get the first row status cell (6th column, index 5)
     const firstRow = page.locator('tbody tr').first();
@@ -392,7 +407,7 @@ test.describe('Admin Audit View', () => {
     await page.goto(`${TEST_URLS.adminDashboard}/audit`);
 
     // Wait for events to appear
-    await waitForAuditEvents(page, 1, 15000);
+    await waitForAuditEvents(page, 1);
 
     // Show filters
     await page.click('button:has-text("Show Filters")');

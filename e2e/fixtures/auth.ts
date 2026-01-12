@@ -106,9 +106,12 @@ export async function register(page: Page, email: string): Promise<void> {
 
   // Wait for session to be established (logged in view visible)
   // This ensures the session cookie is set before proceeding
-  // Wait for page to fully load first (JavaScript needs to initialize)
+  // Wait for network to be idle - this ensures OAuth callback token exchange completes
+  // and the page JavaScript has fully initialized
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   await page.waitForLoadState('domcontentloaded');
-  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
+  // The profile app toggles visibility via JS - give it time to execute
+  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 
   // Mark as registered
   registeredUsers.add(email);
@@ -209,9 +212,11 @@ export async function login(page: Page, email: string): Promise<void> {
   }
 
   // Verify login succeeded
-  // Wait for page to fully load first (JavaScript needs to initialize)
+  // Wait for network to be idle - this ensures OAuth callback token exchange completes
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   await page.waitForLoadState('domcontentloaded');
-  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
+  // The profile app toggles visibility via JS - give it time to execute
+  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 }
 
 /**
