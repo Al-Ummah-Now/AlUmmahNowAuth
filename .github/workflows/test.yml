@@ -351,6 +351,19 @@ jobs:
           keys_count=$(echo "$jwks_body" | jq '.keys | length')
           echo "✅ JWKS endpoint accessible with $keys_count keys"
 
+      - name: Debug KV storage keys
+        run: |
+          echo "Listing KV storage keys to find signing key location..."
+          response=$(curl -s "https://auth.qa.alummahnow.net/test/debug/kv")
+          echo "KV debug response:"
+          echo "$response" | jq '.'
+          echo ""
+          echo "Key names:"
+          echo "$response" | jq -r '.keys[]' 2>/dev/null || echo "No keys found or error"
+          echo ""
+          echo "Keys with values (first 200 chars):"
+          echo "$response" | jq '.keysWithValues[]' 2>/dev/null || echo "No values found"
+
       - name: Verify Admin M2M authentication flow
         run: |
           echo "Testing Admin app M2M authentication to Auth server..."

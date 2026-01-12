@@ -257,6 +257,67 @@ export async function handleTestTokensPost(
 }
 
 /**
+ * Handle test debug KV keys endpoint
+ * GET /test/debug/kv
+ *
+ * Lists all keys in KV storage for debugging.
+ * Used to find the key name OpenAuth uses for storing JWKS.
+ */
+export async function handleTestDebugKV(
+	env: TestRoutesEnv,
+	ctx: TestRouteContext
+): Promise<Response> {
+	logger.debug('Test endpoint: listing KV keys');
+
+	try {
+		// List all keys (with prefix '' to get all)
+		const keysList = await env.AUTH_STORAGE.list();
+
+		// Try to get specific key values for debugging
+		const keysWithValues: Array<{ name: string; valuePreview: string }> = [];
+		for (const key of keysList.keys.slice(0, 20)) {
+			// Limit to 20 keys
+			try {
+				const value = await env.AUTH_STORAGE.get(key.name);
+				keysWithValues.push({
+					name: key.name,
+					valuePreview: value ? value.substring(0, 200) + (value.length > 200 ? '...' : '') : 'null',
+				});
+			} catch {
+				keysWithValues.push({ name: key.name, valuePreview: 'error reading' });
+			}
+		}
+
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response(
+			JSON.stringify({
+				total: keysList.keys.length,
+				listComplete: keysList.list_complete,
+				keys: keysList.keys.map((k) => k.name),
+				keysWithValues,
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		logger.error('Error listing KV keys', { error });
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response(
+			JSON.stringify({
+				error: 'Internal server error',
+				details: error instanceof Error ? error.message : String(error),
+			}),
+			{
+				status: 500,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	}
+}
+
+/**
  * Handle test debug roles endpoint
  * GET /test/debug/roles
  *
@@ -458,6 +519,11 @@ export async function routeTestEndpoints(
 	if (url.pathname.startsWith('/test/debug/clients') && request.method === 'GET') {
 		const clientId = url.pathname.replace('/test/debug/clients', '').replace(/^\//, '') || undefined;
 		return handleTestDebugClients(env, ctx, clientId);
+	}
+
+	// GET /test/debug/kv - Debug endpoint for KV storage keys
+	if (url.pathname === '/test/debug/kv' && request.method === 'GET') {
+		return handleTestDebugKV(env, ctx);
 	}
 
 	return null;
