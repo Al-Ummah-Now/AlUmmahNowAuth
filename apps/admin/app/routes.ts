@@ -12,4 +12,5 @@ export default [
   route("logout", "routes/logout.tsx"),
   route("auth/callback", "routes/auth.callback.tsx"),
   route("forbidden", "routes/forbidden.tsx"),
+  route("debug-m2m", "routes/debug-m2m.tsx"),
 ] satisfies RouteConfig;
