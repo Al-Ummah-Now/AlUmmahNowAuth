@@ -34,7 +34,7 @@ test.describe('Forgot Password Flow', () => {
     await page.click('a:has-text("Forgot password")');
 
     // Set up email interception for the reset code
-    const emailInterceptor = setupEmailInterception(page);
+    const emailInterceptor = setupEmailInterception();
 
     // Step 5: Enter email for password reset
     await expect(page.locator('input[type="email"]')).toBeVisible();
@@ -66,22 +66,26 @@ test.describe('Forgot Password Flow', () => {
 
     await page.click('button:has-text("Continue")');
 
-    // Step 10: After password change, OpenAuth returns to login page (not auto-login)
-    // Wait for the login page to load (email + password fields visible)
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('input[type="password"]')).toBeVisible();
+    // Step 10: After password change, OpenAuth 1.0.1+ auto-logs in the user
+    // Wait for redirect to profile app (successful auto-login)
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
 
-    // Verify we're on the login page (should show "Forgot password?" link)
-    await expect(page.locator('a:has-text("Forgot password?")')).toBeVisible();
+    console.log('Password reset completed - user auto-logged in');
 
-    console.log('Password reset completed - now on login page');
+    // Step 11: Log out to verify we can log back in with the NEW password
+    await page.locator('#loggedInView button:has-text("Sign Out")').click();
+    await expect(page.locator('#loggedOutView')).toBeVisible();
 
-    // Step 11: Log in with the NEW password (we're already on the login page)
+    // Step 12: Log in with the NEW password
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
     await page.fill('input[type="email"]', testUser.email);
     await page.fill('input[type="password"]', NEW_PASSWORD);
     await page.click('button:has-text("Continue")');
 
-    // Step 12: Should successfully log in with new password
+    // Step 13: Should successfully log in with new password
     await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
     await expect(page.locator('#loggedInView')).toBeVisible();
 
@@ -103,7 +107,7 @@ test.describe('Forgot Password Flow', () => {
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
     await page.click('a:has-text("Forgot password")');
 
-    const emailInterceptor = setupEmailInterception(page);
+    const emailInterceptor = setupEmailInterception();
 
     await page.fill('input[type="email"]', testUser.email);
     await page.click('button:has-text("Continue")');
@@ -124,12 +128,18 @@ test.describe('Forgot Password Flow', () => {
     await passwordFields.nth(1).fill(NEW_PASSWORD);
     await page.click('button:has-text("Continue")');
 
-    // Wait for completion - OpenAuth returns to login page after password change
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('a:has-text("Forgot password?")')).toBeVisible();
+    // Wait for completion - OpenAuth 1.0.1+ auto-logs in the user after password change
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 10000 });
+
+    // Log out to test old password rejection
+    await page.locator('#loggedInView button:has-text("Sign Out")').click();
+    await expect(page.locator('#loggedOutView')).toBeVisible();
 
     // Step 4: Try to log in with OLD password - should fail
-    // We're already on the login page after password reset
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
     await page.fill('input[type="email"]', testUser.email);
     await page.fill('input[type="password"]', TEST_PASSWORD); // OLD password
     await page.click('button:has-text("Continue")');
