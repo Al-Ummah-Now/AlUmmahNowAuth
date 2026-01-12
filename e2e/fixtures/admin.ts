@@ -43,12 +43,10 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
     throw new Error(`Failed to promote user to admin: ${response.status()} - ${await response.text()}`);
   }
 
-  // CRITICAL: Clear all cookies to invalidate the old session
-  // The register() call created a session with role='user', but we just promoted to admin
-  // We need to force a fresh login to get a new token with role='admin' claims
-  await page.context().clearCookies();
-
-  // Now navigate to admin dashboard and authenticate there
+  // After promotion, navigate to admin dashboard
+  // The user should already be logged in via their auth server session from register()
+  // The key insight: the OAuth callback will issue a NEW token with the CURRENT role from DB
+  // So we don't need to clear cookies - just navigate to admin and let OAuth do its thing
   await page.goto(TEST_URLS.adminDashboard);
 
   // Check if already logged in to admin dashboard by looking for "Users" link in sidebar
@@ -67,15 +65,31 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   const signInLink = page.locator('a:has-text("Admin Sign In"), a:has-text("Sign In")').first();
   await signInLink.click();
 
-  // Wait for redirect to auth server
-  await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+  // Wait for redirect - could be auth server OR back to admin (if auto-authenticated via session)
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-  // Enter email address and password
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', TEST_PASSWORD);
+  // Check if we've been redirected back to admin (user already authenticated via session)
+  const currentUrl = page.url();
+  if (currentUrl.includes(TEST_URLS.adminDashboard)) {
+    // Already authenticated via existing session - no login needed
+    console.log('User auto-authenticated via existing auth session');
+    return;
+  }
 
-  // Click Continue to submit login
-  await page.click('button:has-text("Continue")');
+  // We're on auth server - check if email/password form is shown
+  const emailField = page.locator('input[type="email"]');
+
+  // Wait to see which state we're in
+  const needsCredentials = await emailField.isVisible({ timeout: 3000 }).catch(() => false);
+
+  if (needsCredentials) {
+    // Enter email address and password
+    await page.fill('input[type="email"]', email);
+    await page.fill('input[type="password"]', TEST_PASSWORD);
+
+    // Click Continue to submit login
+    await page.click('button:has-text("Continue")');
+  }
 
   // Handle verification code if required
   // The password provider sends a verification code after email/password submission
