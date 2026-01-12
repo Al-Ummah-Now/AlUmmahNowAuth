@@ -43,10 +43,12 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
     throw new Error(`Failed to promote user to admin: ${response.status()} - ${await response.text()}`);
   }
 
-  // After promotion, navigate to admin dashboard
-  // The user should already be logged in via their auth server session from register()
-  // The key insight: the OAuth callback will issue a NEW token with the CURRENT role from DB
-  // So we don't need to clear cookies - just navigate to admin and let OAuth do its thing
+  // IMPORTANT: After promoting to admin, clear cookies to force fresh OAuth flow
+  // The existing session tokens have stale role claims from before promotion
+  // A fresh OAuth flow will issue new tokens with the updated admin role from DB
+  await page.context().clearCookies();
+
+  // Navigate to admin dashboard - this will trigger OAuth flow
   await page.goto(TEST_URLS.adminDashboard);
 
   // Check if already logged in to admin dashboard by looking for "Users" link in sidebar
