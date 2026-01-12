@@ -2,7 +2,7 @@ import { getUserSession } from './session';
 import { logger } from './logger';
 import { extractBearerToken, RBACServiceImpl, RBACAdapter } from '@al-ummah-now/openauth';
 import { CloudflareStorage } from '@al-ummah-now/openauth/storage/cloudflare';
-import { createLocalJWKSet, jwtVerify, decodeJwt, type JWK } from 'jose';
+import { createLocalJWKSet, jwtVerify, decodeJwt, importSPKI, exportJWK, type JWK } from 'jose';
 
 // Cache for JWKS to avoid repeated fetches
 let cachedJWKS: { keys: JWK[]; fetchedAt: number } | null = null;
@@ -44,8 +44,25 @@ interface M2MAuthResult {
 }
 
 /**
+ * OpenAuth stores signing keys with the key path ["signing:key", "primary"]
+ * which translates to "signing:key::primary" in KV (using "::" as separator).
+ * The stored format is a SerializedKeyPair with publicKey in SPKI format.
+ */
+const SIGNING_KEY_KV_KEY = 'signing:key::primary';
+const SIGNING_ALG = 'ES256';
+
+interface SerializedKeyPair {
+  id: string;
+  publicKey: string; // SPKI format
+  privateKey: string;
+  created: number;
+  alg: string;
+  expired?: number;
+}
+
+/**
  * Get JWKS from storage or fetch with caching
- * Uses KV storage key 'jwks:primary' where OpenAuth stores keys
+ * Uses KV storage key 'signing:key::primary' where OpenAuth stores signing keys
  */
 async function getJWKS(env: Env): Promise<{ keys: JWK[] }> {
   // Check cache first
@@ -53,30 +70,36 @@ async function getJWKS(env: Env): Promise<{ keys: JWK[] }> {
     return { keys: cachedJWKS.keys };
   }
 
-  // Try to get from KV storage (where OpenAuth stores keys)
-  // OpenAuth stores the keypair under 'keys' or 'primary'
-  const primaryKey = await env.AUTH_STORAGE.get('keys');
-  if (primaryKey) {
+  // Try to get from KV storage using OpenAuth's key format
+  const primaryKeyStr = await env.AUTH_STORAGE.get(SIGNING_KEY_KV_KEY);
+  if (primaryKeyStr) {
     try {
-      const keyData = JSON.parse(primaryKey);
-      // OpenAuth stores { private, public } JWK pair
-      if (keyData.public) {
-        const publicJwk = typeof keyData.public === 'string'
-          ? JSON.parse(keyData.public)
-          : keyData.public;
+      const keyData = JSON.parse(primaryKeyStr) as SerializedKeyPair;
+      if (keyData.publicKey) {
+        // Import SPKI format and convert to JWK
+        const publicKey = await importSPKI(keyData.publicKey, keyData.alg || SIGNING_ALG, {
+          extractable: true,
+        });
+        const jwk = await exportJWK(publicKey);
+        jwk.kid = keyData.id || 'primary';
+        jwk.use = 'sig';
+        jwk.alg = keyData.alg || SIGNING_ALG;
+
         cachedJWKS = {
-          keys: [{ ...publicJwk, kid: 'primary', use: 'sig' }],
+          keys: [jwk as JWK],
           fetchedAt: Date.now(),
         };
-        logger.debug('Loaded JWKS from KV storage');
+        logger.debug('Loaded JWKS from KV storage', { keyId: jwk.kid, alg: jwk.alg });
         return { keys: cachedJWKS.keys };
       }
     } catch (e) {
-      logger.error('Failed to parse JWKS from KV storage', { error: e });
+      logger.error('Failed to parse JWKS from KV storage', { error: e, key: SIGNING_KEY_KV_KEY });
     }
+  } else {
+    logger.warn('Signing key not found in KV storage', { key: SIGNING_KEY_KV_KEY });
   }
 
-  // Fallback: fetch from JWKS endpoint (external call - may fail in workers)
+  // Fallback: fetch from JWKS endpoint (external call - may fail in workers due to self-referential call)
   const issuer = env.OPENAUTH_ISSUER || 'http://localhost:3301';
   const jwksUrl = `${issuer}/.well-known/jwks.json`;
 
