@@ -72,8 +72,25 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   // Click Continue to submit login
   await page.click('button:has-text("Continue")');
 
+  // Handle verification code if required
+  // The password provider sends a verification code after email/password submission
+  const codeInput = page.locator('input[name="code"]');
+  const needsVerificationCode = await codeInput.isVisible({ timeout: 5000 }).catch(() => false);
+
+  if (needsVerificationCode) {
+    // Get verification code from intercepted email
+    const verificationCode = await emailInterceptor.getLastLoginCode(email);
+    if (!verificationCode) {
+      throw new Error('Failed to capture verification code from email during admin login. Check that email interception is working correctly.');
+    }
+
+    // Enter verification code and submit
+    await page.fill('input[name="code"]', verificationCode);
+    await page.click('button:has-text("Continue")');
+  }
+
   // Wait for redirect back to admin dashboard (successful login)
-  await expect(page).toHaveURL(new RegExp(TEST_URLS.adminDashboard), { timeout: 10000 });
+  await expect(page).toHaveURL(new RegExp(TEST_URLS.adminDashboard), { timeout: 15000 });
 
   // Verify login succeeded by checking for admin-specific elements (dashboard heading and Users link)
   await expect(page.locator('heading:has-text("Dashboard"), h2:has-text("Dashboard")')).toBeVisible({ timeout: 10000 });
