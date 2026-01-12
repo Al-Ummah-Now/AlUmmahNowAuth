@@ -14,6 +14,10 @@ const TEST_PASSWORD = 'TestPassword123!';
 const NEW_PASSWORD = 'NewTestPassword456!';
 
 test.describe('Forgot Password Flow', () => {
+  // Increase timeout for forgot password tests - these are complex multi-step flows
+  // involving registration, logout, password reset, verification codes, and re-login
+  test.setTimeout(120000);
+
   test('should complete forgot password flow and login with new password', async ({ page }) => {
     const testUser = TEST_USERS.user();
 

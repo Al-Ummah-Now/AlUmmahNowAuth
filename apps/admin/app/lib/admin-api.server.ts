@@ -380,13 +380,22 @@ export async function listRoles(
   actingUser: ActingUser,
   request?: Request
 ): Promise<Role[] | ErrorResponse> {
-  return m2mRequest<Role[]>(
+  // The API returns { roles: Role[] }, so we need to unwrap
+  const response = await m2mRequest<{ roles: Role[] }>(
     env,
     '/admin/roles',
     actingUser,
     { method: 'GET' },
     request
   );
+
+  // If error response, return as-is
+  if (isErrorResponse(response)) {
+    return response;
+  }
+
+  // Unwrap the roles array from the response
+  return response.roles || [];
 }
 
 /**
