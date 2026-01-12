@@ -85,6 +85,20 @@ test.describe('Forgot Password Flow', () => {
     await page.fill('input[type="password"]', NEW_PASSWORD);
     await page.click('button:has-text("Continue")');
 
+    // Handle verification code if required during login with new password
+    const loginCodeInput = page.locator('input[name="code"]');
+    const needsLoginVerificationCode = await loginCodeInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+    if (needsLoginVerificationCode) {
+      const loginVerificationCode = await emailInterceptor.getLastLoginCode(testUser.email);
+      if (!loginVerificationCode) {
+        throw new Error('Failed to capture verification code during login with new password');
+      }
+      console.log(`Got login verification code for ${testUser.email}: ${loginVerificationCode}`);
+      await page.fill('input[name="code"]', loginVerificationCode);
+      await page.click('button:has-text("Continue")');
+    }
+
     // Step 13: Should successfully log in with new password
     await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
     await expect(page.locator('#loggedInView')).toBeVisible();
@@ -162,6 +176,19 @@ test.describe('Forgot Password Flow', () => {
     await page.fill('input[type="email"]', testUser.email);
     await page.fill('input[type="password"]', NEW_PASSWORD); // NEW password
     await page.click('button:has-text("Continue")');
+
+    // Handle verification code if required during login with new password
+    const newPwdCodeInput = page.locator('input[name="code"]');
+    const needsNewPwdVerificationCode = await newPwdCodeInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+    if (needsNewPwdVerificationCode) {
+      const newPwdVerificationCode = await emailInterceptor.getLastLoginCode(testUser.email);
+      if (!newPwdVerificationCode) {
+        throw new Error('Failed to capture verification code during login with new password');
+      }
+      await page.fill('input[name="code"]', newPwdVerificationCode);
+      await page.click('button:has-text("Continue")');
+    }
 
     // Should successfully log in with new password
     await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });

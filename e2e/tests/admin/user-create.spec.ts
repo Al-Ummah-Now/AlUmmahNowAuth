@@ -55,8 +55,8 @@ test.describe('Admin User Creation', () => {
 
     // Enter invalid email
     await page.fill('input[id="email"]', 'not-an-email');
-    // Select role using checkbox (case-insensitive to match "Member")
-    await page.locator('label').filter({ hasText: /^member/i }).locator('input[type="checkbox"]').check();
+    // Select role using checkbox (case-insensitive, no anchor to handle whitespace)
+    await page.locator('label').filter({ hasText: /member/i }).locator('input[type="checkbox"]').check();
 
     // Try to submit
     await page.click('button:has-text("Create User")');
@@ -77,8 +77,8 @@ test.describe('Admin User Creation', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
     await page.fill('input[id="email"]', duplicateEmail);
-    // Select role using checkbox (case-insensitive to match "Member")
-    await page.locator('label').filter({ hasText: /^member/i }).locator('input[type="checkbox"]').check();
+    // Select role using checkbox (case-insensitive, no anchor to handle whitespace)
+    await page.locator('label').filter({ hasText: /member/i }).locator('input[type="checkbox"]').check();
     await page.click('button:has-text("Create User")');
 
     // Verify error message
