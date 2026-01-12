@@ -200,6 +200,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Seed RBAC roles (ensure roles exist for E2E tests)
+        working-directory: apps/auth
+        run: pnpm run seed:roles:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy Auth Server to QA
         working-directory: apps/auth
         run: pnpm run deploy:qa
@@ -280,6 +287,21 @@ jobs:
             sleep 1
           done
           echo "✅ Warmup complete - encryption keys should now be loaded"
+
+      - name: Verify RBAC roles exist
+        run: |
+          echo "Verifying RBAC roles were seeded..."
+          response=$(curl -s https://auth.qa.alummahnow.net/test/debug/roles)
+          echo "Response: $response"
+          total=$(echo "$response" | jq -r '.total // 0')
+          echo "Total roles found: $total"
+          if [ "$total" -lt 8 ]; then
+            echo "❌ ERROR: Expected at least 8 roles, found $total"
+            echo "Roles in database:"
+            echo "$response" | jq '.roles[]?.name'
+            exit 1
+          fi
+          echo "✅ All $total RBAC roles are present"
 
   # Parallel E2E test jobs by category
   e2e-admin-audit:
