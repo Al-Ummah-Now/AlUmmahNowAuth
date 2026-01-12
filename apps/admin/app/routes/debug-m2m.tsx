@@ -78,11 +78,4 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 }
 
-export default function DebugM2M() {
-  return (
-    <div className="p-4">
-      <h1 className="text-xl font-bold">M2M Debug Endpoint</h1>
-      <p>This endpoint is for API debugging only. Use GET /debug/m2m</p>
-    </div>
-  );
-}
+// No default export - this is a resource route that returns JSON only
