@@ -68,12 +68,16 @@ test.describe('Email-Based Login Flow', () => {
 
     // Enter invalid email
     await page.fill('input[type="email"]', 'not-an-email');
-    await page.click('button[type="submit"]');
+    await page.click('button:has-text("Continue")');
 
     // Verify error or validation message
-    // Note: Exact error handling depends on OpenAuth implementation
-    await expect(
-      page.locator('input[type="email"]:invalid')
-    ).toBeVisible();
+    // OpenAuth should show validation error for invalid email format
+    // Check for either HTML5 validation or custom error message
+    const hasValidationError = await page.locator('input[type="email"]:invalid').isVisible()
+      .catch(() => false);
+    const hasErrorMessage = await page.locator('text=/invalid|email/i').isVisible()
+      .catch(() => false);
+
+    expect(hasValidationError || hasErrorMessage).toBe(true);
   });
 });

@@ -166,7 +166,9 @@ test.describe('Forgot Password Flow', () => {
 
     // Log out
     await page.goto(TEST_URLS.profileApp);
-    await page.click('button:has-text("Sign Out")');
+    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.locator('#loggedInView button:has-text("Sign Out")').click();
+    await expect(page.locator('#loggedOutView')).toBeVisible();
 
     // Start forgot password flow
     await page.locator('#loggedOutView button:has-text("Sign In")').click();
