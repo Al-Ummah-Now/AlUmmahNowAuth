@@ -599,8 +599,9 @@ export default function Users() {
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value)}
               >
-                <option value="user">user</option>
-                <option value="admin">admin</option>
+                  {allRoles.map((role) => (
+                  <option key={role.id} value={role.name}>{role.name}</option>
+                ))}
               </select>
             </div>
           </div>

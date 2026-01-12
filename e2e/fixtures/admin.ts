@@ -212,10 +212,10 @@ export async function editUser(
     await page.fill('input[id="email"]', updates.email);
   }
   if (updates.role) {
-    // Select role using checkbox (same pattern as createUser)
-    const roleCheckbox = page.locator('label').filter({ hasText: new RegExp(`${updates.role}`, 'i') }).locator('input[type="checkbox"]');
-    await expect(roleCheckbox).toBeVisible({ timeout: 5000 });
-    await roleCheckbox.check();
+    // Select role using the dropdown (edit dialog uses select, not checkboxes)
+    // Capitalize first letter to match actual role names (e.g., 'member' -> 'Member')
+    const normalizedRole = updates.role.charAt(0).toUpperCase() + updates.role.slice(1).toLowerCase();
+    await page.selectOption('select[id="role"]', { label: normalizedRole });
   }
 
   // Submit form (click Save button in dialog)

@@ -48,18 +48,18 @@ test.describe('Admin User Editing', () => {
     await expect(userRow.locator('text=/admin/i')).toBeVisible();
   });
 
-  test('should edit user role from admin to user', async ({ page }) => {
+  test('should edit user role from admin to member', async ({ page }) => {
     // Create a test admin
-    const adminEmail = generateTestEmail('admin-to-user');
+    const adminEmail = generateTestEmail('admin-to-member');
     await createUser(page, { email: adminEmail, role: 'admin' });
 
-    // Edit user role (dropdown uses 'user' not 'member')
-    await editUser(page, adminEmail, { role: 'user' });
+    // Edit user role to member (the basic user role in the system)
+    await editUser(page, adminEmail, { role: 'member' });
 
     // Verify role updated in list
     // Already on /users page from previous action
     const userRow = page.locator(`tr:has-text("${adminEmail}")`);
-    await expect(userRow.locator('text=/^user$/i')).toBeVisible();
+    await expect(userRow.locator('text=/member/i')).toBeVisible();
   });
 
   test('should edit both email and role simultaneously', async ({ page }) => {
