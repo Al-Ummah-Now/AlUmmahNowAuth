@@ -25,6 +25,7 @@ import {
 } from "@al-ummah-now/openauth";
 import { userRoleRoutes } from "./custom/user-role-routes";
 import { adminContextMiddleware, methodCompatMiddleware, clientResponseCompatMiddleware } from "./custom/admin-context-middleware";
+import { requireAdmin } from "./middleware/admin-auth";
 import { handleTokenCron } from "./cron/token-cron";
 import { routeRequest, type RouterContext } from "./router";
 
@@ -95,6 +96,7 @@ export default {
     const userAdapter = new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' });
     const userService = createUserService({ storage, d1Adapter: userAdapter });
     const adminUserApp = new Hono();
+    adminUserApp.use('*', requireAdmin());  // M2M auth required
     adminUserApp.use('*', adminContextMiddleware);
     adminUserApp.use('*', methodCompatMiddleware);
     adminUserApp.route('/', userApiRoutes(userService));
@@ -102,6 +104,7 @@ export default {
 
     // Create admin RBAC app (Phase 3: OpenAuth migration)
     const adminRbacApp = new Hono();
+    adminRbacApp.use('*', requireAdmin());  // M2M auth required
     adminRbacApp.use('*', adminContextMiddleware);
     adminRbacApp.use('*', methodCompatMiddleware);
     adminRbacApp.route('/', rbacAdminEndpoints(rbacService));
