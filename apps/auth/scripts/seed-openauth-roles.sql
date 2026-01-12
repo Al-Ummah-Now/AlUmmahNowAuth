@@ -109,12 +109,14 @@ VALUES (
 -- and testing purposes. This user has a predictable ID for easy reference.
 -- ============================================================================
 
--- System Admin User
-INSERT OR IGNORE INTO users (id, email, email_verified, created_at, updated_at)
+-- System Admin User (uses OpenAuth users table schema)
+INSERT OR IGNORE INTO users (id, tenant_id, email, name, status, created_at, updated_at)
 VALUES (
     'system_admin_user',
+    'default',
     'system-admin@internal.local',
-    1,
+    'System Admin',
+    'active',
     strftime('%s', 'now') * 1000,
     strftime('%s', 'now') * 1000
 );
