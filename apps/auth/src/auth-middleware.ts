@@ -1,7 +1,12 @@
 import { getUserSession } from './session';
 import { logger } from './logger';
-import { bearerAuth, extractBearerToken, RBACServiceImpl, RBACAdapter } from '@al-ummah-now/openauth';
+import { extractBearerToken, RBACServiceImpl, RBACAdapter } from '@al-ummah-now/openauth';
 import { CloudflareStorage } from '@al-ummah-now/openauth/storage/cloudflare';
+import { createLocalJWKSet, jwtVerify, decodeJwt, type JWK } from 'jose';
+
+// Cache for JWKS to avoid repeated fetches
+let cachedJWKS: { keys: JWK[]; fetchedAt: number } | null = null;
+const JWKS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Default client ID and tenant ID for RBAC operations
@@ -39,7 +44,60 @@ interface M2MAuthResult {
 }
 
 /**
- * Verify M2M token using OpenAuth's bearerAuth with JWKS
+ * Get JWKS from storage or fetch with caching
+ * Uses KV storage key 'jwks:primary' where OpenAuth stores keys
+ */
+async function getJWKS(env: Env): Promise<{ keys: JWK[] }> {
+  // Check cache first
+  if (cachedJWKS && Date.now() - cachedJWKS.fetchedAt < JWKS_CACHE_TTL) {
+    return { keys: cachedJWKS.keys };
+  }
+
+  // Try to get from KV storage (where OpenAuth stores keys)
+  // OpenAuth stores the keypair under 'keys' or 'primary'
+  const primaryKey = await env.AUTH_STORAGE.get('keys');
+  if (primaryKey) {
+    try {
+      const keyData = JSON.parse(primaryKey);
+      // OpenAuth stores { private, public } JWK pair
+      if (keyData.public) {
+        const publicJwk = typeof keyData.public === 'string'
+          ? JSON.parse(keyData.public)
+          : keyData.public;
+        cachedJWKS = {
+          keys: [{ ...publicJwk, kid: 'primary', use: 'sig' }],
+          fetchedAt: Date.now(),
+        };
+        logger.debug('Loaded JWKS from KV storage');
+        return { keys: cachedJWKS.keys };
+      }
+    } catch (e) {
+      logger.error('Failed to parse JWKS from KV storage', { error: e });
+    }
+  }
+
+  // Fallback: fetch from JWKS endpoint (external call - may fail in workers)
+  const issuer = env.OPENAUTH_ISSUER || 'http://localhost:3301';
+  const jwksUrl = `${issuer}/.well-known/jwks.json`;
+
+  logger.debug('Fetching JWKS from external URL', { jwksUrl });
+  const response = await fetch(jwksUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch JWKS: ${response.status} ${response.statusText}`);
+  }
+
+  const jwks = await response.json() as { keys: JWK[] };
+  cachedJWKS = {
+    keys: jwks.keys,
+    fetchedAt: Date.now(),
+  };
+
+  return jwks;
+}
+
+/**
+ * Verify M2M token using jose with locally cached JWKS
+ * This avoids the worker-to-self HTTP call issue by using local key verification
  */
 async function verifyM2MAuth(
   request: Request,
@@ -47,34 +105,49 @@ async function verifyM2MAuth(
   _requiredScope?: string
 ): Promise<M2MAuthResult> {
   const issuer = env.OPENAUTH_ISSUER || 'http://localhost:3301';
-  const jwksUrl = `${issuer}/.well-known/jwks.json`;
 
-  // Create a minimal context to run bearerAuth
-  const context: Record<string, unknown> = {};
-  const setFn = (key: string, value: unknown) => { context[key] = value; };
-  const getFn = (key: string) => context[key];
+  // Extract bearer token
+  const authHeader = request.headers.get('Authorization');
+  const token = extractBearerToken(authHeader);
 
-  const mockC = {
-    req: {
-      header: (name: string) => request.headers.get(name),
-    },
-    set: setFn,
-    get: getFn,
-  };
+  if (!token) {
+    throw new Error('No bearer token provided');
+  }
 
-  const authMiddleware = bearerAuth({
-    jwksUrl,
+  // Decode token to check claims before verification
+  const decoded = decodeJwt(token);
+
+  // Verify this is an M2M token (has client_id claim, no sub or sub equals client_id)
+  if (!decoded.client_id) {
+    throw new Error('Invalid token: not an M2M token (missing client_id)');
+  }
+
+  // Get JWKS (from cache/storage or external fetch as fallback)
+  const jwks = await getJWKS(env);
+
+  // Create local JWK set for verification
+  const JWKS = createLocalJWKSet(jwks);
+
+  // Verify the token
+  const { payload } = await jwtVerify(token, JWKS, {
     issuer,
-    requireM2M: true,
   });
 
-  // Run the middleware
-  await authMiddleware(mockC as never, async () => {});
+  // Extract scopes from token
+  const scopes = payload.scope
+    ? (typeof payload.scope === 'string' ? payload.scope.split(' ') : payload.scope as string[])
+    : [];
+
+  logger.debug('M2M token verified successfully', {
+    clientId: payload.client_id,
+    tenantId: payload.tenant_id,
+    scopes,
+  });
 
   return {
-    clientId: context.clientId as string,
-    tenantId: context.tenantId as string | undefined,
-    scopes: context.scopes as string[] || [],
+    clientId: payload.client_id as string,
+    tenantId: payload.tenant_id as string | undefined,
+    scopes,
   };
 }
 

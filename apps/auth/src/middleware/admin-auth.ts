@@ -5,17 +5,70 @@
  * Used by admin session management APIs to enforce authorization.
  * Supports both session-based and M2M authentication.
  *
- * Uses OpenAuth's bearerAuth with JWKS for M2M token verification
- * and requireScope for scope checking.
+ * Uses jose with locally cached JWKS for M2M token verification to avoid
+ * worker-to-self HTTP call issues on Cloudflare Workers.
  */
 
 import type { Context, MiddlewareHandler } from 'hono';
 import type { AccountSession } from '../types/sessions';
-import { bearerAuth, extractBearerToken, requireScope, requireAnyScope } from '@al-ummah-now/openauth';
+import { extractBearerToken, requireScope, requireAnyScope } from '@al-ummah-now/openauth';
 import { logger } from '../logger';
+import { createLocalJWKSet, jwtVerify, decodeJwt, type JWK } from 'jose';
+
+// Cache for JWKS to avoid repeated fetches
+let cachedJWKS: { keys: JWK[]; fetchedAt: number } | null = null;
+const JWKS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Re-export OpenAuth's scope middleware for use in routes
 export { requireScope, requireAnyScope };
+
+/**
+ * Get JWKS from storage or fetch with caching
+ */
+async function getJWKS(env: Env): Promise<{ keys: JWK[] }> {
+	// Check cache first
+	if (cachedJWKS && Date.now() - cachedJWKS.fetchedAt < JWKS_CACHE_TTL) {
+		return { keys: cachedJWKS.keys };
+	}
+
+	// Try to get from KV storage (where OpenAuth stores keys)
+	const primaryKey = await env.AUTH_STORAGE.get('keys');
+	if (primaryKey) {
+		try {
+			const keyData = JSON.parse(primaryKey);
+			if (keyData.public) {
+				const publicJwk =
+					typeof keyData.public === 'string' ? JSON.parse(keyData.public) : keyData.public;
+				cachedJWKS = {
+					keys: [{ ...publicJwk, kid: 'primary', use: 'sig' }],
+					fetchedAt: Date.now(),
+				};
+				logger.debug('Loaded JWKS from KV storage');
+				return { keys: cachedJWKS.keys };
+			}
+		} catch (e) {
+			logger.error('Failed to parse JWKS from KV storage', { error: e });
+		}
+	}
+
+	// Fallback: fetch from JWKS endpoint (may fail in workers)
+	const issuer = env.OPENAUTH_ISSUER || 'http://localhost:3301';
+	const jwksUrl = `${issuer}/.well-known/jwks.json`;
+
+	logger.debug('Fetching JWKS from external URL', { jwksUrl });
+	const response = await fetch(jwksUrl);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch JWKS: ${response.status} ${response.statusText}`);
+	}
+
+	const jwks = (await response.json()) as { keys: JWK[] };
+	cachedJWKS = {
+		keys: jwks.keys,
+		fetchedAt: Date.now(),
+	};
+
+	return jwks;
+}
 
 type AdminContext = Context<{
 	Bindings: Env;
@@ -67,21 +120,44 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 		if (hasM2MAuth(c.req.raw)) {
 			logger.info('[requireAdmin] M2M auth detected');
 			try {
-				// Use OpenAuth's bearerAuth with JWKS
+				// Use local JWKS verification to avoid worker-to-self HTTP call issues
 				const issuer = c.env.OPENAUTH_ISSUER || 'http://localhost:3301';
-				const jwksUrl = `${issuer}/.well-known/jwks.json`;
+				const authHeader = c.req.header('Authorization');
+				const token = extractBearerToken(authHeader);
 
-				// Create and run bearerAuth middleware
-				const authMiddleware = bearerAuth({
-					jwksUrl,
+				if (!token) {
+					return c.json({ error: 'No bearer token provided' }, 401);
+				}
+
+				// Decode token to check claims before verification
+				const decoded = decodeJwt(token);
+
+				// Verify this is an M2M token
+				if (!decoded.client_id) {
+					return c.json({ error: 'Invalid token: not an M2M token' }, 401);
+				}
+
+				// Get JWKS from local storage
+				const jwks = await getJWKS(c.env);
+				const JWKS = createLocalJWKSet(jwks);
+
+				// Verify the token
+				const { payload } = await jwtVerify(token, JWKS, {
 					issuer,
-					requireM2M: true,
 				});
 
-				// Run the middleware - it will set token, tenantId, clientId, scopes
-				await authMiddleware(c, async () => {});
+				// Set context values
+				const scopes = payload.scope
+					? typeof payload.scope === 'string'
+						? payload.scope.split(' ')
+						: (payload.scope as string[])
+					: [];
+				c.set('tenantId', (payload.tenant_id as string) || 'default');
+				c.set('clientId', payload.client_id as string);
+				c.set('scopes', scopes);
+				c.set('token', payload);
 
-				logger.info('[requireAdmin] bearerAuth passed', {
+				logger.info('[requireAdmin] Local JWKS verification passed', {
 					tenantId: c.get('tenantId'),
 					clientId: c.get('clientId'),
 				});

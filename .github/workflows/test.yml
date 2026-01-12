@@ -336,6 +336,21 @@ jobs:
           all_clients=$(curl -s "https://auth.qa.alummahnow.net/test/debug/clients")
           echo "$all_clients" | jq '.clients[] | {id, tenant_id, name}'
 
+      - name: Verify JWKS endpoint is accessible
+        run: |
+          echo "Testing JWKS endpoint directly..."
+          jwks_response=$(curl -s -w "\n%{http_code}" "https://auth.qa.alummahnow.net/.well-known/jwks.json")
+          jwks_body=$(echo "$jwks_response" | head -n -1)
+          jwks_status=$(echo "$jwks_response" | tail -n 1)
+          echo "JWKS status: $jwks_status"
+          echo "JWKS response: $jwks_body"
+          if [ "$jwks_status" != "200" ]; then
+            echo "❌ ERROR: JWKS endpoint returned status $jwks_status"
+            exit 1
+          fi
+          keys_count=$(echo "$jwks_body" | jq '.keys | length')
+          echo "✅ JWKS endpoint accessible with $keys_count keys"
+
       - name: Verify Admin M2M authentication flow
         run: |
           echo "Testing Admin app M2M authentication to Auth server..."
