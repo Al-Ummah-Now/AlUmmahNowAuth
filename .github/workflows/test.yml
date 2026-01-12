@@ -339,7 +339,7 @@ jobs:
       - name: Verify Admin M2M authentication flow
         run: |
           echo "Testing Admin app M2M authentication to Auth server..."
-          response=$(curl -s "https://admin.auth.qa.alummahnow.net/debug/m2m")
+          response=$(curl -s "https://admin.auth.qa.alummahnow.net/debug-m2m")
           echo "M2M debug response: $response"
 
           success=$(echo "$response" | jq -r '.success // false')
