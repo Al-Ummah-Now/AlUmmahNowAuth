@@ -43,6 +43,11 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
     throw new Error(`Failed to promote user to admin: ${response.status()} - ${await response.text()}`);
   }
 
+  // CRITICAL: Clear all cookies to invalidate the old session
+  // The register() call created a session with role='user', but we just promoted to admin
+  // We need to force a fresh login to get a new token with role='admin' claims
+  await page.context().clearCookies();
+
   // Now navigate to admin dashboard and authenticate there
   await page.goto(TEST_URLS.adminDashboard);
 
@@ -93,7 +98,7 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   await expect(page).toHaveURL(new RegExp(TEST_URLS.adminDashboard), { timeout: 15000 });
 
   // Verify login succeeded by checking for admin-specific elements (dashboard heading and Users link)
-  await expect(page.locator('heading:has-text("Dashboard"), h2:has-text("Dashboard")')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('h1:has-text("Dashboard"), h2:has-text("Dashboard"), h3:has-text("Dashboard")')).toBeVisible({ timeout: 10000 });
   await expect(usersLink).toBeVisible({ timeout: 10000 });
 }
 
