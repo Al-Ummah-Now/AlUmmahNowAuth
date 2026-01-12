@@ -257,6 +257,66 @@ export async function handleTestTokensPost(
 }
 
 /**
+ * Handle test debug roles endpoint
+ * GET /test/debug/roles
+ *
+ * Retrieves all roles directly from the database for debugging.
+ * Used by E2E tests to verify roles are seeded correctly.
+ */
+export async function handleTestDebugRoles(
+	env: TestRoutesEnv,
+	ctx: TestRouteContext
+): Promise<Response> {
+	logger.debug('Test endpoint: getting debug roles info');
+
+	try {
+		// Query roles directly from the database
+		const rolesResult = await env.AUTH_DB.prepare(
+			`SELECT id, name, tenant_id, description, is_system_role, created_at, updated_at
+			 FROM rbac_roles
+			 ORDER BY created_at DESC`
+		).all();
+
+		// Also get table schema info
+		const tableInfo = await env.AUTH_DB.prepare(
+			`SELECT sql FROM sqlite_master WHERE type='table' AND name='rbac_roles'`
+		).first<{ sql: string }>();
+
+		// Get distinct tenant_ids
+		const tenantIds = await env.AUTH_DB.prepare(
+			`SELECT DISTINCT tenant_id FROM rbac_roles`
+		).all();
+
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response(
+			JSON.stringify({
+				total: rolesResult.results?.length || 0,
+				roles: rolesResult.results || [],
+				distinctTenantIds: tenantIds.results?.map((r: Record<string, unknown>) => r.tenant_id) || [],
+				tableSchema: tableInfo?.sql || 'not found',
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		logger.error('Error getting debug roles', { error });
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response(
+			JSON.stringify({
+				error: 'Internal server error',
+				details: error instanceof Error ? error.message : String(error),
+			}),
+			{
+				status: 500,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	}
+}
+
+/**
  * Route test endpoints
  *
  * @param request - The incoming request
@@ -294,6 +354,11 @@ export async function routeTestEndpoints(
 	if (url.pathname.startsWith('/test/tokens/') && request.method === 'POST') {
 		const email = decodeURIComponent(url.pathname.split('/test/tokens/')[1]);
 		return handleTestTokensPost(email, request, env, ctx);
+	}
+
+	// GET /test/debug/roles - Debug endpoint for roles
+	if (url.pathname === '/test/debug/roles' && request.method === 'GET') {
+		return handleTestDebugRoles(env, ctx);
 	}
 
 	return null;
