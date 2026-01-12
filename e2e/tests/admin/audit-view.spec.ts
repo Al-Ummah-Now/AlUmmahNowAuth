@@ -52,7 +52,11 @@ test.describe('Admin Audit View', () => {
     // Look for the card description which is unique on the page
     await expect(page.locator('text=/View and filter system audit logs/i')).toBeVisible();
 
-    // Verify table headers are present
+    // Wait for audit events to be processed before checking table headers
+    // The login creates audit events asynchronously, and the table only renders when events exist
+    await waitForAuditEvents(page, 1, 15000);
+
+    // Verify table headers are present (table only shows when events exist)
     await expect(page.locator('th:has-text("Timestamp")')).toBeVisible();
     await expect(page.locator('th:has-text("Event Type")')).toBeVisible();
     await expect(page.locator('th:has-text("Severity")')).toBeVisible();
