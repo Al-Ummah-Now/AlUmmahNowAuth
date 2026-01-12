@@ -207,6 +207,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Fix OAuth client tenant_id (ensure M2M auth works)
+        working-directory: apps/auth
+        run: pnpm run fix:tenant:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy Auth Server to QA
         working-directory: apps/auth
         run: pnpm run deploy:qa
@@ -302,6 +309,32 @@ jobs:
             exit 1
           fi
           echo "✅ All $total RBAC roles are present"
+
+      - name: Verify OAuth client configuration
+        run: |
+          echo "Verifying OAuth client configuration for M2M..."
+          # Check the Auth Admin client used for M2M requests
+          client_id="2448ed27-39a6-417d-b4c8-07f881e81269"
+          response=$(curl -s "https://auth.qa.alummahnow.net/test/debug/clients/$client_id")
+          echo "Auth Admin client response: $response"
+
+          tenant_id=$(echo "$response" | jq -r '.client.tenant_id // "null"')
+          echo "OAuth client tenant_id: $tenant_id"
+
+          if [ "$tenant_id" != "default" ]; then
+            echo "❌ ERROR: OAuth client tenant_id is '$tenant_id', expected 'default'"
+            echo "This will cause /admin/roles to return empty results!"
+            echo "Full client info:"
+            echo "$response" | jq '.'
+            exit 1
+          fi
+          echo "✅ OAuth client has correct tenant_id='default'"
+
+          # Also show all clients for debugging
+          echo ""
+          echo "All OAuth clients:"
+          all_clients=$(curl -s "https://auth.qa.alummahnow.net/test/debug/clients")
+          echo "$all_clients" | jq '.clients[] | {id, tenant_id, name}'
 
   # Parallel E2E test jobs by category
   e2e-admin-audit:

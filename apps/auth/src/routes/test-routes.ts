@@ -317,6 +317,99 @@ export async function handleTestDebugRoles(
 }
 
 /**
+ * Handle test debug clients endpoint
+ * GET /test/debug/clients/:clientId?
+ *
+ * Retrieves OAuth client info for debugging. If clientId provided, gets specific client.
+ * Otherwise returns all clients.
+ * Used by E2E tests to verify client tenant_id configuration.
+ */
+export async function handleTestDebugClients(
+	env: TestRoutesEnv,
+	ctx: TestRouteContext,
+	clientId?: string
+): Promise<Response> {
+	logger.debug('Test endpoint: getting debug clients info', { clientId });
+
+	try {
+		if (clientId) {
+			// Get specific client
+			const client = await env.AUTH_DB.prepare(
+				`SELECT id, tenant_id, name, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at
+				 FROM oauth_clients
+				 WHERE id = ?`
+			)
+				.bind(clientId)
+				.first();
+
+			if (!client) {
+				ctx.waitUntil(logger.finalizeRequest());
+				return new Response(JSON.stringify({ error: 'Client not found' }), {
+					status: 404,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+
+			ctx.waitUntil(logger.finalizeRequest());
+			return new Response(
+				JSON.stringify({
+					client,
+					// Parse JSON fields for easier reading
+					parsed: {
+						grant_types: JSON.parse((client as Record<string, unknown>).grant_types as string || '[]'),
+						scopes: JSON.parse((client as Record<string, unknown>).scopes as string || '[]'),
+						redirect_uris: JSON.parse((client as Record<string, unknown>).redirect_uris as string || '[]'),
+						metadata: JSON.parse((client as Record<string, unknown>).metadata as string || '{}'),
+					},
+				}),
+				{
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		}
+
+		// Get all clients (without secrets)
+		const clientsResult = await env.AUTH_DB.prepare(
+			`SELECT id, tenant_id, name, grant_types, scopes, enabled, created_at, updated_at
+			 FROM oauth_clients
+			 ORDER BY created_at DESC`
+		).all();
+
+		// Get distinct tenant_ids
+		const tenantIds = await env.AUTH_DB.prepare(
+			`SELECT DISTINCT tenant_id FROM oauth_clients`
+		).all();
+
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response(
+			JSON.stringify({
+				total: clientsResult.results?.length || 0,
+				clients: clientsResult.results || [],
+				distinctTenantIds: tenantIds.results?.map((r: Record<string, unknown>) => r.tenant_id) || [],
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		logger.error('Error getting debug clients', { error });
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response(
+			JSON.stringify({
+				error: 'Internal server error',
+				details: error instanceof Error ? error.message : String(error),
+			}),
+			{
+				status: 500,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	}
+}
+
+/**
  * Route test endpoints
  *
  * @param request - The incoming request
@@ -359,6 +452,12 @@ export async function routeTestEndpoints(
 	// GET /test/debug/roles - Debug endpoint for roles
 	if (url.pathname === '/test/debug/roles' && request.method === 'GET') {
 		return handleTestDebugRoles(env, ctx);
+	}
+
+	// GET /test/debug/clients/:clientId? - Debug endpoint for OAuth clients
+	if (url.pathname.startsWith('/test/debug/clients') && request.method === 'GET') {
+		const clientId = url.pathname.replace('/test/debug/clients', '').replace(/^\//, '') || undefined;
+		return handleTestDebugClients(env, ctx, clientId);
 	}
 
 	return null;
