@@ -390,13 +390,19 @@ export async function listRoles(
     request
   );
 
+  console.log('[listRoles] Raw API response:', JSON.stringify(response, null, 2));
+
   // If error response, return as-is
   if (isErrorResponse(response)) {
+    console.error('[listRoles] Error response from API:', response.error);
     return response;
   }
 
+  const roles = response.roles || [];
+  console.log('[listRoles] Extracted roles count:', roles.length);
+
   // Unwrap the roles array from the response
-  return response.roles || [];
+  return roles;
 }
 
 /**

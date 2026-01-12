@@ -83,7 +83,7 @@ async function handleAdminRbacRoutes(rctx: RouterContext): Promise<RouteResult> 
 	const rewrittenPath = url.pathname.replace(/^\/admin/, '');
 	const rewrittenRequest = rewriteRequest(request, url.pathname, rewrittenPath);
 
-	logger.debug('[RBAC] Handling admin RBAC request', {
+	logger.info('[RBAC] Handling admin RBAC request', {
 		originalPath: url.pathname,
 		rewrittenPath,
 		method: request.method,
@@ -93,9 +93,19 @@ async function handleAdminRbacRoutes(rctx: RouterContext): Promise<RouteResult> 
 
 	const response = await adminRbacApp.fetch(rewrittenRequest, env, ctx);
 
-	logger.debug('[RBAC] Admin RBAC response', {
+	// Clone response to read body for logging
+	const responseClone = response.clone();
+	let responseBody = 'non-json';
+	try {
+		responseBody = JSON.stringify(await responseClone.json());
+	} catch {
+		// Not JSON, ignore
+	}
+
+	logger.info('[RBAC] Admin RBAC response', {
 		status: response.status,
 		path: rewrittenPath,
+		responseBody: responseBody.substring(0, 500), // Truncate for logging
 	});
 
 	if (response.status !== 404) {

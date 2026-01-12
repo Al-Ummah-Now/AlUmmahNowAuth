@@ -15,6 +15,7 @@
  */
 
 import type { Context, Next } from 'hono';
+import { logger } from '../logger';
 
 /**
  * Middleware to set tenant and admin context for OpenAuth routes
@@ -78,6 +79,13 @@ export async function adminContextMiddleware(c: Context, next: Next): Promise<vo
 
 	// Set isAdmin flag (assumes auth middleware has already verified)
 	c.set('isAdmin', true);
+
+	logger.info('[adminContextMiddleware] Context set', {
+		tenantId,
+		adminId: adminId || 'not-set',
+		isAdmin: true,
+		path: c.req.path,
+	});
 
 	await next();
 }

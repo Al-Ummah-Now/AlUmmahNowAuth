@@ -65,7 +65,7 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 	return async (c: AdminContext, next) => {
 		// Check for M2M auth first (Bearer token)
 		if (hasM2MAuth(c.req.raw)) {
-			logger.debug('[requireAdmin] M2M auth detected');
+			logger.info('[requireAdmin] M2M auth detected');
 			try {
 				// Use OpenAuth's bearerAuth with JWKS
 				const issuer = c.env.OPENAUTH_ISSUER || 'http://localhost:3301';
@@ -81,7 +81,7 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 				// Run the middleware - it will set token, tenantId, clientId, scopes
 				await authMiddleware(c, async () => {});
 
-				logger.debug('[requireAdmin] bearerAuth passed', {
+				logger.info('[requireAdmin] bearerAuth passed', {
 					tenantId: c.get('tenantId'),
 					clientId: c.get('clientId'),
 				});
@@ -105,7 +105,7 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 					.all<{ name: string }>();
 
 				const roles = rolesResult.results?.map((r) => r.name) || [];
-				logger.debug('[requireAdmin] Acting user roles', {
+				logger.info('[requireAdmin] Acting user roles', {
 					actingUserId,
 					roles,
 					rolesCount: roles.length,
