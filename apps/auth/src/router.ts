@@ -78,7 +78,9 @@ async function handleAdminRbacRoutes(rctx: RouterContext): Promise<RouteResult> 
 		return null;
 	}
 
-	const rewrittenPath = url.pathname.replace(/^\/admin\/roles/, '') || '/';
+	// Rewrite /admin/roles → /roles (not /) so rbacAdminEndpoints routes match
+	// rbacAdminEndpoints has: router.get("/roles", ...), router.post("/roles", ...), etc.
+	const rewrittenPath = url.pathname.replace(/^\/admin/, '');
 	const rewrittenRequest = rewriteRequest(request, url.pathname, rewrittenPath);
 
 	const response = await adminRbacApp.fetch(rewrittenRequest, env, ctx);
