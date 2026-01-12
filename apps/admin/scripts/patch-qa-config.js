@@ -22,7 +22,8 @@ const config = JSON.parse(readFileSync(buildConfigPath, 'utf-8'));
 config.name = 'al-ummah-now-auth-admin-qa';
 config.vars = {
   AUTH_SERVER_URL: 'https://auth.qa.alummahnow.net',
-  APP_URL: 'https://admin.auth.qa.alummahnow.net'
+  APP_URL: 'https://admin.auth.qa.alummahnow.net',
+  ADMIN_CLIENT_ID: '2448ed27-39a6-417d-b4c8-07f881e81269'
 };
 config.kv_namespaces = [
   {
