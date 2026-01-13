@@ -127,7 +127,15 @@ async function verifyM2MAuth(
   env: Env,
   _requiredScope?: string
 ): Promise<M2MAuthResult> {
-  const issuer = env.OPENAUTH_ISSUER || 'http://localhost:3301';
+  // Derive issuer from X-Forwarded headers if present (matching how OpenAuth issues tokens)
+  // Otherwise fall back to env.OPENAUTH_ISSUER
+  let issuer = env.OPENAUTH_ISSUER || 'http://localhost:3301';
+  const forwardedHost = request.headers.get('X-Forwarded-Host');
+  const forwardedProto = request.headers.get('X-Forwarded-Proto');
+  if (forwardedHost && forwardedProto) {
+    issuer = `${forwardedProto}://${forwardedHost}`;
+    logger.debug('Using forwarded issuer for M2M verification', { issuer, forwardedHost, forwardedProto });
+  }
 
   // Extract bearer token
   const authHeader = request.headers.get('Authorization');
