@@ -266,14 +266,22 @@ export async function editUser(
     await expect(roleSelect).toBeVisible({ timeout: 5000 });
 
     // Wait for at least one option to be loaded (roles load async)
-    const roleOption = roleSelect.locator('option');
-    await expect(roleOption.first()).toBeVisible({ timeout: 10000 });
+    // Note: <option> elements are "hidden" in Playwright's visibility model until
+    // the dropdown is expanded, so we check for option count instead
+    await expect(async () => {
+      const optionCount = await roleSelect.locator('option').count();
+      expect(optionCount).toBeGreaterThan(0);
+    }).toPass({ timeout: 10000, intervals: [500, 1000, 2000] });
 
     // Capitalize first letter to match actual role names (e.g., 'member' -> 'Member')
     const normalizedRole = updates.role.charAt(0).toUpperCase() + updates.role.slice(1).toLowerCase();
 
-    // Wait for the specific role option to be available
-    await expect(roleSelect.locator(`option:has-text("${normalizedRole}")`)).toBeVisible({ timeout: 5000 });
+    // Wait for the specific role option to be available by checking it exists in DOM
+    await expect(async () => {
+      const hasOption = await roleSelect.locator(`option[value="${normalizedRole}"], option:has-text("${normalizedRole}")`).count();
+      expect(hasOption).toBeGreaterThan(0);
+    }).toPass({ timeout: 5000, intervals: [500, 1000] });
+
     await roleSelect.selectOption({ label: normalizedRole });
 
     // Small delay to ensure React state is updated

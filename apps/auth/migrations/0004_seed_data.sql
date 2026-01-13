@@ -37,6 +37,10 @@ INSERT OR IGNORE INTO oauth_clients (id, tenant_id, name, client_secret_hash, gr
 VALUES ('adea61f1-5720-44cd-9e61-18dbf3aee72e', 'default', 'WebSocket Server', NULL, '["client_credentials"]', '["openid","profile","email"]', '[]', '{"type":"m2m"}', 1, unixepoch() * 1000, unixepoch() * 1000);
 
 -- RBAC Roles for Production Environment
+-- Admin role (administrative access) - required for E2E tests and admin users
+INSERT OR IGNORE INTO rbac_roles (id, name, tenant_id, description, is_system_role, created_at, updated_at)
+VALUES ('role_admin', 'Admin', 'default', 'Administrative access', 0, unixepoch() * 1000, unixepoch() * 1000);
+
 -- Member role (basic user access)
 INSERT OR IGNORE INTO rbac_roles (id, name, tenant_id, description, is_system_role, created_at, updated_at)
 VALUES ('role_member', 'Member', 'default', 'Basic member access', 0, unixepoch() * 1000, unixepoch() * 1000);
