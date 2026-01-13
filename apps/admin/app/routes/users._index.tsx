@@ -246,7 +246,8 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         };
       }
 
-      return { success: true, userId: result.id };
+      // Include diagnostic info for E2E troubleshooting
+      return { success: true, userId: result.id, _debug: { receivedRoleIds: roleIds, assignedCount: roleIds.length } };
     }
 
     if (intent === "updateUser") {
@@ -365,7 +366,11 @@ export default function Users() {
     // Only process response when transitioning from loading/submitting to idle
     // This prevents reacting to stale fetcher.data when isSubmitting first becomes true
     if (isSubmitting && fetcher.state === "idle" && prevState !== "idle" && fetcher.data) {
-      const data = fetcher.data as { success?: boolean; error?: string; warning?: string };
+      const data = fetcher.data as { success?: boolean; error?: string; warning?: string; _debug?: { receivedRoleIds: string[]; assignedCount: number } };
+      // Debug: Log response data in browser console (visible in Playwright trace)
+      if (data._debug) {
+        console.log('[createUser] Server received roleIds:', JSON.stringify(data._debug));
+      }
       queueMicrotask(() => {
         setIsSubmitting(false);
         if (data.success) {

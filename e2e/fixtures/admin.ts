@@ -229,6 +229,17 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   const isChecked = await roleCheckbox.isChecked();
   console.log(`[createUser] Checkbox state: roleId=${checkedRoleId}, roleName=${checkedRoleName}, isChecked=${isChecked}`);
 
+  // Set up console listener to capture server response debug info
+  const consoleMessages: string[] = [];
+  const consoleHandler = (msg: { text: () => string }) => {
+    const text = msg.text();
+    if (text.includes('[createUser]')) {
+      console.log('[Browser Console]', text);
+      consoleMessages.push(text);
+    }
+  };
+  page.on('console', consoleHandler);
+
   // Submit form - use dialog-specific selector to avoid matching header button
   const submitButton = page.locator('[role="dialog"] button:has-text("Create User")');
   await expect(submitButton).toBeEnabled({ timeout: 5000 });
@@ -236,6 +247,14 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
 
   // Wait for success message or dialog to close
   await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10000 });
+
+  // Log captured console messages
+  if (consoleMessages.length > 0) {
+    console.log('[createUser] Captured browser console messages:', consoleMessages.join(' | '));
+  }
+
+  // Remove console listener
+  page.off('console', consoleHandler);
 
   // Wait for revalidation to complete - the revalidator.revalidate() call
   // triggers a fresh fetch of the user list including their roles
