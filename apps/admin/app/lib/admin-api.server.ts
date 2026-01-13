@@ -209,9 +209,16 @@ async function m2mRequest<T>(
     const authServerUrl = getAuthServerUrl(request, env);
     const url = `${authServerUrl}${endpoint}`;
 
+    // Parse auth server URL to get host for forwarded headers
+    const authUrl = new URL(authServerUrl);
+
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
+      // CRITICAL: X-Forwarded headers ensure auth server uses correct issuer for JWT verification
+      // Without these, the auth server may use Workers URL as issuer which won't match the token
+      'X-Forwarded-Host': authUrl.host,
+      'X-Forwarded-Proto': authUrl.protocol.replace(':', ''),
       // Pass acting user context for audit logging
       // NOTE: X-Acting-User-Id is REQUIRED - auth server fetches actual roles from DB
       // X-Acting-User-Email and X-Acting-User-Roles are for audit/logging only (not trusted for auth)
