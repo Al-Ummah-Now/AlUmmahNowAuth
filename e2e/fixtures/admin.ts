@@ -193,6 +193,10 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   // Wait for success message or dialog to close
   await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10000 });
 
+  // Wait for revalidation to complete - the revalidator.revalidate() call
+  // triggers a fresh fetch of the user list including their roles
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+
   // Verify user appears in list (wait for table to update)
   await expect(page.locator(`text=${user.email}`)).toBeVisible({ timeout: 10000 });
 }

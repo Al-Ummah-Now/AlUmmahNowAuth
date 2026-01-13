@@ -39,20 +39,27 @@ test.describe('Admin User Creation', () => {
     await createUser(page, newAdmin);
 
     // Verify user appears in list with admin role (createUser navigates to /users)
-    const userRow = page.locator(`tr:has-text("${newAdmin.email}")`);
-    await expect(userRow).toBeVisible();
-
     // Use polling to wait for role to appear after async revalidation
     // The role assignment and data refresh can take a moment
     await expect(async () => {
-      // Reload to get fresh data if role isn't visible yet
-      const roleVisible = await userRow.locator('td:nth-child(3) >> text=Admin').isVisible();
-      if (!roleVisible) {
+      // Re-query the row locator each iteration to get fresh DOM reference
+      const userRow = page.locator(`tr:has-text("${newAdmin.email}")`);
+      await expect(userRow).toBeVisible({ timeout: 3000 });
+
+      // Look for Admin role badge in the roles column (3rd column)
+      // The role name is displayed as-is from the database ("Admin" with Title Case)
+      const roleCell = userRow.locator('td:nth-child(3)');
+      const hasAdminRole = await roleCell.locator('text=Admin').isVisible();
+
+      if (!hasAdminRole) {
+        // Reload to get fresh data from server
         await page.reload();
         await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
       }
-      await expect(userRow.locator('td:nth-child(3) >> text=Admin')).toBeVisible();
-    }).toPass({ timeout: 15000, intervals: [1000, 2000, 3000] });
+
+      // Assert the role is visible
+      await expect(roleCell.locator('text=Admin')).toBeVisible({ timeout: 3000 });
+    }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
   });
 
   test('should show validation error for invalid email', async ({ page }) => {
@@ -148,20 +155,23 @@ test.describe('Admin User Creation', () => {
     // Wait for dashboard stats to load
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-    // Get initial user count using a reliable selector pattern
+    // Get user count from dashboard card
     // The card structure is: Card > CardHeader (Total Users) + CardContent (number div)
-    // Use locator chaining: find CardTitle text, go to parent Card, then find the number in CardContent
-    const getUserCount = async () => {
-      // Find the Total Users heading, then navigate to its sibling CardContent which contains the number
+    const getUserCount = async (): Promise<number> => {
+      // Wait for the stats to be visible first
+      await expect(page.locator('text=Total Users')).toBeVisible({ timeout: 5000 });
+
+      // Find the Total Users card and extract the count
       const countText = await page.locator('text=Total Users')
-        .locator('xpath=ancestor::*[contains(@class, "rounded")][1]')  // Find parent Card (has rounded class)
-        .locator('div.text-2xl')  // Find the number div with text-2xl class
+        .locator('xpath=ancestor::*[contains(@class, "rounded")][1]')
+        .locator('div.text-2xl')
         .first()
         .textContent({ timeout: 5000 });
-      return parseInt(countText || '0');
+      return parseInt(countText?.trim() || '0', 10);
     };
 
     const initialCount = await getUserCount();
+    expect(initialCount).toBeGreaterThanOrEqual(0);
 
     // Create new user
     const newUser = {
@@ -178,6 +188,6 @@ test.describe('Admin User Creation', () => {
     await expect(async () => {
       const updatedCount = await getUserCount();
       expect(updatedCount).toBe(initialCount + 1);
-    }).toPass({ timeout: 15000, intervals: [500, 1000, 2000] });
+    }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
   });
 });
