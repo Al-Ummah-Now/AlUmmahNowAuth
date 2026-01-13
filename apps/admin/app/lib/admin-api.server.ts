@@ -122,10 +122,17 @@ async function getAccessToken(
     throw new Error('M2M credentials not configured: ADMIN_CLIENT_ID and ADMIN_CLIENT_SECRET required');
   }
 
+  // Extract host info from auth server URL to set forwarded headers
+  // This ensures OpenAuth generates tokens with the correct issuer URL
+  // (OpenAuth's getRelativeUrl() uses x-forwarded-* headers if present)
+  const authUrl = new URL(authServerUrl);
+
   const response = await fetch(`${authServerUrl}/token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
+      'X-Forwarded-Host': authUrl.host,
+      'X-Forwarded-Proto': authUrl.protocol.replace(':', ''),
     },
     body: new URLSearchParams({
       grant_type: 'client_credentials',
