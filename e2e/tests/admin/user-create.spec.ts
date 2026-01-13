@@ -77,9 +77,10 @@ test.describe('Admin User Creation', () => {
     // Wait for roles to load, then select role using checkbox scoped to dialog
     const dialogCheckbox = page.locator('[role="dialog"] label input[type="checkbox"]');
     await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
-    // Find role by exact name match in span.text-sm, then navigate to parent label
-    const roleSpan = page.locator('[role="dialog"] span.text-sm').filter({ hasText: /^Member$/ });
-    await roleSpan.locator('xpath=ancestor::label').locator('input[type="checkbox"]').check();
+    // Find role by exact name match in span.text-sm, then navigate to parent label and click
+    const roleSpan = page.locator('[role="dialog"] label span.text-sm').filter({ hasText: /^Member$/ });
+    const roleCheckbox = roleSpan.locator('xpath=..').locator('input[type="checkbox"]');
+    await roleCheckbox.click();
 
     // Try to submit - use dialog-specific selector to avoid matching header button
     await page.locator('[role="dialog"] button:has-text("Create User")').click();
@@ -104,11 +105,12 @@ test.describe('Admin User Creation', () => {
 
     await page.fill('input[id="email"]', duplicateEmail);
     // Wait for roles to load, then select role using checkbox scoped to dialog
-    const dialogCheckbox = page.locator('[role="dialog"] label input[type="checkbox"]');
-    await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
-    // Find role by exact name match in span.text-sm, then navigate to parent label
-    const roleSpan = page.locator('[role="dialog"] span.text-sm').filter({ hasText: /^Member$/ });
-    await roleSpan.locator('xpath=ancestor::label').locator('input[type="checkbox"]').check();
+    const dialogCheckbox2 = page.locator('[role="dialog"] label input[type="checkbox"]');
+    await expect(dialogCheckbox2.first()).toBeVisible({ timeout: 10000 });
+    // Find role by exact name match in span.text-sm, then navigate to parent label and click
+    const roleSpan2 = page.locator('[role="dialog"] label span.text-sm').filter({ hasText: /^Member$/ });
+    const roleCheckbox2 = roleSpan2.locator('xpath=..').locator('input[type="checkbox"]');
+    await roleCheckbox2.click();
     await page.locator('[role="dialog"] button:has-text("Create User")').click();
 
     // Verify error message - server returns "email_already_exists" or "already registered"

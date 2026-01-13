@@ -183,23 +183,35 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   // Role names are stored in Title Case (e.g., 'Admin', 'Member')
   const roleName = user.role.charAt(0).toUpperCase() + user.role.slice(1).toLowerCase();
 
-  // Find the span with exact role name (text-sm class contains role name only)
-  // Then navigate to parent label and find the checkbox
-  // Using exact text match via regex ^name$ to avoid "Admin" matching "Super Admin"
-  const roleSpan = page.locator(`[role="dialog"] span.text-sm`).filter({ hasText: new RegExp(`^${roleName}$`) });
-  const roleCheckbox = roleSpan.locator('xpath=ancestor::label').locator('input[type="checkbox"]');
-  await expect(roleCheckbox).toBeVisible({ timeout: 5000 });
-  await roleCheckbox.check();
+  // Find the label containing the role name by looking for the span with exact text
+  // Structure: <label><input type="checkbox"/><span class="text-sm">{role.name}</span><span>- description</span></label>
+  // Use the span.text-sm to find the exact role, then go up to parent label
+  const roleNameSpan = page.locator('[role="dialog"] label span.text-sm').filter({
+    hasText: new RegExp(`^${roleName}$`)
+  });
+  await expect(roleNameSpan).toBeVisible({ timeout: 5000 });
 
-  // Verify the checkbox is actually checked before proceeding
-  await expect(roleCheckbox).toBeChecked({ timeout: 2000 });
+  // Get the checkbox that's a sibling (inside same label)
+  const roleCheckbox = roleNameSpan.locator('xpath=..').locator('input[type="checkbox"]');
+  await expect(roleCheckbox).toBeVisible({ timeout: 5000 });
+
+  // Check if already checked (avoid double-click which would uncheck)
+  const isAlreadyChecked = await roleCheckbox.isChecked();
+  if (!isAlreadyChecked) {
+    // Use click() instead of check() to properly trigger React's onChange handler
+    // Playwright's check() can bypass synthetic event handlers on controlled components
+    await roleCheckbox.click();
+  }
 
   // Wait for React state to propagate after checkbox change
-  // This ensures the selectedRoles state includes the role ID before form submission
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(100);
 
-  // Verify checkbox is still checked right before submit (React state is stable)
-  await expect(roleCheckbox).toBeChecked({ timeout: 1000 });
+  // Verify the checkbox is actually checked - this proves React state was updated
+  // since it's a controlled component (checked={selectedRoles.includes(role.id)})
+  await expect(roleCheckbox).toBeChecked({ timeout: 5000 });
+
+  // Additional wait to ensure form state is stable before submit
+  await page.waitForTimeout(200);
 
   // Submit form - use dialog-specific selector to avoid matching header button
   const submitButton = page.locator('[role="dialog"] button:has-text("Create User")');
