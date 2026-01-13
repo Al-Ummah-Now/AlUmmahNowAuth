@@ -15,6 +15,7 @@ import type { Context, Next } from 'hono';
 import { TenantService } from '../services/tenant.service';
 import type { TenantContext } from '../types/tenant';
 import type { AccountSession } from '../types/sessions';
+import { validateHost, logSuspiciousHost } from '../utils/host-validation';
 
 type TenantMiddlewareContext = Context<{
   Bindings: Env;
@@ -54,15 +55,46 @@ function extractSubdomain(host: string): string | null {
  */
 export async function resolveTenant(c: TenantMiddlewareContext, next: Next): Promise<void> {
   const tenantService = new TenantService(c.env.AUTH_DB);
+  const isDevelopment = c.env.ENVIRONMENT === 'development';
 
   let tenant: TenantContext['tenant'] | null = null;
 
+  // Get and validate Host header
+  const rawHost = c.req.header('Host') || '';
+  const hostValidation = validateHost(rawHost, isDevelopment);
+
+  // Log invalid host headers (potential attack or misconfiguration)
+  if (!hostValidation.isValid) {
+    logSuspiciousHost(rawHost, hostValidation.reason || 'Invalid format', {
+      method: c.req.method,
+      path: c.req.path,
+      userAgent: c.req.header('User-Agent'),
+      ip: c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For'),
+    });
+    // Fall through to default tenant - don't reject request
+    // DB lookup provides primary protection
+  }
+
+  const host = hostValidation.normalizedHost;
+
+  // Log unknown host patterns for monitoring (but still allow them)
+  // This helps identify legitimate new domains or potential attacks
+  if (hostValidation.isValid && !hostValidation.isKnownPattern && host) {
+    logSuspiciousHost(host, 'Unknown domain pattern - not in allowlist', {
+      method: c.req.method,
+      path: c.req.path,
+      userAgent: c.req.header('User-Agent'),
+      ip: c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For'),
+    });
+  }
+
   // Try to resolve from custom domain
-  const host = c.req.header('Host') || '';
-  tenant = await tenantService.resolveTenantByDomain(host);
+  if (host) {
+    tenant = await tenantService.resolveTenantByDomain(host);
+  }
 
   // Try to resolve from subdomain
-  if (!tenant) {
+  if (!tenant && host) {
     const subdomain = extractSubdomain(host);
     if (subdomain && subdomain !== 'auth' && subdomain !== 'www') {
       tenant = await tenantService.resolveTenantBySlug(subdomain);
@@ -70,7 +102,7 @@ export async function resolveTenant(c: TenantMiddlewareContext, next: Next): Pro
   }
 
   // Try to resolve from query parameter (for testing in development)
-  if (!tenant && c.env.ENVIRONMENT === 'development') {
+  if (!tenant && isDevelopment) {
     const tenantSlug = c.req.query('tenant');
     if (tenantSlug) {
       tenant = await tenantService.resolveTenantBySlug(tenantSlug);

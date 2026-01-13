@@ -15,11 +15,45 @@
  */
 
 import { Hono } from 'hono';
+import * as v from 'valibot';
 import { revokeSessionTokens, revokeUserTokens } from '../custom/token-revocation';
 import { requireAdmin, requirePermission } from '../middleware/admin-auth';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventType, AuditEventSeverity } from '../audit-events';
 import { rateLimit } from '../middleware/rate-limit';
+
+// ============================================================================
+// Validation Schemas
+// ============================================================================
+
+/**
+ * Schema for validating session list query parameters
+ * - limit: 1-100, defaults to 50
+ * - offset: non-negative integer, defaults to 0
+ * - ip_address: valid IPv4 or IPv6 format if provided
+ * - user_id: valid UUID format if provided
+ */
+const SessionListQuerySchema = v.object({
+	limit: v.optional(
+		v.pipe(
+			v.string(),
+			v.transform((s) => parseInt(s, 10)),
+			v.integer('Limit must be an integer'),
+			v.minValue(1, 'Limit must be at least 1'),
+			v.maxValue(100, 'Limit cannot exceed 100')
+		)
+	),
+	offset: v.optional(
+		v.pipe(
+			v.string(),
+			v.transform((s) => parseInt(s, 10)),
+			v.integer('Offset must be an integer'),
+			v.minValue(0, 'Offset cannot be negative')
+		)
+	),
+	ip_address: v.optional(v.pipe(v.string(), v.ip('Invalid IP address format'))),
+	user_id: v.optional(v.pipe(v.string(), v.uuid('Invalid user ID format'))),
+});
 
 // Define Hono app with admin variables
 type AdminVariables = {
@@ -384,10 +418,43 @@ adminSessionRoutes.get(
 	requirePermission('users:read'),
 	async (c) => {
 		const tenantId = c.get('tenantId');
-		const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100);
-		const offset = parseInt(c.req.query('offset') || '0');
-		const ipAddress = c.req.query('ip_address');
-		const queryUserId = c.req.query('user_id');
+
+		// Validate query parameters
+		const queryParams = {
+			limit: c.req.query('limit'),
+			offset: c.req.query('offset'),
+			ip_address: c.req.query('ip_address'),
+			user_id: c.req.query('user_id'),
+		};
+
+		// Filter out undefined values before validation
+		const filteredParams = Object.fromEntries(
+			Object.entries(queryParams).filter(([, v]) => v !== undefined)
+		);
+
+		let validatedParams: v.InferOutput<typeof SessionListQuerySchema>;
+		try {
+			validatedParams = v.parse(SessionListQuerySchema, filteredParams);
+		} catch (error) {
+			if (error instanceof v.ValiError) {
+				return c.json(
+					{
+						error: 'Invalid query parameters',
+						details: error.issues.map((issue) => ({
+							field: issue.path?.map((p: { key: string | number }) => p.key).join('.') || 'unknown',
+							message: issue.message,
+						})),
+					},
+					400
+				);
+			}
+			throw error;
+		}
+
+		const limit = validatedParams.limit ?? 50;
+		const offset = validatedParams.offset ?? 0;
+		const ipAddress = validatedParams.ip_address;
+		const queryUserId = validatedParams.user_id;
 
 		const whereConditions = ['b.tenant_id = ?', 'a.is_active = 1'];
 		const bindings: (string | number)[] = [tenantId];

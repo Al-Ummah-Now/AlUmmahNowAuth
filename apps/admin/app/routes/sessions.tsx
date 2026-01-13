@@ -1,5 +1,6 @@
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher } from "react-router";
+import * as v from "valibot";
 import {
   Users,
   Monitor,
@@ -40,6 +41,37 @@ import {
   type SuspiciousActivity,
 } from "../lib/admin-api.server";
 import { useState } from "react";
+
+// ============================================================================
+// Validation Schemas
+// ============================================================================
+
+/**
+ * Schema for validating session list query parameters
+ * - limit: 1-100, defaults to 50
+ * - offset: non-negative integer, defaults to 0
+ * - user_id: valid UUID format if provided
+ */
+const SessionQuerySchema = v.object({
+  limit: v.optional(
+    v.pipe(
+      v.string(),
+      v.transform((s) => parseInt(s, 10)),
+      v.integer("Limit must be an integer"),
+      v.minValue(1, "Limit must be at least 1"),
+      v.maxValue(100, "Limit cannot exceed 100")
+    )
+  ),
+  offset: v.optional(
+    v.pipe(
+      v.string(),
+      v.transform((s) => parseInt(s, 10)),
+      v.integer("Offset must be an integer"),
+      v.minValue(0, "Offset cannot be negative")
+    )
+  ),
+  user_id: v.optional(v.pipe(v.string(), v.uuid("Invalid user ID format"))),
+});
 
 export const meta: MetaFunction = () => {
   return [
@@ -88,11 +120,52 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     roles: user.roles || [],
   };
 
-  // Parse URL params for filtering
+  // Parse and validate URL params for filtering
   const url = new URL(request.url);
-  const limit = parseInt(url.searchParams.get('limit') || '50');
-  const offset = parseInt(url.searchParams.get('offset') || '0');
-  const userId = url.searchParams.get('user_id') || undefined;
+  const queryParams: Record<string, string> = {};
+  
+  const limitParam = url.searchParams.get('limit');
+  const offsetParam = url.searchParams.get('offset');
+  const userIdParam = url.searchParams.get('user_id');
+  
+  if (limitParam) queryParams.limit = limitParam;
+  if (offsetParam) queryParams.offset = offsetParam;
+  if (userIdParam) queryParams.user_id = userIdParam;
+
+  let validatedParams: v.InferOutput<typeof SessionQuerySchema>;
+  try {
+    validatedParams = v.parse(SessionQuerySchema, queryParams);
+  } catch (error) {
+    if (error instanceof v.ValiError) {
+      const errorDetails = error.issues.map((issue) => ({
+        field: issue.path?.map((p: { key: string | number }) => p.key).join('.') || 'unknown',
+        message: issue.message,
+      }));
+      logger.warn('Invalid session query parameters', { errors: errorDetails });
+      return {
+        sessions: [],
+        stats: {
+          totalSessions: 0,
+          activeSessions: 0,
+          loginsLast24h: 0,
+          uniqueUsers: 0,
+        },
+        suspicious: {
+          multipleIPsInShortTime: [],
+          failedThenSuccessfulLogins: [],
+        },
+        total: 0,
+        error: `Invalid query parameters: ${errorDetails.map(e => `${e.field}: ${e.message}`).join(', ')}`,
+        user: { id: user.id, email: user.email },
+        authServerUrl,
+      };
+    }
+    throw error;
+  }
+
+  const limit = validatedParams.limit ?? 50;
+  const offset = validatedParams.offset ?? 0;
+  const userId = validatedParams.user_id;
 
   // Fetch data in parallel
   const [sessionsResult, statsResult, suspiciousResult] = await Promise.all([
