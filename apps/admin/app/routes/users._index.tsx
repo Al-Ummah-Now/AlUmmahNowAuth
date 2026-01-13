@@ -560,7 +560,7 @@ export default function Users() {
                     Create User
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent data-testid="create-user-dialog" data-selected-roles={JSON.stringify(selectedRoles)}>
                   <DialogHeader>
                     <DialogTitle>Create New User</DialogTitle>
                     <DialogDescription>
@@ -597,11 +597,13 @@ export default function Users() {
                     )}
                     <div className="grid gap-2">
                       <Label htmlFor="roles">Initial Roles</Label>
-                      <div className="space-y-2">
+                      <div className="space-y-2" data-testid="roles-list" data-available-roles={JSON.stringify(allRoles.map(r => ({ id: r.id, name: r.name })))}>
                         {allRoles.map((role) => (
                           <label key={role.id} className="flex items-center gap-2 cursor-pointer">
                             <input
                               type="checkbox"
+                              data-role-id={role.id}
+                              data-role-name={role.name}
                               checked={selectedRoles.includes(role.id)}
                               onChange={(e) => {
                                 console.log('[RoleCheckbox] Toggle role:', role.id, role.name, 'checked:', e.target.checked, 'current selectedRoles:', selectedRoles);

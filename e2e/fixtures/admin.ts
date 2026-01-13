@@ -179,6 +179,11 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   const dialogCheckbox = page.locator('[role="dialog"] label input[type="checkbox"]');
   await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
 
+  // Debug: Log available roles from data attribute
+  const rolesList = page.locator('[data-testid="roles-list"]');
+  const availableRolesAttr = await rolesList.getAttribute('data-available-roles');
+  console.log('[createUser] Available roles in dialog:', availableRolesAttr);
+
   // Select role using checkbox - find by exact role name in span
   // Role names are stored in Title Case (e.g., 'Admin', 'Member')
   const roleName = user.role.charAt(0).toUpperCase() + user.role.slice(1).toLowerCase();
@@ -212,6 +217,17 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
 
   // Additional wait to ensure form state is stable before submit
   await page.waitForTimeout(200);
+
+  // Debug: Log selected roles from dialog's data attribute before submission
+  const dialogContent = page.locator('[data-testid="create-user-dialog"]');
+  const selectedRolesAttr = await dialogContent.getAttribute('data-selected-roles');
+  console.log('[createUser] Selected roles before submit:', selectedRolesAttr);
+
+  // Also log the checkbox state we're about to verify
+  const checkedRoleId = await roleCheckbox.getAttribute('data-role-id');
+  const checkedRoleName = await roleCheckbox.getAttribute('data-role-name');
+  const isChecked = await roleCheckbox.isChecked();
+  console.log(`[createUser] Checkbox state: roleId=${checkedRoleId}, roleName=${checkedRoleName}, isChecked=${isChecked}`);
 
   // Submit form - use dialog-specific selector to avoid matching header button
   const submitButton = page.locator('[role="dialog"] button:has-text("Create User")');
