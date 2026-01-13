@@ -588,7 +588,6 @@ export class AdminEnterpriseRoutes {
       }
 
       // Revoke all active tokens
-      // Note: OpenAuth schema doesn't have revoked_reason column
       await this.db.prepare(`
         UPDATE refresh_tokens
         SET revoked = 1, revoked_at = ?

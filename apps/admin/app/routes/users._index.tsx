@@ -203,9 +203,6 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       const email = formData.get("email") as string;
       const roleIds = formData.getAll("roleId") as string[];
 
-      // Debug: Log incoming role IDs for E2E troubleshooting
-      console.log('[createUser] Received roleIds:', JSON.stringify(roleIds), 'for email:', email);
-
       if (!email) {
         return { error: "Email is required" };
       }
@@ -221,19 +218,14 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: result.error };
       }
 
-      console.log('[createUser] User created with ID:', result.id, '- now assigning', roleIds.length, 'roles');
-
       // Assign all selected roles after user creation
       const roleAssignmentErrors: string[] = [];
       for (const roleId of roleIds) {
-        console.log('[createUser] Assigning role:', roleId, 'to user:', result.id);
         const roleResult = await assignUserRole(env, actingUser, result.id, roleId);
         if (isErrorResponse(roleResult)) {
           const errorMsg = `Failed to assign role ${roleId}: ${roleResult.error}`;
           console.error('[createUser] Role assignment failed:', errorMsg);
           roleAssignmentErrors.push(errorMsg);
-        } else {
-          console.log('[createUser] Role assigned successfully:', roleId);
         }
       }
 
@@ -246,8 +238,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         };
       }
 
-      // Include diagnostic info for E2E troubleshooting
-      return { success: true, userId: result.id, _debug: { receivedRoleIds: roleIds, assignedCount: roleIds.length } };
+      return { success: true, userId: result.id };
     }
 
     if (intent === "updateUser") {
@@ -366,11 +357,7 @@ export default function Users() {
     // Only process response when transitioning from loading/submitting to idle
     // This prevents reacting to stale fetcher.data when isSubmitting first becomes true
     if (isSubmitting && fetcher.state === "idle" && prevState !== "idle" && fetcher.data) {
-      const data = fetcher.data as { success?: boolean; error?: string; warning?: string; _debug?: { receivedRoleIds: string[]; assignedCount: number } };
-      // Debug: Log response data in browser console (visible in Playwright trace)
-      if (data._debug) {
-        console.log('[createUser] Server received roleIds:', JSON.stringify(data._debug));
-      }
+      const data = fetcher.data as { success?: boolean; error?: string; warning?: string };
       queueMicrotask(() => {
         setIsSubmitting(false);
         if (data.success) {
@@ -463,9 +450,6 @@ export default function Users() {
     }
     setEmailError(null);
     setServerError(null);
-
-    // Debug: Log selected roles at submission time
-    console.log('[handleCreateUser] Submitting with selectedRoles:', JSON.stringify(selectedRoles), 'for email:', newUserEmail);
 
     // Submit form data for createUser action
     const formData = new FormData();
@@ -611,7 +595,6 @@ export default function Users() {
                               data-role-name={role.name}
                               checked={selectedRoles.includes(role.id)}
                               onChange={(e) => {
-                                console.log('[RoleCheckbox] Toggle role:', role.id, role.name, 'checked:', e.target.checked, 'current selectedRoles:', selectedRoles);
                                 if (e.target.checked) {
                                   setSelectedRoles([...selectedRoles, role.id]);
                                 } else {
