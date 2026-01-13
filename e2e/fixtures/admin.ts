@@ -314,10 +314,30 @@ export async function deleteUser(page: Page, email: string): Promise<void> {
   await expect(dialog).toBeVisible({ timeout: 5000 });
   const confirmBtn = dialog.locator('button:has-text("Confirm")');
   await expect(confirmBtn).toBeVisible({ timeout: 5000 });
-  await confirmBtn.click();
 
-  // Wait for dialog to close (indicates delete request was submitted)
+  // Click confirm and wait for the form submission to complete
+  // The dialog closes immediately when clicked, but fetcher.submit is async
+  // We need to wait for the actual delete request to be processed
+  const [response] = await Promise.all([
+    // Wait for the form action response (POST to /users with intent=deleteUser)
+    page.waitForResponse(
+      (resp) => resp.url().includes('/users') && resp.request().method() === 'POST',
+      { timeout: 15000 }
+    ),
+    // Click the confirm button
+    confirmBtn.click(),
+  ]);
+
+  // Verify the response was successful (2xx status)
+  if (!response.ok()) {
+    console.error(`Delete request failed with status ${response.status()}`);
+  }
+
+  // Wait for dialog to close
   await expect(dialog).toBeHidden({ timeout: 10000 });
+
+  // Wait a moment for the server to process the delete
+  await page.waitForTimeout(500);
 
   // Reload page to get fresh data (fetcher.submit doesn't auto-revalidate)
   await page.reload();
