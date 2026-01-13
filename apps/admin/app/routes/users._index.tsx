@@ -203,6 +203,9 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       const email = formData.get("email") as string;
       const roleIds = formData.getAll("roleId") as string[];
 
+      // Debug: Log incoming role IDs for E2E troubleshooting
+      console.log('[createUser] Received roleIds:', JSON.stringify(roleIds), 'for email:', email);
+
       if (!email) {
         return { error: "Email is required" };
       }
@@ -218,14 +221,19 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: result.error };
       }
 
+      console.log('[createUser] User created with ID:', result.id, '- now assigning', roleIds.length, 'roles');
+
       // Assign all selected roles after user creation
       const roleAssignmentErrors: string[] = [];
       for (const roleId of roleIds) {
+        console.log('[createUser] Assigning role:', roleId, 'to user:', result.id);
         const roleResult = await assignUserRole(env, actingUser, result.id, roleId);
         if (isErrorResponse(roleResult)) {
           const errorMsg = `Failed to assign role ${roleId}: ${roleResult.error}`;
-          console.error(errorMsg);
+          console.error('[createUser] Role assignment failed:', errorMsg);
           roleAssignmentErrors.push(errorMsg);
+        } else {
+          console.log('[createUser] Role assigned successfully:', roleId);
         }
       }
 
@@ -451,6 +459,9 @@ export default function Users() {
     setEmailError(null);
     setServerError(null);
 
+    // Debug: Log selected roles at submission time
+    console.log('[handleCreateUser] Submitting with selectedRoles:', JSON.stringify(selectedRoles), 'for email:', newUserEmail);
+
     // Submit form data for createUser action
     const formData = new FormData();
     formData.append("intent", "createUser");
@@ -593,6 +604,7 @@ export default function Users() {
                               type="checkbox"
                               checked={selectedRoles.includes(role.id)}
                               onChange={(e) => {
+                                console.log('[RoleCheckbox] Toggle role:', role.id, role.name, 'checked:', e.target.checked, 'current selectedRoles:', selectedRoles);
                                 if (e.target.checked) {
                                   setSelectedRoles([...selectedRoles, role.id]);
                                 } else {
