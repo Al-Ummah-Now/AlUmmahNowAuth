@@ -339,6 +339,7 @@ export default function Users() {
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [serverWarning, setServerWarning] = useState<string | null>(null);
   const [editServerError, setEditServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
@@ -360,18 +361,32 @@ export default function Users() {
       queueMicrotask(() => {
         setIsSubmitting(false);
         if (data.success) {
-          // Log warning if role assignment had issues (helps debug E2E test failures)
+          // Check if there's a warning about role assignment
           if (data.warning) {
+            // Show warning in UI and keep dialog open briefly so E2E tests can see it
             console.error('[createUser] Warning:', data.warning);
+            setServerWarning(data.warning);
+            // Still close dialog after a moment - user was created successfully
+            setTimeout(() => {
+              setCreateDialogOpen(false);
+              setNewUserEmail("");
+              setSelectedRoles([]);
+              setEmailError(null);
+              setServerError(null);
+              setServerWarning(null);
+              revalidator.revalidate();
+            }, 2000);
+          } else {
+            // Success with no warnings - close dialog and reset form
+            setCreateDialogOpen(false);
+            setNewUserEmail("");
+            setSelectedRoles([]);
+            setEmailError(null);
+            setServerError(null);
+            setServerWarning(null);
+            // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
+            revalidator.revalidate();
           }
-          // Success - close dialog and reset form
-          setCreateDialogOpen(false);
-          setNewUserEmail("");
-          setSelectedRoles([]);
-          setEmailError(null);
-          setServerError(null);
-          // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
-          revalidator.revalidate();
         } else if (data.error) {
           // Server error - show error in dialog
           setServerError(data.error);
@@ -564,6 +579,11 @@ export default function Users() {
                         {serverError}
                       </div>
                     )}
+                    {serverWarning && (
+                      <div className="p-3 text-sm text-yellow-700 bg-yellow-50 rounded-md" role="alert" data-testid="role-assignment-warning">
+                        ⚠️ {serverWarning}
+                      </div>
+                    )}
                     <div className="grid gap-2">
                       <Label htmlFor="roles">Initial Roles</Label>
                       <div className="space-y-2">
@@ -597,6 +617,7 @@ export default function Users() {
                       setCreateDialogOpen(false);
                       setEmailError(null);
                       setServerError(null);
+                      setServerWarning(null);
                       setNewUserEmail("");
                       setSelectedRoles([]);
                     }}>
