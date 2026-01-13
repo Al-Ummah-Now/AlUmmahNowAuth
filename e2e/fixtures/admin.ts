@@ -179,13 +179,23 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   const dialogCheckbox = page.locator('[role="dialog"] label input[type="checkbox"]');
   await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
 
-  // Select role using checkbox (new UI uses checkboxes instead of select dropdown)
-  // Match role name at START of label text, before the description dash
-  // Labels include description, e.g., "Member - Standard member with basic access"
-  // Using ^${role}\\s*- to ensure exact role match (e.g., "Admin" doesn't match "Super Admin")
-  const roleCheckbox = page.locator('[role="dialog"] label').filter({ hasText: new RegExp(`^${user.role}\\s*-`, 'i') }).locator('input[type="checkbox"]');
+  // Select role using checkbox - find by exact role name in span
+  // Role names are stored in Title Case (e.g., 'Admin', 'Member')
+  const roleName = user.role.charAt(0).toUpperCase() + user.role.slice(1).toLowerCase();
+
+  // Find the span with exact role name (text-sm class contains role name only)
+  // Then navigate to parent label and find the checkbox
+  // Using exact text match via regex ^name$ to avoid "Admin" matching "Super Admin"
+  const roleSpan = page.locator(`[role="dialog"] span.text-sm`).filter({ hasText: new RegExp(`^${roleName}$`) });
+  const roleCheckbox = roleSpan.locator('xpath=ancestor::label').locator('input[type="checkbox"]');
   await expect(roleCheckbox).toBeVisible({ timeout: 5000 });
   await roleCheckbox.check();
+
+  // Verify the checkbox is actually checked before proceeding
+  await expect(roleCheckbox).toBeChecked({ timeout: 2000 });
+
+  // Small delay to ensure React state is updated before submitting
+  await page.waitForTimeout(100);
 
   // Submit form - use dialog-specific selector to avoid matching header button
   await page.locator('[role="dialog"] button:has-text("Create User")').click();

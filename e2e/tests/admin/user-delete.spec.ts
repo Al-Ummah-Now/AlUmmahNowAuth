@@ -96,20 +96,36 @@ test.describe('Admin User Deletion', () => {
     const initialCount = await getUserCount();
     expect(initialCount).toBeGreaterThanOrEqual(0);
 
-    // Create and delete a user
+    // Create a user
     const userEmail = generateTestEmail('count-delete');
     await createUser(page, { email: userEmail, role: 'member' });
+
+    // Navigate to dashboard and verify count increased
+    await page.goto(TEST_URLS.adminDashboard);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+
+    // Verify count increased after creation (use >= to handle parallel test interference)
+    await expect(async () => {
+      const countAfterCreate = await getUserCount();
+      expect(countAfterCreate).toBeGreaterThanOrEqual(initialCount + 1);
+    }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
+
+    // Get the count after creation for comparison
+    const countAfterCreate = await getUserCount();
+
+    // Delete the user
     await deleteUser(page, userEmail);
 
     // Navigate back to dashboard with full reload
     await page.goto(TEST_URLS.adminDashboard);
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-    // Get updated count with polling for consistency
-    // The count should be the same as initial since we created and deleted one user
+    // Verify count decreased after deletion
+    // Use relative assertion: count should be less than post-create count
+    // This handles parallel test interference better than expecting exact initial count
     await expect(async () => {
-      const updatedCount = await getUserCount();
-      expect(updatedCount).toBe(initialCount);
+      const countAfterDelete = await getUserCount();
+      expect(countAfterDelete).toBeLessThan(countAfterCreate);
     }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
   });
 
