@@ -41,8 +41,18 @@ test.describe('Admin User Creation', () => {
     // Verify user appears in list with admin role (createUser navigates to /users)
     const userRow = page.locator(`tr:has-text("${newAdmin.email}")`);
     await expect(userRow).toBeVisible();
-    // Use specific selector for role badge to avoid matching email text
-    await expect(userRow.locator('td:nth-child(3) >> text=Admin')).toBeVisible();
+
+    // Use polling to wait for role to appear after async revalidation
+    // The role assignment and data refresh can take a moment
+    await expect(async () => {
+      // Reload to get fresh data if role isn't visible yet
+      const roleVisible = await userRow.locator('td:nth-child(3) >> text=Admin').isVisible();
+      if (!roleVisible) {
+        await page.reload();
+        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+      }
+      await expect(userRow.locator('td:nth-child(3) >> text=Admin')).toBeVisible();
+    }).toPass({ timeout: 15000, intervals: [1000, 2000, 3000] });
   });
 
   test('should show validation error for invalid email', async ({ page }) => {

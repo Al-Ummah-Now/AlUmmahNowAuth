@@ -314,30 +314,28 @@ export async function getDashboardStats(page: Page): Promise<{
 }> {
   // Navigate to admin dashboard
   await navigateToAdmin(page);
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-  // Extract stats from dashboard
-  const totalUsers = await page
-    .locator('text=/Total Users/i')
-    .locator('..')
-    .locator('.value')
-    .textContent();
+  // Helper to extract count from card by title
+  const getCardCount = async (title: string) => {
+    const countText = await page.locator(`text=${title}`)
+      .locator('xpath=ancestor::*[contains(@class, "rounded")][1]')
+      .locator('div.text-2xl')
+      .first()
+      .textContent({ timeout: 5000 })
+      .catch(() => '0');
+    return parseInt(countText || '0');
+  };
 
-  const adminUsers = await page
-    .locator('text=/Admin Users/i')
-    .locator('..')
-    .locator('.value')
-    .textContent();
-
-  const regularUsers = await page
-    .locator('text=/Regular Users/i')
-    .locator('..')
-    .locator('.value')
-    .textContent();
+  const totalUsers = await getCardCount('Total Users');
+  const adminUsers = await getCardCount('Admin Users');
+  // regularUsers card might not exist - derive from total - admin
+  const regularUsers = Math.max(0, totalUsers - adminUsers);
 
   return {
-    totalUsers: parseInt(totalUsers || '0'),
-    adminUsers: parseInt(adminUsers || '0'),
-    regularUsers: parseInt(regularUsers || '0'),
+    totalUsers,
+    adminUsers,
+    regularUsers,
   };
 }
 

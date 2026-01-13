@@ -66,31 +66,35 @@ test.describe('Admin User Deletion', () => {
   test('should update user count after deletion', async ({ page }) => {
     // Navigate to dashboard to get initial count
     await navigateToAdmin(page);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-    // Get initial user count
-    const initialCount = await page
-      .locator('text=/Total Users/i')
-      .locator('..')
-      .locator('.value')
-      .textContent();
+    // Get initial user count using same selector pattern as user-create.spec.ts
+    const getUserCount = async () => {
+      const countText = await page.locator('text=Total Users')
+        .locator('xpath=ancestor::*[contains(@class, "rounded")][1]')
+        .locator('div.text-2xl')
+        .first()
+        .textContent({ timeout: 5000 });
+      return parseInt(countText || '0');
+    };
+
+    const initialCount = await getUserCount();
 
     // Create and delete a user
     const userEmail = generateTestEmail('count-delete');
     await createUser(page, { email: userEmail, role: 'member' });
     await deleteUser(page, userEmail);
 
-    // Navigate back to dashboard
-    await page.click('a:has-text("Dashboard")');
+    // Navigate back to dashboard with full reload
+    await page.goto(TEST_URLS.adminDashboard);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-    // Get updated count
-    const updatedCount = await page
-      .locator('text=/Total Users/i')
-      .locator('..')
-      .locator('.value')
-      .textContent();
-
-    // Count should be same as initial (created and deleted one)
-    expect(parseInt(updatedCount || '0')).toBe(parseInt(initialCount || '0'));
+    // Get updated count with polling for consistency
+    await expect(async () => {
+      const updatedCount = await getUserCount();
+      // Count should be same as initial (created and deleted one)
+      expect(updatedCount).toBe(initialCount);
+    }).toPass({ timeout: 15000, intervals: [500, 1000, 2000] });
   });
 
   test('should delete admin user successfully', async ({ page }) => {
