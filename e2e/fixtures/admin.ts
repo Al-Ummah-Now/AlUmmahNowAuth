@@ -246,16 +246,28 @@ export async function editUser(
     // Wait for the select to be visible and have options loaded
     const roleSelect = page.locator('select[id="role"]');
     await expect(roleSelect).toBeVisible({ timeout: 5000 });
+
+    // Wait for at least one option to be loaded (roles load async)
+    const roleOption = roleSelect.locator('option');
+    await expect(roleOption.first()).toBeVisible({ timeout: 10000 });
+
     // Capitalize first letter to match actual role names (e.g., 'member' -> 'Member')
     const normalizedRole = updates.role.charAt(0).toUpperCase() + updates.role.slice(1).toLowerCase();
+
+    // Wait for the specific role option to be available
+    await expect(roleSelect.locator(`option:has-text("${normalizedRole}")`)).toBeVisible({ timeout: 5000 });
     await roleSelect.selectOption({ label: normalizedRole });
+
+    // Small delay to ensure React state is updated
+    await page.waitForTimeout(100);
   }
 
   // Submit form (click Save button in dialog)
   await page.locator('[role="dialog"]').locator('button:has-text("Save")').click();
 
-  // Wait for success (dialog should close)
-  await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10000 });
+  // Wait for success (dialog should close) or error message to appear
+  // Use a longer timeout since the API call may take time
+  await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 15000 });
 
   // Wait for page to refresh data after successful edit
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});

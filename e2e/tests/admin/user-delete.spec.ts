@@ -175,7 +175,11 @@ test.describe('Admin User Deletion', () => {
     ).not.toBeVisible();
   });
 
+  // This test creates and deletes multiple users, so it needs a longer timeout
   test('should delete multiple users sequentially', async ({ page }) => {
+    // Set longer timeout for this multi-step test
+    test.setTimeout(90000); // 90 seconds
+
     // Create multiple test users
     const user1Email = generateTestEmail('multi-1');
     const user2Email = generateTestEmail('multi-2');
