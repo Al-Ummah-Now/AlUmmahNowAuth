@@ -116,12 +116,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     // Fetch all roles for the role manager (using M2M auth)
     const rolesResponse = await listRoles(env, actingUser, request);
-    console.log("[users._index] listRoles response:", JSON.stringify(rolesResponse, null, 2));
+    console.debug("[users._index] listRoles response:", JSON.stringify(rolesResponse, null, 2));
     if (isErrorResponse(rolesResponse)) {
       console.error("Error fetching roles for user management:", rolesResponse.error);
     }
     const allRoles: Role[] = isErrorResponse(rolesResponse) ? [] : rolesResponse;
-    console.log("[users._index] Final allRoles count:", allRoles.length);
+    console.debug("[users._index] Final allRoles count:", allRoles.length);
 
     return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl };
   } catch (error) {
@@ -336,6 +336,7 @@ export default function Users() {
   const prevFetcherStateForEditRef = useRef<string>(fetcher.state);
 
   // Handle fetcher response for create user
+  // Use queueMicrotask to avoid synchronous setState in effect body
   useEffect(() => {
     const prevState = prevFetcherStateForCreateRef.current;
     prevFetcherStateForCreateRef.current = fetcher.state;
@@ -343,55 +344,60 @@ export default function Users() {
     // Only process response when transitioning from loading/submitting to idle
     // This prevents reacting to stale fetcher.data when isSubmitting first becomes true
     if (isSubmitting && fetcher.state === "idle" && prevState !== "idle" && fetcher.data) {
-      setIsSubmitting(false);
       const data = fetcher.data as { success?: boolean; error?: string };
-      if (data.success) {
-        // Success - close dialog and reset form
-        setCreateDialogOpen(false);
-        setNewUserEmail("");
-        setSelectedRoles([]);
-        setEmailError(null);
-        setServerError(null);
-        // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
-        revalidator.revalidate();
-      } else if (data.error) {
-        // Server error - show error in dialog
-        setServerError(data.error);
-      }
+      queueMicrotask(() => {
+        setIsSubmitting(false);
+        if (data.success) {
+          // Success - close dialog and reset form
+          setCreateDialogOpen(false);
+          setNewUserEmail("");
+          setSelectedRoles([]);
+          setEmailError(null);
+          setServerError(null);
+          // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
+          revalidator.revalidate();
+        } else if (data.error) {
+          // Server error - show error in dialog
+          setServerError(data.error);
+        }
+      });
     }
   }, [fetcher.state, fetcher.data, isSubmitting, revalidator]);
 
   // Handle fetcher response for edit user
+  // Use queueMicrotask to avoid synchronous setState in effect body
   useEffect(() => {
     const prevState = prevFetcherStateForEditRef.current;
     prevFetcherStateForEditRef.current = fetcher.state;
 
     // Only process response when transitioning from loading/submitting to idle
     if (isEditSubmitting && fetcher.state === "idle" && prevState !== "idle") {
-      setIsEditSubmitting(false);
       const data = fetcher.data as { success?: boolean; error?: string } | undefined;
-      if (data?.success) {
-        // Success - close dialog and reset form
-        setEditDialogOpen(false);
-        setEditingUser(null);
-        setEditEmail("");
-        setEditRole("");
-        setEditServerError(null);
-        // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
-        revalidator.revalidate();
-      } else if (data?.error) {
-        // Server error - show error in dialog
-        setEditServerError(data.error);
-      } else {
-        // No explicit success/error but operation completed - assume success
-        setEditDialogOpen(false);
-        setEditingUser(null);
-        setEditEmail("");
-        setEditRole("");
-        setEditServerError(null);
-        // Revalidate to fetch fresh data
-        revalidator.revalidate();
-      }
+      queueMicrotask(() => {
+        setIsEditSubmitting(false);
+        if (data?.success) {
+          // Success - close dialog and reset form
+          setEditDialogOpen(false);
+          setEditingUser(null);
+          setEditEmail("");
+          setEditRole("");
+          setEditServerError(null);
+          // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
+          revalidator.revalidate();
+        } else if (data?.error) {
+          // Server error - show error in dialog
+          setEditServerError(data.error);
+        } else {
+          // No explicit success/error but operation completed - assume success
+          setEditDialogOpen(false);
+          setEditingUser(null);
+          setEditEmail("");
+          setEditRole("");
+          setEditServerError(null);
+          // Revalidate to fetch fresh data
+          revalidator.revalidate();
+        }
+      });
     }
   }, [fetcher.state, fetcher.data, isEditSubmitting, revalidator]);
 

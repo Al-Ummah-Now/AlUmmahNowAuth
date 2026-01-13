@@ -393,7 +393,7 @@ export async function listRoles(
     request
   );
 
-  console.log('[listRoles] Raw API response:', JSON.stringify(response, null, 2));
+  console.debug('[listRoles] Raw API response:', JSON.stringify(response, null, 2));
 
   // If error response, return as-is
   if (isErrorResponse(response)) {
@@ -402,7 +402,7 @@ export async function listRoles(
   }
 
   const roles = response.roles || [];
-  console.log('[listRoles] Extracted roles count:', roles.length);
+  console.debug('[listRoles] Extracted roles count:', roles.length);
 
   // Unwrap the roles array from the response
   return roles;
@@ -771,8 +771,8 @@ export async function getUserStats(
  * For now, this returns placeholder data.
  */
 export async function getRoleStats(
-  env: ApiEnv,
-  actingUser: ActingUser
+  _env: ApiEnv,
+  _actingUser: ActingUser
 ): Promise<RoleStats | ErrorResponse> {
   // TODO: Implement /admin/stats/roles endpoint on auth server
   return {

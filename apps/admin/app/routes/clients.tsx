@@ -17,12 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "../components/ui/select";
 import { requireAuth } from "../lib/auth.server";
 import { logger } from "../lib/logger.server";
 import { getAuthServerUrl } from "../lib/config";

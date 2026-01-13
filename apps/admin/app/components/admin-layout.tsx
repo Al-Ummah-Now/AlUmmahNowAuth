@@ -13,7 +13,7 @@ import {
 import { Button } from "./ui/button";
 import { AccountSwitcher } from "@al-ummah-now/ui";
 import { cn } from "../lib/utils";
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 
 interface NavItem {
   label: string;
@@ -38,16 +38,15 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps) {
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Load collapsed state from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem("sidebar-collapsed");
-    if (stored !== null) {
-      setCollapsed(stored === "true");
+  // Use lazy initializer to load from localStorage - avoids effect-based setState
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("sidebar-collapsed");
+      return stored === "true";
     }
-  }, []);
+    return false;
+  });
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Persist collapsed state to localStorage
   const toggleCollapsed = () => {
@@ -56,10 +55,10 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
     localStorage.setItem("sidebar-collapsed", String(newValue));
   };
 
-  // Close mobile menu on route change
-  useEffect(() => {
+  // Close mobile menu when navigating - called on link clicks
+  const closeMobileMenu = useCallback(() => {
     setMobileOpen(false);
-  }, [location.pathname]);
+  }, []);
 
   const isActive = (href: string) => {
     if (href === "/") {
@@ -145,6 +144,7 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
               <Link
                 key={item.href}
                 to={item.href}
+                onClick={closeMobileMenu}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                   isActive(item.href)

@@ -17,7 +17,6 @@ import {
   getAuditLogs,
   isErrorResponse,
   type ActingUser,
-  type AuditEvent,
 } from "../lib/admin-api.server";
 
 export const meta: MetaFunction = () => {

@@ -1,6 +1,6 @@
 // Server-side authentication utilities for admin app
 import { logger } from "./logger.server";
-import { getAuthServerUrl, getAppUrl, getOAuthClientId } from "./config";
+import { getAppUrl } from "./config";
 import { getOpenAuthClient, subjects } from "./openauth.client.server";
 
 /**
