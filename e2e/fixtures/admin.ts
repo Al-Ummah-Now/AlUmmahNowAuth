@@ -194,11 +194,17 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   // Verify the checkbox is actually checked before proceeding
   await expect(roleCheckbox).toBeChecked({ timeout: 2000 });
 
-  // Small delay to ensure React state is updated before submitting
-  await page.waitForTimeout(100);
+  // Wait for React state to propagate after checkbox change
+  // This ensures the selectedRoles state includes the role ID before form submission
+  await page.waitForTimeout(300);
+
+  // Verify checkbox is still checked right before submit (React state is stable)
+  await expect(roleCheckbox).toBeChecked({ timeout: 1000 });
 
   // Submit form - use dialog-specific selector to avoid matching header button
-  await page.locator('[role="dialog"] button:has-text("Create User")').click();
+  const submitButton = page.locator('[role="dialog"] button:has-text("Create User")');
+  await expect(submitButton).toBeEnabled({ timeout: 5000 });
+  await submitButton.click();
 
   // Wait for success message or dialog to close
   await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 10000 });
@@ -292,9 +298,18 @@ export async function deleteUser(page: Page, email: string): Promise<void> {
   await userRow.locator('button:has-text("Delete")').click();
 
   // Wait for confirmation dialog and confirm deletion
-  const confirmBtn = page.locator('button:has-text("Confirm")');
+  const dialog = page.locator('[role="dialog"]');
+  await expect(dialog).toBeVisible({ timeout: 5000 });
+  const confirmBtn = dialog.locator('button:has-text("Confirm")');
   await expect(confirmBtn).toBeVisible({ timeout: 5000 });
   await confirmBtn.click();
+
+  // Wait for dialog to close (indicates delete request was submitted)
+  await expect(dialog).toBeHidden({ timeout: 10000 });
+
+  // Reload page to get fresh data (fetcher.submit doesn't auto-revalidate)
+  await page.reload();
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
   // Verify user is removed from list
   await expect(page.locator(`text=${email}`)).toBeHidden({ timeout: 10000 });
