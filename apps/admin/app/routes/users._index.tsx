@@ -219,11 +219,23 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       }
 
       // Assign all selected roles after user creation
+      const roleAssignmentErrors: string[] = [];
       for (const roleId of roleIds) {
         const roleResult = await assignUserRole(env, actingUser, result.id, roleId);
         if (isErrorResponse(roleResult)) {
-          console.warn(`Failed to assign role ${roleId} to user ${result.id}:`, roleResult.error);
+          const errorMsg = `Failed to assign role ${roleId}: ${roleResult.error}`;
+          console.error(errorMsg);
+          roleAssignmentErrors.push(errorMsg);
         }
+      }
+
+      // Return role assignment errors as warnings so they're visible in the UI
+      if (roleAssignmentErrors.length > 0) {
+        return {
+          success: true,
+          userId: result.id,
+          warning: `User created but role assignment failed: ${roleAssignmentErrors.join('; ')}`
+        };
       }
 
       return { success: true, userId: result.id };
@@ -344,10 +356,14 @@ export default function Users() {
     // Only process response when transitioning from loading/submitting to idle
     // This prevents reacting to stale fetcher.data when isSubmitting first becomes true
     if (isSubmitting && fetcher.state === "idle" && prevState !== "idle" && fetcher.data) {
-      const data = fetcher.data as { success?: boolean; error?: string };
+      const data = fetcher.data as { success?: boolean; error?: string; warning?: string };
       queueMicrotask(() => {
         setIsSubmitting(false);
         if (data.success) {
+          // Log warning if role assignment had issues (helps debug E2E test failures)
+          if (data.warning) {
+            console.error('[createUser] Warning:', data.warning);
+          }
           // Success - close dialog and reset form
           setCreateDialogOpen(false);
           setNewUserEmail("");
