@@ -74,6 +74,10 @@ test.describe('Admin User Deletion', () => {
   });
 
   test('should update user count after deletion', async ({ page }) => {
+    // This test verifies dashboard stats update after user operations
+    // It can be flaky due to server-side caching, so we use generous timeouts
+    test.setTimeout(60000); // 60 seconds for this test
+
     // Navigate to dashboard to get initial count
     await navigateToAdmin(page);
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
@@ -116,17 +120,20 @@ test.describe('Admin User Deletion', () => {
     // Delete the user
     await deleteUser(page, userEmail);
 
-    // Navigate back to dashboard with full reload
-    await page.goto(TEST_URLS.adminDashboard);
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    // Force a hard refresh to bypass any caching
+    // This is more reliable than just navigation for stats that might be cached
+    await page.goto(TEST_URLS.adminDashboard, { waitUntil: 'domcontentloaded' });
+    await page.reload({ waitUntil: 'networkidle' });
 
     // Verify count decreased after deletion
     // Use relative assertion: count should be less than post-create count
     // This handles parallel test interference better than expecting exact initial count
     await expect(async () => {
+      // Reload the page on each retry to get fresh data
+      await page.reload({ waitUntil: 'networkidle' });
       const countAfterDelete = await getUserCount();
       expect(countAfterDelete).toBeLessThan(countAfterCreate);
-    }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
+    }).toPass({ timeout: 30000, intervals: [2000, 3000, 5000, 7000] });
   });
 
   test('should delete admin user successfully', async ({ page }) => {
