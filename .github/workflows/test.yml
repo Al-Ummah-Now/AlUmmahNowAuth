@@ -147,7 +147,7 @@ jobs:
         run: pnpm test
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: coverage-reports
@@ -439,7 +439,7 @@ jobs:
           TEST_PROMOTE_SECRET: test-secret-for-e2e
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: e2e-results-admin-audit-${{ matrix.shard }}
@@ -492,7 +492,7 @@ jobs:
           TEST_PROMOTE_SECRET: test-secret-for-e2e
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: e2e-results-admin-users-${{ matrix.shard }}
@@ -545,7 +545,7 @@ jobs:
           TEST_PROMOTE_SECRET: test-secret-for-e2e
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: e2e-results-auth-${{ matrix.shard }}
@@ -594,7 +594,7 @@ jobs:
           TEST_PROMOTE_SECRET: test-secret-for-e2e
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: e2e-results-profile-integration
