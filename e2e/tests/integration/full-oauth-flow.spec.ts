@@ -84,12 +84,15 @@ test.describe('Full OAuth Flow', () => {
     }
 
     // Step 7: Verify user is logged in and can access profile
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    // Wait for page to fully load (JavaScript needs to initialize and toggle view visibility)
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('#userEmail')).toContainText(testUser.email);
 
     // Step 8: Verify session is maintained
     await page.reload();
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Step 9: Test logout (token revocation)
     await logout(page);
@@ -112,13 +115,15 @@ test.describe('Full OAuth Flow', () => {
     await login(page, testUser.email);
 
     // Verify logged in
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Reload page
     await page.reload();
 
     // Verify still logged in
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('#userEmail')).toContainText(testUser.email);
   });
 
@@ -128,21 +133,24 @@ test.describe('Full OAuth Flow', () => {
     // Create first tab and login
     const page1 = await context.newPage();
     await login(page1, testUser.email);
-    await expect(page1.locator('#loggedInView')).toBeVisible();
+    await page1.waitForLoadState('domcontentloaded');
+    await expect(page1.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Create second tab
     const page2 = await context.newPage();
     await page2.goto(TEST_URLS.profileApp);
 
     // Verify session shared across tabs
-    await expect(page2.locator('#loggedInView')).toBeVisible();
+    await page2.waitForLoadState('domcontentloaded');
+    await expect(page2.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
 
     // Logout from first tab
     await logout(page1);
 
     // Verify logout affects second tab (may require reload)
     await page2.reload();
-    await expect(page2.locator('#loggedOutView')).toBeVisible();
+    await page2.waitForLoadState('domcontentloaded');
+    await expect(page2.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
 
     await page1.close();
     await page2.close();

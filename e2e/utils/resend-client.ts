@@ -24,19 +24,30 @@ export class ResendTestClient {
   }
 
   /**
+   * Sleep with exponential backoff
+   */
+  private async sleepWithBackoff(baseMs: number, attempt: number, maxMs = 10000): Promise<void> {
+    const delay = Math.min(baseMs * Math.pow(2, attempt - 1), maxMs);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+
+  /**
    * Retrieves the latest verification email sent to the specified address
    *
    * @param email - Email address to search for
    * @param maxAttempts - Maximum number of retry attempts (default: 10)
-   * @param delayMs - Delay between attempts in milliseconds (default: 2000)
+   * @param baseDelayMs - Base delay between attempts in milliseconds (default: 1500)
    * @returns HTML content of the verification email, or null if not found
    */
   async getVerificationEmail(
     email: string,
     maxAttempts = 10,
-    delayMs = 2000
+    baseDelayMs = 1500
   ): Promise<string | null> {
     console.log(`Waiting for verification email to ${email} (max ${maxAttempts} attempts)`);
+
+    let rateLimitRetries = 0;
+    const maxRateLimitRetries = 5; // Increased from 3 to handle burst rate limits in parallel tests
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -52,14 +63,24 @@ export class ResendTestClient {
         if (!response.ok) {
           // Handle rate limiting with exponential backoff
           if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get('retry-after') || '5', 10);
-            console.log(`Rate limited by Resend, waiting ${retryAfter}s before retry...`);
-            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-            continue; // Retry this attempt
+            rateLimitRetries++;
+            if (rateLimitRetries > maxRateLimitRetries) {
+              console.error(`Max rate limit retries (${maxRateLimitRetries}) exceeded`);
+              throw new Error('Resend API rate limit exceeded after multiple retries');
+            }
+            const retryAfter = parseInt(response.headers.get('retry-after') || '2', 10);
+            const backoffDelay = Math.max(retryAfter * 1000, 1000 * Math.pow(2, rateLimitRetries));
+            console.log(`Rate limited by Resend (${rateLimitRetries}/${maxRateLimitRetries}), waiting ${backoffDelay/1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            attempt--; // Don't count rate limit retries against attempts
+            continue;
           }
           console.error(`Failed to fetch emails from Resend: ${response.status} ${response.statusText}`);
           throw new Error(`Resend API error: ${response.statusText}`);
         }
+
+        // Reset rate limit counter on success
+        rateLimitRetries = 0;
 
         const data = await response.json();
 
@@ -85,38 +106,20 @@ export class ResendTestClient {
         if (verificationEmail) {
           console.log(`Verification email found for ${email} on attempt ${attempt}`);
 
-          // Fetch the full email content
-          const emailResponse = await fetch(
-            `${this.baseUrl}/emails/${verificationEmail.id}`,
-            {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${this.apiKey}`,
-                'Content-Type': 'application/json',
-              },
-            }
-          );
-
-          if (!emailResponse.ok) {
-            // Handle rate limiting
-            if (emailResponse.status === 429) {
-              const retryAfter = parseInt(emailResponse.headers.get('retry-after') || '5', 10);
-              console.log(`Rate limited fetching email content, waiting ${retryAfter}s...`);
-              await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-              continue; // Retry this attempt
-            }
-            throw new Error(`Failed to fetch email content: ${emailResponse.statusText}`);
+          // Fetch the full email content with retry
+          const emailContent = await this.fetchEmailContentWithRetry(verificationEmail.id);
+          if (emailContent) {
+            return emailContent;
           }
-
-          const emailData = await emailResponse.json();
-          return emailData.html || emailData.text || null;
+          // If content fetch failed, continue to next attempt
+          continue;
         }
 
         console.log(`Verification email not found yet (attempt ${attempt}/${maxAttempts})`);
 
-        // Wait before next attempt
+        // Wait before next attempt with exponential backoff
         if (attempt < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
+          await this.sleepWithBackoff(baseDelayMs, attempt);
         }
 
       } catch (error) {
@@ -126,12 +129,46 @@ export class ResendTestClient {
           throw error;
         }
 
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        // Wait before retry with exponential backoff
+        await this.sleepWithBackoff(baseDelayMs, attempt);
       }
     }
 
     console.warn(`Verification email not found for ${email} after ${maxAttempts} attempts`);
+    return null;
+  }
+
+  /**
+   * Fetch email content with retry logic for rate limiting
+   */
+  private async fetchEmailContentWithRetry(emailId: string, maxRetries = 3): Promise<string | null> {
+    for (let retry = 0; retry < maxRetries; retry++) {
+      const emailResponse = await fetch(
+        `${this.baseUrl}/emails/${emailId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (emailResponse.ok) {
+        const emailData = await emailResponse.json();
+        return emailData.html || emailData.text || null;
+      }
+
+      // Handle rate limiting
+      if (emailResponse.status === 429) {
+        const backoffDelay = 1000 * Math.pow(2, retry + 1);
+        console.log(`Rate limited fetching email content, waiting ${backoffDelay/1000}s... (retry ${retry + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        continue;
+      }
+
+      throw new Error(`Failed to fetch email content: ${emailResponse.statusText}`);
+    }
     return null;
   }
 

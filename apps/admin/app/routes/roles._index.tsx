@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData, useFetcher } from "react-router";
-import { ArrowLeft, Plus, Pencil, Trash2, Shield, Users, LogOut } from "lucide-react";
+import { Plus, Pencil, Trash2, Shield, Users } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -27,16 +27,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
+import { AdminLayout } from "../components/admin-layout";
 import { requireAuth } from "../lib/auth.server";
+import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import {
-  getAllRoles,
   createRole,
   deleteRole,
-  isErrorResponse,
-  type Role,
+  getRoleUsers,
+  isErrorResponse as isRbacError,
   type RoleData,
 } from "../lib/rbac-api.server";
+import {
+  listRoles,
+  isErrorResponse,
+  type ActingUser,
+  type Role,
+} from "../lib/admin-api.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -51,25 +58,27 @@ interface RoleWithUserCount extends Role {
 
 interface LoaderData {
   roles: RoleWithUserCount[];
+  user: { id: string; email: string } | null;
+  authServerUrl: string;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    ADMIN_CLIENT_SECRET?: string;
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
 
   // Always require admin authentication
+  let currentUser: { id: string; email: string; roles?: string[] };
   try {
-    await requireAuth(request, env, true);
+    currentUser = await requireAuth(request, env, true) as { id: string; email: string; roles?: string[] };
   } catch (error) {
     // If it's a redirect response (from requireAuth), throw it
     if (error instanceof Response) {
@@ -84,46 +93,48 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
   }
 
-  try {
-    if (!env?.AUTH_DB) {
-      console.warn("AUTH_DB not available in development mode");
-      return { roles: [] };
-    }
+  const authServerUrl = getAuthServerUrl(request, env);
+  const user = { id: currentUser.id, email: currentUser.email };
 
-    // Fetch all roles from auth service
-    const rolesResponse = await getAllRoles(request, env);
+  // Construct acting user for M2M API calls
+  const actingUser: ActingUser = {
+    id: currentUser.id,
+    email: currentUser.email,
+    roles: currentUser.roles || [],
+  };
+
+  try {
+    // Fetch all roles from auth service (using M2M auth)
+    const rolesResponse = await listRoles(env, actingUser, request);
 
     if (isErrorResponse(rolesResponse)) {
       console.error("Error fetching roles:", rolesResponse.error);
-      return { roles: [] };
+      return { roles: [], user, authServerUrl };
     }
 
-    // Get user counts for each role
+    // Get user counts for each role via API
     const rolesWithCounts = await Promise.all(
       rolesResponse.map(async (role) => {
-        const countResult = await env.AUTH_DB.prepare(`
-          SELECT COUNT(*) as count
-          FROM user_roles
-          WHERE role_id = ? AND is_active = 1
-        `).bind(role.id).first<{ count: number }>();
+        // Call API to get users for this role
+        const usersResponse = await getRoleUsers(request, env, role.id);
+        const userCount = isRbacError(usersResponse) ? 0 : usersResponse.length;
 
         return {
           ...role,
-          user_count: countResult?.count || 0,
+          user_count: userCount,
         };
       })
     );
 
-    return { roles: rolesWithCounts };
+    return { roles: rolesWithCounts, user, authServerUrl };
   } catch (error) {
     console.error("Error loading roles:", error);
-    return { roles: [] };
+    return { roles: [], user, authServerUrl };
   }
 }
 
 export async function action({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
   };
@@ -162,7 +173,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 
       const result = await createRole(request, env, roleData);
 
-      if (isErrorResponse(result)) {
+      if (isRbacError(result)) {
         return { error: result.error };
       }
 
@@ -176,20 +187,10 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: "Missing roleId" };
       }
 
-      // Check if role is system role (additional safety check)
-      if (env?.AUTH_DB) {
-        const role = await env.AUTH_DB.prepare(`
-          SELECT is_system FROM roles WHERE id = ?
-        `).bind(roleId).first<{ is_system: number }>();
-
-        if (role?.is_system) {
-          return { error: "Cannot delete system roles" };
-        }
-      }
-
+      // The API endpoint will check if it's a system role
       const result = await deleteRole(request, env, roleId);
 
-      if (isErrorResponse(result)) {
+      if (isRbacError(result)) {
         return { error: result.error };
       }
 
@@ -204,7 +205,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 }
 
 export default function Roles() {
-  const { roles } = useLoaderData<LoaderData>();
+  const { roles, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
   const [searchQuery, setSearchQuery] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -245,7 +246,7 @@ export default function Roles() {
   };
 
   const openDeleteDialog = (role: RoleWithUserCount) => {
-    if (role.is_system) {
+    if (role.is_system_role) {
       return; // Should not happen due to disabled button, but extra safety
     }
     setRoleToDelete(role);
@@ -258,48 +259,13 @@ export default function Roles() {
   );
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))]">
-      {/* Navigation */}
-      <nav className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/">
-                  <ArrowLeft className="h-5 w-5" />
-                </Link>
-              </Button>
-              <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <img
-                  src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                  alt="Al Ummah Now"
-                  className="h-10 w-10 rounded-lg"
-                />
-                <div>
-                  <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">Role Management</h1>
-                  <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Al Ummah Now Admin</p>
-                </div>
-              </Link>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/users">Users</Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/audit">Audit Logs</Link>
-              </Button>
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/logout">
-                  <LogOut className="h-5 w-5" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
+      <div className="mb-6">
+        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Role Management</h2>
+        <p className="text-[rgb(var(--color-muted-foreground))]">
+          Manage RBAC roles and permission assignments
+        </p>
+      </div>
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -409,8 +375,8 @@ export default function Roles() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={role.is_system ? "default" : "secondary"}>
-                          {role.is_system ? "System" : "Custom"}
+                        <Badge variant={role.is_system_role ? "default" : "secondary"}>
+                          {role.is_system_role ? "System" : "Custom"}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -435,12 +401,12 @@ export default function Roles() {
                             variant="ghost"
                             size="icon"
                             onClick={() => openDeleteDialog(role)}
-                            disabled={role.is_system}
-                            title={role.is_system ? "Cannot delete system roles" : "Delete Role"}
+                            disabled={role.is_system_role}
+                            title={role.is_system_role ? "Cannot delete system roles" : "Delete Role"}
                           >
                             <Trash2
                               className={`h-4 w-4 ${
-                                role.is_system
+                                role.is_system_role
                                   ? "text-[rgb(var(--color-muted-foreground))]"
                                   : "text-[rgb(var(--color-destructive))]"
                               }`}
@@ -455,7 +421,6 @@ export default function Roles() {
             )}
           </CardContent>
         </Card>
-      </main>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -485,6 +450,6 @@ export default function Roles() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AdminLayout>
   );
 }

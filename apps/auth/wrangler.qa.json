@@ -3,6 +3,14 @@
   "main": "src/index.ts",
   "name": "al-ummah-now-auth-qa",
   "upload_source_maps": true,
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "auth.qa.alummahnow.net",
+      "zone_name": "alummahnow.net",
+      "custom_domain": true
+    }
+  ],
   "kv_namespaces": [
     {
       "binding": "AUTH_STORAGE",
@@ -14,7 +22,7 @@
       "binding": "AUTH_DB",
       "database_name": "al-ummah-now-d1-qa",
       "database_id": "28590f3c-dd92-4c26-a803-d73a9bbe2b58",
-      "migrations_dir": "migrations"
+      "migrations_dir": "migrations-qa"
     }
   ],
   "queues": {

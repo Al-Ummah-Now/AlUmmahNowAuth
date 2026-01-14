@@ -22,7 +22,8 @@ const config = JSON.parse(readFileSync(buildConfigPath, 'utf-8'));
 config.name = 'al-ummah-now-auth-admin-qa';
 config.vars = {
   AUTH_SERVER_URL: 'https://auth.qa.alummahnow.net',
-  APP_URL: 'https://admin.auth.qa.alummahnow.net'
+  APP_URL: 'https://admin.auth.qa.alummahnow.net',
+  ADMIN_CLIENT_ID: '2448ed27-39a6-417d-b4c8-07f881e81269'
 };
 config.kv_namespaces = [
   {
@@ -30,11 +31,14 @@ config.kv_namespaces = [
     id: '14fd32ab385b496c88b5dba88c2492ea'
   }
 ];
-config.d1_databases = [
+// D1 database binding removed - admin app now uses auth server APIs
+
+// Patch routes for QA domain
+config.routes = [
   {
-    binding: 'AUTH_DB',
-    database_name: 'al-ummah-now-d1-qa',
-    database_id: '28590f3c-dd92-4c26-a803-d73a9bbe2b58'
+    pattern: 'admin.auth.qa.alummahnow.net',
+    zone_name: 'alummahnow.net',
+    custom_domain: true
   }
 ];
 

@@ -28,7 +28,7 @@ test.describe('Logout Flow', () => {
 
     // Verify logged out view is visible
     await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('button:has-text("Sign In")')).toBeVisible();
+    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible();
   });
 
   test('should clear session cookie on logout', async ({ page }) => {
@@ -65,8 +65,11 @@ test.describe('Logout Flow', () => {
     // Login
     await login(page, testUser.email);
 
-    // Logout
-    await page.click('button:has-text("Sign Out")');
+    // Logout (use specific selector to target the button in logged-in view)
+    // Use .first() to avoid strict mode violation if account switcher has "Sign out of all accounts"
+    const logoutButton = page.locator('#loggedInView button:has-text("Sign Out")').first();
+    await expect(logoutButton).toBeVisible({ timeout: 10000 });
+    await logoutButton.click();
 
     // Verify redirected to profile app homepage
     await expect(page).toHaveURL(TEST_URLS.profileApp);

@@ -18,7 +18,7 @@ test.describe('Admin User Editing', () => {
   test('should edit user email address', async ({ page }) => {
     // Create a test user
     const originalEmail = generateTestEmail('original');
-    await createUser(page, { email: originalEmail, role: 'user' });
+    await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit user email
     const newEmail = generateTestEmail('updated');
@@ -37,7 +37,7 @@ test.describe('Admin User Editing', () => {
   test('should edit user role from user to admin', async ({ page }) => {
     // Create a test user
     const userEmail = generateTestEmail('role-change');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Edit user role
     await editUser(page, userEmail, { role: 'admin' });
@@ -48,24 +48,25 @@ test.describe('Admin User Editing', () => {
     await expect(userRow.locator('text=/admin/i')).toBeVisible();
   });
 
-  test('should edit user role from admin to user', async ({ page }) => {
-    // Create a test admin
-    const adminEmail = generateTestEmail('admin-to-user');
+  test('should edit user role from admin to member', async ({ page }) => {
+    // Create a test admin - use prefix that doesn't conflict with role names
+    const adminEmail = generateTestEmail('role-change-admin');
     await createUser(page, { email: adminEmail, role: 'admin' });
 
-    // Edit user role
-    await editUser(page, adminEmail, { role: 'user' });
+    // Edit user role to member (the basic user role in the system)
+    await editUser(page, adminEmail, { role: 'member' });
 
     // Verify role updated in list
     // Already on /users page from previous action
     const userRow = page.locator(`tr:has-text("${adminEmail}")`);
-    await expect(userRow.locator('text=/^user$/i')).toBeVisible();
+    // Look for the role badge specifically (has uppercase class) to avoid matching email text
+    await expect(userRow.locator('.uppercase:text-is("Member")')).toBeVisible();
   });
 
   test('should edit both email and role simultaneously', async ({ page }) => {
     // Create a test user
     const originalEmail = generateTestEmail('both-change');
-    await createUser(page, { email: originalEmail, role: 'user' });
+    await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit both fields
     const newEmail = generateTestEmail('both-updated');
@@ -83,7 +84,7 @@ test.describe('Admin User Editing', () => {
   }) => {
     // Create a test user
     const userEmail = generateTestEmail('validation-test');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Try to edit with invalid email
     // Already on /users page from previous action
@@ -102,7 +103,7 @@ test.describe('Admin User Editing', () => {
   test('should cancel edit without saving changes', async ({ page }) => {
     // Create a test user
     const userEmail = generateTestEmail('cancel-test');
-    await createUser(page, { email: userEmail, role: 'user' });
+    await createUser(page, { email: userEmail, role: 'member' });
 
     // Open edit dialog
     // Already on /users page from previous action
@@ -127,7 +128,7 @@ test.describe('Admin User Editing', () => {
   test('should persist changes after page reload', async ({ page }) => {
     // Create a test user
     const originalEmail = generateTestEmail('persist-test');
-    await createUser(page, { email: originalEmail, role: 'user' });
+    await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit user
     const newEmail = generateTestEmail('persisted');
@@ -144,8 +145,8 @@ test.describe('Admin User Editing', () => {
     // Create two test users
     const user1Email = generateTestEmail('user1');
     const user2Email = generateTestEmail('user2');
-    await createUser(page, { email: user1Email, role: 'user' });
-    await createUser(page, { email: user2Email, role: 'user' });
+    await createUser(page, { email: user1Email, role: 'member' });
+    await createUser(page, { email: user2Email, role: 'member' });
 
     // Try to edit user2 to have user1's email
     // Already on /users page from previous action
@@ -157,9 +158,10 @@ test.describe('Admin User Editing', () => {
     await page.fill('input[id="email"]', user1Email);
     await page.click('button[type="submit"]:has-text("Save")');
 
-    // Verify error message
+    // Verify error message (OpenAuth returns "Email '...' is already registered")
+    // Look specifically in the dialog for the error message to avoid matching user emails
     await expect(
-      page.locator('text=/already exists|duplicate/i')
-    ).toBeVisible({ timeout: 5000 });
+      page.locator('[role="dialog"]').locator('[role="alert"], .text-red-500, .text-destructive').filter({ hasText: /already registered|already exists/i })
+    ).toBeVisible({ timeout: 10000 });
   });
 });

@@ -6,14 +6,12 @@ import { logger } from "../lib/logger.server";
 
 // Redirect directly to auth server instead of showing a login page
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_DB?: D1Database; APP_URL?: string; AUTH_SERVER_URL?: string };
+  const env = context?.cloudflare?.env as { APP_URL?: string; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
-  
+
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
   
   logger.logLoader('login', request);
 
@@ -21,8 +19,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const client = getOpenAuthClient(request, env);
 
   // Generate authorize URL using OpenAuth client
+  // Use prompt=select_account to show account picker on first login
   logger.debug('Generating authorize URL for login');
-  const { url: authorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  const authorizeUrl = `${baseAuthorizeUrl}&prompt=select_account`;
   logger.info('Redirecting to auth server', { authorizeUrl });
 
   return redirect(authorizeUrl);

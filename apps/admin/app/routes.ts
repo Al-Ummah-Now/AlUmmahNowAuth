@@ -6,8 +6,11 @@ export default [
   route("roles", "routes/roles._index.tsx"),
   route("roles/:id", "routes/roles.$id.tsx"),
   route("clients", "routes/clients.tsx"),
+  route("sessions", "routes/sessions.tsx"),
   route("audit", "routes/audit.tsx"),
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
   route("auth/callback", "routes/auth.callback.tsx"),
+  route("forbidden", "routes/forbidden.tsx"),
+  route("debug-m2m", "routes/debug-m2m.tsx"),
 ] satisfies RouteConfig;

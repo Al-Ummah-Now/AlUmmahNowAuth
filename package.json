@@ -7,7 +7,9 @@
   "scripts": {
     "types": "pnpm --parallel --filter \"./apps/*\" types",
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:remote": "pnpm --parallel --filter auth run dev:remote & pnpm --parallel --filter admin --filter profile --filter audit-consumer run dev",
     "dev:auth": "pnpm --filter auth dev",
+    "dev:auth:remote": "pnpm --filter auth dev:remote",
     "dev:admin": "pnpm --filter admin dev",
     "dev:profile": "pnpm --filter profile dev",
     "dev:consumer": "pnpm --filter audit-consumer dev",
@@ -26,7 +28,18 @@
     "deploy:qa:admin": "pnpm --filter admin run deploy:qa",
     "deploy:qa:profile": "pnpm --filter profile run deploy:qa",
     "deploy:qa:consumer": "pnpm --filter audit-consumer run deploy:qa",
+    "migrations:local": "pnpm --filter auth run migrations:local",
+    "migrations:remote": "pnpm --filter auth run migrations:remote",
     "migrations:qa": "pnpm --filter auth run migrations:qa",
+    "migrations:preview": "pnpm --filter auth run migrations:preview",
+    "seed:local": "pnpm --filter auth run seed:local",
+    "seed:preview": "pnpm --filter auth run seed:preview",
+    "seed:qa": "pnpm --filter auth run seed:qa",
+    "seed:remote": "pnpm --filter auth run seed:remote",
+    "secrets:local": "pnpm --filter auth run migrations:local:secrets",
+    "secrets:preview": "pnpm --filter auth run migrations:preview:secrets",
+    "secrets:qa": "pnpm --filter auth run migrations:qa:secrets",
+    "secrets:remote": "pnpm --filter auth run migrations:remote:secrets",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "type-check": "pnpm --filter \"./apps/*\" type-check",
@@ -55,9 +68,15 @@
     "playwright": "^1.57.0",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.48.0",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.55.0"
   },
   "dependencies": {
-    "@meywd/openauth": "^0.5.3"
+    "@al-ummah-now/openauth": "1.0.15"
+  },
+  "pnpm": {
+    "overrides": {
+      "qs": ">=6.14.1"
+    }
   }
 }

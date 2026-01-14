@@ -1,6 +1,6 @@
 // OpenAuth client for the auth app itself
-import { createClient } from "@meywd/openauth/client";
-import { createSubjects } from "@meywd/openauth/subject";
+import { createClient } from "@al-ummah-now/openauth/client";
+import { createSubjects } from "@al-ummah-now/openauth/subject";
 import * as v from "valibot";
 
 // Define subjects matching the server

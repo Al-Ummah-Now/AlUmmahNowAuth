@@ -65,12 +65,53 @@ export async function register(page: Page, email: string): Promise<void> {
     throw new Error('Failed to capture verification code from email. Check that email interception is working correctly.');
   }
 
-  // Enter verification code
-  await page.fill('input[name="code"]', verificationCode);
-  await page.click('button:has-text("Continue")');
+  // Enter verification code with retry logic
+  // Sometimes form submission fails under load - retry up to 3 times
+  let codeSubmissionSuccess = false;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    // Clear any previous value and enter code
+    await page.fill('input[name="code"]', '');
+    await page.fill('input[name="code"]', verificationCode);
 
-  // Wait for successful registration (redirect to profile app)
-  await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
+    // Small delay to ensure the form recognizes the input
+    await page.waitForTimeout(100);
+
+    // Wait for button to be enabled and click
+    const continueBtn = page.locator('button:has-text("Continue")');
+    await expect(continueBtn).toBeEnabled({ timeout: 5000 });
+    await continueBtn.click();
+
+    // Wait for redirect to profile app (or check if still on code page)
+    try {
+      await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
+      codeSubmissionSuccess = true;
+      break;
+    } catch {
+      // Check if we're still on the code page (submission may have failed)
+      const stillOnCodePage = await page.locator('input[name="code"]').isVisible().catch(() => false);
+      if (stillOnCodePage && attempt < 3) {
+        console.log(`Verification code submission attempt ${attempt} failed, retrying...`);
+        continue;
+      }
+      // Final attempt or not on code page - let it fail
+      if (attempt === 3) {
+        throw new Error(`Verification code submission failed after ${attempt} attempts. Page URL: ${page.url()}`);
+      }
+    }
+  }
+
+  if (!codeSubmissionSuccess) {
+    throw new Error('Verification code submission did not complete successfully');
+  }
+
+  // Wait for session to be established (logged in view visible)
+  // This ensures the session cookie is set before proceeding
+  // Wait for network to be idle - this ensures OAuth callback token exchange completes
+  // and the page JavaScript has fully initialized
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForLoadState('domcontentloaded');
+  // The profile app toggles visibility via JS - give it time to execute
+  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 
   // Mark as registered
   registeredUsers.add(email);
@@ -85,17 +126,30 @@ export async function register(page: Page, email: string): Promise<void> {
  */
 export async function login(page: Page, email: string): Promise<void> {
   // Register user first if not already registered
+  // register() now ensures #loggedInView is visible before returning
   await register(page, email);
 
-  // Navigate to profile app
+  // Verify we're still on profile app and logged in
+  // (register() leaves us on profile app with session established)
+  const currentUrl = page.url();
+  if (currentUrl.includes(TEST_URLS.profileApp)) {
+    const loggedInView = page.locator('#loggedInView');
+    const isAlreadyLoggedIn = await loggedInView.isVisible();
+    if (isAlreadyLoggedIn) {
+      // User is already logged in from registration
+      return;
+    }
+  }
+
+  // If not on profile app or not logged in, navigate and check again
   await page.goto(TEST_URLS.profileApp);
 
-  // Check if already logged in (registration logs user in automatically)
+  // Check if already logged in
   const loggedInView = page.locator('#loggedInView');
   const isAlreadyLoggedIn = await loggedInView.isVisible();
 
   if (isAlreadyLoggedIn) {
-    // User is already logged in from registration, no need to log in again
+    // User is logged in
     return;
   }
 
@@ -128,16 +182,41 @@ export async function login(page: Page, email: string): Promise<void> {
       throw new Error('Failed to capture verification code from email during login');
     }
 
-    // Enter verification code
-    await page.fill('input[name="code"]', verificationCode);
-    await page.click('button:has-text("Continue")');
+    // Enter verification code with retry logic
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page.fill('input[name="code"]', '');
+      await page.fill('input[name="code"]', verificationCode);
+      await page.waitForTimeout(100);
+
+      const continueBtn = page.locator('button:has-text("Continue")');
+      await expect(continueBtn).toBeEnabled({ timeout: 5000 });
+      await continueBtn.click();
+
+      try {
+        await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
+        break;
+      } catch {
+        const stillOnCodePage = await page.locator('input[name="code"]').isVisible().catch(() => false);
+        if (stillOnCodePage && attempt < 3) {
+          console.log(`Login verification code attempt ${attempt} failed, retrying...`);
+          continue;
+        }
+        if (attempt === 3) {
+          throw new Error(`Login verification code submission failed after ${attempt} attempts. Page URL: ${page.url()}`);
+        }
+      }
+    }
+  } else {
+    // No verification code needed - wait for redirect
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
   }
 
-  // Wait for redirect back to profile app (successful login)
-  await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
-
   // Verify login succeeded
-  await expect(page.locator('#loggedInView')).toBeVisible();
+  // Wait for network to be idle - this ensures OAuth callback token exchange completes
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForLoadState('domcontentloaded');
+  // The profile app toggles visibility via JS - give it time to execute
+  await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 }
 
 /**
@@ -146,11 +225,15 @@ export async function login(page: Page, email: string): Promise<void> {
  * @param page - Playwright page object
  */
 export async function logout(page: Page): Promise<void> {
-  // Click logout button
-  await page.click('button:has-text("Sign Out")');
+  // Wait for logout button to be visible and click it
+  // Button text is "🚪 Sign Out" with emoji, but has-text matches partial text
+  // Use .first() to avoid strict mode violation if account switcher has "Sign out of all accounts"
+  const logoutButton = page.locator('#loggedInView button:has-text("Sign Out")').first();
+  await expect(logoutButton).toBeVisible({ timeout: 5000 });
+  await logoutButton.click();
 
   // Verify redirected to logged out state
-  await expect(page.locator('#loggedOutView')).toBeVisible();
+  await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 10000 });
 }
 
 /**

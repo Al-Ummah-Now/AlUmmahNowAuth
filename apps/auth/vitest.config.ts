@@ -2,20 +2,25 @@ import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 
 export default defineWorkersConfig({
   test: {
+    // Run test files sequentially to prevent race conditions
+    fileParallelism: false,
     poolOptions: {
       workers: {
-        // Don't use wrangler config to avoid loading the main worker
-        // This prevents OpenAuth issuer from being imported during tests
-        miniflare: {
-          // Add D1 database binding for testing
-          d1Databases: ["AUTH_DB"],
-          // Add KV namespace binding for testing
-          kvNamespaces: ["AUTH_STORAGE"],
-          // Enable nodejs_compat for node:* imports in dependencies
-          compatibilityFlags: ["nodejs_compat"],
-          // Set a compatibility date
-          compatibilityDate: "2024-12-30",
+        // Use wrangler config to get D1 bindings
+        wrangler: {
+          configPath: "./wrangler.json",
         },
+        miniflare: {
+          // Use in-memory D1 database for test isolation
+          // Each test file gets a fresh database via test-setup.ts
+          d1Persist: false,
+        },
+        // Disable isolation to share DB across test files
+        // (required because test-setup.ts module caching causes isolation issues)
+        isolatedStorage: false,
+        // Force all tests into a single worker to share D1 database state
+        // This ensures setupDatabase() creates tables once and they persist
+        singleWorker: true,
       },
     },
     coverage: {

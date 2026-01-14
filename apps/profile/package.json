@@ -15,7 +15,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@meywd/openauth": "0.5.3",
+    "@al-ummah-now/openauth": "1.0.15",
     "valibot": "^1.2.0"
   },
   "devDependencies": {

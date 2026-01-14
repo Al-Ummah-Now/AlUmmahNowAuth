@@ -210,3 +210,4 @@ apps/auth/test-results/
 # Old backup files
 apps/auth/src/audit-emitter-enhanced-old.ts
 .npmrc
+.playwright-mcp/

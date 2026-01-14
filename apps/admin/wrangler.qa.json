@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "compatibility_date": "2025-04-19",
   "name": "al-ummah-now-auth-admin-qa",
+  "workers_dev": true,
   "main": "build/server/index.js",
   "no_bundle": true,
   "assets": {
@@ -10,7 +11,8 @@
   },
   "vars": {
     "AUTH_SERVER_URL": "https://auth.qa.alummahnow.net",
-    "APP_URL": "https://admin.auth.qa.alummahnow.net"
+    "APP_URL": "https://admin.auth.qa.alummahnow.net",
+    "ADMIN_CLIENT_ID": "2448ed27-39a6-417d-b4c8-07f881e81269"
   },
   "kv_namespaces": [
     {
@@ -18,15 +20,15 @@
       "id": "14fd32ab385b496c88b5dba88c2492ea"
     }
   ],
-  "d1_databases": [
-    {
-      "binding": "AUTH_DB",
-      "database_name": "al-ummah-now-d1-qa",
-      "database_id": "28590f3c-dd92-4c26-a803-d73a9bbe2b58"
-    }
-  ],
   "observability": {
     "enabled": true
   },
+  "routes": [
+    {
+      "pattern": "admin.auth.qa.alummahnow.net",
+      "zone_name": "alummahnow.net",
+      "custom_domain": true
+    }
+  ],
   "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"]
 }

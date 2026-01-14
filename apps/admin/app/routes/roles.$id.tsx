@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
+import { formatDate } from "../lib/date-utils";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,8 @@ import {
   grantPermissionToRole,
   revokePermissionFromRole,
   getAllPermissions,
+  getRoleUsers,
+  removeUserFromRole,
   isErrorResponse,
   type RoleWithPermissions,
   type Permission,
@@ -57,8 +60,8 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
 interface UserWithRole {
   id: string;
   email: string;
-  granted_at: string;
-  granted_by: string | null;
+  assigned_at: number;
+  assigned_by: string | null;
 }
 
 interface LoaderData {
@@ -69,17 +72,14 @@ interface LoaderData {
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
   };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-    if (ctx) logger.setContext(ctx);
-  }
+  logger.setDatabase(null, false);
+  if (ctx) logger.setContext(ctx);
 
   // Require authentication
   try {
@@ -114,23 +114,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       ? {}
       : permissionsResponse.permissions;
 
-    // Fetch users with this role
-    let usersWithRole: UserWithRole[] = [];
-    if (env?.AUTH_DB) {
-      const usersResult = await env.AUTH_DB.prepare(`
-        SELECT
-          u.id,
-          u.email,
-          ur.granted_at,
-          ur.granted_by
-        FROM user_roles ur
-        JOIN user u ON ur.user_id = u.id
-        WHERE ur.role_id = ? AND ur.is_active = 1
-        ORDER BY ur.granted_at DESC
-      `).bind(roleId).all<UserWithRole>();
-
-      usersWithRole = usersResult.results || [];
-    }
+    // Fetch users with this role via API
+    const usersResponse = await getRoleUsers(request, env, roleId);
+    const usersWithRole: UserWithRole[] = isErrorResponse(usersResponse) ? [] : usersResponse;
 
     return {
       role: roleResponse,
@@ -148,7 +134,6 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
   const env = context?.cloudflare?.env as {
-    AUTH_DB: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
   };
@@ -236,12 +221,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         return { error: "User ID is required" };
       }
 
-      if (env?.AUTH_DB) {
-        await env.AUTH_DB.prepare(`
-          UPDATE user_roles
-          SET is_active = 0
-          WHERE user_id = ? AND role_id = ?
-        `).bind(userId, roleId).run();
+      const result = await removeUserFromRole(request, env, roleId, userId);
+
+      if (isErrorResponse(result)) {
+        return { error: result.error };
       }
 
       return { success: true, message: "Role removed from user successfully" };
@@ -265,7 +248,7 @@ export default function RoleDetail() {
   const [permissionToRemove, setPermissionToRemove] = useState<Permission | null>(null);
   const [userToRemove, setUserToRemove] = useState<UserWithRole | null>(null);
 
-  const isSystemRole = role.is_system;
+  const isSystemRole = role.is_system_role;
 
   // Group permissions by resource
   const permissionsByResource: Record<string, Permission[]> = {};
@@ -408,9 +391,9 @@ export default function RoleDetail() {
                     {role.description || "No description provided"}
                   </CardDescription>
                   <div className="flex items-center gap-4 text-sm text-[rgb(var(--color-muted-foreground))]">
-                    <span>Created: {new Date(role.created_at).toLocaleDateString()}</span>
+                    <span>Created: {formatDate(role.created_at)}</span>
                     {role.updated_at !== role.created_at && (
-                      <span>Updated: {new Date(role.updated_at).toLocaleDateString()}</span>
+                      <span>Updated: {formatDate(role.updated_at)}</span>
                     )}
                   </div>
                 </div>
@@ -554,10 +537,10 @@ export default function RoleDetail() {
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">{user.email}</TableCell>
                         <TableCell>
-                          {new Date(user.granted_at).toLocaleDateString()}
+                          {formatDate(user.assigned_at)}
                         </TableCell>
                         <TableCell>
-                          {user.granted_by || "System"}
+                          {user.assigned_by || "System"}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button

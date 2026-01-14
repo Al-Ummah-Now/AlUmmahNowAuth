@@ -14,10 +14,10 @@ test.describe('Admin User Creation', () => {
     await loginAdmin(page, TEST_USERS.admin().email);
   });
 
-  test('should create a new user with role "user"', async ({ page }) => {
+  test('should create a new user with role "member"', async ({ page }) => {
     const newUser = {
       email: generateTestEmail('new-user'),
-      role: 'user' as const,
+      role: 'member' as const,  // OpenAuth uses 'member' as default role
     };
 
     // Create user
@@ -29,8 +29,9 @@ test.describe('Admin User Creation', () => {
   });
 
   test('should create a new user with role "admin"', async ({ page }) => {
+    // Use prefix that doesn't contain "admin" to avoid matching email AND role badge
     const newAdmin = {
-      email: generateTestEmail('new-admin'),
+      email: generateTestEmail('admin-role-user'),
       role: 'admin' as const,
     };
 
@@ -38,9 +39,27 @@ test.describe('Admin User Creation', () => {
     await createUser(page, newAdmin);
 
     // Verify user appears in list with admin role (createUser navigates to /users)
-    const userRow = page.locator(`tr:has-text("${newAdmin.email}")`);
-    await expect(userRow).toBeVisible();
-    await expect(userRow.locator('text=/admin/i')).toBeVisible();
+    // Use polling to wait for role to appear after async revalidation
+    // The role assignment and data refresh can take a moment
+    await expect(async () => {
+      // Re-query the row locator each iteration to get fresh DOM reference
+      const userRow = page.locator(`tr:has-text("${newAdmin.email}")`);
+      await expect(userRow).toBeVisible({ timeout: 3000 });
+
+      // Look for Admin role badge in the roles column (3rd column)
+      // The role name is displayed as-is from the database ("Admin" with Title Case)
+      const roleCell = userRow.locator('td:nth-child(3)');
+      const hasAdminRole = await roleCell.locator('text=Admin').isVisible();
+
+      if (!hasAdminRole) {
+        // Reload to get fresh data from server
+        await page.reload();
+        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+      }
+
+      // Assert the role is visible
+      await expect(roleCell.locator('text=Admin')).toBeVisible({ timeout: 3000 });
+    }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
   });
 
   test('should show validation error for invalid email', async ({ page }) => {
@@ -55,20 +74,29 @@ test.describe('Admin User Creation', () => {
 
     // Enter invalid email
     await page.fill('input[id="email"]', 'not-an-email');
-    await page.selectOption('select[id="role"]', 'user');
+    // Wait for roles to load, then select role using checkbox scoped to dialog
+    const dialogCheckbox = page.locator('[role="dialog"] label input[type="checkbox"]');
+    await expect(dialogCheckbox.first()).toBeVisible({ timeout: 10000 });
+    // Find role by exact name match in span.text-sm, then navigate to parent label and click
+    const roleSpan = page.locator('[role="dialog"] label span.text-sm').filter({ hasText: /^Member$/ });
+    const roleCheckbox = roleSpan.locator('xpath=..').locator('input[type="checkbox"]');
+    await roleCheckbox.click();
 
-    // Try to submit
-    await page.click('button:has-text("Create User")');
+    // Try to submit - use dialog-specific selector to avoid matching header button
+    await page.locator('[role="dialog"] button:has-text("Create User")').click();
 
-    // Verify validation error
-    await expect(page.locator('input[id="email"]:invalid')).toBeVisible();
+    // Verify validation error message appears (client-side validation)
+    await expect(page.locator('[role="alert"]:has-text("valid email")')).toBeVisible({ timeout: 5000 });
+
+    // Verify dialog is still open (submission was prevented)
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
   });
 
   test('should show error when creating duplicate user', async ({ page }) => {
     const duplicateEmail = generateTestEmail('duplicate');
 
     // Create first user
-    await createUser(page, { email: duplicateEmail, role: 'user' });
+    await createUser(page, { email: duplicateEmail, role: 'member' });
 
     // Try to create user with same email
     await page.goto(`${TEST_URLS.adminDashboard}/users`);
@@ -76,12 +104,19 @@ test.describe('Admin User Creation', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
     await page.fill('input[id="email"]', duplicateEmail);
-    await page.selectOption('select[id="role"]', 'user');
-    await page.click('button:has-text("Create User")');
+    // Wait for roles to load, then select role using checkbox scoped to dialog
+    const dialogCheckbox2 = page.locator('[role="dialog"] label input[type="checkbox"]');
+    await expect(dialogCheckbox2.first()).toBeVisible({ timeout: 10000 });
+    // Find role by exact name match in span.text-sm, then navigate to parent label and click
+    const roleSpan2 = page.locator('[role="dialog"] label span.text-sm').filter({ hasText: /^Member$/ });
+    const roleCheckbox2 = roleSpan2.locator('xpath=..').locator('input[type="checkbox"]');
+    await roleCheckbox2.click();
+    await page.locator('[role="dialog"] button:has-text("Create User")').click();
 
-    // Verify error message
+    // Verify error message - server returns "email_already_exists" or "already registered"
+    // Look in dialog for error alert
     await expect(
-      page.locator('text=/already exists|duplicate/i')
+      page.locator('[role="dialog"] [role="alert"]').filter({ hasText: /already|exists/i })
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -90,7 +125,7 @@ test.describe('Admin User Creation', () => {
   }) => {
     const newUser = {
       email: generateTestEmail('reset-test'),
-      role: 'user' as const,
+      role: 'member' as const,  // OpenAuth uses 'member' as default role
     };
 
     // Create user
@@ -123,33 +158,43 @@ test.describe('Admin User Creation', () => {
   test('should update user count after creating user', async ({ page }) => {
     await navigateToAdmin(page);
 
-    // Get initial user count
-    const initialCount = await page
-      .locator('text=/Total Users/i')
-      .locator('..')
-      .locator('.value')
-      .textContent();
+    // Wait for dashboard stats to load
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+
+    // Get user count from dashboard card
+    // The card structure is: Card > CardHeader (Total Users) + CardContent (number div)
+    const getUserCount = async (): Promise<number> => {
+      // Wait for the stats to be visible first
+      await expect(page.locator('text=Total Users')).toBeVisible({ timeout: 5000 });
+
+      // Find the Total Users card and extract the count
+      const countText = await page.locator('text=Total Users')
+        .locator('xpath=ancestor::*[contains(@class, "rounded")][1]')
+        .locator('div.text-2xl')
+        .first()
+        .textContent({ timeout: 5000 });
+      return parseInt(countText?.trim() || '0', 10);
+    };
+
+    const initialCount = await getUserCount();
+    expect(initialCount).toBeGreaterThanOrEqual(0);
 
     // Create new user
     const newUser = {
       email: generateTestEmail('count-test'),
-      role: 'user' as const,
+      role: 'member' as const,  // OpenAuth uses 'member' as default role
     };
     await createUser(page, newUser);
 
-    // Navigate back to dashboard
-    await page.click('a:has-text("Dashboard")');
+    // Navigate back to dashboard - use goto for full page reload to get fresh data
+    await page.goto(TEST_URLS.adminDashboard);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-    // Get updated user count
-    const updatedCount = await page
-      .locator('text=/Total Users/i')
-      .locator('..')
-      .locator('.value')
-      .textContent();
-
-    // Verify count increased by 1
-    expect(parseInt(updatedCount || '0')).toBe(
-      parseInt(initialCount || '0') + 1
-    );
+    // Use polling to wait for the count to update (handles any race conditions)
+    // Use >= instead of exact match to handle parallel test interference
+    await expect(async () => {
+      const updatedCount = await getUserCount();
+      expect(updatedCount).toBeGreaterThanOrEqual(initialCount + 1);
+    }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
   });
 });

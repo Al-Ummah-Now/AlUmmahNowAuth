@@ -1,25 +1,21 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
-import { getAppUrl, getAuthServerUrl } from "../lib/config";
+import { getAppUrl, getAuthServerUrl, getOAuthClientId } from "../lib/config";
 import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
+import { hasAdminRole } from "../lib/auth.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const requestId = crypto.randomUUID();
 
-  // Initialize logger with D1 database (if available in Cloudflare Workers context)
+  // Initialize logger
   const env = context?.cloudflare?.env as {
-    AUTH_DB?: D1Database;
     AUTH_STORAGE?: KVNamespace;
     AUTH_SERVER_URL?: string;
     APP_URL?: string;
+    ADMIN_CLIENT_ID?: string;
   };
-  if (env?.AUTH_DB) {
-    logger.setDatabase(env.AUTH_DB, true);
-  } else {
-    // Running in dev mode without Cloudflare bindings - console only
-    logger.setDatabase(null, false);
-  }
+  logger.setDatabase(null, false);
 
   // Set execution context if available
   if (context?.cloudflare?.ctx) {
@@ -36,6 +32,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const error = url.searchParams.get("error");
 
   if (error) {
+    // Handle login_required from prompt=none - retry with normal auth flow
+    if (error === 'login_required') {
+      const appUrl = getAppUrl(request, env);
+      const { url: authorizeUrl } = await getOpenAuthClient(request, env).authorize(`${appUrl}/auth/callback`, "code");
+      logger.info('Retrying auth without prompt=none', { authorizeUrl });
+      await logger.finalizeRequest();
+      return redirect(authorizeUrl);
+    }
     logger.warn('OAuth error received', { error });
     await logger.finalizeRequest();
     return redirect(`/?error=${encodeURIComponent(error)}`);
@@ -56,7 +60,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       appUrl,
       authServerUrl,
       redirectUri: `${appUrl}/auth/callback`,
-      clientId: 'admin-dashboard',
+      clientId: getOAuthClientId(env),
       tokenEndpoint: `${authServerUrl}/token`
     });
 
@@ -124,15 +128,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const userRoles = userInfo.properties.roles || [];
     logger.info('Token verified', { email: userInfo.properties.email, roles: userRoles });
 
-    // Verify user is admin
-    const hasAdminAccess = userRoles.includes("admin") || userRoles.includes("super_admin");
-    if (!hasAdminAccess) {
-      logger.warn('Non-admin user attempted to access admin dashboard', {
+    // Verify user is admin - redirect non-admins to forbidden page with account select link
+    if (!hasAdminRole(userRoles)) {
+      logger.warn('Non-admin user attempted to access admin dashboard - redirecting to forbidden page', {
         email: userInfo.properties.email,
         roles: userRoles
       });
       await logger.finalizeRequest();
-      return redirect("/?error=admin_required");
+      // Build redirect URL for account selection
+      const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+      const selectAccountUrl = `${baseAuthorizeUrl}&prompt=select_account`;
+
+      // Redirect to forbidden page with params
+      const forbiddenUrl = `/forbidden?email=${encodeURIComponent(userInfo.properties.email)}&redirect=${encodeURIComponent(selectAccountUrl)}`;
+      return redirect(forbiddenUrl);
     }
 
     // Store session in KV
@@ -179,12 +188,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     await logger.finalizeRequest();
     return redirect("/?demo=true");
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error("Auth callback error", {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined
     });
     await logger.finalizeRequest();
-    return redirect("/login?error=auth_failed");
+    return redirect(`/login?error=${encodeURIComponent(errorMessage)}`);
   }
 }
 

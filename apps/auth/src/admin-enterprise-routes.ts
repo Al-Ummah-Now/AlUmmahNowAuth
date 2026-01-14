@@ -1,14 +1,16 @@
 /**
- * @fileoverview Admin Enterprise Routes for audit logs, client management, and user token operations
+ * @fileoverview Admin Enterprise Routes for audit logs and user token operations
  *
  * These routes expose the OpenAuth fork's built-in enterprise features:
  * - Audit log viewing with filtering
- * - OAuth client management (CRUD)
  * - Force logout users (revoke all tokens)
  * - Service health metrics
+ *
+ * NOTE: OAuth client management is now handled by OpenAuth's clientAdminRoutes
+ * (see src/index.ts and src/router.ts)
  */
 
-import { verifyAdminAuth, createAuthErrorResponse } from './auth-middleware';
+import { verifyAdminRequest, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter-enhanced';
 import { AuditEventType, AuditEventSeverity, createSecurityAlertEvent } from './audit-events';
@@ -40,18 +42,6 @@ const TokenAuditQuerySchema = v.object({
   search: v.optional(v.string()),
 });
 
-const CreateClientSchema = v.object({
-  client_id: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
-  client_type: v.picklist(['public', 'confidential']),
-  allowed_grants: v.array(v.string()),
-  redirect_uris: v.array(v.pipe(v.string(), v.url())),
-});
-
-const UpdateClientSchema = v.object({
-  allowed_grants: v.optional(v.array(v.string())),
-  redirect_uris: v.optional(v.array(v.pipe(v.string(), v.url()))),
-});
-
 const RevokeUserTokensSchema = v.object({
   user_id: v.pipe(v.string(), v.minLength(1)),
   reason: v.optional(v.string()),
@@ -74,16 +64,6 @@ interface AuditEvent {
   success: number;
   error_message: string | null;
   created_at: string;
-}
-
-interface OAuthClient {
-  id: string;
-  client_id: string;
-  client_secret_hash: string | null;
-  client_type: string;
-  allowed_grants: string;
-  redirect_uris: string;
-  created_at: number;
 }
 
 interface TokenUsageRecord {
@@ -178,32 +158,6 @@ export class AdminEnterpriseRoutes {
     }
 
     // ========================================================================
-    // OAuth Client Management Routes
-    // ========================================================================
-    if (path === '/admin/clients' && method === 'GET') {
-      return this.listClients(request, env);
-    }
-    if (path === '/admin/clients' && method === 'POST') {
-      return this.createClient(request, env);
-    }
-    if (path.match(/^\/admin\/clients\/[^/]+$/) && method === 'GET') {
-      const clientId = path.split('/').pop()!;
-      return this.getClient(clientId, request, env);
-    }
-    if (path.match(/^\/admin\/clients\/[^/]+$/) && method === 'PUT') {
-      const clientId = path.split('/').pop()!;
-      return this.updateClient(clientId, request, env);
-    }
-    if (path.match(/^\/admin\/clients\/[^/]+$/) && method === 'DELETE') {
-      const clientId = path.split('/').pop()!;
-      return this.deleteClient(clientId, request, env);
-    }
-    if (path.match(/^\/admin\/clients\/[^/]+\/rotate-secret$/) && method === 'POST') {
-      const clientId = path.split('/')[3];
-      return this.rotateClientSecret(clientId, request, env);
-    }
-
-    // ========================================================================
     // User Token Management Routes
     // ========================================================================
     if (path === '/admin/users/tokens/revoke' && method === 'POST') {
@@ -240,7 +194,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getTokenAudit(request: Request, url: URL, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:audit');
 
       // Parse query parameters
       const queryParams = Object.fromEntries(url.searchParams);
@@ -363,7 +317,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getAuditLogs(request: Request, url: URL, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:audit');
 
       // Parse query parameters
       const queryParams = Object.fromEntries(url.searchParams);
@@ -447,7 +401,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getAuditStats(request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:audit');
 
       // Get counts by severity
       const severityCounts = await this.db.prepare(`
@@ -501,7 +455,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getUserAuditTrail(userId: string, request: Request, url: URL, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:audit');
 
       const page = parseInt(url.searchParams.get('page') || '1');
       const limit = parseInt(url.searchParams.get('limit') || '50');
@@ -547,411 +501,6 @@ export class AdminEnterpriseRoutes {
   }
 
   // ==========================================================================
-  // OAuth Client Management Handlers
-  // ==========================================================================
-
-  /**
-   * GET /admin/clients - List all OAuth clients
-   */
-  private async listClients(request: Request, env: Env): Promise<Response> {
-    try {
-      await verifyAdminAuth(request, env);
-
-      const result = await this.db.prepare(`
-        SELECT id, client_id, client_type, allowed_grants, redirect_uris, created_at
-        FROM oauth_clients
-        ORDER BY created_at DESC
-      `).all<Omit<OAuthClient, 'client_secret_hash'>>();
-
-      // Parse JSON fields
-      const clients = (result.results || []).map(client => ({
-        ...client,
-        allowed_grants: JSON.parse(client.allowed_grants || '[]'),
-        redirect_uris: JSON.parse(client.redirect_uris || '[]'),
-      }));
-
-      return new Response(JSON.stringify({ clients }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      logger.error('Failed to list clients', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to list clients',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
-    }
-  }
-
-  /**
-   * POST /admin/clients - Create new OAuth client
-   */
-  private async createClient(request: Request, env: Env): Promise<Response> {
-    try {
-      const authContext = await verifyAdminAuth(request, env);
-
-      // Rate limiting
-      const clientIP = getClientIP(request);
-      const rateLimit = await checkRateLimit(this.kv, `admin:client:create:${clientIP}`, 5, 3600);
-      if (!rateLimit.allowed) {
-        return createAuthErrorResponse('Rate limit exceeded', 429);
-      }
-
-      const body = await request.json();
-      const validated = v.parse(CreateClientSchema, body);
-
-      // Generate ID and optionally client secret
-      const id = crypto.randomUUID();
-      let clientSecretHash: string | null = null;
-      let clientSecret: string | undefined;
-
-      if (validated.client_type === 'confidential') {
-        // Generate secure client secret
-        const secretBytes = new Uint8Array(32);
-        crypto.getRandomValues(secretBytes);
-        clientSecret = Array.from(secretBytes, b => b.toString(16).padStart(2, '0')).join('');
-
-        // Hash the secret for storage
-        const encoder = new TextEncoder();
-        const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(clientSecret));
-        clientSecretHash = Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
-      }
-
-      await this.db.prepare(`
-        INSERT INTO oauth_clients (id, client_id, client_secret_hash, client_type, allowed_grants, redirect_uris, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        id,
-        validated.client_id,
-        clientSecretHash,
-        validated.client_type,
-        JSON.stringify(validated.allowed_grants),
-        JSON.stringify(validated.redirect_uris),
-        Math.floor(Date.now() / 1000)
-      ).run();
-
-      // Emit audit event
-      await emitAuditEvent({
-        timestamp: new Date().toISOString(),
-        eventType: AuditEventType.OAUTH_CLIENT_CREATED,
-        severity: AuditEventSeverity.INFO,
-        userId: authContext.user.id,
-        ipAddress: getClientIP(request),
-        userAgent: request.headers.get('User-Agent'),
-        requestId: null,
-        success: true,
-        errorMessage: null,
-        metadata: {
-          client_id: validated.client_id,
-          client_type: validated.client_type,
-        },
-      });
-
-      logger.info('OAuth client created', {
-        clientId: validated.client_id,
-        createdBy: authContext.user.id,
-      });
-
-      // Return client info (and secret ONLY on creation for confidential clients)
-      const response: Record<string, unknown> = {
-        id,
-        client_id: validated.client_id,
-        client_type: validated.client_type,
-        allowed_grants: validated.allowed_grants,
-        redirect_uris: validated.redirect_uris,
-      };
-
-      if (clientSecret) {
-        response.client_secret = clientSecret;
-        response.warning = 'Store the client_secret securely. It will not be shown again.';
-      }
-
-      return new Response(JSON.stringify(response), {
-        status: 201,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      logger.error('Failed to create client', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      if (error instanceof v.ValiError) {
-        return createAuthErrorResponse('Invalid request: ' + error.message, 400);
-      }
-
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to create client',
-        error instanceof Error && error.message.includes('UNIQUE') ? 409 : 500
-      );
-    }
-  }
-
-  /**
-   * GET /admin/clients/:clientId - Get client details
-   */
-  private async getClient(clientId: string, request: Request, env: Env): Promise<Response> {
-    try {
-      await verifyAdminAuth(request, env);
-
-      const client = await this.db.prepare(`
-        SELECT id, client_id, client_type, allowed_grants, redirect_uris, created_at
-        FROM oauth_clients
-        WHERE client_id = ?
-      `).bind(clientId).first<Omit<OAuthClient, 'client_secret_hash'>>();
-
-      if (!client) {
-        return createAuthErrorResponse('Client not found', 404);
-      }
-
-      return new Response(JSON.stringify({
-        ...client,
-        allowed_grants: JSON.parse(client.allowed_grants || '[]'),
-        redirect_uris: JSON.parse(client.redirect_uris || '[]'),
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      logger.error('Failed to get client', {
-        clientId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to get client',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
-    }
-  }
-
-  /**
-   * PUT /admin/clients/:clientId - Update client configuration
-   */
-  private async updateClient(clientId: string, request: Request, env: Env): Promise<Response> {
-    try {
-      const authContext = await verifyAdminAuth(request, env);
-
-      const body = await request.json();
-      const validated = v.parse(UpdateClientSchema, body);
-
-      // Build update query dynamically
-      const updates: string[] = [];
-      const bindParams: unknown[] = [];
-
-      if (validated.allowed_grants) {
-        updates.push('allowed_grants = ?');
-        bindParams.push(JSON.stringify(validated.allowed_grants));
-      }
-      if (validated.redirect_uris) {
-        updates.push('redirect_uris = ?');
-        bindParams.push(JSON.stringify(validated.redirect_uris));
-      }
-
-      if (updates.length === 0) {
-        return createAuthErrorResponse('No updates provided', 400);
-      }
-
-      bindParams.push(clientId);
-
-      const result = await this.db.prepare(`
-        UPDATE oauth_clients SET ${updates.join(', ')} WHERE client_id = ?
-      `).bind(...bindParams).run();
-
-      if (!result.meta?.changes || result.meta.changes === 0) {
-        return createAuthErrorResponse('Client not found', 404);
-      }
-
-      // Emit audit event
-      await emitAuditEvent({
-        timestamp: new Date().toISOString(),
-        eventType: AuditEventType.OAUTH_CLIENT_UPDATED,
-        severity: AuditEventSeverity.INFO,
-        userId: authContext.user.id,
-        ipAddress: getClientIP(request),
-        userAgent: request.headers.get('User-Agent'),
-        requestId: null,
-        success: true,
-        errorMessage: null,
-        metadata: {
-          client_id: clientId,
-          updates: validated,
-        },
-      });
-
-      logger.info('OAuth client updated', {
-        clientId,
-        updatedBy: authContext.user.id,
-      });
-
-      return new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      logger.error('Failed to update client', {
-        clientId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      if (error instanceof v.ValiError) {
-        return createAuthErrorResponse('Invalid request: ' + error.message, 400);
-      }
-
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to update client',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
-    }
-  }
-
-  /**
-   * DELETE /admin/clients/:clientId - Delete OAuth client
-   */
-  private async deleteClient(clientId: string, request: Request, env: Env): Promise<Response> {
-    try {
-      const authContext = await verifyAdminAuth(request, env);
-
-      // Rate limiting for destructive operations
-      const rateLimitIP = getClientIP(request);
-      const rateLimit = await checkRateLimit(this.kv, `admin:client:delete:${rateLimitIP}`, 3, 3600);
-      if (!rateLimit.allowed) {
-        return createAuthErrorResponse('Rate limit exceeded', 429);
-      }
-
-      const result = await this.db.prepare(
-        'DELETE FROM oauth_clients WHERE client_id = ?'
-      ).bind(clientId).run();
-
-      if (!result.meta?.changes || result.meta.changes === 0) {
-        return createAuthErrorResponse('Client not found', 404);
-      }
-
-      // Emit audit event
-      await emitAuditEvent({
-        timestamp: new Date().toISOString(),
-        eventType: AuditEventType.OAUTH_CLIENT_DELETED,
-        severity: AuditEventSeverity.WARNING,
-        userId: authContext.user.id,
-        ipAddress: getClientIP(request),
-        userAgent: request.headers.get('User-Agent'),
-        requestId: null,
-        success: true,
-        errorMessage: null,
-        metadata: {
-          client_id: clientId,
-        },
-      });
-
-      logger.info('OAuth client deleted', {
-        clientId,
-        deletedBy: authContext.user.id,
-      });
-
-      return new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      logger.error('Failed to delete client', {
-        clientId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to delete client',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
-    }
-  }
-
-  /**
-   * POST /admin/clients/:clientId/rotate-secret - Rotate client secret
-   */
-  private async rotateClientSecret(clientId: string, request: Request, env: Env): Promise<Response> {
-    try {
-      const authContext = await verifyAdminAuth(request, env);
-
-      // Rate limiting
-      const rateLimitIP = getClientIP(request);
-      const rateLimit = await checkRateLimit(this.kv, `admin:client:rotate:${rateLimitIP}`, 5, 3600);
-      if (!rateLimit.allowed) {
-        return createAuthErrorResponse('Rate limit exceeded', 429);
-      }
-
-      // Check client exists and is confidential
-      const client = await this.db.prepare(
-        'SELECT id, client_type FROM oauth_clients WHERE client_id = ?'
-      ).bind(clientId).first<{ id: string; client_type: string }>();
-
-      if (!client) {
-        return createAuthErrorResponse('Client not found', 404);
-      }
-
-      if (client.client_type !== 'confidential') {
-        return createAuthErrorResponse('Cannot rotate secret for public clients', 400);
-      }
-
-      // Generate new secret
-      const secretBytes = new Uint8Array(32);
-      crypto.getRandomValues(secretBytes);
-      const newSecret = Array.from(secretBytes, b => b.toString(16).padStart(2, '0')).join('');
-
-      // Hash the secret
-      const encoder = new TextEncoder();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(newSecret));
-      const newSecretHash = Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
-
-      // Update in database
-      await this.db.prepare(
-        'UPDATE oauth_clients SET client_secret_hash = ? WHERE client_id = ?'
-      ).bind(newSecretHash, clientId).run();
-
-      // Emit audit event
-      await emitAuditEvent({
-        timestamp: new Date().toISOString(),
-        eventType: AuditEventType.OAUTH_CLIENT_SECRET_ROTATED,
-        severity: AuditEventSeverity.WARNING,
-        userId: authContext.user.id,
-        ipAddress: getClientIP(request),
-        userAgent: request.headers.get('User-Agent'),
-        requestId: null,
-        success: true,
-        errorMessage: null,
-        metadata: {
-          client_id: clientId,
-        },
-      });
-
-      logger.info('OAuth client secret rotated', {
-        clientId,
-        rotatedBy: authContext.user.id,
-      });
-
-      return new Response(JSON.stringify({
-        client_id: clientId,
-        client_secret: newSecret,
-        warning: 'Store the client_secret securely. It will not be shown again.',
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (error) {
-      logger.error('Failed to rotate client secret', {
-        clientId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to rotate client secret',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
-    }
-  }
-
-  // ==========================================================================
   // User Token Management Handlers
   // ==========================================================================
 
@@ -960,14 +509,15 @@ export class AdminEnterpriseRoutes {
    */
   private async getUserTokens(userId: string, request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:users');
 
       // Get active tokens
+      // OpenAuth schema: id, token_hash, user_id, client_id, tenant_id, scope, expires_at, revoked, revoked_at, created_at
       const activeTokens = await this.db.prepare(`
-        SELECT id, client_id, issued_at, expires_at, last_used_at, ip_address, user_agent, rotation_count
+        SELECT id, client_id, created_at, expires_at, scope, revoked
         FROM refresh_tokens
         WHERE user_id = ? AND revoked = 0 AND expires_at > ?
-        ORDER BY issued_at DESC
+        ORDER BY created_at DESC
       `).bind(userId, Math.floor(Date.now() / 1000)).all();
 
       // Get token count stats
@@ -1009,7 +559,8 @@ export class AdminEnterpriseRoutes {
    */
   private async revokeAllUserTokens(userId: string, request: Request, env: Env): Promise<Response> {
     try {
-      const authContext = await verifyAdminAuth(request, env);
+      const authResult = await verifyAdminRequest(request, env, 'admin:users');
+      const authContext = authResult.type === 'user' ? authResult : { user: authResult.actingUser, isAdmin: true };
 
       // Rate limiting for destructive operations
       const rateLimitIP = getClientIP(request);
@@ -1039,7 +590,7 @@ export class AdminEnterpriseRoutes {
       // Revoke all active tokens
       await this.db.prepare(`
         UPDATE refresh_tokens
-        SET revoked = 1, revoked_at = ?, revoked_reason = 'admin_force_logout'
+        SET revoked = 1, revoked_at = ?
         WHERE user_id = ? AND revoked = 0
       `).bind(now, userId).run();
 
@@ -1101,7 +652,8 @@ export class AdminEnterpriseRoutes {
    */
   private async revokeUserTokens(request: Request, env: Env): Promise<Response> {
     try {
-      const authContext = await verifyAdminAuth(request, env);
+      const authResult = await verifyAdminRequest(request, env, 'admin:users');
+      const authContext = authResult.type === 'user' ? authResult : { user: authResult.actingUser, isAdmin: true };
 
       const body = await request.json();
       const validated = v.parse(RevokeUserTokensSchema, body);
@@ -1124,7 +676,7 @@ export class AdminEnterpriseRoutes {
         });
       }
 
-      // Revoke tokens
+      // Revoke tokens with reason
       await this.db.prepare(`
         UPDATE refresh_tokens
         SET revoked = 1, revoked_at = ?, revoked_reason = ?
@@ -1188,7 +740,7 @@ export class AdminEnterpriseRoutes {
    */
   private async getHealth(request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:*');
 
       const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
 
@@ -1233,14 +785,14 @@ export class AdminEnterpriseRoutes {
    */
   private async getMetrics(request: Request, env: Env): Promise<Response> {
     try {
-      await verifyAdminAuth(request, env);
+      await verifyAdminRequest(request, env, 'admin:*');
 
       // Get user counts
       const userStats = await this.db.prepare(`
         SELECT
-          (SELECT COUNT(*) FROM user) as total_users,
-          (SELECT COUNT(*) FROM user WHERE created_at >= datetime('now', '-24 hours')) as users_24h,
-          (SELECT COUNT(*) FROM user WHERE created_at >= datetime('now', '-7 days')) as users_7d
+          (SELECT COUNT(*) FROM users) as total_users,
+          (SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-24 hours')) as users_24h,
+          (SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-7 days')) as users_7d
       `).first<{ total_users: number; users_24h: number; users_7d: number }>();
 
       // Get token stats
@@ -1267,11 +819,12 @@ export class AdminEnterpriseRoutes {
       `).first<{ events_24h: number; errors_24h: number; failed_24h: number }>();
 
       // Get client stats
+      // OpenAuth schema: client type is derived from client_secret_hash (NULL = public, NOT NULL = confidential)
       const clientStats = await this.db.prepare(`
         SELECT
           COUNT(*) as total_clients,
-          SUM(CASE WHEN client_type = 'public' THEN 1 ELSE 0 END) as public_clients,
-          SUM(CASE WHEN client_type = 'confidential' THEN 1 ELSE 0 END) as confidential_clients
+          SUM(CASE WHEN client_secret_hash IS NULL THEN 1 ELSE 0 END) as public_clients,
+          SUM(CASE WHEN client_secret_hash IS NOT NULL THEN 1 ELSE 0 END) as confidential_clients
         FROM oauth_clients
       `).first<{ total_clients: number; public_clients: number; confidential_clients: number }>();
 

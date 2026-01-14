@@ -1,10 +1,36 @@
 // Server-side authentication utilities for admin app
 import { logger } from "./logger.server";
+import { getAppUrl } from "./config";
+import { getOpenAuthClient, subjects } from "./openauth.client.server";
+
+/**
+ * Check if user has admin access based on their roles
+ * Case-insensitive check - OpenAuth roles are "Admin" and "Super Admin"
+ */
+export function hasAdminRole(roles: string[]): boolean {
+  return roles.some(r =>
+    r.toLowerCase() === "admin" || r.toLowerCase() === "super admin"
+  );
+}
+
+// Session data structure stored in KV
+interface SessionData {
+  user: {
+    id: string;
+    email: string;
+    roles: string[];
+  };
+  tokens: {
+    access: string;
+    refresh?: string;
+  };
+  expiresAt: string;
+}
 
 export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE: KVNamespace }) {
   const url = new URL(request.url);
   logger.debug('getAuthenticatedUser called', { path: url.pathname });
-  
+
   // Get session cookie
   const cookieHeader = request.headers.get("Cookie");
   if (!cookieHeader) {
@@ -33,7 +59,7 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
     }
 
     // Parse session data with error handling
-    let session: { user?: { id: string; email: string; roles?: string[] }; expiresAt?: string };
+    let session: SessionData;
     try {
       session = JSON.parse(sessionData);
     } catch (parseError) {
@@ -50,7 +76,12 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
       await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
       return null;
     }
-    return session.user;
+
+    // Return both user data and tokens for verification
+    return {
+      user: session.user,
+      tokens: session.tokens
+    };
   } catch (error) {
     logger.error("Error verifying session", { error: error instanceof Error ? error.message : String(error) });
     return null;
@@ -65,34 +96,107 @@ export function redirectToLogin(request: Request) {
   return Response.redirect(redirectUrl.toString(), 302);
 }
 
+// Redirect to auth server with prompt=select_account to switch accounts
+export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SERVER_URL?: string; APP_URL?: string; ADMIN_CLIENT_ID?: string }) {
+  const appUrl = getAppUrl(request, env);
+  const client = getOpenAuthClient(request, env);
+
+  // Generate authorize URL with prompt=select_account for account picker
+  const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  const authorizeUrl = `${baseAuthorizeUrl}&prompt=select_account`;
+
+  logger.info('Redirecting non-admin user to account select', { authorizeUrl });
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: authorizeUrl,
+    },
+  });
+}
+
 export async function requireAuth(
   request: Request,
-  env: { AUTH_STORAGE?: KVNamespace },
+  env: { AUTH_STORAGE?: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string; ADMIN_CLIENT_ID?: string },
   requireAdmin: boolean = false
 ) {
   const url = new URL(request.url);
-  
+
   // If no storage available, always redirect to login
   if (!env?.AUTH_STORAGE) {
     logger.error('AUTH_STORAGE not available', { path: url.pathname });
     throw redirectToLogin(request);
   }
 
-  const user = await getAuthenticatedUser(request, env as { AUTH_STORAGE: KVNamespace });
+  const sessionData = await getAuthenticatedUser(request, env as { AUTH_STORAGE: KVNamespace });
 
-  if (!user) {
+  if (!sessionData) {
     logger.info('Unauthenticated access attempt', { path: url.pathname });
     throw redirectToLogin(request);
   }
 
   if (requireAdmin) {
-    const roles = user.roles || [];
-    const hasAdminAccess = roles.includes("admin") || roles.includes("super_admin");
-    if (!hasAdminAccess) {
-      throw new Response("Forbidden: Admin access required", { status: 403 });
+    // Verify access token to get fresh roles from claims
+    try {
+      const client = getOpenAuthClient(request, env);
+
+      logger.debug('Verifying access token for admin check', {
+        userId: sessionData.user.id,
+        email: sessionData.user.email
+      });
+
+      const verified = await client.verify(subjects, sessionData.tokens.access, {
+        refresh: sessionData.tokens.refresh,
+      });
+
+      // Check if verification returned an error
+      if (verified?.err) {
+        logger.error('Token verification failed during admin check', {
+          error: verified.err,
+          userId: sessionData.user.id
+        });
+        throw redirectToLogin(request);
+      }
+
+      if (!verified || !verified.subject) {
+        logger.error('Token verification failed - no subject', {
+          userId: sessionData.user.id
+        });
+        throw redirectToLogin(request);
+      }
+
+      // Extract roles from verified token
+      const userRoles = verified.subject.properties.roles || [];
+
+      if (!hasAdminRole(userRoles)) {
+        logger.warn('Admin access denied - redirecting to account select', {
+          userId: sessionData.user.id,
+          email: sessionData.user.email,
+          roles: userRoles
+        });
+        // Redirect to auth server with prompt=select_account to allow switching to admin account
+        throw await redirectToAuthWithSelect(request, env);
+      }
+
+      // Return user with fresh roles from token
+      return {
+        id: sessionData.user.id,
+        email: sessionData.user.email,
+        roles: userRoles
+      };
+    } catch (error) {
+      // If error is already a Response (redirect), rethrow it
+      if (error instanceof Response) {
+        throw error;
+      }
+
+      logger.error('Error during token verification for admin check', {
+        error: error instanceof Error ? error.message : String(error),
+        userId: sessionData.user.id
+      });
+      throw redirectToLogin(request);
     }
   }
 
-  
-  return user;
+  return sessionData.user;
 }

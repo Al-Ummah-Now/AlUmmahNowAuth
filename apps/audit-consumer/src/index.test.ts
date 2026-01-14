@@ -5,16 +5,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AuditEventMessage } from '@meywd/openauth/services/audit';
+import type { AuditEventMessage } from '@al-ummah-now/openauth/services/audit';
 import type { D1Database, MessageBatch } from '@cloudflare/workers-types';
 
 // Mock the audit consumer module
-vi.mock('@meywd/openauth/services/audit-consumer', () => ({
+vi.mock('@al-ummah-now/openauth/services/audit-consumer', () => ({
   handleAuditBatch: vi.fn(),
 }));
 
 import worker from './index';
-import { handleAuditBatch } from '@meywd/openauth/services/audit-consumer';
+import { handleAuditBatch } from '@al-ummah-now/openauth/services/audit-consumer';
 
 describe('Audit Consumer Worker', () => {
   let mockEnv: Env;

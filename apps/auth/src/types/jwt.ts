@@ -43,6 +43,7 @@ export interface RefreshTokenRecord {
 	ip_address: string | null;
 	user_agent: string | null;
 	token_family_id: string | null;
+	session_id: string | null; // Account session ID for session binding (Lane 4)
 }
 
 /**
@@ -57,9 +58,16 @@ export interface AccessTokenPayload {
 	nbf: number; // Not before
 	jti: string; // JWT ID
 	email: string;
-	roles: string[]; // RBAC roles from user_roles table
+	roles: string[]; // RBAC roles from rbac_user_roles table
 	client_id: string;
 	scope: string;
+	// Lane 4: Token Architecture enhancements
+	session_id?: string; // Account session ID for session binding
+	permissions?: string[]; // Effective permissions (intersection of user roles and client grants)
+	token_version?: number; // Token version for legacy token migration (1 = legacy, 2 = new)
+	tenant_id?: string; // Tenant context
+	auth_time?: number; // Time of authentication (Unix timestamp)
+	nonce?: string; // Nonce from authorization request (OIDC)
 	// Index signature for jose JWTPayload compatibility
 	[key: string]: unknown;
 }
@@ -73,6 +81,59 @@ export interface TokenPair {
 	expires_in: number;
 	refresh_token: string;
 	scope: string;
+}
+
+/**
+ * Token introspection response (RFC 7662)
+ * https://datatracker.ietf.org/doc/html/rfc7662
+ */
+export interface IntrospectionResponse {
+	active: boolean;
+	scope?: string;
+	client_id?: string;
+	username?: string;
+	token_type?: string;
+	exp?: number;
+	iat?: number;
+	nbf?: number;
+	sub?: string;
+	aud?: string | string[];
+	iss?: string;
+	jti?: string;
+	// Custom claims
+	roles?: string[];
+	permissions?: string[];
+	session_id?: string;
+}
+
+/**
+ * Token exchange request (RFC 8693)
+ * https://datatracker.ietf.org/doc/html/rfc8693
+ */
+export interface TokenExchangeRequest {
+	grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange';
+	subject_token: string;
+	subject_token_type: 'urn:ietf:params:oauth:token-type:access_token';
+	audience: string; // Target client/audience
+	scope?: string; // Requested scope for new token
+	requested_token_type?: string;
+}
+
+/**
+ * App token record for tracking app-specific access tokens
+ */
+export interface AppTokenRecord {
+	id: string;
+	account_session_id: string;
+	client_id: string;
+	access_token_hash: string;
+	scope: string | null;
+	audience: string;
+	issued_at: string;
+	expires_at: string;
+	is_revoked: number; // SQLite boolean (0 or 1)
+	revoked_at: string | null;
+	revoke_reason: string | null;
 }
 
 // Type for Cloudflare Secrets Store binding (production)

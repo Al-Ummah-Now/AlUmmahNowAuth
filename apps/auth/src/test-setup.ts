@@ -3,95 +3,165 @@ import { env } from "cloudflare:test";
 
 // Create the database schema for testing
 export async function setupDatabase() {
-  // Migration 0001: Create user table (without legacy role column)
+  // Disable foreign keys temporarily for clean schema rebuild
+  await env.AUTH_DB.prepare(`PRAGMA foreign_keys = OFF`).run();
+
+  // Drop any existing views OR tables that might conflict
+  // (legacy compatibility objects no longer needed)
+  const conflictingObjects = ['user_permissions'];
+  for (const name of conflictingObjects) {
+    await env.AUTH_DB.prepare(`DROP VIEW IF EXISTS ${name}`).run().catch(() => {});
+    await env.AUTH_DB.prepare(`DROP TABLE IF EXISTS ${name}`).run().catch(() => {});
+  }
+
+  // Drop ALL tables that may have schema conflicts with OpenAuth 1.0.15
+  // Order matters due to foreign key dependencies (drop dependents first)
+  const tablesToRebuild = [
+    'rbac_user_roles',
+    'rbac_role_permissions',
+    'rbac_permissions',
+    'rbac_roles',
+    'account_sessions',
+    'browser_sessions',
+    'oauth_clients',
+    'users',
+    'tenants',
+    'token_usage',
+  ];
+
+  for (const table of tablesToRebuild) {
+    await env.AUTH_DB.prepare(`DROP TABLE IF EXISTS ${table}`).run().catch(() => {});
+  }
+
+  // Re-enable foreign keys
+  await env.AUTH_DB.prepare(`PRAGMA foreign_keys = ON`).run();
+
+  // Users table (matches OpenAuth schema)
   await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS user (
-      id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
-      email TEXT UNIQUE NOT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      password_reset_required BOOLEAN DEFAULT FALSE
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'default',
+      email TEXT NOT NULL,
+      name TEXT,
+      metadata TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      last_login_at INTEGER,
+      deleted_at INTEGER,
+      password_reset_required INTEGER DEFAULT 0,
+      UNIQUE(tenant_id, email)
     )
   `).run();
 
-  // Migration 0011: Create RBAC tables
-  // 1. Roles table
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id)`).run();
+
+  // Note: App uses OpenAuth's rbac_* tables directly (no compatibility views needed)
+
+  // ============================================================================
+  // OpenAuth RBAC tables (matching 001_schema.sql)
+  // ============================================================================
+
+  // tenants (required for oauth_clients FK)
   await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS roles (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      name TEXT UNIQUE NOT NULL,
-      description TEXT,
-      parent_role_id TEXT REFERENCES roles(id) ON DELETE SET NULL,
-      is_system BOOLEAN DEFAULT FALSE,
+    CREATE TABLE IF NOT EXISTS tenants (
+      id TEXT PRIMARY KEY,
+      domain TEXT UNIQUE,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      branding TEXT,
+      settings TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )
+  `).run();
+
+  // Insert default tenant
+  await env.AUTH_DB.prepare(`
+    INSERT OR IGNORE INTO tenants (id, name, status, branding, settings, created_at, updated_at)
+    VALUES ('default', 'Default Tenant', 'active', '{}', '{}', unixepoch() * 1000, unixepoch() * 1000)
+  `).run();
+
+  // oauth_clients (OpenAuth schema)
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS oauth_clients (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      client_secret_hash TEXT,
+      grant_types TEXT DEFAULT '[]',
+      scopes TEXT DEFAULT '[]',
+      redirect_uris TEXT DEFAULT '[]',
       metadata TEXT DEFAULT '{}',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      created_by TEXT REFERENCES user(id),
-      updated_by TEXT REFERENCES user(id)
+      enabled INTEGER DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      rotated_at INTEGER,
+      previous_secret_hash TEXT,
+      previous_secret_expires_at INTEGER,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    )
+  `).run();
+  await env.AUTH_DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_clients_tenant_name ON oauth_clients(tenant_id, name)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_oauth_clients_tenant ON oauth_clients(tenant_id)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_oauth_clients_created ON oauth_clients(created_at)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_oauth_clients_enabled ON oauth_clients(enabled)`).run();
+
+  // rbac_roles
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS rbac_roles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      tenant_id TEXT NOT NULL,
+      description TEXT,
+      is_system_role INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      UNIQUE(name, tenant_id)
     )
   `).run();
 
-  // 2. Permissions table
+  // rbac_permissions (scoped to oauth_clients)
   await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS permissions (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      name TEXT UNIQUE NOT NULL,
+    CREATE TABLE IF NOT EXISTS rbac_permissions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      description TEXT,
       resource TEXT NOT NULL,
       action TEXT NOT NULL,
-      scope TEXT DEFAULT '*',
-      description TEXT,
-      is_system BOOLEAN DEFAULT FALSE,
-      metadata TEXT DEFAULT '{}',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      FOREIGN KEY (client_id) REFERENCES oauth_clients(id) ON DELETE CASCADE,
+      UNIQUE(name, client_id)
     )
   `).run();
 
-  // 3. Role-Permission mapping
+  // rbac_role_permissions
   await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS role_permissions (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-      permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-      granted_by TEXT REFERENCES user(id),
-      granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(role_id, permission_id)
+    CREATE TABLE IF NOT EXISTS rbac_role_permissions (
+      role_id TEXT NOT NULL,
+      permission_id TEXT NOT NULL,
+      granted_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      granted_by TEXT NOT NULL DEFAULT 'system',
+      PRIMARY KEY (role_id, permission_id),
+      FOREIGN KEY (role_id) REFERENCES rbac_roles(id) ON DELETE CASCADE,
+      FOREIGN KEY (permission_id) REFERENCES rbac_permissions(id) ON DELETE CASCADE
     )
   `).run();
 
-  // 4. User-Role mapping
+  // rbac_user_roles
   await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS user_roles (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-      granted_by TEXT REFERENCES user(id),
-      granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      expires_at TIMESTAMP,
-      is_active BOOLEAN DEFAULT TRUE,
-      UNIQUE(user_id, role_id)
+    CREATE TABLE IF NOT EXISTS rbac_user_roles (
+      user_id TEXT NOT NULL,
+      role_id TEXT NOT NULL,
+      tenant_id TEXT NOT NULL,
+      assigned_at INTEGER NOT NULL,
+      expires_at INTEGER,
+      assigned_by TEXT NOT NULL,
+      PRIMARY KEY (user_id, role_id, tenant_id)
     )
   `).run();
-
-  // 5. Direct user permissions
-  await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS user_permissions (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-      is_grant BOOLEAN DEFAULT TRUE,
-      granted_by TEXT REFERENCES user(id),
-      granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      expires_at TIMESTAMP,
-      reason TEXT,
-      UNIQUE(user_id, permission_id)
-    )
-  `).run();
-
-  // Create indexes
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id, is_active)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id)`).run();
-  await env.AUTH_DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_permissions_name ON permissions(name)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_permissions_resource ON permissions(resource, action, scope)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id)`).run();
 
   // Migration 0009: Create audit_events table
   await env.AUTH_DB.prepare(`
@@ -113,39 +183,20 @@ export async function setupDatabase() {
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp ON audit_events(timestamp)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_events_user_id ON audit_events(user_id)`).run();
 
-  // Migration 0015: Create oauth_clients table
-  await env.AUTH_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS oauth_clients (
-      id TEXT PRIMARY KEY,
-      client_id TEXT UNIQUE NOT NULL,
-      client_secret_hash TEXT,
-      client_type TEXT NOT NULL CHECK(client_type IN ('public', 'confidential')),
-      allowed_grants TEXT NOT NULL,
-      redirect_uris TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    )
-  `).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_oauth_clients_client_id ON oauth_clients(client_id)`).run();
-
-  // Migration 0012: Create refresh_tokens table
+  // Migration 0012: Create refresh_tokens table (OpenAuth schema)
   await env.AUTH_DB.prepare(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       token_hash TEXT UNIQUE NOT NULL,
       user_id TEXT NOT NULL,
       client_id TEXT NOT NULL,
-      issued_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      tenant_id TEXT NOT NULL DEFAULT 'default',
+      scope TEXT,
       expires_at INTEGER NOT NULL,
-      last_used_at INTEGER,
-      ip_address TEXT,
-      user_agent TEXT,
-      revoked INTEGER DEFAULT 0,
+      revoked INTEGER NOT NULL DEFAULT 0,
       revoked_at INTEGER,
       revoked_reason TEXT,
-      parent_token_id TEXT,
-      rotation_count INTEGER DEFAULT 0,
-      scope TEXT DEFAULT 'openid email profile',
-      token_family_id TEXT
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     )
   `).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`).run();
@@ -171,85 +222,39 @@ export async function setupDatabase() {
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_client_id ON token_usage(client_id)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_event_type ON token_usage(event_type)`).run();
 
-  // Seed system roles
-  const systemRoles = [
-    { id: 'role_super_admin', name: 'super_admin', description: 'Super administrator with full access', is_system: 1 },
-    { id: 'role_admin', name: 'admin', description: 'Administrator with elevated privileges', is_system: 1 },
-    { id: 'role_moderator', name: 'moderator', description: 'Moderator with content management privileges', is_system: 1 },
-    { id: 'role_user', name: 'user', description: 'Standard user with basic access', is_system: 1 },
-  ];
+  // Note: Roles are seeded by OpenAuth migrations (002_seed.sql)
+  // Available roles: role_super_admin, role_admin, role_member, role_viewer, etc.
 
-  for (const role of systemRoles) {
-    await env.AUTH_DB.prepare(`
-      INSERT OR IGNORE INTO roles (id, name, description, is_system)
-      VALUES (?, ?, ?, ?)
-    `).bind(role.id, role.name, role.description, role.is_system).run();
-  }
+  const now = Date.now();
 
   // Create test users for use in tests (for foreign key references)
-  // Using a comprehensive list of all user IDs referenced across test files
-  const testUsers = [
-    // System user (for bootstrap operations)
-    { id: 'system', email: 'system@test.com', rbacRole: 'role_admin' },
-    { id: 'super-admin', email: 'super-admin@system.com', rbacRole: 'role_super_admin' },
-    { id: 'admin', email: 'admin@system.com', rbacRole: 'role_admin' },
-
-    // Admin users
-    { id: 'admin-user', email: 'admin@test.com', rbacRole: 'role_admin' },
-    { id: 'admin-user-123', email: 'admin-user-123@test.com', rbacRole: 'role_admin' },
-    { id: 'super-admin-user', email: 'super-admin@test.com', rbacRole: 'role_super_admin' },
-    { id: 'admin-for-assignment', email: 'admin-for-assignment@test.com', rbacRole: 'role_admin' },
-    { id: 'admin-for-removal', email: 'admin-for-removal@test.com', rbacRole: 'role_admin' },
-    { id: 'admin-granter', email: 'admin-granter@test.com', rbacRole: 'role_admin' },
-    { id: 'bulk-admin', email: 'bulk-admin@test.com', rbacRole: 'role_admin' },
-    { id: 'audit-admin', email: 'audit-admin@test.com', rbacRole: 'role_admin' },
-    { id: 'remove-admin', email: 'remove-admin@test.com', rbacRole: 'role_admin' },
-    { id: 'expiry-admin', email: 'expiry-admin@test.com', rbacRole: 'role_admin' },
-
+  // Note: No role assignments here - roles are seeded by OpenAuth migrations
+  // Tests that need users with roles should set them up in beforeEach/beforeAll
+  const testUserIds = [
+    // System users
+    'system', 'user_system', 'super-admin', 'admin',
+    // Admin users for various tests
+    'admin-user', 'admin-user-123', 'super-admin-user',
+    'admin-for-assignment', 'admin-for-removal', 'admin-granter',
+    'bulk-admin', 'audit-admin', 'remove-admin', 'expiry-admin',
     // Regular users
-    { id: 'test-user-123', email: 'test-user-123@test.com', rbacRole: 'role_user' },
-    { id: 'check-user-123', email: 'check-user-123@test.com', rbacRole: 'role_user' },
-    { id: 'regular-user-123', email: 'regular-user-123@test.com', rbacRole: 'role_user' },
-    { id: 'regular-user-456', email: 'regular-user-456@test.com', rbacRole: 'role_user' },
-    { id: 'regular-user', email: 'regular-user@test.com', rbacRole: 'role_user' },
-    { id: 'regular-granter', email: 'regular-granter@test.com', rbacRole: 'role_user' },
-    { id: 'target-user', email: 'target-user@test.com', rbacRole: 'role_user' },
-    { id: 'test-user', email: 'test-user@test.com', rbacRole: 'role_user' },
-    { id: 'expiring-user', email: 'expiring-user@test.com', rbacRole: 'role_user' },
-    { id: 'no-duplicate-user', email: 'no-duplicate-user@test.com', rbacRole: 'role_user' },
-    { id: 'removal-user', email: 'removal-user@test.com', rbacRole: 'role_user' },
-    { id: 'no-role-user', email: 'no-role-user@test.com', rbacRole: null }, // User with no roles
-    { id: 'multi-role-user', email: 'multi-role-user@test.com', rbacRole: 'role_user' },
-    { id: 'no-roles-user', email: 'no-roles-user@test.com', rbacRole: null }, // User with no roles
-    { id: 'metadata-user', email: 'metadata-user@test.com', rbacRole: 'role_user' },
-    { id: 'bulk-user', email: 'bulk-user@test.com', rbacRole: 'role_user' },
-    { id: 'expiry-user', email: 'expiry-user@test.com', rbacRole: 'role_user' },
-    { id: 'user-one', email: 'user-one@test.com', rbacRole: 'role_user' },
-    { id: 'user-two', email: 'user-two@test.com', rbacRole: 'role_user' },
-    { id: 'user-three', email: 'user-three@test.com', rbacRole: 'role_user' },
-    { id: 'cache-test-user', email: 'cache-test-user@test.com', rbacRole: 'role_user' },
-    { id: 'super-admin-for-tests', email: 'super-admin-for-tests@test.com', rbacRole: 'role_super_admin' },
-    { id: 'super-admin-perm-tests', email: 'super-admin-perm-tests@test.com', rbacRole: 'role_super_admin' },
-    { id: 'user-123', email: 'user-123@test.com', rbacRole: 'role_user' },
-    { id: 'user-456', email: 'user-456@test.com', rbacRole: 'role_user' },
+    'test-user-123', 'check-user-123', 'regular-user-123', 'regular-user-456',
+    'regular-user', 'regular-granter', 'target-user', 'test-user',
+    'expiring-user', 'no-duplicate-user', 'removal-user', 'no-role-user',
+    'multi-role-user', 'no-roles-user', 'metadata-user', 'bulk-user',
+    'expiry-user', 'user-one', 'user-two', 'user-three', 'cache-test-user',
+    'super-admin-for-tests', 'super-admin-perm-tests', 'user-123', 'user-456',
   ];
 
-  // Insert all test users and assign RBAC roles
-  for (const user of testUsers) {
+  // Insert test users (no role assignments - handled by migrations)
+  for (const userId of testUserIds) {
     await env.AUTH_DB.prepare(`
-      INSERT OR IGNORE INTO user (id, email, password_reset_required)
-      VALUES (?, ?, FALSE)
-    `).bind(user.id, user.email).run();
-
-    // Assign RBAC role if specified
-    if (user.rbacRole) {
-      await env.AUTH_DB.prepare(`
-        INSERT OR IGNORE INTO user_roles (user_id, role_id, granted_by, is_active)
-        VALUES (?, ?, 'system', 1)
-      `).bind(user.id, user.rbacRole).run();
-    }
+      INSERT OR IGNORE INTO users (id, tenant_id, email, status, created_at, updated_at, password_reset_required)
+      VALUES (?, 'default', ?, 'active', ?, ?, 0)
+    `).bind(userId, `${userId}@test.com`, now, now).run();
   }
 }
 
 // Run setup automatically when this module is imported
+// (setupDatabase is already exported via the function declaration)
 await setupDatabase();

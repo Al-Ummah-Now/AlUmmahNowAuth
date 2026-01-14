@@ -3,6 +3,7 @@
   "main": "src/index.ts",
   "name": "al-ummah-now-profile-qa",
   "upload_source_maps": true,
+  "workers_dev": true,
   "kv_namespaces": [
     {
       "binding": "AUTH_STORAGE",
@@ -25,5 +26,12 @@
   "observability": {
     "enabled": true
   },
+  "routes": [
+    {
+      "pattern": "profile.auth.qa.alummahnow.net",
+      "zone_name": "alummahnow.net",
+      "custom_domain": true
+    }
+  ],
   "compatibility_flags": ["nodejs_compat"]
 }

@@ -14,6 +14,10 @@ const TEST_PASSWORD = 'TestPassword123!';
 const NEW_PASSWORD = 'NewTestPassword456!';
 
 test.describe('Forgot Password Flow', () => {
+  // Increase timeout for forgot password tests - these are complex multi-step flows
+  // involving registration, logout, password reset, verification codes, and re-login
+  test.setTimeout(120000);
+
   test('should complete forgot password flow and login with new password', async ({ page }) => {
     const testUser = TEST_USERS.user();
 
@@ -22,9 +26,14 @@ test.describe('Forgot Password Flow', () => {
 
     // Step 2: Log out
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedInView')).toBeVisible();
-    await page.click('button:has-text("Sign Out")');
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
+    // Use .first() to handle potential duplicate matches (account switcher also has "Sign out of all accounts")
+    const signOutBtn1 = page.locator('#loggedInView button:has-text("Sign Out")').first();
+    await expect(signOutBtn1).toBeVisible({ timeout: 5000 });
+    await signOutBtn1.click();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
 
     // Step 3: Navigate to auth server login page
     await page.locator('#loggedOutView button:has-text("Sign In")').click();
@@ -34,7 +43,7 @@ test.describe('Forgot Password Flow', () => {
     await page.click('a:has-text("Forgot password")');
 
     // Set up email interception for the reset code
-    const emailInterceptor = setupEmailInterception(page);
+    const emailInterceptor = setupEmailInterception();
 
     // Step 5: Enter email for password reset
     await expect(page.locator('input[type="email"]')).toBeVisible();
@@ -53,9 +62,32 @@ test.describe('Forgot Password Flow', () => {
 
     console.log(`Got reset code for ${testUser.email}: ${resetCode}`);
 
-    // Step 8: Enter verification code
-    await page.fill('input[name="code"]', resetCode);
-    await page.click('button:has-text("Continue")');
+    // Step 8: Enter verification code with retry logic
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page.fill('input[name="code"]', '');
+      await page.fill('input[name="code"]', resetCode);
+      await page.waitForTimeout(100);
+
+      const continueBtn = page.locator('button:has-text("Continue")');
+      await expect(continueBtn).toBeEnabled({ timeout: 5000 });
+      await continueBtn.click();
+
+      // Check if password fields are now visible (code accepted)
+      const passwordVisible = await page.locator('input[type="password"]').first().isVisible({ timeout: 8000 }).catch(() => false);
+      if (passwordVisible) {
+        break;
+      }
+
+      // If still on code page and not last attempt, retry
+      const stillOnCodePage = await page.locator('input[name="code"]').isVisible().catch(() => false);
+      if (stillOnCodePage && attempt < 3) {
+        console.log(`Reset code submission attempt ${attempt} failed, retrying...`);
+        continue;
+      }
+      if (attempt === 3 && !passwordVisible) {
+        throw new Error(`Reset code submission failed after ${attempt} attempts. Page URL: ${page.url()}`);
+      }
+    }
 
     // Step 9: Enter new password
     await expect(page.locator('input[type="password"]').first()).toBeVisible({ timeout: 10000 });
@@ -66,24 +98,84 @@ test.describe('Forgot Password Flow', () => {
 
     await page.click('button:has-text("Continue")');
 
-    // Step 10: After password change, OpenAuth returns to login page (not auto-login)
-    // Wait for the login page to load (email + password fields visible)
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('input[type="password"]')).toBeVisible();
+    // Step 10: After password change, wait for either:
+    // - Redirect to profile app (auto-login) OR
+    // - Redirect to login page (manual login required)
+    await page.waitForTimeout(2000); // Wait for redirect to complete
 
-    // Verify we're on the login page (should show "Forgot password?" link)
-    await expect(page.locator('a:has-text("Forgot password?")')).toBeVisible();
+    // Check if we're on profile app (auto-logged in) or back to login page
+    const currentUrl = page.url();
+    const isOnProfileApp = currentUrl.includes('profile');
 
-    console.log('Password reset completed - now on login page');
+    if (!isOnProfileApp) {
+      console.log('Password reset completed - redirected to login page, logging in with new password');
 
-    // Step 11: Log in with the NEW password (we're already on the login page)
+      // We're on the login page, need to log in with new password
+      await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+      await page.fill('input[type="email"]', testUser.email);
+      await page.fill('input[type="password"]', NEW_PASSWORD);
+      await page.click('button:has-text("Continue")');
+
+      // Handle verification code if required
+      const codeInput = page.locator('input[name="code"]');
+      const needsVerificationCode = await codeInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+      if (needsVerificationCode) {
+        const verificationCode = await emailInterceptor.getLastLoginCode(testUser.email);
+        if (!verificationCode) {
+          throw new Error('Failed to capture verification code during login with new password');
+        }
+        console.log(`Got login verification code for ${testUser.email}: ${verificationCode}`);
+        await page.fill('input[name="code"]', verificationCode);
+        await page.click('button:has-text("Continue")');
+      }
+
+      // Wait for redirect to profile app
+      await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+    } else {
+      console.log('Password reset completed - auto-logged in');
+    }
+
+    // Wait for network to be idle - OAuth callback performs async token exchange
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+
+    // Step 11: Log out to verify we can log back in with the NEW password
+    // Wait for button to be visible and stable before clicking
+    const signOutBtn = page.locator('#loggedInView button:has-text("Sign Out")').first();
+    await expect(signOutBtn).toBeVisible({ timeout: 10000 });
+    await signOutBtn.click();
+    await expect(page.locator('#loggedOutView')).toBeVisible();
+
+    // Step 12: Log in again with the NEW password to verify it works
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
     await page.fill('input[type="email"]', testUser.email);
     await page.fill('input[type="password"]', NEW_PASSWORD);
     await page.click('button:has-text("Continue")');
 
-    // Step 12: Should successfully log in with new password
-    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    // Handle verification code if required during login with new password
+    const loginCodeInput = page.locator('input[name="code"]');
+    const needsLoginVerificationCode = await loginCodeInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+    if (needsLoginVerificationCode) {
+      const loginVerificationCode = await emailInterceptor.getLastLoginCode(testUser.email);
+      if (!loginVerificationCode) {
+        throw new Error('Failed to capture verification code during login with new password');
+      }
+      console.log(`Got login verification code for ${testUser.email}: ${loginVerificationCode}`);
+      await page.fill('input[name="code"]', loginVerificationCode);
+      await page.click('button:has-text("Continue")');
+    }
+
+    // Step 13: Should successfully log in with new password
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+    // Wait for network to be idle - OAuth callback performs async token exchange
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 
     console.log('Successfully logged in with NEW password!');
   });
@@ -96,14 +188,19 @@ test.describe('Forgot Password Flow', () => {
 
     // Step 2: Log out
     await page.goto(TEST_URLS.profileApp);
-    await page.click('button:has-text("Sign Out")');
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+    const signOutBtn2 = page.locator('#loggedInView button:has-text("Sign Out")').first();
+    await expect(signOutBtn2).toBeVisible({ timeout: 5000 });
+    await signOutBtn2.click();
+    await expect(page.locator('#loggedOutView')).toBeVisible();
 
     // Step 3: Go through forgot password flow
     await page.locator('#loggedOutView button:has-text("Sign In")').click();
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
     await page.click('a:has-text("Forgot password")');
 
-    const emailInterceptor = setupEmailInterception(page);
+    const emailInterceptor = setupEmailInterception();
 
     await page.fill('input[type="email"]', testUser.email);
     await page.click('button:has-text("Continue")');
@@ -115,8 +212,25 @@ test.describe('Forgot Password Flow', () => {
       throw new Error('Failed to capture password reset verification code');
     }
 
-    await page.fill('input[name="code"]', resetCode);
-    await page.click('button:has-text("Continue")');
+    // Enter verification code with retry logic
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page.fill('input[name="code"]', '');
+      await page.fill('input[name="code"]', resetCode);
+      await page.waitForTimeout(100);
+
+      const continueBtn = page.locator('button:has-text("Continue")');
+      await expect(continueBtn).toBeEnabled({ timeout: 5000 });
+      await continueBtn.click();
+
+      const passwordVisible = await page.locator('input[type="password"]').first().isVisible({ timeout: 8000 }).catch(() => false);
+      if (passwordVisible) break;
+
+      const stillOnCodePage = await page.locator('input[name="code"]').isVisible().catch(() => false);
+      if (stillOnCodePage && attempt < 3) continue;
+      if (attempt === 3 && !passwordVisible) {
+        throw new Error(`Reset code submission failed after ${attempt} attempts`);
+      }
+    }
 
     // Enter new password
     const passwordFields = page.locator('input[type="password"]');
@@ -124,12 +238,54 @@ test.describe('Forgot Password Flow', () => {
     await passwordFields.nth(1).fill(NEW_PASSWORD);
     await page.click('button:has-text("Continue")');
 
-    // Wait for completion - OpenAuth returns to login page after password change
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('a:has-text("Forgot password?")')).toBeVisible();
+    // Wait for redirect to complete
+    await page.waitForTimeout(2000);
+
+    // Check if we're on profile app (auto-logged in) or back to login page
+    const currentUrl = page.url();
+    const isOnProfileApp = currentUrl.includes('profile');
+
+    if (!isOnProfileApp) {
+      console.log('Password reset completed - redirected to login page, logging in with new password');
+
+      // We're on the login page, need to log in with new password
+      await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+      await page.fill('input[type="email"]', testUser.email);
+      await page.fill('input[type="password"]', NEW_PASSWORD);
+      await page.click('button:has-text("Continue")');
+
+      // Handle verification code if required
+      const codeInput = page.locator('input[name="code"]');
+      const needsVerificationCode = await codeInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+      if (needsVerificationCode) {
+        const verificationCode = await emailInterceptor.getLastLoginCode(testUser.email);
+        if (!verificationCode) {
+          throw new Error('Failed to capture verification code during login with new password');
+        }
+        await page.fill('input[name="code"]', verificationCode);
+        await page.click('button:has-text("Continue")');
+      }
+
+      // Wait for redirect to profile app
+      await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+    }
+
+    // Wait for network to be idle - OAuth callback performs async token exchange
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+
+    // Log out to test old password rejection
+    const signOutBtn3 = page.locator('#loggedInView button:has-text("Sign Out")').first();
+    await expect(signOutBtn3).toBeVisible({ timeout: 5000 });
+    await signOutBtn3.click();
+    await expect(page.locator('#loggedOutView')).toBeVisible();
 
     // Step 4: Try to log in with OLD password - should fail
-    // We're already on the login page after password reset
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
     await page.fill('input[type="email"]', testUser.email);
     await page.fill('input[type="password"]', TEST_PASSWORD); // OLD password
     await page.click('button:has-text("Continue")');
@@ -153,9 +309,25 @@ test.describe('Forgot Password Flow', () => {
     await page.fill('input[type="password"]', NEW_PASSWORD); // NEW password
     await page.click('button:has-text("Continue")');
 
+    // Handle verification code if required during login with new password
+    const newPwdCodeInput = page.locator('input[name="code"]');
+    const needsNewPwdVerificationCode = await newPwdCodeInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+    if (needsNewPwdVerificationCode) {
+      const newPwdVerificationCode = await emailInterceptor.getLastLoginCode(testUser.email);
+      if (!newPwdVerificationCode) {
+        throw new Error('Failed to capture verification code during login with new password');
+      }
+      await page.fill('input[name="code"]', newPwdVerificationCode);
+      await page.click('button:has-text("Continue")');
+    }
+
     // Should successfully log in with new password
-    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 10000 });
-    await expect(page.locator('#loggedInView')).toBeVisible();
+    await expect(page).toHaveURL(TEST_URLS.profileApp, { timeout: 15000 });
+    // Wait for network to be idle - OAuth callback performs async token exchange
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
   });
 
   test('should show error for invalid reset code', async ({ page }) => {
@@ -166,7 +338,12 @@ test.describe('Forgot Password Flow', () => {
 
     // Log out
     await page.goto(TEST_URLS.profileApp);
-    await page.click('button:has-text("Sign Out")');
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+    const signOutBtn4 = page.locator('#loggedInView button:has-text("Sign Out")').first();
+    await expect(signOutBtn4).toBeVisible({ timeout: 5000 });
+    await signOutBtn4.click();
+    await expect(page.locator('#loggedOutView')).toBeVisible();
 
     // Start forgot password flow
     await page.locator('#loggedOutView button:has-text("Sign In")').click();

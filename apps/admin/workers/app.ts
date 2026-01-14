@@ -24,7 +24,6 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 interface Env {
-  AUTH_DB: D1Database;
   AUTH_STORAGE: KVNamespace;
   ASSETS: Fetcher;
   AUTH_SERVER_URL?: string;
