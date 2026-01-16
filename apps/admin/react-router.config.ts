@@ -4,6 +4,6 @@ export default {
   ssr: true,
   appDirectory: "app",
   future: {
-    unstable_viteEnvironmentApi: true,
+    v8_viteEnvironmentApi: true,
   },
 } satisfies Config;
