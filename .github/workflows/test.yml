@@ -279,6 +279,31 @@ jobs:
           echo "❌ Timeout waiting for QA services"
           exit 1
 
+      - name: Cleanup stale E2E test users
+        working-directory: apps/auth
+        run: |
+          echo "🧹 Cleaning up stale E2E test users from QA database..."
+
+          # Count test users before cleanup
+          echo "Counting test users before cleanup..."
+          npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
+            --command "SELECT COUNT(*) as count FROM user WHERE email LIKE '%@e2e-test.local'" || true
+
+          # Delete all E2E test users (safe - only affects @e2e-test.local domain)
+          echo "Deleting test users..."
+          npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
+            --command "DELETE FROM user WHERE email LIKE '%@e2e-test.local'"
+
+          # Count test users after cleanup
+          echo "Counting test users after cleanup..."
+          npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
+            --command "SELECT COUNT(*) as count FROM user WHERE email LIKE '%@e2e-test.local'"
+
+          echo "✅ E2E test users cleanup complete"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Warm up QA auth server (pre-load encryption keys)
         run: |
           echo "Warming up auth server to pre-load cryptographic keys..."

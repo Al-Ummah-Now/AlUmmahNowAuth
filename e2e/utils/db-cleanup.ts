@@ -2,6 +2,7 @@
  * Database Cleanup Utilities
  *
  * Functions to clean up test data from D1 database and KV storage.
+ * Supports both local (wrangler dev) and remote (QA/CI) environments.
  */
 
 import { execSync } from 'child_process';
@@ -9,6 +10,9 @@ import { join } from 'path';
 
 // Path to auth app root (relative to e2e directory)
 const AUTH_APP_PATH = join(__dirname, '../../apps/auth');
+
+// Detect CI/QA environment - when E2E_AUTH_SERVER_URL is set, we're running against remote
+const isRemoteEnvironment = !!process.env.E2E_AUTH_SERVER_URL;
 
 /**
  * Clean up test users from D1 database
@@ -18,19 +22,73 @@ const AUTH_APP_PATH = join(__dirname, '../../apps/auth');
  */
 export async function cleanupTestUsers(): Promise<void> {
   console.log('Cleaning up test users from D1 database...');
+  console.log(`Environment: ${isRemoteEnvironment ? 'Remote (QA)' : 'Local'}`);
 
   try {
-    // Delete all users with e2e test emails
-    execSync(
-      `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "DELETE FROM user WHERE email LIKE '%@e2e-test.local'"`,
-      {
-        cwd: AUTH_APP_PATH,
-        stdio: 'pipe' // Suppress output unless there's an error
-      }
-    );
+    if (isRemoteEnvironment) {
+      // Remote D1 cleanup using QA config
+      execSync(
+        `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "DELETE FROM user WHERE email LIKE '%@e2e-test.local'"`,
+        {
+          cwd: AUTH_APP_PATH,
+          stdio: 'pipe',
+          env: {
+            ...process.env,
+            // Ensure wrangler can access Cloudflare API
+            CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
+            CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
+          }
+        }
+      );
+    } else {
+      // Local D1 cleanup
+      execSync(
+        `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "DELETE FROM user WHERE email LIKE '%@e2e-test.local'"`,
+        {
+          cwd: AUTH_APP_PATH,
+          stdio: 'pipe'
+        }
+      );
+    }
     console.log('✓ Test users cleaned up');
   } catch (error) {
     console.warn('Warning: Failed to cleanup test users:', error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Get count of test users in database (for diagnostics)
+ */
+export async function getTestUserCount(): Promise<number> {
+  try {
+    let output: string;
+    if (isRemoteEnvironment) {
+      output = execSync(
+        `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "SELECT COUNT(*) as count FROM user WHERE email LIKE '%@e2e-test.local'"`,
+        {
+          cwd: AUTH_APP_PATH,
+          encoding: 'utf-8',
+          env: {
+            ...process.env,
+            CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
+            CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
+          }
+        }
+      );
+    } else {
+      output = execSync(
+        `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "SELECT COUNT(*) as count FROM user WHERE email LIKE '%@e2e-test.local'"`,
+        {
+          cwd: AUTH_APP_PATH,
+          encoding: 'utf-8'
+        }
+      );
+    }
+    // Parse the count from wrangler output (JSON format)
+    const match = output.match(/"count":\s*(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  } catch {
+    return -1; // Error getting count
   }
 }
 
@@ -74,12 +132,26 @@ export async function cleanupRateLimits(): Promise<void> {
 /**
  * Full cleanup function to run before test suites
  *
- * Should be called in globalSetup or beforeAll hooks
+ * Called automatically via globalSetup or can be run manually
  */
 export async function fullCleanup(): Promise<void> {
   console.log('\n🧹 Starting E2E test cleanup...\n');
+
+  // Get count before cleanup for diagnostics
+  const countBefore = await getTestUserCount();
+  if (countBefore >= 0) {
+    console.log(`📊 Test users before cleanup: ${countBefore}`);
+  }
+
   await cleanupTestUsers();
   await cleanupTestSessions();
   await cleanupRateLimits();
+
+  // Get count after cleanup to verify
+  const countAfter = await getTestUserCount();
+  if (countAfter >= 0) {
+    console.log(`📊 Test users after cleanup: ${countAfter}`);
+  }
+
   console.log('\n✅ E2E test cleanup completed\n');
 }

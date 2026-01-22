@@ -25,6 +25,10 @@ export default defineConfig({
   testDir: './e2e',
   testMatch: ['**/*.spec.ts'],
 
+  // Global setup - cleans up stale test data before running tests
+  // This prevents test user accumulation that causes D1 slowdowns and SQLITE_BUSY errors
+  globalSetup: './e2e/globalSetup.ts',
+
   // Test execution settings
   timeout: 30 * 1000, // 30 seconds per test
   expect: {
