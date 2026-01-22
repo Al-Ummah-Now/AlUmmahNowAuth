@@ -227,12 +227,12 @@ test.describe('Admin Audit View', () => {
     expect(url.searchParams.get('search')).toBe(trimmedUserId);
 
     // Verify results contain the searched user ID
-    const tableRows = page.locator('tbody tr');
-    const rowCount = await tableRows.count();
+    const resultRows = page.locator('tbody tr');
+    const resultCount = await resultRows.count();
 
-    if (rowCount > 0) {
+    if (resultCount > 0) {
       // All visible rows should have the searched user ID
-      const firstRowUserId = await tableRows.first().locator('td').nth(3).textContent();
+      const firstRowUserId = await resultRows.first().locator('td').nth(3).textContent();
       expect(firstRowUserId?.trim()).toBe(trimmedUserId);
     }
   });
