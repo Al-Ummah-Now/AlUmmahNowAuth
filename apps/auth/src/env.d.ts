@@ -28,6 +28,7 @@ declare global {
     OPENAUTH_ISSUER: string;
     AUTH_DB: D1Database;
     AUDIT_QUEUE: Queue;
+    AUDIT_ARCHIVE?: R2Bucket;
     AUTH_ANALYTICS?: AnalyticsEngineDataset;
     TEST_PROMOTE_SECRET?: string;
     ACCESS_TOKEN_EXPIRY?: number;
