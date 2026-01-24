@@ -145,7 +145,6 @@ export default {
     // Handle logout
     if (url.pathname === '/logout') {
       const session = await getSession(request, env.AUTH_STORAGE);
-      const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
 
       // Call auth server's logout endpoint to emit audit event
       if (session?.tokens?.access) {
@@ -163,7 +162,8 @@ export default {
         }
       }
 
-      // Clear local session
+      // Clear local session (extract token only when needed)
+      const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
       if (sessionToken) {
         await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
       }

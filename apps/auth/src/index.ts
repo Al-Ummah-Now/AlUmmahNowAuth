@@ -54,8 +54,11 @@ export default {
       ? env.ENVIRONMENT === 'production'
       : (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1');
 
-    // D1 logging disabled - use Cloudflare Logpush or wrangler tail instead
-    // D1 is not designed for high-volume logs (causes bloat and slow queries)
+    // D1 logging disabled for application logs:
+    // - Passing `false` as the second argument prevents the logger from writing logs to the D1 database.
+    // - All logger calls are still emitted to stdout (Cloudflare Worker logs), visible via `wrangler tail` or Logpush.
+    // - No D1 buffering is performed; only audit events (via initializeAuditEmitter) are persisted to D1.
+    // D1 is not designed for high-volume logs (causes bloat and slow queries), so we keep logs out of D1 by default.
     logger.setDatabase(env.AUTH_DB, false);
     logger.setContext(ctx);
 

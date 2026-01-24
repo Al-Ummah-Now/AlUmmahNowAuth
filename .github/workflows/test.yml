@@ -284,10 +284,10 @@ jobs:
         run: |
           echo "🧹 Cleaning up stale E2E test data from QA database..."
 
-          # Count test users before cleanup
+          # Count test users before cleanup (fail if DB inaccessible - indicates deployment issue)
           echo "Counting test users before cleanup..."
           npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
-            --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'" || true
+            --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'"
 
           # Delete sessions for test users first (FK constraints)
           echo "Deleting sessions for test users..."

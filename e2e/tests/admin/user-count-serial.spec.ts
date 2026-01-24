@@ -53,14 +53,12 @@ test.describe('User Count Verification (Serial)', () => {
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
     // Verify count increased after creation
-    let countAfterCreate: number;
+    let countAfterCreate = initialCount;
     await expect(async () => {
       await page.reload({ waitUntil: 'networkidle' });
       countAfterCreate = await getUserCount();
       expect(countAfterCreate).toBeGreaterThan(initialCount);
     }).toPass({ timeout: 30000, intervals: [2000, 3000, 5000] });
-
-    countAfterCreate = await getUserCount();
 
     // Delete the user
     await deleteUser(page, userEmail);
