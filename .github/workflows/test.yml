@@ -279,15 +279,29 @@ jobs:
           echo "❌ Timeout waiting for QA services"
           exit 1
 
-      - name: Cleanup stale E2E test users
+      - name: Cleanup stale E2E test data
         working-directory: apps/auth
         run: |
-          echo "🧹 Cleaning up stale E2E test users from QA database..."
+          echo "🧹 Cleaning up stale E2E test data from QA database..."
 
           # Count test users before cleanup
           echo "Counting test users before cleanup..."
           npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
             --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'" || true
+
+          # Delete sessions for test users first (FK constraints)
+          echo "Deleting sessions for test users..."
+          npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
+            --command "DELETE FROM account_sessions WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%@e2e-test.local')" || true
+          npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
+            --command "DELETE FROM browser_sessions WHERE active_user_id IN (SELECT id FROM users WHERE email LIKE '%@e2e-test.local')" || true
+
+          # Delete orphaned sessions (users already deleted but sessions remain)
+          echo "Deleting orphaned sessions..."
+          npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
+            --command "DELETE FROM account_sessions WHERE user_id NOT IN (SELECT id FROM users)" || true
+          npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
+            --command "DELETE FROM browser_sessions WHERE active_user_id IS NOT NULL AND active_user_id NOT IN (SELECT id FROM users)" || true
 
           # Delete all E2E test users (safe - only affects @e2e-test.local domain)
           echo "Deleting test users..."
@@ -299,7 +313,7 @@ jobs:
           npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
             --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'"
 
-          echo "✅ E2E test users cleanup complete"
+          echo "✅ E2E test data cleanup complete"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

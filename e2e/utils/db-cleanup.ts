@@ -15,6 +15,76 @@ const AUTH_APP_PATH = join(__dirname, '../../apps/auth');
 const isRemoteEnvironment = !!process.env.E2E_AUTH_SERVER_URL;
 
 /**
+ * Execute a D1 SQL command (handles local vs remote environment)
+ */
+function executeD1Command(command: string, silent = false): string {
+  const baseCommand = isRemoteEnvironment
+    ? `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "${command}"`
+    : `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "${command}"`;
+
+  return execSync(baseCommand, {
+    cwd: AUTH_APP_PATH,
+    encoding: 'utf-8',
+    stdio: silent ? 'pipe' : 'inherit',
+    env: isRemoteEnvironment
+      ? {
+          ...process.env,
+          CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
+          CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
+        }
+      : process.env,
+  });
+}
+
+/**
+ * Clean up sessions for test users from D1 database
+ *
+ * Must run BEFORE cleanupTestUsers to avoid orphaned sessions
+ */
+export async function cleanupTestUserSessions(): Promise<void> {
+  console.log('Cleaning up sessions for test users...');
+
+  try {
+    // Delete account_sessions for test users (must delete before browser_sessions due to FK)
+    executeD1Command(
+      "DELETE FROM account_sessions WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%@e2e-test.local')"
+    );
+    console.log('✓ Account sessions for test users cleaned up');
+
+    // Delete browser_sessions for test users
+    executeD1Command(
+      "DELETE FROM browser_sessions WHERE active_user_id IN (SELECT id FROM users WHERE email LIKE '%@e2e-test.local')"
+    );
+    console.log('✓ Browser sessions for test users cleaned up');
+  } catch (error) {
+    console.warn('Warning: Failed to cleanup test user sessions:', error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Clean up orphaned sessions (users deleted but sessions remain)
+ */
+export async function cleanupOrphanedSessions(): Promise<void> {
+  console.log('Cleaning up orphaned sessions...');
+
+  try {
+    // Delete orphaned account_sessions
+    executeD1Command(
+      'DELETE FROM account_sessions WHERE user_id NOT IN (SELECT id FROM users)'
+    );
+    console.log('✓ Orphaned account sessions cleaned up');
+
+    // Delete orphaned browser_sessions
+    executeD1Command(
+      'DELETE FROM browser_sessions WHERE active_user_id IS NOT NULL AND active_user_id NOT IN (SELECT id FROM users)'
+    );
+    console.log('✓ Orphaned browser sessions cleaned up');
+  } catch (error) {
+    console.warn('Warning: Failed to cleanup orphaned sessions:', error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
  * Clean up test users from D1 database
  *
  * Removes all users with email addresses containing '@e2e-test.local'
@@ -25,31 +95,7 @@ export async function cleanupTestUsers(): Promise<void> {
   console.log(`Environment: ${isRemoteEnvironment ? 'Remote (QA)' : 'Local'}`);
 
   try {
-    if (isRemoteEnvironment) {
-      // Remote D1 cleanup using QA config
-      execSync(
-        `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "DELETE FROM users WHERE email LIKE '%@e2e-test.local'"`,
-        {
-          cwd: AUTH_APP_PATH,
-          stdio: 'pipe',
-          env: {
-            ...process.env,
-            // Ensure wrangler can access Cloudflare API
-            CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
-            CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
-          }
-        }
-      );
-    } else {
-      // Local D1 cleanup
-      execSync(
-        `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "DELETE FROM users WHERE email LIKE '%@e2e-test.local'"`,
-        {
-          cwd: AUTH_APP_PATH,
-          stdio: 'pipe'
-        }
-      );
-    }
+    executeD1Command("DELETE FROM users WHERE email LIKE '%@e2e-test.local'");
     console.log('✓ Test users cleaned up');
   } catch (error) {
     console.warn('Warning: Failed to cleanup test users:', error instanceof Error ? error.message : String(error));
@@ -61,53 +107,14 @@ export async function cleanupTestUsers(): Promise<void> {
  */
 export async function getTestUserCount(): Promise<number> {
   try {
-    let output: string;
-    if (isRemoteEnvironment) {
-      output = execSync(
-        `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'"`,
-        {
-          cwd: AUTH_APP_PATH,
-          encoding: 'utf-8',
-          env: {
-            ...process.env,
-            CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
-            CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
-          }
-        }
-      );
-    } else {
-      output = execSync(
-        `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'"`,
-        {
-          cwd: AUTH_APP_PATH,
-          encoding: 'utf-8'
-        }
-      );
-    }
-    // Parse the count from wrangler output (JSON format)
+    const output = executeD1Command(
+      "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'",
+      true
+    );
     const match = output.match(/"count":\s*(\d+)/);
     return match ? parseInt(match[1], 10) : 0;
   } catch {
-    return -1; // Error getting count
-  }
-}
-
-/**
- * Clean up test sessions from KV storage
- *
- * Note: KV cleanup is complex because we need to list all keys first.
- * For now, sessions will naturally expire, and unique emails prevent conflicts.
- */
-export async function cleanupTestSessions(): Promise<void> {
-  console.log('Cleaning up test sessions from KV storage...');
-
-  try {
-    // KV cleanup via wrangler is not straightforward for local testing
-    // Sessions are scoped by email, and we use unique emails per test,
-    // so old sessions won't interfere. They'll expire naturally.
-    console.log('✓ Test sessions will expire naturally (no action needed)');
-  } catch (error) {
-    console.warn('Warning: Failed to cleanup test sessions:', error instanceof Error ? error.message : String(error));
+    return -1;
   }
 }
 
@@ -115,18 +122,10 @@ export async function cleanupTestSessions(): Promise<void> {
  * Clean up rate limit entries for test IPs
  *
  * Rate limits are stored in KV with TTL, so they expire automatically.
- * For tests, we can increase limits or use unique identifiers.
  */
 export async function cleanupRateLimits(): Promise<void> {
   console.log('Cleaning up rate limit entries...');
-
-  try {
-    // Rate limits have TTL and will expire automatically
-    // For parallel tests, unique emails prevent conflicts
-    console.log('✓ Rate limits will expire naturally (TTL-based)');
-  } catch (error) {
-    console.warn('Warning: Failed to cleanup rate limits:', error instanceof Error ? error.message : String(error));
-  }
+  console.log('✓ Rate limits will expire naturally (TTL-based)');
 }
 
 /**
@@ -143,8 +142,10 @@ export async function fullCleanup(): Promise<void> {
     console.log(`📊 Test users before cleanup: ${countBefore}`);
   }
 
+  // Order matters: sessions first (FK constraints), then users
+  await cleanupTestUserSessions();
+  await cleanupOrphanedSessions();
   await cleanupTestUsers();
-  await cleanupTestSessions();
   await cleanupRateLimits();
 
   // Get count after cleanup to verify
