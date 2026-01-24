@@ -287,17 +287,17 @@ jobs:
           # Count test users before cleanup
           echo "Counting test users before cleanup..."
           npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
-            --command "SELECT COUNT(*) as count FROM user WHERE email LIKE '%@e2e-test.local'" || true
+            --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'" || true
 
           # Delete all E2E test users (safe - only affects @e2e-test.local domain)
           echo "Deleting test users..."
           npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
-            --command "DELETE FROM user WHERE email LIKE '%@e2e-test.local'"
+            --command "DELETE FROM users WHERE email LIKE '%@e2e-test.local'"
 
           # Count test users after cleanup
           echo "Counting test users after cleanup..."
           npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json \
-            --command "SELECT COUNT(*) as count FROM user WHERE email LIKE '%@e2e-test.local'"
+            --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'"
 
           echo "✅ E2E test users cleanup complete"
         env:

@@ -28,7 +28,7 @@ export async function cleanupTestUsers(): Promise<void> {
     if (isRemoteEnvironment) {
       // Remote D1 cleanup using QA config
       execSync(
-        `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "DELETE FROM user WHERE email LIKE '%@e2e-test.local'"`,
+        `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "DELETE FROM users WHERE email LIKE '%@e2e-test.local'"`,
         {
           cwd: AUTH_APP_PATH,
           stdio: 'pipe',
@@ -43,7 +43,7 @@ export async function cleanupTestUsers(): Promise<void> {
     } else {
       // Local D1 cleanup
       execSync(
-        `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "DELETE FROM user WHERE email LIKE '%@e2e-test.local'"`,
+        `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "DELETE FROM users WHERE email LIKE '%@e2e-test.local'"`,
         {
           cwd: AUTH_APP_PATH,
           stdio: 'pipe'
@@ -64,7 +64,7 @@ export async function getTestUserCount(): Promise<number> {
     let output: string;
     if (isRemoteEnvironment) {
       output = execSync(
-        `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "SELECT COUNT(*) as count FROM user WHERE email LIKE '%@e2e-test.local'"`,
+        `npx wrangler d1 execute AUTH_DB --remote --config wrangler.qa.json --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'"`,
         {
           cwd: AUTH_APP_PATH,
           encoding: 'utf-8',
@@ -77,7 +77,7 @@ export async function getTestUserCount(): Promise<number> {
       );
     } else {
       output = execSync(
-        `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "SELECT COUNT(*) as count FROM user WHERE email LIKE '%@e2e-test.local'"`,
+        `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "SELECT COUNT(*) as count FROM users WHERE email LIKE '%@e2e-test.local'"`,
         {
           cwd: AUTH_APP_PATH,
           encoding: 'utf-8'
