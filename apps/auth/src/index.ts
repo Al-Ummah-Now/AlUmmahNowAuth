@@ -53,8 +53,9 @@ export default {
       ? env.ENVIRONMENT === 'production'
       : (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1');
 
-    // Initialize D1 logging (optional - set to false to disable)
-    logger.setDatabase(env.AUTH_DB, true);
+    // D1 logging disabled - use Cloudflare Logpush or wrangler tail instead
+    // D1 is not designed for high-volume logs (causes bloat and slow queries)
+    logger.setDatabase(env.AUTH_DB, false);
     logger.setContext(ctx);
 
     // Initialize request context to prevent stale timer usage
