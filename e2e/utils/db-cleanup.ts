@@ -6,7 +6,12 @@
  */
 
 import { execSync } from 'child_process';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Path to auth app root (relative to e2e directory)
 const AUTH_APP_PATH = join(__dirname, '../../apps/auth');
