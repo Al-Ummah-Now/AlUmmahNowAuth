@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from "@al-ummah-now/openauth/rbac/index";
+import { AuditService } from "@al-ummah-now/openauth/services/audit";
 import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
@@ -94,6 +95,9 @@ export default {
     const rbacAdapter = new RBACAdapter(env.AUTH_DB);
     const rbacService = new RBACServiceImpl(rbacAdapter, storage);
 
+    // Create audit service for token lifecycle events
+    const auditService = new AuditService({ database: env.AUTH_DB });
+
     // Create UserService and admin user app (Phase 2: OpenAuth migration)
     const userAdapter = new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' });
     const userService = createUserService({ storage, d1Adapter: userAdapter });
@@ -181,6 +185,15 @@ export default {
       subjects,
       rbacService,
       clientDb: env.AUTH_DB,
+      audit: {
+        service: auditService,
+        hooks: {
+          onTokenGenerated: true,
+          onTokenRefreshed: true,
+          onTokenRevoked: true,
+          onTokenReused: true, // Security: detects potential token theft
+        },
+      },
       tenantResolver: {
         customDomains: new Map([
           ['localhost', 'default'],
