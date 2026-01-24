@@ -8,7 +8,7 @@
 import { logger } from '../logger';
 import { getClientIP } from '../rate-limit';
 import { getAuditEmitter } from '../audit-emitter';
-import { createLoginSuccessEvent, createLoginFailedEvent } from '../audit-events';
+import { createLoginSuccessEvent, createLoginFailedEvent, createAccountCreatedEvent, createRoleManagementEvent, AuditEventType } from '../audit-events';
 import { trackEvent } from '../utils/analytics';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
 
@@ -122,6 +122,15 @@ export function createOnSuccessHandler(
 				existingUser = await userService.createUser(tenantId, { email });
 				logger.info('User created successfully', { userId: existingUser.id, email });
 
+				// Emit account created audit event
+				const registrationIP = getClientIP(request);
+				const accountCreatedEvent = createAccountCreatedEvent(existingUser.id, email, 'user', {
+					ipAddress: registrationIP,
+					userAgent: request.headers.get('User-Agent') ?? undefined,
+					requestId,
+				});
+				ctx.waitUntil(getAuditEmitter().emit(accountCreatedEvent));
+
 				// Assign default "member" role to new users
 				try {
 					await rbacService.assignRoleToUser({
@@ -134,6 +143,22 @@ export function createOnSuccessHandler(
 						userId: existingUser.id,
 						roleId: 'role_member',
 					});
+
+					// Emit role assignment audit event
+					const roleEvent = createRoleManagementEvent(
+						AuditEventType.ROLE_ASSIGNED,
+						'role_member',
+						'member',
+						'user_system',
+						{
+							userId: existingUser.id,
+							userEmail: email,
+							ipAddress: registrationIP,
+							userAgent: request.headers.get('User-Agent') ?? undefined,
+							requestId,
+						}
+					);
+					ctx.waitUntil(getAuditEmitter().emit(roleEvent));
 				} catch (roleError) {
 					// Don't fail registration if role assignment fails
 					logger.error('Failed to assign default role', {
