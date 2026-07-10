@@ -54,6 +54,7 @@ describe('Audit Consumer Worker', () => {
       retryAll: vi.fn(),
       ackAll: vi.fn(),
       queue: 'test-queue',
+      metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
     };
   });
 
@@ -107,6 +108,7 @@ describe('Audit Consumer Worker', () => {
         retryAll: vi.fn(),
         ackAll: vi.fn(),
         queue: 'test-queue',
+        metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
       };
 
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
@@ -141,6 +143,7 @@ describe('Audit Consumer Worker', () => {
         retryAll: vi.fn(),
         ackAll: vi.fn(),
         queue: 'test-queue',
+        metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
       };
 
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
@@ -215,7 +218,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue', metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -241,7 +244,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue', metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -267,7 +270,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue', metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -293,7 +296,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue', metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -328,7 +331,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue', metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
@@ -354,7 +357,7 @@ describe('Audit Consumer Worker', () => {
         retry: vi.fn(),
       };
 
-      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue' };
+      mockBatch = { messages: [message], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'test-queue', metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
       vi.mocked(handleAuditBatch).mockResolvedValueOnce(undefined);
 
       await worker.queue(mockBatch, mockEnv);
