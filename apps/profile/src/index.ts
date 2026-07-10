@@ -145,11 +145,27 @@ export default {
     // Handle logout
     if (url.pathname === '/logout') {
       const session = await getSession(request, env.AUTH_STORAGE);
-      if (session) {
-        const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
-        if (sessionToken) {
-          await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
+
+      // Call auth server's logout endpoint to emit audit event
+      if (session?.tokens?.access) {
+        try {
+          await fetch(`${authServerUrl}/logout`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.tokens.access}`,
+              'Content-Type': 'application/json',
+            },
+          });
+        } catch (e) {
+          // Log but don't block logout if auth server call fails
+          console.error('Failed to notify auth server of logout:', e);
         }
+      }
+
+      // Clear local session (extract token only when needed)
+      const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
+      if (sessionToken) {
+        await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
       }
 
       return new Response(null, {

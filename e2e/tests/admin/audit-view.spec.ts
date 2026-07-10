@@ -189,18 +189,26 @@ test.describe('Admin Audit View', () => {
     // Wait for events to appear
     await waitForAuditEvents(page, 1);
 
-    // Get a user ID from the first row to search for
-    const firstRow = page.locator('tbody tr').first();
-    const userIdCell = firstRow.locator('td').nth(3); // User ID column
-    const userId = await userIdCell.textContent();
+    // Find a row with a user ID (some events may not have user_id)
+    const tableRows = page.locator('tbody tr');
+    const rowCount = await tableRows.count();
 
-    // Skip test if no user ID (some events may not have user_id)
-    if (!userId || userId.trim() === '-') {
+    let trimmedUserId: string | null = null;
+    for (let i = 0; i < rowCount; i++) {
+      const userIdCell = tableRows.nth(i).locator('td').nth(3);
+      const userId = await userIdCell.textContent();
+      if (userId && userId.trim() !== '-' && userId.trim() !== '') {
+        trimmedUserId = userId.trim();
+        break;
+      }
+    }
+
+    // Skip test if no events have user_id
+    if (!trimmedUserId) {
+      console.log('No audit events with user_id found, skipping test');
       test.skip();
       return;
     }
-
-    const trimmedUserId = userId.trim();
 
     // Show filters
     await page.click('button:has-text("Show Filters")');
@@ -219,12 +227,12 @@ test.describe('Admin Audit View', () => {
     expect(url.searchParams.get('search')).toBe(trimmedUserId);
 
     // Verify results contain the searched user ID
-    const tableRows = page.locator('tbody tr');
-    const rowCount = await tableRows.count();
+    const resultRows = page.locator('tbody tr');
+    const resultCount = await resultRows.count();
 
-    if (rowCount > 0) {
+    if (resultCount > 0) {
       // All visible rows should have the searched user ID
-      const firstRowUserId = await tableRows.first().locator('td').nth(3).textContent();
+      const firstRowUserId = await resultRows.first().locator('td').nth(3).textContent();
       expect(firstRowUserId?.trim()).toBe(trimmedUserId);
     }
   });
@@ -268,7 +276,8 @@ test.describe('Admin Audit View', () => {
     const hasPagination = await paginationInfo.isVisible();
 
     if (!hasPagination) {
-      // Not enough events for pagination - skip this test
+      // Not enough events for pagination - need 25+ events to have page 2
+      console.log('Not enough audit events for pagination test (need 25+), skipping');
       test.skip();
       return;
     }
@@ -278,7 +287,8 @@ test.describe('Admin Audit View', () => {
     const match = paginationText?.match(/Page (\d+) of (\d+)/);
 
     if (!match || parseInt(match[2]) <= 1) {
-      // Only one page available
+      // Only one page available - need more events to test next/previous
+      console.log(`Only ${match?.[2] || 1} page(s) available, need 2+ to test pagination`);
       test.skip();
       return;
     }

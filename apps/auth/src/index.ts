@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from "@al-ummah-now/openauth/rbac/index";
+import { AuditService } from "@al-ummah-now/openauth/services/audit";
 import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
@@ -53,8 +54,12 @@ export default {
       ? env.ENVIRONMENT === 'production'
       : (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1');
 
-    // Initialize D1 logging (optional - set to false to disable)
-    logger.setDatabase(env.AUTH_DB, true);
+    // D1 logging disabled for application logs:
+    // - Passing `false` as the second argument prevents the logger from writing logs to the D1 database.
+    // - All logger calls are still emitted to stdout (Cloudflare Worker logs), visible via `wrangler tail` or Logpush.
+    // - No D1 buffering is performed; only audit events (via initializeAuditEmitter) are persisted to D1.
+    // D1 is not designed for high-volume logs (causes bloat and slow queries), so we keep logs out of D1 by default.
+    logger.setDatabase(env.AUTH_DB, false);
     logger.setContext(ctx);
 
     // Initialize request context to prevent stale timer usage
@@ -92,6 +97,9 @@ export default {
     // Create RBAC service (Phase 3: OpenAuth migration)
     const rbacAdapter = new RBACAdapter(env.AUTH_DB);
     const rbacService = new RBACServiceImpl(rbacAdapter, storage);
+
+    // Create audit service for token lifecycle events
+    const auditService = new AuditService({ database: env.AUTH_DB });
 
     // Create UserService and admin user app (Phase 2: OpenAuth migration)
     const userAdapter = new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' });
@@ -180,6 +188,15 @@ export default {
       subjects,
       rbacService,
       clientDb: env.AUTH_DB,
+      audit: {
+        service: auditService,
+        hooks: {
+          onTokenGenerated: true,
+          onTokenRefreshed: true,
+          onTokenRevoked: true,
+          onTokenReused: true, // Security: detects potential token theft
+        },
+      },
       tenantResolver: {
         customDomains: new Map([
           ['localhost', 'default'],

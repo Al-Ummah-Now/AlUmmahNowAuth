@@ -11,6 +11,7 @@ import { getAuditEmitter } from '../audit-emitter';
 import { createLogoutEvent } from '../audit-events';
 import { trackEvent } from '../utils/analytics';
 import { addSecurityHeaders } from '../utils/security-headers';
+import { decodeJwt } from 'jose';
 
 interface LogoutEnv {
 	AUTH_STORAGE: KVNamespace;
@@ -22,7 +23,38 @@ interface LogoutContext {
 }
 
 /**
+ * Extract user ID from Bearer token (without verification - just for audit logging)
+ *
+ * SECURITY NOTE: This function decodes the JWT without verifying its signature.
+ * The extracted user ID is used ONLY for audit logging purposes. This is acceptable
+ * because:
+ * 1. The logout operation itself doesn't require authentication (it's idempotent)
+ * 2. An attacker providing a forged token can only log a fake logout event
+ * 3. The session (if any) is deleted regardless of the token's validity
+ *
+ * Audit logs from Bearer token logouts should be correlated with session data
+ * for security-critical analysis. The cookie-based session provides verified user ID.
+ */
+function getUserIdFromBearerToken(request: Request): string | null {
+	const authHeader = request.headers.get('Authorization');
+	if (!authHeader?.startsWith('Bearer ')) return null;
+
+	try {
+		const token = authHeader.slice(7);
+		const payload = decodeJwt(token);
+		// OpenAuth stores user info in properties.id or sub
+		return (payload.properties as { id?: string })?.id || payload.sub || null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Handle logout request
+ *
+ * Supports two modes:
+ * 1. Cookie-based: Browser logout with session cookie
+ * 2. Token-based: API logout with Bearer token (from other apps like profile)
  *
  * @param request - The incoming request
  * @param env - Environment bindings
@@ -42,9 +74,9 @@ export async function handleLogout(
 
 	logger.debug('Handling logout request');
 
-	// Get user session before deleting it
+	// Get user ID from session cookie or Bearer token
 	const session = await getUserSession(request, env.AUTH_STORAGE);
-	const userId = session?.user?.id;
+	const userId = session?.user?.id || getUserIdFromBearerToken(request);
 
 	// Delete session from KV
 	await deleteSession(request, env.AUTH_STORAGE);

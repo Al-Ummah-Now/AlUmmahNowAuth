@@ -61,7 +61,6 @@ export default {
   /**
    * HTTP endpoint for health checks and metrics
    */
-  // @ts-expect-error - Type mismatch between Cloudflare Workers types versions
   async fetch(request: Request, _env: Env): Promise<Response> {
     const url = new URL(request.url);
 
