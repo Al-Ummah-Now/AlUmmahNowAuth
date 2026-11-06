@@ -15,12 +15,14 @@ permissions:
   contents: read
   actions: read
   checks: write
+  packages: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Test
@@ -39,7 +41,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -52,6 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Auth Preview
@@ -72,7 +75,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -91,6 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Profile Preview
@@ -111,7 +115,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -130,6 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Admin Preview
@@ -150,7 +155,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -225,6 +230,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Auth Production
@@ -245,7 +251,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -257,20 +263,24 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/auth
-          command: d1 migrations apply al-ummah-now-d1 --remote
+          command: d1 migrations apply AUTH_DB --env production --remote
 
+      # --env production is required: the top-level config is the local-dev config
+      # (ENVIRONMENT=development, localhost issuer, no routes/secrets store) and uses
+      # the same worker name as production.
       - name: Deploy Auth to Cloudflare Workers (Production)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/auth
-          command: deploy
+          command: deploy --env production
 
   deploy-profile-production:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Profile Production
@@ -291,7 +301,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -309,6 +319,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Admin Production
@@ -329,7 +340,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
