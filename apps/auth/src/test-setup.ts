@@ -202,25 +202,58 @@ export async function setupDatabase() {
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)`).run();
 
-  // Migration 0019: Create token_usage table (updated schema)
+  // token_usage: live QA/prod schema (migrations/0002_jwt_tokens.sql: tenant_id, client_id,
+  // user_id, token_type, ip_address, user_agent, created_at in ms) PLUS the legacy columns
+  // (token_id, subject, event_type, timestamp, metadata) still read by
+  // AdminEnterpriseRoutes.getTokenAudit and its tests.
   await env.AUTH_DB.prepare(`
     CREATE TABLE IF NOT EXISTS token_usage (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      token_id TEXT NOT NULL,
-      subject TEXT NOT NULL,
-      event_type TEXT NOT NULL CHECK (event_type IN ('generated', 'refreshed', 'revoked', 'reused')),
+      tenant_id TEXT NOT NULL DEFAULT 'default',
       client_id TEXT,
-      timestamp INTEGER NOT NULL DEFAULT (unixepoch()),
+      user_id TEXT,
+      token_type TEXT,
       ip_address TEXT,
       user_agent TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      token_id TEXT,
+      subject TEXT,
+      event_type TEXT,
+      timestamp INTEGER DEFAULT (unixepoch()),
       metadata TEXT
     )
   `).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_token_id ON token_usage(token_id)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_subject ON token_usage(subject)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_client_id ON token_usage(client_id)`).run();
-  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_event_type ON token_usage(event_type)`).run();
+  await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at)`).run();
+
+  // browser_sessions / account_sessions (OpenAuth 001_schema.sql)
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS browser_sessions (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      last_activity INTEGER NOT NULL,
+      user_agent TEXT,
+      ip_address TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      active_user_id TEXT,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    )
+  `).run();
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS account_sessions (
+      id TEXT PRIMARY KEY,
+      browser_session_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 0,
+      authenticated_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      subject_type TEXT NOT NULL,
+      subject_properties TEXT,
+      refresh_token TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE
+    )
+  `).run();
 
   // Note: Roles are seeded by OpenAuth migrations (002_seed.sql)
   // Available roles: role_super_admin, role_admin, role_member, role_viewer, etc.

@@ -241,6 +241,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # Deploy the consumer first so it understands every message format the new
+      # auth worker publishes to AUDIT_QUEUE.
+      - name: Deploy Audit Consumer to QA
+        working-directory: apps/audit-consumer
+        run: pnpm run deploy:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       # Call wrangler directly so the predeploy:qa hook (migrations + bootstrap-secrets,
       # which prints secrets) does not run a second time with unredacted output.
       - name: Deploy Auth Server to QA
@@ -282,13 +291,6 @@ jobs:
           printf '%s' "$E2E_ADMIN_CLIENT_SECRET" | npx wrangler secret put ADMIN_CLIENT_SECRET --config wrangler.qa.json
         env:
           E2E_ADMIN_CLIENT_SECRET: ${{ secrets.E2E_ADMIN_CLIENT_SECRET }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Deploy Audit Consumer to QA
-        working-directory: apps/audit-consumer
-        run: pnpm run deploy:qa
-        env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 

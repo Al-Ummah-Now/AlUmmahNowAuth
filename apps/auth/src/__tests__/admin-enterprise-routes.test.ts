@@ -46,7 +46,7 @@ vi.mock('../logger', () => ({
 }));
 
 // Mock audit emitter
-vi.mock('../audit-emitter-enhanced', () => ({
+vi.mock('../audit-emitter', () => ({
   emitAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
 

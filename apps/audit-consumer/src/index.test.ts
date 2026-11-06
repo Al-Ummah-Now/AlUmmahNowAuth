@@ -361,4 +361,87 @@ describe('Audit Consumer Worker', () => {
       expect(handleAuditBatch).toHaveBeenCalled();
     });
   });
+
+  describe('Application audit events (app_audit_event)', () => {
+    function appMessage(id: string, attempts = 1) {
+      return {
+        id,
+        timestamp: new Date(),
+        attempts,
+        body: {
+          version: 1 as const,
+          type: 'app_audit_event' as const,
+          event: {
+            timestamp: '2026-01-01T00:00:00.000Z',
+            eventType: 'tenant.created',
+            severity: 'info',
+            userId: 'admin-1',
+            ipAddress: '203.0.113.1',
+            userAgent: 'test',
+            requestId: 'req-1',
+            metadata: { tenantId: 't1' },
+            success: true,
+            errorMessage: null,
+          },
+          enqueued_at: Date.now(),
+        },
+        ack: vi.fn(),
+        retry: vi.fn(),
+      };
+    }
+
+    function mockDb(batchImpl: () => Promise<unknown>) {
+      const bind = vi.fn().mockReturnValue({});
+      return {
+        prepare: vi.fn().mockReturnValue({ bind }),
+        batch: vi.fn().mockImplementation(batchImpl),
+        bind,
+      };
+    }
+
+    it('writes app audit events to audit_events and acks them', async () => {
+      const db = mockDb(() => Promise.resolve([]));
+      const msg = appMessage('a1');
+      const batch = { messages: [msg], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'q' };
+
+      await worker.queue(batch as any, { AUDIT_DB: db } as any);
+
+      expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO audit_events'));
+      expect(db.bind).toHaveBeenCalledWith(
+        '2026-01-01T00:00:00.000Z', 'tenant.created', 'info', 'admin-1', '203.0.113.1',
+        'test', 'req-1', JSON.stringify({ tenantId: 't1' }), 1, null
+      );
+      expect(msg.ack).toHaveBeenCalled();
+      expect(handleAuditBatch).not.toHaveBeenCalled();
+    });
+
+    it('routes mixed batches: app events to audit_events, token events to handleAuditBatch', async () => {
+      const db = mockDb(() => Promise.resolve([]));
+      const app = appMessage('a1');
+      const token = mockBatch.messages[0];
+      const batch = { messages: [app, token], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'q' };
+
+      await worker.queue(batch as any, { AUDIT_DB: db } as any);
+
+      expect(app.ack).toHaveBeenCalled();
+      expect(handleAuditBatch).toHaveBeenCalledTimes(1);
+      const passed = vi.mocked(handleAuditBatch).mock.calls[0][0] as any;
+      expect(passed.messages).toEqual([token]);
+    });
+
+    it('retries app events when the D1 write fails, then acks after max attempts', async () => {
+      const db = mockDb(() => Promise.reject(new Error('D1 down')));
+      const fresh = appMessage('a1', 1);
+      const exhausted = appMessage('a2', 3);
+      const batch = { messages: [fresh, exhausted], retryAll: vi.fn(), ackAll: vi.fn(), queue: 'q' };
+
+      await worker.queue(batch as any, { AUDIT_DB: db } as any);
+
+      expect(fresh.retry).toHaveBeenCalled();
+      expect(fresh.ack).not.toHaveBeenCalled();
+      expect(exhausted.ack).toHaveBeenCalled();
+      expect(exhausted.retry).not.toHaveBeenCalled();
+    });
+  });
 });
+

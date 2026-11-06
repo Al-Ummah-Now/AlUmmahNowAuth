@@ -171,9 +171,13 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 				return;
 			} catch (error) {
 				// Handle OpenAuth middleware errors
-				if (error instanceof Error) {
-					const statusCode = error.name === 'InsufficientScopeError' ? 403 : 401;
-					return c.json({ error: error.message }, statusCode);
+				// Log the detail, but never return library/internal error text to the client
+				logger.warn('[requireAdmin] M2M authentication failed', {
+					errorName: error instanceof Error ? error.name : typeof error,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				if (error instanceof Error && error.name === 'InsufficientScopeError') {
+					return c.json({ error: 'Forbidden: insufficient scope' }, 403);
 				}
 				return c.json({ error: 'M2M authentication failed' }, 401);
 			}

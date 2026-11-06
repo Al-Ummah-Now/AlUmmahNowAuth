@@ -200,7 +200,7 @@ export function userListRoutes(db: D1Database) {
       console.error('Failed to list users with roles:', errorMessage);
       console.error('Stack trace:', errorStack);
       return c.json(
-        { error: 'server_error', error_description: `Failed to list users: ${errorMessage}` },
+        { error: 'server_error', error_description: 'Failed to list users' },
         500
       );
     }

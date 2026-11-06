@@ -1,4 +1,3 @@
-// DEBUG: Force reload trigger - 2025-12-03T12:15:00
 import { Hono } from "hono";
 import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from "@al-ummah-now/openauth/rbac/index";
@@ -16,7 +15,8 @@ import { createSubjects } from "@al-ummah-now/openauth/subject";
 import * as v from 'valibot';
 import { logger } from "./logger";
 import { AdminEnterpriseRoutes } from "./admin-enterprise-routes";
-import { initializeAuditEmitter } from "./audit-emitter";
+import { ensureAuditEmitter, flushAuditEvents } from "./audit-emitter";
+import { resolveRequestId, withRequestId } from "./utils/request-id";
 import {
   userApiRoutes,
   createUserService,
@@ -42,10 +42,83 @@ const subjects = createSubjects({
   }),
 });
 
+/**
+ * Initialize the shared audit emitter for this invocation.
+ * Events go to stdout + AUDIT_QUEUE (consumed by apps/audit-consumer into
+ * audit_events); without a queue binding they are written to D1 directly.
+ */
+function setupAuditEmitter(env: Env, ctx: ExecutionContext) {
+  return ensureAuditEmitter({
+    enableStdout: true,
+    webhookUrl: env.AUDIT_WEBHOOK_URL,
+    webhookSecret: env.AUDIT_WEBHOOK_SECRET,
+    db: env.AUTH_DB,
+    queue: env.AUDIT_QUEUE,
+    ctx,
+    d1Config: {
+      batchSize: 1,  // Write events immediately when falling back to direct D1
+      batchTimeout: 100,
+    },
+  });
+}
+
+/** Public liveness probe (Issue #96). Intentionally reveals nothing about dependencies. */
+function healthResponse(method: string): Response {
+  return new Response(method === 'HEAD' ? null : JSON.stringify({ status: 'ok' }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const requestId = resolveRequestId(request);
+    const { pathname } = new URL(request.url);
+
+    if (pathname === '/health' && (request.method === 'GET' || request.method === 'HEAD')) {
+      return withRequestId(healthResponse(request.method), requestId);
+    }
+
+    setupAuditEmitter(env, ctx);
+    try {
+      const response = await handleFetch(request, env, ctx, requestId);
+      return withRequestId(response, requestId);
+    } finally {
+      // Deliver any audit events buffered during this request
+      ctx.waitUntil(flushAuditEvents());
+    }
+  },
+
+  /**
+   * Scheduled handler for cron triggers.
+   * Cron expressions are configured in `triggers.crons` (wrangler.json production env
+   * and wrangler.qa.json) and mapped to jobs in cron/token-cron.ts.
+   */
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    logger.setDatabase(env.AUTH_DB, true);
+    logger.setContext(ctx);
+    setupAuditEmitter(env, ctx);
+
+    try {
+      await handleTokenCron(env, event.cron);
+    } catch (error) {
+      logger.error('Scheduled cron failed', {
+        cron: event.cron,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Don't throw - let other scheduled tasks continue
+    } finally {
+      ctx.waitUntil(flushAuditEvents());
+      ctx.waitUntil(logger.finalizeRequest());
+    }
+  },
+} satisfies ExportedHandler<Env>;
+
+async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, requestId: string): Promise<Response> {
     const url = new URL(request.url);
-    const requestId = crypto.randomUUID();
 
     // Determine if running in production (test endpoints disabled in production)
     // Use ENVIRONMENT env var if set, otherwise fall back to hostname check
@@ -59,19 +132,6 @@ export default {
 
     // Initialize request context to prevent stale timer usage
     logger.initialRequest(requestId);
-
-    // Initialize audit emitter with batch size 1 for immediate D1 writes
-    initializeAuditEmitter({
-      enableStdout: true,
-      webhookUrl: env.AUDIT_WEBHOOK_URL,
-      webhookSecret: env.AUDIT_WEBHOOK_SECRET,
-      db: env.AUTH_DB,
-      ctx,
-      d1Config: {
-        batchSize: 1,  // Write events immediately to database
-        batchTimeout: 100,  // Very short timeout (not needed with batchSize=1)
-      },
-    });
 
     // Wrap entire request handling in try-catch for graceful error handling
     try {
@@ -399,29 +459,4 @@ export default {
       // Return user-friendly error page with original URL preserved
       return addSecurityHeaders(renderErrorPage(error, requestId, request.url), isProduction);
     }
-  },
-
-  /**
-   * Scheduled handler for cron triggers
-   *
-   * Configure cron triggers in wrangler.toml:
-   * ```
-   * [triggers]
-   * crons = ["0 * * * *"]  // Every hour - cleanup expired tokens
-   * ```
-   */
-  async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
-    // Determine which cron job to run based on schedule
-    // For now, we'll run all token maintenance tasks
-    const cronName = event.cron || 'token-maintenance';
-
-    try {
-      await handleTokenCron(env, cronName);
-    } catch (error) {
-      logger.error('Scheduled token cron failed', { cronName, error });
-      // Don't throw - let other scheduled tasks continue
-    }
-  },
-} satisfies ExportedHandler<Env>;
-
-
+}

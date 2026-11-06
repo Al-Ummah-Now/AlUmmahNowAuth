@@ -328,7 +328,6 @@ Your codebase implements **significant duplicate and overlapping functionality**
 |---------|-----------|----------|--------|
 | Audit Events | `AuditEventType`, `AuditEventSeverity`, event creators | `/audit-events.ts` | **CUSTOM** |
 | Audit Emitter | `AuditEmitter` class | `/audit-emitter.ts` | **CUSTOM** |
-| Enhanced Audit Emitter | `AuditEmitterEnhanced` | `/audit-emitter-enhanced.ts` | **CUSTOM** |
 | DLQ Handling | `DLQReplay` service | `/dlq-replay.ts` | **CUSTOM** |
 | Queue Management | `Admin DLQ Routes` | `/admin-dlq-routes.ts` | **CUSTOM** |
 

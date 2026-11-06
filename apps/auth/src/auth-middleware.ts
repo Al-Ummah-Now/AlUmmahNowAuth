@@ -564,10 +564,7 @@ export function withAuth<T extends unknown[], R>(
       logger.error('Authentication error', {
         error: error instanceof Error ? error.message : String(error),
       });
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Authentication required',
-        401
-      );
+      return createAuthErrorResponse('Authentication required', 401);
     }
   };
 }
@@ -586,10 +583,7 @@ export function withAdminAuth<T extends unknown[], R>(
       logger.error('Admin authentication error', {
         error: error instanceof Error ? error.message : String(error),
       });
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Admin access required',
-        403
-      );
+      return createAuthErrorResponse('Admin access required', 403);
     }
   };
 }
@@ -610,10 +604,7 @@ export function withPermission<T extends unknown[], R>(
         permission,
         error: error instanceof Error ? error.message : String(error),
       });
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : `Permission denied: ${permission}`,
-        403
-      );
+      return createAuthErrorResponse(`Permission denied: ${permission}`, 403);
     }
   };
 }

@@ -22,7 +22,7 @@ import {
   getActorId,
 } from '../auth-middleware';
 import { logger } from '../logger';
-import { emitAuditEvent } from '../audit-emitter-enhanced';
+import { emitAuditEvent } from '../audit-emitter';
 import {
   AuditEventType,
   createRoleManagementEvent,
@@ -93,7 +93,7 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
       });
 
       return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to get user roles',
+        'Failed to get user roles',
         500
       );
     }
@@ -190,7 +190,7 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
       }
 
       return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to assign role',
+        'Failed to assign role',
         500
       );
     }
@@ -271,7 +271,7 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
       });
 
       return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to remove role',
+        'Failed to remove role',
         500
       );
     }

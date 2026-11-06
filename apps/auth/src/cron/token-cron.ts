@@ -1,9 +1,9 @@
 /**
- * @fileoverview Cron trigger handlers for token management
+ * @fileoverview Cron trigger handlers for token/session maintenance
  *
- * Handles scheduled tasks:
- * - Clean up expired tokens
- * - Clean up old analytics
+ * Cloudflare passes the cron *expression* (e.g. "0 * * * *") as `event.cron`, so
+ * expressions configured in `triggers.crons` (wrangler.json / wrangler.qa.json)
+ * are mapped to job names here.
  *
  * Note: Pending revocations removed after grace period elimination (Issue #77)
  */
@@ -11,35 +11,64 @@
 import { TokenCleanupService } from '../services/token-cleanup';
 import { logger } from '../logger';
 
+export type CronJobName = 'token-cleanup';
+
+/**
+ * Cron expression -> job. Keep in sync with `triggers.crons` in the wrangler configs.
+ */
+export const CRON_SCHEDULE: Readonly<Record<string, CronJobName>> = {
+	'0 * * * *': 'token-cleanup', // hourly
+};
+
+/** Legacy job names accepted for manual invocation */
+const JOB_ALIASES: Readonly<Record<string, CronJobName>> = {
+	'token-cleanup': 'token-cleanup',
+	'token-maintenance': 'token-cleanup',
+};
+
+/**
+ * Resolve a cron expression (or legacy job name) to a job, or null if unknown.
+ */
+export function resolveCronJob(cron: string | undefined | null): CronJobName | null {
+	if (!cron) return null;
+	const key = cron.trim();
+	return CRON_SCHEDULE[key] ?? JOB_ALIASES[key] ?? null;
+}
+
 /**
  * Main cron handler for token management tasks
  *
- * This function should be called by Cloudflare Cron Triggers
- * Schedule recommendations:
- * - Every hour: Clean up expired tokens and old analytics
- *
  * @param env - Cloudflare Workers environment
- * @param cronName - Name of the cron trigger
+ * @param cron - Cron expression from ScheduledEvent.cron (or a job name)
+ * @returns The job that ran, or null if the expression is not mapped
  */
-export async function handleTokenCron(env: Env, cronName: string): Promise<void> {
+export async function handleTokenCron(env: Env, cron: string): Promise<CronJobName | null> {
+	const job = resolveCronJob(cron);
+	if (!job) {
+		logger.warn('No cron job mapped for schedule; skipping', { cron });
+		return null;
+	}
+
 	const startTime = Date.now();
-	logger.info('Starting token cron job', { cronName });
+	logger.info('Starting cron job', { cron, job });
 
 	try {
-		// Run cleanup
-		if (cronName === 'token-cleanup' || cronName === 'token-maintenance') {
-			const cleanupResult = await TokenCleanupService.runCleanup(env);
-			logger.info('Token cleanup completed', {
-				expiredTokensDeleted: cleanupResult.expiredTokensDeleted,
-				oldAnalyticsDeleted: cleanupResult.oldAnalyticsDeleted,
-				duration: cleanupResult.duration,
-			});
+		switch (job) {
+			case 'token-cleanup': {
+				const result = await TokenCleanupService.runCleanup(env);
+				logger.info('Token cleanup completed', { ...result });
+				break;
+			}
 		}
 
-		const duration = Date.now() - startTime;
-		logger.info('Token cron job completed', { cronName, duration });
+		logger.info('Cron job completed', { cron, job, duration: Date.now() - startTime });
+		return job;
 	} catch (error) {
-		logger.error('Token cron job failed', { cronName, error });
+		logger.error('Cron job failed', {
+			cron,
+			job,
+			error: error instanceof Error ? error.message : String(error),
+		});
 		throw error;
 	}
 }
