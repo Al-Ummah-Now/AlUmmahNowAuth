@@ -126,6 +126,7 @@ export default {
     // - PUT->PATCH translation (methodCompatMiddleware)
     // - Backward compat response aliases: client_id, allowed_grants (clientResponseCompatMiddleware)
     const adminClientApp = new Hono();
+    adminClientApp.use('*', requireAdmin());  // M2M auth required
     adminClientApp.use('*', clientResponseCompatMiddleware); // Response transform (runs last in response phase)
     adminClientApp.use('*', adminContextMiddleware);
     adminClientApp.use('*', methodCompatMiddleware);
