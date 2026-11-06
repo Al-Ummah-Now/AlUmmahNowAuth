@@ -9,7 +9,18 @@
 
 import { verifyAdminAuth, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
-import { emitAuditEvent } from './audit-emitter-enhanced';
+import { emitAuditEvent } from './audit-emitter';
+import { safeErrorMessage } from './utils/error-response';
+
+/** Domain errors from TenantService that are safe to show to API clients */
+const TENANT_ERROR_MESSAGES = [
+  'Tenant ID already exists',
+  'Domain already in use',
+  'Tenant not found',
+  'Cannot delete default tenant',
+  'Cannot remove the last owner',
+] as const;
+
 import { AuditEventSeverity, AuditEventType } from './audit-events';
 import { checkRateLimit, getClientIP } from './rate-limit';
 import { TenantService } from './services/tenant.service';
@@ -218,7 +229,7 @@ export class AdminTenantRoutes {
       });
     } catch (error) {
       logger.error('Failed to create tenant', { error });
-      const message = error instanceof Error ? error.message : 'Failed to create tenant';
+      const message = safeErrorMessage(error, 'Failed to create tenant', TENANT_ERROR_MESSAGES);
       return createAuthErrorResponse(message, 400);
     }
   }
@@ -314,7 +325,7 @@ export class AdminTenantRoutes {
       });
     } catch (error) {
       logger.error('Failed to update tenant', { error });
-      const message = error instanceof Error ? error.message : 'Failed to update tenant';
+      const message = safeErrorMessage(error, 'Failed to update tenant', TENANT_ERROR_MESSAGES);
       return createAuthErrorResponse(message, 400);
     }
   }
@@ -355,7 +366,7 @@ export class AdminTenantRoutes {
       });
     } catch (error) {
       logger.error('Failed to delete tenant', { error });
-      const message = error instanceof Error ? error.message : 'Failed to delete tenant';
+      const message = safeErrorMessage(error, 'Failed to delete tenant', TENANT_ERROR_MESSAGES);
       return createAuthErrorResponse(message, 400);
     }
   }
@@ -426,7 +437,7 @@ export class AdminTenantRoutes {
       });
     } catch (error) {
       logger.error('Failed to add tenant admin', { error });
-      const message = error instanceof Error ? error.message : 'Failed to add tenant admin';
+      const message = safeErrorMessage(error, 'Failed to add tenant admin', TENANT_ERROR_MESSAGES);
       return createAuthErrorResponse(message, 400);
     }
   }
@@ -453,7 +464,7 @@ export class AdminTenantRoutes {
       });
     } catch (error) {
       logger.error('Failed to remove tenant admin', { error });
-      const message = error instanceof Error ? error.message : 'Failed to remove tenant admin';
+      const message = safeErrorMessage(error, 'Failed to remove tenant admin', TENANT_ERROR_MESSAGES);
       return createAuthErrorResponse(message, 400);
     }
   }

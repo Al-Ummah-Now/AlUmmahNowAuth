@@ -12,7 +12,8 @@
 
 import { verifyAdminRequest, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
-import { emitAuditEvent } from './audit-emitter-enhanced';
+import { emitAuditEvent } from './audit-emitter';
+import { adminErrorResponse } from './utils/error-response';
 import { AuditEventType, AuditEventSeverity, createSecurityAlertEvent } from './audit-events';
 import { checkRateLimit, getClientIP } from './rate-limit';
 import * as v from 'valibot';
@@ -301,10 +302,7 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('Invalid query parameters: ' + error.message, 400);
       }
 
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to fetch token audit logs',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Failed to fetch token audit logs');
     }
   }
 
@@ -389,10 +387,7 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('Invalid query parameters: ' + error.message, 400);
       }
 
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to fetch audit logs',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Failed to fetch audit logs');
     }
   }
 
@@ -443,10 +438,7 @@ export class AdminEnterpriseRoutes {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to fetch audit stats',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Failed to fetch audit stats');
     }
   }
 
@@ -493,10 +485,7 @@ export class AdminEnterpriseRoutes {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to fetch user audit trail',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Failed to fetch user audit trail');
     }
   }
 
@@ -547,10 +536,7 @@ export class AdminEnterpriseRoutes {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to get user tokens',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Failed to get user tokens');
     }
   }
 
@@ -640,10 +626,7 @@ export class AdminEnterpriseRoutes {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to revoke user tokens',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Failed to revoke user tokens');
     }
   }
 
@@ -724,10 +707,7 @@ export class AdminEnterpriseRoutes {
         return createAuthErrorResponse('Invalid request: ' + error.message, 400);
       }
 
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to revoke user tokens',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Failed to revoke user tokens');
     }
   }
 
@@ -742,7 +722,7 @@ export class AdminEnterpriseRoutes {
     try {
       await verifyAdminRequest(request, env, 'admin:*');
 
-      const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
+      const checks: Record<string, { status: string; latency?: number }> = {};
 
       // Check D1 database
       const dbStart = Date.now();
@@ -750,7 +730,8 @@ export class AdminEnterpriseRoutes {
         await this.db.prepare('SELECT 1').first();
         checks.database = { status: 'healthy', latency: Date.now() - dbStart };
       } catch (e) {
-        checks.database = { status: 'unhealthy', error: e instanceof Error ? e.message : 'Unknown error' };
+        logger.error('Health check: database unavailable', { error: e instanceof Error ? e.message : String(e) });
+        checks.database = { status: 'unhealthy' };
       }
 
       // Check KV store
@@ -759,7 +740,8 @@ export class AdminEnterpriseRoutes {
         await this.kv.get('health-check');
         checks.kv_store = { status: 'healthy', latency: Date.now() - kvStart };
       } catch (e) {
-        checks.kv_store = { status: 'unhealthy', error: e instanceof Error ? e.message : 'Unknown error' };
+        logger.error('Health check: KV unavailable', { error: e instanceof Error ? e.message : String(e) });
+        checks.kv_store = { status: 'unhealthy' };
       }
 
       const allHealthy = Object.values(checks).every(c => c.status === 'healthy');
@@ -773,10 +755,7 @@ export class AdminEnterpriseRoutes {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (error) {
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Health check failed',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Health check failed');
     }
   }
 
@@ -843,10 +822,7 @@ export class AdminEnterpriseRoutes {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      return createAuthErrorResponse(
-        error instanceof Error ? error.message : 'Failed to get metrics',
-        error instanceof Error && error.message.includes('required') ? 401 : 500
-      );
+      return adminErrorResponse(error, 'Failed to get metrics');
     }
   }
 }

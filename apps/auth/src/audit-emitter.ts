@@ -1,11 +1,42 @@
 /**
  * Audit Event Emitter
  *
- * This module provides the event emission system for audit events.
- * It supports multiple sinks (stdout, webhook) for event delivery.
+ * This is the single audit emitter used by the worker. Sinks:
+ * - StdoutSink: structured JSON to Workers logs
+ * - QueueSink: publishes to the AUDIT_QUEUE binding (consumed by apps/audit-consumer,
+ *   which writes to the audit_events table)
+ * - D1Sink: direct writes to audit_events (used when no queue binding is configured)
+ * - WebhookSink: optional HTTP delivery with retry + D1 dead-letter queue
+ *
+ * All batched sinks use bounded in-memory queues (oldest events are dropped and
+ * counted when full). The worker flushes the emitter via ctx.waitUntil() at the end
+ * of every fetch and scheduled invocation (see flushAuditEvents()).
  */
 
-import { AuditEvent } from './audit-events';
+import { AuditEvent, AuditEventSeverity } from './audit-events';
+
+/** Default upper bound for any sink's in-memory queue */
+export const DEFAULT_MAX_QUEUE_SIZE = 1000;
+
+/**
+ * Push an event onto a bounded queue, dropping the oldest event when full.
+ * Returns the dropped event (if any) so callers can account for it.
+ */
+function pushBounded(queue: AuditEvent[], event: AuditEvent, maxSize: number, sinkName: string): AuditEvent | undefined {
+  let dropped: AuditEvent | undefined;
+  if (queue.length >= maxSize) {
+    dropped = queue.shift();
+    if (dropped) {
+      const log = dropped.severity === AuditEventSeverity.CRITICAL ? console.error : console.warn;
+      log(`[${sinkName}] audit queue full (${maxSize}); dropped oldest event`, {
+        eventType: dropped.eventType,
+        timestamp: dropped.timestamp,
+      });
+    }
+  }
+  queue.push(event);
+  return dropped;
+}
 
 /**
  * Audit event sink interface
@@ -25,6 +56,11 @@ export interface AuditEventSink {
    * Flush any pending events (for batched sinks)
    */
   flush?(): Promise<void>;
+
+  /**
+   * Whether the sink still holds undelivered events
+   */
+  hasPendingEvents?(): boolean;
 }
 
 /**
@@ -67,6 +103,7 @@ export class WebhookSink implements AuditEventSink {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private ctx: ExecutionContext | null = null;
   private flushing = false;
+  private maxQueueSize: number;
 
   // New properties for retry and DLQ
   private db?: D1Database;
@@ -77,6 +114,7 @@ export class WebhookSink implements AuditEventSink {
     successfulDeliveries: 0,
     failedDeliveries: 0,
     dlqWrites: 0,
+    droppedEvents: 0,
   };
 
   constructor(options: {
@@ -87,6 +125,7 @@ export class WebhookSink implements AuditEventSink {
     db?: D1Database;           // D1 database for DLQ
     maxRetries?: number;       // Maximum retry attempts
     retryDelays?: number[];    // Custom retry delays in ms
+    maxQueueSize?: number;     // Upper bound for queued events (drop-oldest)
   }) {
     this.url = options.url;
     this.secret = options.secret;
@@ -95,6 +134,7 @@ export class WebhookSink implements AuditEventSink {
     this.db = options.db;
     this.maxRetries = options.maxRetries ?? 3;
     this.retryDelays = options.retryDelays ?? [1000, 2000, 4000]; // Default exponential backoff
+    this.maxQueueSize = Math.max(options.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE, this.batchSize);
 
     // Validate webhook secret strength
     if (options.secret && options.secret.length < 32) {
@@ -110,7 +150,9 @@ export class WebhookSink implements AuditEventSink {
   }
 
   async emit(event: AuditEvent): Promise<void> {
-    this.eventQueue.push(event);
+    if (pushBounded(this.eventQueue, event, this.maxQueueSize, 'WebhookSink')) {
+      this.deliveryMetrics.droppedEvents++;
+    }
 
     // Flush if batch size reached and not already flushing
     if (this.eventQueue.length >= this.batchSize) {
@@ -121,10 +163,8 @@ export class WebhookSink implements AuditEventSink {
       // Schedule flush if not already scheduled and not currently flushing
       if (!this.flushTimer && !this.flushing) {
         this.flushTimer = setTimeout(() => {
-          this.flushing = true;
-          const flushPromise = this.flush().finally(() => {
-            this.flushing = false;
-          });
+          this.flushTimer = null;
+          const flushPromise = this.flush();
 
           if (this.ctx) {
             this.ctx.waitUntil(flushPromise);
@@ -134,6 +174,10 @@ export class WebhookSink implements AuditEventSink {
         }, this.batchTimeout);
       }
     }
+  }
+
+  hasPendingEvents(): boolean {
+    return this.eventQueue.length > 0;
   }
 
   async flush(): Promise<void> {
@@ -374,13 +418,26 @@ export class D1Sink implements AuditEventSink {
   private ctx: ExecutionContext | null = null;
   private flushing = false;
 
+  private maxQueueSize: number;
+  private droppedEvents = 0;
+
   constructor(db: D1Database, options?: {
     batchSize?: number;
     batchTimeout?: number;
+    maxQueueSize?: number;
   }) {
     this.db = db;
     this.batchSize = options?.batchSize ?? 20;
     this.batchTimeout = options?.batchTimeout ?? 3000; // 3 seconds
+    this.maxQueueSize = Math.max(options?.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE, this.batchSize);
+  }
+
+  hasPendingEvents(): boolean {
+    return this.eventQueue.length > 0;
+  }
+
+  getMetrics(): { queueSize: number; maxQueueSize: number; droppedEvents: number } {
+    return { queueSize: this.eventQueue.length, maxQueueSize: this.maxQueueSize, droppedEvents: this.droppedEvents };
   }
 
   /**
@@ -391,7 +448,9 @@ export class D1Sink implements AuditEventSink {
   }
 
   async emit(event: AuditEvent): Promise<void> {
-    this.eventQueue.push(event);
+    if (pushBounded(this.eventQueue, event, this.maxQueueSize, 'D1Sink')) {
+      this.droppedEvents++;
+    }
 
     // Flush if batch size reached and not already flushing
     if (this.eventQueue.length >= this.batchSize) {
@@ -402,6 +461,7 @@ export class D1Sink implements AuditEventSink {
       // Schedule flush if not already scheduled and not currently flushing
       if (!this.flushTimer && !this.flushing) {
         this.flushTimer = setTimeout(() => {
+          this.flushTimer = null;
           this.flushing = true;
           const flushPromise = this.flush().finally(() => {
             this.flushing = false;
@@ -480,6 +540,91 @@ export class D1Sink implements AuditEventSink {
 }
 
 /**
+ * Message published to AUDIT_QUEUE for application audit events.
+ * `type` distinguishes these from OpenAuth token-usage messages on the same queue.
+ */
+export interface AppAuditQueueMessage {
+  version: 1;
+  type: 'app_audit_event';
+  event: AuditEvent;
+  enqueued_at: number;
+}
+
+/** Cloudflare Queues sendBatch limit */
+const QUEUE_SEND_BATCH_LIMIT = 100;
+
+/**
+ * Queue sink - buffers events and publishes them to a Cloudflare Queue
+ * (AUDIT_QUEUE). Buffered events are sent when the batch fills and when the
+ * emitter is flushed at the end of the request.
+ */
+export class QueueSink implements AuditEventSink {
+  name = 'queue';
+  private queue: Queue;
+  private batchSize: number;
+  private maxQueueSize: number;
+  private buffer: AuditEvent[] = [];
+  private droppedEvents = 0;
+  private sentEvents = 0;
+  private failedSends = 0;
+
+  constructor(queue: Queue, options?: { batchSize?: number; maxQueueSize?: number }) {
+    this.queue = queue;
+    this.batchSize = Math.min(Math.max(options?.batchSize ?? 25, 1), QUEUE_SEND_BATCH_LIMIT);
+    this.maxQueueSize = Math.max(options?.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE, this.batchSize);
+  }
+
+  async emit(event: AuditEvent): Promise<void> {
+    if (pushBounded(this.buffer, event, this.maxQueueSize, 'QueueSink')) {
+      this.droppedEvents++;
+    }
+    if (this.buffer.length >= this.batchSize) {
+      await this.flush();
+    }
+  }
+
+  async flush(): Promise<void> {
+    while (this.buffer.length > 0) {
+      const events = this.buffer.splice(0, QUEUE_SEND_BATCH_LIMIT);
+      const now = Date.now();
+      try {
+        await this.queue.sendBatch(
+          events.map((event) => ({
+            body: { version: 1, type: 'app_audit_event', event, enqueued_at: now } satisfies AppAuditQueueMessage,
+          }))
+        );
+        this.sentEvents += events.length;
+      } catch (error) {
+        this.failedSends++;
+        // Keep events for the next flush if there is room; otherwise log them so
+        // they are still recoverable from Workers logs.
+        if (this.buffer.length + events.length <= this.maxQueueSize) {
+          this.buffer.unshift(...events);
+        } else {
+          console.error(JSON.stringify({ type: 'audit_events_backup', sink: 'queue', events, error: String(error) }));
+        }
+        console.error('[QueueSink] Failed to publish audit events:', error);
+        return;
+      }
+    }
+  }
+
+  hasPendingEvents(): boolean {
+    return this.buffer.length > 0;
+  }
+
+  getMetrics(): { queueSize: number; maxQueueSize: number; droppedEvents: number; sentEvents: number; failedSends: number } {
+    return {
+      queueSize: this.buffer.length,
+      maxQueueSize: this.maxQueueSize,
+      droppedEvents: this.droppedEvents,
+      sentEvents: this.sentEvents,
+      failedSends: this.failedSends,
+    };
+  }
+}
+
+/**
  * Audit Event Emitter
  *
  * Manages multiple sinks and emits events to all of them
@@ -540,6 +685,13 @@ export class AuditEmitter {
   }
 
   /**
+   * Whether any sink still holds undelivered events
+   */
+  hasPendingEvents(): boolean {
+    return this.sinks.some(sink => typeof sink.hasPendingEvents === 'function' && sink.hasPendingEvents());
+  }
+
+  /**
    * Get all configured sinks
    */
   getSinks(): AuditEventSink[] {
@@ -547,20 +699,13 @@ export class AuditEmitter {
   }
 }
 
-/**
- * Global audit emitter instance
- * This will be initialized in the worker's fetch handler
- */
-let globalAuditEmitter: AuditEmitter | null = null;
-
-/**
- * Initialize the global audit emitter
- */
-export function initializeAuditEmitter(options: {
+export interface AuditEmitterOptions {
   enableStdout?: boolean;
   webhookUrl?: string;
   webhookSecret?: string;
   db?: D1Database;
+  /** AUDIT_QUEUE binding. When set, events are published to the queue instead of written to D1 directly. */
+  queue?: Queue;
   ctx?: ExecutionContext;
   webhookRetryConfig?: {
     maxRetries?: number;
@@ -569,13 +714,24 @@ export function initializeAuditEmitter(options: {
   d1Config?: {
     batchSize?: number;
     batchTimeout?: number;
+    maxQueueSize?: number;
   };
-}): AuditEmitter {
-  const emitter = new AuditEmitter();
+  queueConfig?: {
+    batchSize?: number;
+    maxQueueSize?: number;
+  };
+}
 
-  if (options.ctx) {
-    emitter.setContext(options.ctx);
-  }
+/**
+ * Global audit emitter instance
+ * This will be initialized in the worker's fetch/scheduled handlers
+ */
+let globalAuditEmitter: AuditEmitter | null = null;
+let globalEmitterKey: string | null = null;
+let warnedUninitialized = false;
+
+function buildEmitter(options: AuditEmitterOptions): AuditEmitter {
+  const emitter = new AuditEmitter();
 
   // Add stdout sink if enabled (default: true)
   if (options.enableStdout !== false) {
@@ -584,30 +740,62 @@ export function initializeAuditEmitter(options: {
 
   // Add webhook sink if URL is configured
   if (options.webhookUrl) {
-    const webhookSink = new WebhookSink({
+    emitter.addSink(new WebhookSink({
       url: options.webhookUrl,
       secret: options.webhookSecret,
       db: options.db, // Pass DB for DLQ support
       maxRetries: options.webhookRetryConfig?.maxRetries,
       retryDelays: options.webhookRetryConfig?.retryDelays,
-    });
-    if (options.ctx) {
-      webhookSink.setContext(options.ctx);
-    }
-    emitter.addSink(webhookSink);
+    }));
   }
 
-  // Add D1 sink if database is provided
-  if (options.db) {
-    const d1Sink = new D1Sink(options.db, options.d1Config);
-    if (options.ctx) {
-      d1Sink.setContext(options.ctx);
-    }
-    emitter.addSink(d1Sink);
+  // Durable storage: prefer the queue (consumer writes audit_events), fall back to D1
+  if (options.queue) {
+    emitter.addSink(new QueueSink(options.queue, options.queueConfig));
+  } else if (options.db) {
+    emitter.addSink(new D1Sink(options.db, options.d1Config));
   }
 
-  globalAuditEmitter = emitter;
+  if (options.ctx) {
+    emitter.setContext(options.ctx);
+  }
   return emitter;
+}
+
+/**
+ * Initialize (replace) the global audit emitter
+ */
+export function initializeAuditEmitter(options: AuditEmitterOptions): AuditEmitter {
+  globalAuditEmitter = buildEmitter(options);
+  globalEmitterKey = null;
+  return globalAuditEmitter;
+}
+
+/**
+ * Worker entry point helper: build the global emitter once per isolate and
+ * re-bind it to the current ExecutionContext on every invocation. Reusing one
+ * emitter means events buffered by a concurrent request are never orphaned:
+ * whichever invocation flushes next delivers them.
+ */
+export function ensureAuditEmitter(options: AuditEmitterOptions): AuditEmitter {
+  const key = JSON.stringify({
+    stdout: options.enableStdout !== false,
+    webhook: options.webhookUrl || null,
+    queue: !!options.queue,
+    db: !!options.db,
+  });
+  if (!globalAuditEmitter || globalEmitterKey !== key) {
+    const previous = globalAuditEmitter;
+    globalAuditEmitter = buildEmitter({ ...options, ctx: undefined });
+    globalEmitterKey = key;
+    if (previous?.hasPendingEvents() && options.ctx) {
+      options.ctx.waitUntil(previous.flush());
+    }
+  }
+  if (options.ctx) {
+    globalAuditEmitter.setContext(options.ctx);
+  }
+  return globalAuditEmitter;
 }
 
 /**
@@ -615,6 +803,10 @@ export function initializeAuditEmitter(options: {
  */
 export function getAuditEmitter(): AuditEmitter {
   if (!globalAuditEmitter) {
+    if (!warnedUninitialized) {
+      warnedUninitialized = true;
+      console.warn('[AuditEmitter] used before initialization; events go to stdout only');
+    }
     // Lazy initialization with just stdout
     globalAuditEmitter = new AuditEmitter();
     globalAuditEmitter.addSink(new StdoutSink());
@@ -628,4 +820,17 @@ export function getAuditEmitter(): AuditEmitter {
 export async function emitAuditEvent(event: AuditEvent): Promise<void> {
   const emitter = getAuditEmitter();
   await emitter.emit(event);
+}
+
+/**
+ * Flush all buffered audit events. Call via ctx.waitUntil() at the end of each
+ * fetch/scheduled invocation.
+ */
+export async function flushAuditEvents(): Promise<void> {
+  if (!globalAuditEmitter) return;
+  try {
+    await globalAuditEmitter.flush();
+  } catch (error) {
+    console.error('[AuditEmitter] flush failed:', error);
+  }
 }
