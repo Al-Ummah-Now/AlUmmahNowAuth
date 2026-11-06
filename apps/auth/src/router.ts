@@ -29,6 +29,8 @@ import adminSessionRoutes from './routes/admin-session-routes';
 import adminStatsRoutes from './routes/admin-stats-routes';
 import { BrowserSessionService } from './services/browser-session.service';
 import { parseSessionCookie } from './utils/session-cookie';
+import { requireAdmin } from './middleware/admin-auth';
+import { verifyAdminAuth } from './auth-middleware';
 
 /**
  * Router context containing all dependencies
@@ -541,9 +543,56 @@ async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
  * Routes requests to appropriate handlers based on pathname.
  * Returns null if no route matched (request should go to OpenAuth issuer).
  */
+/**
+ * Paths that must never be reachable without admin credentials, regardless of
+ * which handler (ours or the OpenAuth issuer) ends up serving them.
+ * Default-deny: individual handlers may add stricter checks on top.
+ */
+function isAdminOnlyPath(pathname: string): boolean {
+	if (pathname === '/admin/sessions/dashboard') return false; // HTML shell; checks session itself
+	return (
+		pathname === '/admin' ||
+		pathname.startsWith('/admin/') ||
+		pathname === '/tenants' ||
+		pathname.startsWith('/tenants/')
+	);
+}
+
+const adminGuardApp = new Hono<{ Bindings: Env }>();
+adminGuardApp.use('*', requireAdmin());
+adminGuardApp.all('*', (c) => c.body(null, 204));
+
+/**
+ * Returns null when the request carries valid admin credentials
+ * (admin-scoped M2M token + admin acting user, or an admin user token),
+ * otherwise the 401/403 response to send.
+ */
+async function enforceAdmin(rctx: RouterContext): Promise<Response | null> {
+	const { request, env, ctx } = rctx;
+	if (request.method === 'OPTIONS') return null;
+
+	const m2m = await adminGuardApp.fetch(request.clone(), env, ctx);
+	if (m2m.status === 204) return null;
+
+	if (request.headers.get('Authorization')) {
+		try {
+			await verifyAdminAuth(request.clone(), env);
+			return null;
+		} catch {
+			// fall through to the M2M error response
+		}
+	}
+	return addSecurityHeaders(m2m, rctx.isProduction);
+}
+
 export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	const { url, request } = rctx;
 	const { pathname } = url;
+
+	if (isAdminOnlyPath(pathname)) {
+		const denied = await enforceAdmin(rctx);
+		if (denied) return denied;
+	}
 
 	// Handle exact path matches first
 	switch (pathname) {

@@ -101,6 +101,17 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 						? payload.scope.split(' ')
 						: (payload.scope as string[])
 					: [];
+				// Only clients that were granted an admin scope may act as an admin.
+				// Without this, any M2M client (e.g. a backend service) could
+				// impersonate an admin user via X-Acting-User-Id.
+				const hasAdminScope = scopes.some((s) => s === 'admin' || s.startsWith('admin:'));
+				if (!hasAdminScope) {
+					logger.warn('[requireAdmin] M2M token lacks admin scope', {
+						clientId: payload.client_id,
+					});
+					return c.json({ error: 'Forbidden: admin scope required' }, 403);
+				}
+
 				c.set('tenantId', (payload.tenant_id as string) || 'default');
 				c.set('clientId', payload.client_id as string);
 				c.set('scopes', scopes);
