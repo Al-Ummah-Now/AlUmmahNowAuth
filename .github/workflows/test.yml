@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+# packages: read is required for GITHUB_TOKEN to pull @al-ummah-now/* from GitHub Packages
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   lint-and-type-check:
     runs-on: ubuntu-latest
@@ -195,7 +200,29 @@ jobs:
 
       - name: Apply QA database migrations
         working-directory: apps/auth
-        run: pnpm run migrations:qa
+        run: |
+          pnpm run migrations:qa:openauth
+          pnpm run migrations:qa:app
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # bootstrap-secrets prints newly generated client secrets in plaintext.
+      # Capture the output to a file, mask every secret, and only print a redacted copy.
+      - name: Bootstrap missing client secrets (output redacted)
+        working-directory: apps/auth
+        run: |
+          log="$RUNNER_TEMP/bootstrap-secrets.log"
+          set +e
+          pnpm run --silent migrations:qa:secrets > "$log" 2>&1
+          status=$?
+          set -e
+          { grep -E 'Client Secret:' "$log" || true; } | sed -E 's/.*Client Secret:[[:space:]]*//' | while read -r secret; do
+            if [ -n "$secret" ]; then echo "::add-mask::$secret"; fi
+          done
+          sed -E 's/(Client Secret:).*/\1 [REDACTED]/' "$log"
+          rm -f "$log"
+          exit $status
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -214,9 +241,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # Call wrangler directly so the predeploy:qa hook (migrations + bootstrap-secrets,
+      # which prints secrets) does not run a second time with unredacted output.
       - name: Deploy Auth Server to QA
         working-directory: apps/auth
-        run: pnpm run deploy:qa
+        run: pnpm exec wrangler deploy --config wrangler.qa.json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -246,8 +275,13 @@ jobs:
       - name: Set Admin Dashboard QA secrets
         working-directory: apps/admin
         run: |
-          echo "e2e-admin-client-secret-12345" | npx wrangler secret put ADMIN_CLIENT_SECRET --config wrangler.qa.json
+          if [ -z "$E2E_ADMIN_CLIENT_SECRET" ]; then
+            echo "::error::E2E_ADMIN_CLIENT_SECRET repository secret is not configured"
+            exit 1
+          fi
+          printf '%s' "$E2E_ADMIN_CLIENT_SECRET" | npx wrangler secret put ADMIN_CLIENT_SECRET --config wrangler.qa.json
         env:
+          E2E_ADMIN_CLIENT_SECRET: ${{ secrets.E2E_ADMIN_CLIENT_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 

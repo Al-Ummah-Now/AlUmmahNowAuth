@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@al-ummah-now/openauth": "1.0.15",
-    "valibot": "^1.2.0"
+    "valibot": "^1.4.2"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.10.11",
