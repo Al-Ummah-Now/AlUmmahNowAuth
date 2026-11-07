@@ -8,6 +8,7 @@ import { test, expect } from '@playwright/test';
 import { register } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 import { setupEmailInterception } from '../../utils/email-interceptor';
+import { ResendTestClient } from '../../utils/resend-client';
 
 // Test password for all E2E test users
 const TEST_PASSWORD = 'TestPassword123!';
@@ -17,6 +18,42 @@ test.describe('Forgot Password Flow', () => {
   // Increase timeout for forgot password tests - these are complex multi-step flows
   // involving registration, logout, password reset, verification codes, and re-login
   test.setTimeout(120000);
+
+  test('unknown email reaches the code screen without leaving the auth page or sending an email', async ({ page }) => {
+    // Never registered: this is exactly what a mistyped/unknown address looks like.
+    // Previously sendCode threw for unknown emails, which bounced the browser back to
+    // the client app with ?error=server_error and revealed that the account did not exist.
+    const unknownEmail = TEST_USERS.user().email;
+
+    await page.goto(TEST_URLS.profileApp);
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
+    await page.click('a:has-text("Forgot password")');
+    await expect(page.locator('input[type="email"]')).toBeVisible();
+    await page.fill('input[type="email"]', unknownEmail);
+    await page.click('button:has-text("Continue")');
+
+    // Same "enter code" screen a real account gets (no enumeration)
+    await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+    expect(new URL(page.url()).searchParams.get('error')).toBeNull();
+
+    // A wrong code keeps the user on the code screen instead of erroring out
+    await page.fill('input[name="code"]', '000000');
+    await page.click('button:has-text("Continue")');
+    await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
+
+    // No email may have been sent to the unknown address
+    const resendApiKey = process.env.RESEND_API_KEY || process.env.E2E_RESEND_API_KEY;
+    test.skip(!resendApiKey, 'RESEND_API_KEY not set - cannot verify that no email was sent');
+    const resend = new ResendTestClient(resendApiKey!);
+    const email = await resend.getVerificationEmail(unknownEmail, 4, 1500);
+    expect(email).toBeNull();
+  });
 
   test('should complete forgot password flow and login with new password', async ({ page }) => {
     const testUser = TEST_USERS.user();
