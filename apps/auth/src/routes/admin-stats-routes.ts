@@ -79,11 +79,12 @@ adminStatsRoutes.get(
 				systemRolesResult,
 				usersByRoleResults,
 			] = await Promise.all([
-				// Total users in tenant
+				// Total users in tenant (soft-deleted users excluded, matching the users list)
 				c.env.AUTH_DB.prepare(`
 					SELECT COUNT(*) as count
 					FROM users
 					WHERE tenant_id = ?
+					AND deleted_at IS NULL
 				`)
 					.bind(tenantId)
 					.first<{ count: number }>(),
