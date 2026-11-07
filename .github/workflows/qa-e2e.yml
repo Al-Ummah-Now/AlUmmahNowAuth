@@ -284,7 +284,7 @@ jobs:
 
   # Parallel E2E test jobs by category
   e2e-admin-audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright has no browser builds for ubuntu-latest (26.04)
     name: E2E Admin Audit (${{ matrix.shard }}/2)
     needs: [deploy-qa]
     strategy:
@@ -337,7 +337,7 @@ jobs:
           retention-days: 7
 
   e2e-admin-users:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright has no browser builds for ubuntu-latest (26.04)
     name: E2E Admin Users (${{ matrix.shard }}/2)
     needs: [deploy-qa]
     strategy:
@@ -390,7 +390,7 @@ jobs:
           retention-days: 7
 
   e2e-auth:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright has no browser builds for ubuntu-latest (26.04)
     name: E2E Auth (${{ matrix.shard }}/2)
     needs: [deploy-qa]
     strategy:
@@ -443,7 +443,7 @@ jobs:
           retention-days: 7
 
   e2e-profile-integration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright has no browser builds for ubuntu-latest (26.04)
     name: E2E Profile & Integration (13 tests)
     needs: [deploy-qa]
     steps:
