@@ -145,6 +145,13 @@ describe('AdminStatsRoutes', () => {
 				.bind('user-3', 'user3@test.com', 'default', Date.now(), Date.now())
 				.run();
 
+			// Soft-deleted user must not be counted
+			await env.AUTH_DB.prepare(
+				`INSERT INTO users (id, email, tenant_id, status, created_at, updated_at, deleted_at) VALUES (?, ?, ?, 'deleted', ?, ?, ?)`
+			)
+				.bind('user-deleted', 'deleted@test.com', 'default', Date.now(), Date.now(), Date.now())
+				.run();
+
 			// Assign admin role to user1
 			// Note: rbac_roles should have system roles from migrations
 			// Let's verify admin role exists and create if needed

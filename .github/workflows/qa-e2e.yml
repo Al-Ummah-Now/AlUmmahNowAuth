@@ -1,0 +1,492 @@
+name: QA Deploy and E2E
+
+# Called from test.yml. The caller job holds the `auth-qa-deploy` concurrency
+# group for this whole workflow (deploy + all E2E shards), because every run
+# shares the single QA environment: a newer run must not redeploy the QA workers
+# while another run's E2E jobs are still testing them.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  # Deploy to QA environment (runs once, before parallel E2E tests)
+  deploy-qa:
+    runs-on: ubuntu-latest
+    name: Deploy to QA
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "❌ ERROR: CLOUDFLARE_API_TOKEN secret is not configured"
+            exit 1
+          fi
+          if [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "❌ ERROR: CLOUDFLARE_ACCOUNT_ID secret is not configured"
+            exit 1
+          fi
+          echo "✅ Required secrets are configured"
+
+      - name: Apply QA database migrations
+        working-directory: apps/auth
+        run: |
+          pnpm run migrations:qa:openauth
+          pnpm run migrations:qa:app
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # bootstrap-secrets prints newly generated client secrets in plaintext.
+      # Capture the output to a file, mask every secret, and only print a redacted copy.
+      - name: Bootstrap missing client secrets (output redacted)
+        working-directory: apps/auth
+        run: |
+          log="$RUNNER_TEMP/bootstrap-secrets.log"
+          set +e
+          pnpm run --silent migrations:qa:secrets > "$log" 2>&1
+          status=$?
+          set -e
+          { grep -E 'Client Secret:' "$log" || true; } | sed -E 's/.*Client Secret:[[:space:]]*//' | while read -r secret; do
+            if [ -n "$secret" ]; then echo "::add-mask::$secret"; fi
+          done
+          sed -E 's/(Client Secret:).*/\1 [REDACTED]/' "$log"
+          rm -f "$log"
+          exit $status
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Seed RBAC roles (ensure roles exist for E2E tests)
+        working-directory: apps/auth
+        run: pnpm run seed:roles:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Fix OAuth client tenant_id (ensure M2M auth works)
+        working-directory: apps/auth
+        run: pnpm run fix:tenant:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Deploy the consumer first so it understands every message format the new
+      # auth worker publishes to AUDIT_QUEUE.
+      - name: Deploy Audit Consumer to QA
+        working-directory: apps/audit-consumer
+        run: pnpm run deploy:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Call wrangler directly so the predeploy:qa hook (migrations + bootstrap-secrets,
+      # which prints secrets) does not run a second time with unredacted output.
+      - name: Deploy Auth Server to QA
+        working-directory: apps/auth
+        run: pnpm exec wrangler deploy --config wrangler.qa.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Set Auth Server QA secrets
+        working-directory: apps/auth
+        run: |
+          echo "test-secret-for-e2e" | npx wrangler secret put TEST_PROMOTE_SECRET --config wrangler.qa.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy Profile App to QA
+        working-directory: apps/profile
+        run: pnpm run deploy:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy Admin Dashboard to QA
+        working-directory: apps/admin
+        run: pnpm run deploy:qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Set Admin Dashboard QA secrets
+        working-directory: apps/admin
+        run: |
+          if [ -z "$E2E_ADMIN_CLIENT_SECRET" ]; then
+            echo "::error::E2E_ADMIN_CLIENT_SECRET repository secret is not configured"
+            exit 1
+          fi
+          printf '%s' "$E2E_ADMIN_CLIENT_SECRET" | npx wrangler secret put ADMIN_CLIENT_SECRET --config wrangler.qa.json
+        env:
+          E2E_ADMIN_CLIENT_SECRET: ${{ secrets.E2E_ADMIN_CLIENT_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Wait for QA services to be ready
+        run: |
+          echo "Waiting for QA services to be ready..."
+          timeout=120
+          elapsed=0
+
+          while [ $elapsed -lt $timeout ]; do
+            if curl -f https://auth.qa.alummahnow.net/.well-known/oauth-authorization-server > /dev/null 2>&1 && \
+               curl -f https://profile.auth.qa.alummahnow.net > /dev/null 2>&1 && \
+               curl -f https://admin.auth.qa.alummahnow.net > /dev/null 2>&1; then
+              echo "✅ All QA services are ready!"
+              exit 0
+            fi
+            sleep 5
+            elapsed=$((elapsed + 5))
+            echo "Waiting... ($elapsed/$timeout seconds)"
+          done
+
+          echo "❌ Timeout waiting for QA services"
+          exit 1
+
+      - name: Warm up QA auth server (pre-load encryption keys)
+        run: |
+          echo "Warming up auth server to pre-load cryptographic keys..."
+          echo "Making warmup requests..."
+          for i in 1 2 3; do
+            echo "Warmup request $i..."
+            start_time=$(date +%s%3N)
+            curl -s -o /dev/null -w "%{http_code}" \
+              "https://auth.qa.alummahnow.net/authorize?client_id=warmup&response_type=code&redirect_uri=https://profile.auth.qa.alummahnow.net/callback" || true
+            end_time=$(date +%s%3N)
+            duration=$((end_time - start_time))
+            echo "  Request $i took ${duration}ms"
+            sleep 1
+          done
+          echo "✅ Warmup complete - encryption keys should now be loaded"
+
+      - name: Verify RBAC roles exist
+        run: |
+          echo "Verifying RBAC roles were seeded..."
+          response=$(curl -s https://auth.qa.alummahnow.net/test/debug/roles)
+          echo "Response: $response"
+          total=$(echo "$response" | jq -r '.total // 0')
+          echo "Total roles found: $total"
+          if [ "$total" -lt 8 ]; then
+            echo "❌ ERROR: Expected at least 8 roles, found $total"
+            echo "Roles in database:"
+            echo "$response" | jq '.roles[]?.name'
+            exit 1
+          fi
+          echo "✅ All $total RBAC roles are present"
+
+      - name: Verify OAuth client configuration
+        run: |
+          echo "Verifying OAuth client configuration for M2M..."
+          # Check the Auth Admin client used for M2M requests
+          client_id="2448ed27-39a6-417d-b4c8-07f881e81269"
+          response=$(curl -s "https://auth.qa.alummahnow.net/test/debug/clients/$client_id")
+          echo "Auth Admin client response: $response"
+
+          tenant_id=$(echo "$response" | jq -r '.client.tenant_id // "null"')
+          echo "OAuth client tenant_id: $tenant_id"
+
+          if [ "$tenant_id" != "default" ]; then
+            echo "❌ ERROR: OAuth client tenant_id is '$tenant_id', expected 'default'"
+            echo "This will cause /admin/roles to return empty results!"
+            echo "Full client info:"
+            echo "$response" | jq '.'
+            exit 1
+          fi
+          echo "✅ OAuth client has correct tenant_id='default'"
+
+          # Also show all clients for debugging
+          echo ""
+          echo "All OAuth clients:"
+          all_clients=$(curl -s "https://auth.qa.alummahnow.net/test/debug/clients")
+          echo "$all_clients" | jq '.clients[] | {id, tenant_id, name}'
+
+      - name: Verify JWKS endpoint is accessible
+        run: |
+          echo "Testing JWKS endpoint directly..."
+          jwks_response=$(curl -s -w "\n%{http_code}" "https://auth.qa.alummahnow.net/.well-known/jwks.json")
+          jwks_body=$(echo "$jwks_response" | head -n -1)
+          jwks_status=$(echo "$jwks_response" | tail -n 1)
+          echo "JWKS status: $jwks_status"
+          echo "JWKS response: $jwks_body"
+          if [ "$jwks_status" != "200" ]; then
+            echo "❌ ERROR: JWKS endpoint returned status $jwks_status"
+            exit 1
+          fi
+          keys_count=$(echo "$jwks_body" | jq '.keys | length')
+          echo "✅ JWKS endpoint accessible with $keys_count keys"
+
+      - name: Debug KV storage keys
+        run: |
+          echo "Listing KV storage keys to find signing key location..."
+          response=$(curl -s "https://auth.qa.alummahnow.net/test/debug/kv")
+          echo "KV debug response:"
+          echo "$response" | jq '.'
+          echo ""
+          echo "Key names:"
+          echo "$response" | jq -r '.keys[]' 2>/dev/null || echo "No keys found or error"
+          echo ""
+          echo "Keys with values (first 200 chars):"
+          echo "$response" | jq '.keysWithValues[]' 2>/dev/null || echo "No values found"
+
+      - name: Verify Admin M2M authentication flow
+        run: |
+          echo "Testing Admin app M2M authentication to Auth server..."
+          response=$(curl -s "https://admin.auth.qa.alummahnow.net/debug-m2m")
+          echo "M2M debug response: $response"
+
+          success=$(echo "$response" | jq -r '.success // false')
+          roles_count=$(echo "$response" | jq -r '.m2mTest.rolesCount // 0')
+          error=$(echo "$response" | jq -r '.error // "none"')
+
+          echo "Success: $success"
+          echo "Roles count: $roles_count"
+          echo "Error: $error"
+
+          if [ "$success" != "true" ]; then
+            echo "❌ ERROR: M2M authentication failed!"
+            echo "Config check:"
+            echo "$response" | jq '.config'
+            echo "Error details:"
+            echo "$response" | jq '.m2mTest.error // .error'
+            exit 1
+          fi
+
+          if [ "$roles_count" -lt 8 ]; then
+            echo "❌ ERROR: Expected at least 8 roles via M2M, got $roles_count"
+            exit 1
+          fi
+
+          echo "✅ Admin M2M authentication working! Retrieved $roles_count roles"
+
+  # Parallel E2E test jobs by category
+  e2e-admin-audit:
+    runs-on: ubuntu-latest
+    name: E2E Admin Audit (${{ matrix.shard }}/2)
+    needs: [deploy-qa]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Admin Audit tests (shard ${{ matrix.shard }}/2)
+        run: pnpm exec playwright test e2e/tests/admin/audit-view.spec.ts --shard=${{ matrix.shard }}/2
+        env:
+          CI: true
+          SKIP_WEB_SERVER: true
+          E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TEST_PROMOTE_SECRET: test-secret-for-e2e
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results-admin-audit-${{ matrix.shard }}
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 7
+
+  e2e-admin-users:
+    runs-on: ubuntu-latest
+    name: E2E Admin Users (${{ matrix.shard }}/2)
+    needs: [deploy-qa]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Admin User tests (shard ${{ matrix.shard }}/2)
+        run: pnpm exec playwright test e2e/tests/admin/user-create.spec.ts e2e/tests/admin/user-edit.spec.ts e2e/tests/admin/user-delete.spec.ts --shard=${{ matrix.shard }}/2
+        env:
+          CI: true
+          SKIP_WEB_SERVER: true
+          E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TEST_PROMOTE_SECRET: test-secret-for-e2e
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results-admin-users-${{ matrix.shard }}
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 7
+
+  e2e-auth:
+    runs-on: ubuntu-latest
+    name: E2E Auth (${{ matrix.shard }}/2)
+    needs: [deploy-qa]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Auth tests (shard ${{ matrix.shard }}/2)
+        run: pnpm exec playwright test e2e/tests/auth/ --shard=${{ matrix.shard }}/2
+        env:
+          CI: true
+          SKIP_WEB_SERVER: true
+          E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TEST_PROMOTE_SECRET: test-secret-for-e2e
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results-auth-${{ matrix.shard }}
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 7
+
+  e2e-profile-integration:
+    runs-on: ubuntu-latest
+    name: E2E Profile & Integration (13 tests)
+    needs: [deploy-qa]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Profile & Integration tests
+        run: pnpm exec playwright test e2e/tests/profile/ e2e/tests/integration/
+        env:
+          CI: true
+          SKIP_WEB_SERVER: true
+          E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TEST_PROMOTE_SECRET: test-secret-for-e2e
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results-profile-integration
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 7

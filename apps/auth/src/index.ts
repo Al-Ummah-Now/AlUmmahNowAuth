@@ -165,7 +165,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // Then OpenAuth's user CRUD routes (GET /:id, POST /, PATCH /:id, DELETE /:id, etc.)
     adminUserApp.route('/', userApiRoutes(userService));
     // Finally custom role management routes (GET /:id/roles, POST /:id/roles, DELETE /:id/roles/:roleId)
-    adminUserApp.route('/', userRoleRoutes(env.AUTH_DB, env.AUTH_STORAGE));
+    adminUserApp.route('/', userRoleRoutes(env.AUTH_DB, env.AUTH_STORAGE, env.OPENAUTH_ISSUER));
 
     // Create admin RBAC app (Phase 3: OpenAuth migration)
     const adminRbacApp = new Hono();
@@ -234,6 +234,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Create enterprise issuer with multi-account session support
     const { app } = createMultiTenantIssuer({
+      // Pin the issuer: used for the `iss` claim, discovery documents and token
+      // verification instead of the request Host / X-Forwarded-* headers.
+      issuer: env.OPENAUTH_ISSUER || undefined,
       storage,
       sessionService,
       tenantService,

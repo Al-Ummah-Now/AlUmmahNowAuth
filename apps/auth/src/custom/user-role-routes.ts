@@ -44,8 +44,11 @@ const AssignRoleSchema = v.object({
 /**
  * Creates a Hono router with user role management endpoints
  */
-export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
+export function userRoleRoutes(db: D1Database, kv: KVNamespace, issuer?: string) {
   const app = new Hono();
+  // verifyAdminRequest pins the accepted M2M token issuer to OPENAUTH_ISSUER,
+  // so it must be part of the env passed below.
+  const authEnv = { AUTH_DB: db, AUTH_STORAGE: kv, OPENAUTH_ISSUER: issuer } as unknown as Env;
 
   /**
    * GET /:userId/roles - Get user's roles
@@ -57,7 +60,7 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await verifyAdminRequest(c.req.raw, { AUTH_DB: db, AUTH_STORAGE: kv } as any, 'admin:roles');
+      await verifyAdminRequest(c.req.raw, authEnv, 'admin:roles');
 
       const roles = await db.prepare(`
         SELECT
@@ -108,7 +111,7 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const authContext = await verifyAdminRequest(c.req.raw, { AUTH_DB: db, AUTH_STORAGE: kv } as any, 'admin:roles');
+      const authContext = await verifyAdminRequest(c.req.raw, authEnv, 'admin:roles');
       const actorId = getActorId(authContext);
 
       const body = await c.req.json();
@@ -206,7 +209,7 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace) {
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const authContext = await verifyAdminRequest(c.req.raw, { AUTH_DB: db, AUTH_STORAGE: kv } as any, 'admin:roles');
+      const authContext = await verifyAdminRequest(c.req.raw, authEnv, 'admin:roles');
       const actorId = getActorId(authContext);
 
       // Check user exists

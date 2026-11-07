@@ -67,16 +67,20 @@ interface AuditEvent {
   created_at: string;
 }
 
+/**
+ * Row of the live token_usage table (migrations/0002_jwt_tokens.sql).
+ * created_at is epoch milliseconds. token_type holds the token lifecycle event
+ * written by apps/audit-consumer (generated | refreshed | revoked | reused).
+ */
 interface TokenUsageRecord {
   id: string;
-  token_id: string;
-  subject: string;
-  event_type: string;
-  client_id: string | null;
-  timestamp: number;
+  tenant_id: string;
+  client_id: string;
+  user_id: string | null;
+  token_type: string;
   ip_address: string | null;
   user_agent: string | null;
-  metadata: string | null;
+  created_at: number;
 }
 
 // ============================================================================
@@ -209,14 +213,13 @@ export class AdminEnterpriseRoutes {
       const whereConditions: string[] = [];
       const bindParams: unknown[] = [];
 
-      // Extract user_id from subject field (format: "user:123abc")
       if (params.user_id) {
-        whereConditions.push("subject = ?");
-        bindParams.push(`user:${params.user_id}`);
+        whereConditions.push('user_id = ?');
+        bindParams.push(params.user_id);
       }
 
       if (params.action) {
-        whereConditions.push('event_type = ?');
+        whereConditions.push('token_type = ?');
         bindParams.push(params.action);
       }
 
@@ -225,23 +228,24 @@ export class AdminEnterpriseRoutes {
         bindParams.push(params.client_id);
       }
 
+      // created_at is stored in epoch milliseconds
       if (params.from) {
-        // Convert ISO date to Unix timestamp
-        const fromTimestamp = Math.floor(new Date(params.from).getTime() / 1000);
-        whereConditions.push('timestamp >= ?');
-        bindParams.push(fromTimestamp);
+        const fromMs = new Date(params.from).getTime();
+        if (Number.isNaN(fromMs)) return createAuthErrorResponse('Invalid query parameters: from must be an ISO date', 400);
+        whereConditions.push('created_at >= ?');
+        bindParams.push(fromMs);
       }
 
       if (params.to) {
-        // Convert ISO date to Unix timestamp
-        const toTimestamp = Math.floor(new Date(params.to).getTime() / 1000);
-        whereConditions.push('timestamp <= ?');
-        bindParams.push(toTimestamp);
+        const toMs = new Date(params.to).getTime();
+        if (Number.isNaN(toMs)) return createAuthErrorResponse('Invalid query parameters: to must be an ISO date', 400);
+        whereConditions.push('created_at <= ?');
+        bindParams.push(toMs);
       }
 
       if (params.search) {
-        // Search in subject, client_id, and ip_address
-        whereConditions.push('(subject LIKE ? OR client_id LIKE ? OR ip_address LIKE ?)');
+        // Search in user_id, client_id, and ip_address
+        whereConditions.push('(user_id LIKE ? OR client_id LIKE ? OR ip_address LIKE ?)');
         const searchPattern = `%${params.search}%`;
         bindParams.push(searchPattern, searchPattern, searchPattern);
       }
@@ -255,31 +259,25 @@ export class AdminEnterpriseRoutes {
 
       // Fetch paginated results
       const dataQuery = `
-        SELECT * FROM token_usage
+        SELECT id, tenant_id, client_id, user_id, token_type, ip_address, user_agent, created_at
+        FROM token_usage
         ${whereClause}
-        ORDER BY timestamp DESC
+        ORDER BY created_at DESC
         LIMIT ? OFFSET ?
       `;
       const result = await this.db.prepare(dataQuery).bind(...bindParams, limit, offset).all<TokenUsageRecord>();
 
       // Transform results to match API spec
-      const transformedData = (result.results || []).map(record => {
-        // Extract user_id from subject (format: "user:123abc")
-        const userId = record.subject.startsWith('user:')
-          ? record.subject.substring(5)
-          : record.subject;
-
-        return {
-          id: record.id,
-          user_id: userId,
-          client_id: record.client_id,
-          token_type: 'refresh', // All entries in token_usage are refresh token events
-          action: record.event_type,
-          ip_address: record.ip_address,
-          user_agent: record.user_agent,
-          created_at: new Date(record.timestamp * 1000).toISOString(),
-        };
-      });
+      const transformedData = (result.results || []).map(record => ({
+        id: record.id,
+        user_id: record.user_id,
+        client_id: record.client_id,
+        token_type: 'refresh', // token_usage tracks refresh-token lifecycle events
+        action: record.token_type,
+        ip_address: record.ip_address,
+        user_agent: record.user_agent,
+        created_at: new Date(record.created_at).toISOString(),
+      }));
 
       return new Response(JSON.stringify({
         data: transformedData,

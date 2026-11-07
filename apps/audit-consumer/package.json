@@ -17,7 +17,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.15",
+    "@al-ummah-now/openauth": "1.0.17",
     "@types/node": "^24.8.1"
   },
   "devDependencies": {
