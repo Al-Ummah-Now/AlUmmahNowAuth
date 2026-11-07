@@ -3,6 +3,8 @@ import { env } from 'cloudflare:test';
 import { generateKeyPair, exportSPKI, SignJWT } from 'jose';
 import { verifyAdminRequest } from '../auth-middleware';
 import { clearJWKSCache, SIGNING_KEY_KV_KEY } from '../utils/jwks-cache';
+import { setupDatabase } from '../test-setup';
+import { userRoleRoutes } from '../custom/user-role-routes';
 
 /**
  * verifyM2MAuth must accept only tokens whose `iss` equals OPENAUTH_ISSUER.
@@ -64,4 +66,47 @@ describe('M2M token issuer pinning', () => {
     // Passes token verification and fails only on the next check (missing acting user)
     await expect(verifyAdminRequest(request, env, 'admin:*')).rejects.toThrow('M2M requests must include acting user ID');
   });
+
+  describe('userRoleRoutes (M2M via verifyAdminRequest)', () => {
+    let memberRoleId: string;
+
+    beforeAll(async () => {
+      await setupDatabase();
+      await env.AUTH_DB.prepare(
+        `INSERT OR IGNORE INTO rbac_roles (id, name, tenant_id) VALUES ('role_pin_admin', 'Admin', 'default'), ('role_pin_member', 'PinMember', 'default')`
+      ).run();
+      const admin = await env.AUTH_DB.prepare(`SELECT id FROM rbac_roles WHERE name = 'Admin' AND tenant_id = 'default'`).first<{ id: string }>();
+      memberRoleId = 'role_pin_member';
+      await env.AUTH_DB.prepare(
+        `INSERT OR IGNORE INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by) VALUES ('audit-admin', ?, 'default', ?, 'test')`
+      ).bind(admin!.id, Date.now()).run();
+      await env.AUTH_DB.prepare(`DELETE FROM rbac_user_roles WHERE user_id = 'target-user' AND role_id = ?`).bind(memberRoleId).run();
+    });
+
+    async function assign(app: ReturnType<typeof userRoleRoutes>) {
+      const token = await m2mToken('http://localhost:3301');
+      return app.fetch(
+        new Request('http://localhost:3301/target-user/roles', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Acting-User-Id': 'audit-admin',
+          },
+          body: JSON.stringify({ roleId: memberRoleId }),
+        })
+      );
+    }
+
+    it('assigns a role when the router passes OPENAUTH_ISSUER', async () => {
+      const res = await assign(userRoleRoutes(env.AUTH_DB, env.AUTH_STORAGE, env.OPENAUTH_ISSUER));
+      expect(res.status).toBe(200);
+    });
+
+    it('rejects the M2M token when its iss differs from the configured issuer', async () => {
+      const res = await assign(userRoleRoutes(env.AUTH_DB, env.AUTH_STORAGE, 'https://other-issuer.example'));
+      expect(res.status).toBe(500);
+    });
+  });
 });
+
