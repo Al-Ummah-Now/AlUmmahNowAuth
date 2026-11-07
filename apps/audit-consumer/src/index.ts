@@ -14,7 +14,6 @@
  * @packageDocumentation
  */
 
-import { handleAuditBatch } from "@al-ummah-now/openauth/services/audit-consumer";
 import type { AuditEventMessage } from "@al-ummah-now/openauth/services/audit";
 import type { ExportedHandler, MessageBatch as CloudflareMessageBatch, Message, D1Database } from "@cloudflare/workers-types";
 
@@ -51,8 +50,56 @@ export function isAppAuditMessage(body: unknown): body is AppAuditQueueMessage {
   );
 }
 
+/**
+ * Convert an OpenAuth token-usage event to a row of the live token_usage table
+ * (apps/auth/migrations/0002_jwt_tokens.sql):
+ *   id, tenant_id, client_id NOT NULL, user_id, token_type NOT NULL,
+ *   ip_address, user_agent, created_at (epoch ms)
+ * The lifecycle event (generated/refreshed/revoked/reused) is stored in token_type.
+ */
+export function toTokenUsageRow(event: AuditEventMessage["event"]) {
+  const subject = event.subject ?? "";
+  const userId = subject.includes(":") ? subject.slice(subject.indexOf(":") + 1) : subject || null;
+  const tenantId =
+    typeof event.metadata?.tenant_id === "string" && event.metadata.tenant_id ? event.metadata.tenant_id : "default";
+  // Accept both seconds and milliseconds
+  const ts = typeof event.timestamp === "number" && event.timestamp > 0 ? event.timestamp : Date.now();
+  const createdAt = ts < 1e12 ? ts * 1000 : ts;
+  return {
+    tenant_id: tenantId,
+    client_id: event.client_id || "unknown",
+    user_id: userId,
+    token_type: event.event_type,
+    ip_address: event.ip_address ?? null,
+    user_agent: event.user_agent ?? null,
+    created_at: createdAt,
+  };
+}
+
 /** Max delivery attempts before a message is acknowledged and dropped (logged) */
 const MAX_APP_EVENT_ATTEMPTS = 3;
+
+async function writeWithRetry<T>(
+  messages: readonly Message<T>[],
+  label: string,
+  write: () => Promise<unknown>
+): Promise<void> {
+  if (messages.length === 0) return;
+  try {
+    await write();
+    messages.forEach((m) => m.ack());
+  } catch (error) {
+    console.error(`AuditConsumer: failed to write ${label}:`, error);
+    for (const m of messages) {
+      if (m.attempts < MAX_APP_EVENT_ATTEMPTS) {
+        m.retry({ delaySeconds: Math.pow(2, m.attempts) * 5 });
+      } else {
+        console.error(JSON.stringify({ type: "audit_events_backup", kind: label, body: m.body }));
+        m.ack();
+      }
+    }
+  }
+}
 
 /**
  * Write application audit events to the audit_events table (same columns as
@@ -63,15 +110,14 @@ export async function handleAppAuditMessages(
   messages: readonly Message<AppAuditQueueMessage>[],
   db: D1Database
 ): Promise<void> {
-  if (messages.length === 0) return;
-  try {
+  await writeWithRetry(messages, "app audit events", () => {
     const stmt = db.prepare(
       `INSERT INTO audit_events (
         timestamp, event_type, severity, user_id, ip_address,
         user_agent, request_id, metadata, success, error_message
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    await db.batch(
+    return db.batch(
       messages.map(({ body: { event } }) =>
         stmt.bind(
           event.timestamp,
@@ -87,29 +133,31 @@ export async function handleAppAuditMessages(
         )
       )
     );
-    messages.forEach((m) => m.ack());
-  } catch (error) {
-    console.error("AuditConsumer: failed to write app audit events:", error);
-    for (const m of messages) {
-      if (m.attempts < MAX_APP_EVENT_ATTEMPTS) {
-        m.retry({ delaySeconds: Math.pow(2, m.attempts) * 5 });
-      } else {
-        console.error(JSON.stringify({ type: "audit_events_backup", event: m.body.event }));
-        m.ack();
-      }
-    }
-  }
+  });
 }
 
 /**
- * Queue consumer handler
- *
- * Processes batches of audit events from Cloudflare Queue.
- * Messages are batched for efficiency (up to 50 events per batch).
- *
- * @param batch - Batch of audit event messages from queue
- * @param env - Worker environment with D1 database binding
+ * Write OpenAuth token-usage events to the live token_usage table.
  */
+export async function handleTokenUsageMessages(
+  messages: readonly Message<AuditEventMessage>[],
+  db: D1Database
+): Promise<void> {
+  await writeWithRetry(messages, "token usage events", () => {
+    const stmt = db.prepare(
+      `INSERT INTO token_usage (
+        tenant_id, client_id, user_id, token_type, ip_address, user_agent, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    );
+    return db.batch(
+      messages.map(({ body }) => {
+        const r = toTokenUsageRow(body.event);
+        return stmt.bind(r.tenant_id, r.client_id, r.user_id, r.token_type, r.ip_address, r.user_agent, r.created_at);
+      })
+    );
+  });
+}
+
 export default {
   async queue(
     batch: CloudflareMessageBatch<QueueMessageBody>,
@@ -129,13 +177,7 @@ export default {
     try {
       await handleAppAuditMessages(appMessages, env.AUDIT_DB);
 
-      if (tokenMessages.length > 0) {
-        const tokenBatch =
-          tokenMessages.length === messageCount ? batch : { ...batch, messages: tokenMessages };
-        // Use OpenAuth's built-in batch handler
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Type mismatch between Cloudflare and OpenAuth MessageBatch types
-        await handleAuditBatch(tokenBatch as any, env.AUDIT_DB, "token_usage");
-      }
+      await handleTokenUsageMessages(tokenMessages as Message<AuditEventMessage>[], env.AUDIT_DB);
 
       const duration = Date.now() - startTime;
       console.info(
@@ -147,7 +189,7 @@ export default {
         `AuditConsumer: Failed to process batch after ${duration}ms:`,
         error
       );
-      // handleAuditBatch already handles retries, so this is just for logging
+      // Per-message retry/ack is handled by the write helpers; this is just for logging
     }
   },
 

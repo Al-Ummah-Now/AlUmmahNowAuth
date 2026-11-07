@@ -78,55 +78,19 @@ describe('AdminEnterpriseRoutes', () => {
 
   describe('Token Audit', () => {
     beforeEach(async () => {
-      // Seed token usage records
-      const now = Math.floor(Date.now() / 1000);
+      // Seed token usage records (live schema: created_at in ms, token_type = lifecycle event)
+      const now = Date.now();
       const records = [
-        {
-          id: 'token-audit-1',
-          token_id: 'token-123',
-          subject: 'user:user-123',
-          event_type: 'generated',
-          client_id: 'client-web',
-          timestamp: now - 3600,
-          ip_address: '192.168.1.1',
-          user_agent: 'Mozilla/5.0',
-        },
-        {
-          id: 'token-audit-2',
-          token_id: 'token-456',
-          subject: 'user:user-456',
-          event_type: 'refreshed',
-          client_id: 'client-mobile',
-          timestamp: now - 1800,
-          ip_address: '192.168.1.2',
-          user_agent: 'MobileApp/1.0',
-        },
-        {
-          id: 'token-audit-3',
-          token_id: 'token-789',
-          subject: 'user:user-123',
-          event_type: 'revoked',
-          client_id: 'client-web',
-          timestamp: now - 900,
-          ip_address: '192.168.1.1',
-          user_agent: 'Mozilla/5.0',
-        },
+        { id: 'token-audit-1', user_id: 'user-123', token_type: 'generated', client_id: 'client-web', created_at: now - 3_600_000, ip_address: '192.168.1.1', user_agent: 'Mozilla/5.0' },
+        { id: 'token-audit-2', user_id: 'user-456', token_type: 'refreshed', client_id: 'client-mobile', created_at: now - 1_800_000, ip_address: '192.168.1.2', user_agent: 'MobileApp/1.0' },
+        { id: 'token-audit-3', user_id: 'user-123', token_type: 'revoked', client_id: 'client-web', created_at: now - 900_000, ip_address: '192.168.1.1', user_agent: 'Mozilla/5.0' },
       ];
 
-      for (const record of records) {
+      for (const r of records) {
         await env.AUTH_DB.prepare(`
-          INSERT INTO token_usage (id, token_id, subject, event_type, client_id, timestamp, ip_address, user_agent)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          record.id,
-          record.token_id,
-          record.subject,
-          record.event_type,
-          record.client_id,
-          record.timestamp,
-          record.ip_address,
-          record.user_agent
-        ).run();
+          INSERT INTO token_usage (id, tenant_id, client_id, user_id, token_type, ip_address, user_agent, created_at)
+          VALUES (?, 'default', ?, ?, ?, ?, ?, ?)
+        `).bind(r.id, r.client_id, r.user_id, r.token_type, r.ip_address, r.user_agent, r.created_at).run();
       }
     });
 
@@ -177,7 +141,7 @@ describe('AdminEnterpriseRoutes', () => {
       expect(data.data[0].client_id).toBe('client-mobile');
     });
 
-    it('GET /admin/audit should search across subject, client_id, and ip_address', async () => {
+    it('GET /admin/audit should search across user_id, client_id, and ip_address', async () => {
       const request = new Request('http://localhost/admin/audit?search=192.168.1.2', { method: 'GET' });
       const response = await routes.handle(request, mockEnv, mockCtx);
 
@@ -198,15 +162,26 @@ describe('AdminEnterpriseRoutes', () => {
       expect(data.pagination.totalPages).toBe(2);
     });
 
-    it('GET /admin/audit should transform subject to user_id', async () => {
+    it('GET /admin/audit returns newest first with ISO created_at from ms timestamps', async () => {
       const request = new Request('http://localhost/admin/audit', { method: 'GET' });
       const response = await routes.handle(request, mockEnv, mockCtx);
 
       expect(response.status).toBe(200);
       const data = await response.json() as any;
-      // Check that user_id is extracted from subject (user:user-123 -> user-123)
-      expect(data.data[0].user_id).not.toContain('user:');
-      expect(['user-123', 'user-456']).toContain(data.data[0].user_id);
+      expect(data.data.map((r: any) => r.id)).toEqual(['token-audit-3', 'token-audit-2', 'token-audit-1']);
+      const age = Date.now() - new Date(data.data[0].created_at).getTime();
+      expect(age).toBeGreaterThan(800_000);
+      expect(age).toBeLessThan(1_000_000);
+    });
+
+    it('GET /admin/audit filters by from/to (ms) and rejects invalid dates', async () => {
+      const from = new Date(Date.now() - 2_000_000).toISOString();
+      const ok = await routes.handle(new Request(`http://localhost/admin/audit?from=${from}`), mockEnv, mockCtx);
+      expect(ok.status).toBe(200);
+      expect(((await ok.json()) as any).data).toHaveLength(2);
+
+      const bad = await routes.handle(new Request('http://localhost/admin/audit?to=not-a-date'), mockEnv, mockCtx);
+      expect(bad.status).toBe(400);
     });
   });
 

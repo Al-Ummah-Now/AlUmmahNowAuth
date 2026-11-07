@@ -202,25 +202,18 @@ export async function setupDatabase() {
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)`).run();
 
-  // token_usage: live QA/prod schema (migrations/0002_jwt_tokens.sql: tenant_id, client_id,
-  // user_id, token_type, ip_address, user_agent, created_at in ms) PLUS the legacy columns
-  // (token_id, subject, event_type, timestamp, metadata) still read by
-  // AdminEnterpriseRoutes.getTokenAudit and its tests.
+  // token_usage (matches migrations/0002_jwt_tokens.sql and the live QA/prod schema)
   await env.AUTH_DB.prepare(`
     CREATE TABLE IF NOT EXISTS token_usage (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       tenant_id TEXT NOT NULL DEFAULT 'default',
-      client_id TEXT,
+      client_id TEXT NOT NULL,
       user_id TEXT,
-      token_type TEXT,
+      token_type TEXT NOT NULL,
       ip_address TEXT,
       user_agent TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-      token_id TEXT,
-      subject TEXT,
-      event_type TEXT,
-      timestamp INTEGER DEFAULT (unixepoch()),
-      metadata TEXT
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
     )
   `).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at)`).run();

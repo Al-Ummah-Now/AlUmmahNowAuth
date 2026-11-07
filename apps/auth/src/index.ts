@@ -234,6 +234,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Create enterprise issuer with multi-account session support
     const { app } = createMultiTenantIssuer({
+      // Pin the issuer: used for the `iss` claim, discovery documents and token
+      // verification instead of the request Host / X-Forwarded-* headers.
+      issuer: env.OPENAUTH_ISSUER || undefined,
       storage,
       sessionService,
       tenantService,
