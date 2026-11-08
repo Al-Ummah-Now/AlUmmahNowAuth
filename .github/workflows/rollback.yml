@@ -40,9 +40,6 @@ jobs:
     name: Roll back ${{ inputs.app }} (${{ inputs.environment }})
     runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v6
 
@@ -63,6 +60,8 @@ jobs:
       # Inputs go through env, never interpolated into the script
       - name: Roll back and smoke
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ENVIRONMENT: ${{ inputs.environment }}
           APP: ${{ inputs.app }}
           VERSION: ${{ inputs.version }}

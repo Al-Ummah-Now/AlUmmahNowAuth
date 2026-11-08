@@ -20,9 +20,8 @@ concurrency:
   group: auth-release
   cancel-in-progress: false
 
-env:
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+# The Cloudflare token is set only on the steps that call Cloudflare, never on
+# install/build steps (dependency lifecycle scripts run there).
 
 jobs:
   build:
@@ -103,13 +102,22 @@ jobs:
           name: release-bundle
 
       - name: Stage database (migrations, roles, client redirect URIs)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm run stage:seed
 
       # Same mechanics as production, so every release also rehearses the promote
       - name: Deploy candidates to stage
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types --no-warnings scripts/release/promote.ts --env stage --message "release ${GITHUB_SHA::7}"
 
       - name: Deploy audit consumer to stage
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: apps/audit-consumer
         run: npx wrangler deploy --env stage
 
@@ -167,9 +175,15 @@ jobs:
       # Expand-only migrations (enforced by check:migrations), so the code still
       # serving keeps working; a rollback never needs to undo them.
       - name: Migrate production database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types --no-warnings scripts/release/d1-migrate.ts --env production
 
       - name: Promote (0% + override smoke → 100% → smoke, auto-rollback)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types --no-warnings scripts/release/promote.ts --env production --message "release ${GITHUB_SHA::7}"
 
       - name: Summary
