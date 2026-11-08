@@ -26,7 +26,7 @@ export const APPS: AppRule[] = [
 				ENVIRONMENT: 'production',
 				OPENAUTH_ISSUER: 'https://auth.alummahnow.net',
 				SIGN_IN_FALLBACK_URL: 'https://videos.alummahnow.net/',
-				FRONTCHANNEL_LOGOUT_URLS: 'https://profile.auth.alummahnow.net/logout,https://admin.auth.alummahnow.net/logout,https://videos.alummahnow.net/api/auth/logout',
+				FRONTCHANNEL_LOGOUT_URLS: 'https://profile.auth.alummahnow.net/logout,https://admin.auth.alummahnow.net/logout,https://videos.alummahnow.net/api/auth/logout,https://www.alummahnow.net/auth/logout,https://cms.alummahnow.net/sso/logout',
 				CLIENT_REGISTRY_MODE: 'enforce',
 			},
 			requiredBindings: AUTH_BINDINGS,

@@ -96,7 +96,7 @@
         "AUDIT_WEBHOOK_URL": "",
         "AUDIT_WEBHOOK_SECRET": "",
         "SIGN_IN_FALLBACK_URL": "https://videos.alummahnow.net/",
-        "FRONTCHANNEL_LOGOUT_URLS": "https://profile.auth.alummahnow.net/logout,https://admin.auth.alummahnow.net/logout,https://videos.alummahnow.net/api/auth/logout",
+        "FRONTCHANNEL_LOGOUT_URLS": "https://profile.auth.alummahnow.net/logout,https://admin.auth.alummahnow.net/logout,https://videos.alummahnow.net/api/auth/logout,https://www.alummahnow.net/auth/logout,https://cms.alummahnow.net/sso/logout",
         "CLIENT_REGISTRY_MODE": "enforce"
       },
       "triggers": {
@@ -173,7 +173,7 @@
         "AUDIT_WEBHOOK_URL": "",
         "AUDIT_WEBHOOK_SECRET": "",
         "SIGN_IN_FALLBACK_URL": "https://profile.auth.stage.alummahnow.net/",
-        "FRONTCHANNEL_LOGOUT_URLS": "https://profile.auth.stage.alummahnow.net/logout,https://admin.auth.stage.alummahnow.net/logout",
+        "FRONTCHANNEL_LOGOUT_URLS": "https://profile.auth.stage.alummahnow.net/logout,https://admin.auth.stage.alummahnow.net/logout,https://www.stage.alummahnow.net/auth/logout,https://cms.stage.alummahnow.net/sso/logout",
         "CLIENT_REGISTRY_MODE": "enforce"
       },
       "triggers": {

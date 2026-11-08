@@ -11,7 +11,8 @@ describe("renderLauncher", () => {
   it("uses the menu-button pattern", () => {
     expect(admin).toMatch(/<button[^>]+id="appsTrigger"[^>]+aria-haspopup="true"[^>]+aria-expanded="false"[^>]+aria-controls="appsMenu"/);
     expect(admin).toMatch(/id="appsMenu" role="menu" aria-labelledby="appsTrigger" hidden/);
-    expect(admin.match(/role="menuitem"/g)).toHaveLength(4);
+    // www, videos, profile, content admin, CMS, auth admin
+    expect(admin.match(/role="menuitem"/g)).toHaveLength(6);
   });
 
   it("marks the current app with aria-current", () => {

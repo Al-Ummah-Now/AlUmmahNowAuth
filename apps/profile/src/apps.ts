@@ -15,9 +15,9 @@ export type AppEnv = "production" | "qa" | "stage" | "local";
 
 export type Locale = "en" | "ar";
 
-export type AppId = "videos" | "content-admin" | "auth-admin" | "profile";
+export type AppId = "www" | "videos" | "content-admin" | "cms" | "auth-admin" | "profile";
 
-export type AppIcon = "play" | "shield" | "key" | "user";
+export type AppIcon = "globe" | "play" | "shield" | "pencil" | "key" | "user";
 
 export interface AppEntry {
   id: AppId;
@@ -37,6 +37,23 @@ export interface AppEntry {
 }
 
 export const APP_CATALOG: readonly AppEntry[] = [
+  {
+    id: "www",
+    category: "app",
+    name: { en: "Al Ummah Now (www)", ar: "الأمة الآن (الموقع)" },
+    description: {
+      en: "News, pages and what we do",
+      ar: "الأخبار والصفحات وما نقوم به",
+    },
+    icon: "globe",
+    urls: {
+      production: "https://www.alummahnow.net",
+      qa: "https://www.qa.alummahnow.net",
+      stage: "https://www.stage.alummahnow.net",
+      local: "http://localhost:4321",
+    },
+    requiredRoles: [],
+  },
   {
     id: "videos",
     category: "app",
@@ -87,6 +104,24 @@ export const APP_CATALOG: readonly AppEntry[] = [
       local: "http://localhost:3091",
     },
     // AlUmmahNow apps/admin-web/src/lib/roles.ts ADMIN_ROLES
+    requiredRoles: ["super_admin", "admin", "moderator"],
+  },
+  {
+    id: "cms",
+    category: "admin",
+    name: { en: "CMS", ar: "إدارة المحتوى" },
+    description: {
+      en: "Edit the website: pages, news and featured videos",
+      ar: "تحرير الموقع: الصفحات والأخبار والفيديوهات المختارة",
+    },
+    icon: "pencil",
+    urls: {
+      production: "https://cms.alummahnow.net",
+      qa: "https://cms.qa.alummahnow.net",
+      stage: "https://cms.stage.alummahnow.net",
+      local: "http://localhost:8585",
+    },
+    // AlUmmahNowCMS docs/SPEC.md §3 (allowed roles)
     requiredRoles: ["super_admin", "admin", "moderator"],
   },
   {

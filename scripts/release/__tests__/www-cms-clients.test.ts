@@ -84,3 +84,33 @@ describe.each(CASES)('www and cms clients: $env', ({ snapshot, www, cms }) => {
 		expect(c?.grants).not.toContain('client_credentials');
 	});
 });
+
+describe.each(CASES)('cms roles: $env', ({ snapshot }) => {
+	it('has the Moderator role the CMS admits (with Super Admin and Admin)', () => {
+		const db = new DatabaseSync(':memory:');
+		try {
+			const entry = SNAPSHOTS.find((s) => s.file === snapshot)!;
+			for (const source of entry.sources) {
+				for (const file of listMigrations({ ...source, dir: resolve(ROOT, source.dir) })) db.exec(readFileSync(file, 'utf8'));
+			}
+			const ids = (db.prepare('SELECT id FROM rbac_roles').all() as { id: string }[]).map((r) => r.id);
+			expect(ids).toEqual(expect.arrayContaining(['role_super_admin', 'role_admin', 'role_moderator']));
+		} finally {
+			db.close();
+		}
+	});
+});
+
+describe('single sign-out reaches www and the cms', () => {
+	const prodStage = JSON.parse(readFileSync(resolve(ROOT, 'apps/auth/wrangler.json'), 'utf8'));
+	const qa = JSON.parse(readFileSync(resolve(ROOT, 'apps/auth/wrangler.qa.json'), 'utf8'));
+	it.each([
+		['production', prodStage.env.production.vars.FRONTCHANNEL_LOGOUT_URLS, ''],
+		['stage', prodStage.env.stage.vars.FRONTCHANNEL_LOGOUT_URLS, '.stage'],
+		['qa', qa.vars.FRONTCHANNEL_LOGOUT_URLS, '.qa'],
+	])('%s', (_env, urls: string, sub) => {
+		const list = urls.split(',');
+		expect(list).toContain(`https://www${sub}.alummahnow.net/auth/logout`);
+		expect(list).toContain(`https://cms${sub}.alummahnow.net/sso/logout`);
+	});
+});

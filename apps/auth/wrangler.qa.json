@@ -42,7 +42,7 @@
     "AUDIT_WEBHOOK_URL": "",
     "AUDIT_WEBHOOK_SECRET": "",
     "SIGN_IN_FALLBACK_URL": "https://videos.qa.alummahnow.net/",
-    "FRONTCHANNEL_LOGOUT_URLS": "https://profile.auth.qa.alummahnow.net/logout,https://admin.auth.qa.alummahnow.net/logout,https://videos.qa.alummahnow.net/api/auth/logout",
+    "FRONTCHANNEL_LOGOUT_URLS": "https://profile.auth.qa.alummahnow.net/logout,https://admin.auth.qa.alummahnow.net/logout,https://videos.qa.alummahnow.net/api/auth/logout,https://www.qa.alummahnow.net/auth/logout,https://cms.qa.alummahnow.net/sso/logout",
     "CLIENT_REGISTRY_MODE": "enforce"
   },
   "triggers": {
