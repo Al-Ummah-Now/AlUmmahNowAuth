@@ -38,7 +38,8 @@
     "ALLOWED_ORIGINS": "localhost,127.0.0.1",
     "OPENAUTH_ISSUER": "http://localhost:3301",
     "AUDIT_WEBHOOK_URL": "",
-    "AUDIT_WEBHOOK_SECRET": ""
+    "AUDIT_WEBHOOK_SECRET": "",
+    "SIGN_IN_FALLBACK_URL": "http://localhost:3302/"
   },
   "observability": {
     "enabled": true
@@ -93,7 +94,8 @@
         "ALLOWED_ORIGINS": "*.alummahnow.net,https://alummahnow.net,https://www.alummahnow.net",
         "OPENAUTH_ISSUER": "https://auth.alummahnow.net",
         "AUDIT_WEBHOOK_URL": "",
-        "AUDIT_WEBHOOK_SECRET": ""
+        "AUDIT_WEBHOOK_SECRET": "",
+        "SIGN_IN_FALLBACK_URL": "https://videos.alummahnow.net/"
       },
       "triggers": {
         "crons": [

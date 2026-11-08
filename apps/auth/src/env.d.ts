@@ -22,6 +22,8 @@ declare global {
     AUDIT_WEBHOOK_URL: string;
     AUDIT_WEBHOOK_SECRET: string;
     PROFILE_APP_URL: string;
+    /** Where the "Start sign-in again" page links when the sign-in's app is unknown. */
+    SIGN_IN_FALLBACK_URL?: string;
     PROFILE_CLIENT_ID?: string;
     RESEND_API_KEY: SecretBinding;
     ALLOWED_ORIGINS: string;
