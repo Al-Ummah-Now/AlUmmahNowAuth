@@ -23,6 +23,14 @@
         "max_batch_timeout": 5, // Wait max 5 seconds before processing batch
         "max_retries": 3, // Retry failed batches up to 3 times
         "dead_letter_queue": "audit-events-dlq" // Failed messages go here after max retries
+      },
+      {
+        // Replays dead letters into D1. Inserts are idempotent. No DLQ of its own: after
+        // its retries a message is written to Workers logs as audit_events_backup.
+        "queue": "audit-events-dlq",
+        "max_batch_size": 50,
+        "max_batch_timeout": 5,
+        "max_retries": 3
       }
     ]
   },
@@ -56,6 +64,12 @@
             "max_batch_timeout": 5,
             "max_retries": 3,
             "dead_letter_queue": "audit-events-stage-dlq"
+          },
+          {
+            "queue": "audit-events-stage-dlq",
+            "max_batch_size": 50,
+            "max_batch_timeout": 5,
+            "max_retries": 3
           }
         ]
       }

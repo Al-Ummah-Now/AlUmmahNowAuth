@@ -105,6 +105,9 @@ async function writeWithRetry<T>(
  * Write application audit events to the audit_events table (same columns as
  * apps/auth D1Sink). Retries the messages on failure; after the last attempt
  * the events are logged so they remain recoverable from Workers logs.
+ *
+ * Idempotent: an event identical to a stored row is skipped, because queues deliver
+ * at least once and the dead-letter queue replays messages through this handler.
  */
 export async function handleAppAuditMessages(
   messages: readonly Message<AppAuditQueueMessage>[],
@@ -115,11 +118,18 @@ export async function handleAppAuditMessages(
       `INSERT INTO audit_events (
         timestamp, event_type, severity, user_id, ip_address,
         user_agent, request_id, metadata, success, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM audit_events
+        WHERE timestamp = ? AND event_type = ? AND user_id IS ?
+          AND ip_address IS ? AND request_id IS ? AND metadata IS ?
+      )`
     );
     return db.batch(
-      messages.map(({ body: { event } }) =>
-        stmt.bind(
+      messages.map(({ body: { event } }) => {
+        const metadata = JSON.stringify(event.metadata ?? {});
+        return stmt.bind(
           event.timestamp,
           event.eventType,
           event.severity,
@@ -127,11 +137,17 @@ export async function handleAppAuditMessages(
           event.ipAddress ?? null,
           event.userAgent ?? null,
           event.requestId ?? null,
-          JSON.stringify(event.metadata ?? {}),
+          metadata,
           event.success ? 1 : 0,
-          event.errorMessage ?? null
-        )
-      )
+          event.errorMessage ?? null,
+          event.timestamp,
+          event.eventType,
+          event.userId ?? null,
+          event.ipAddress ?? null,
+          event.requestId ?? null,
+          metadata
+        );
+      })
     );
   });
 }

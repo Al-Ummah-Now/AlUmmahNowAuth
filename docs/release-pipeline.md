@@ -21,6 +21,14 @@ One trunk: `main`. PRs are tested on QA (deployed from the PR head), and every m
 
 Stage config is `env.stage` in each app's wrangler file, next to `env.production`. The config check (`scripts/check-wrangler-config.ts`) enforces that both envs have the same binding names and kinds. Only resource ids, routes and env-specific vars may differ.
 
+## Audit consumer
+
+The consumer is built once with the other bundles and deployed by `release.yml` after the migration and before the auth candidates, on stage and on production. Queue consumers have no gradual versions, so there is no 0% step. After the promote, `scripts/release/audit-check.ts` publishes a canary message to the queue and waits for its row in `audit_events` (type `release.audit_pipeline_check`, one row per release). Stage failure blocks production. Production failure turns the release red without rolling auth back.
+
+It is left out of `rollback.yml` on purpose: it accepts every audit message format, so it works with any auth version, and rolling back could restore a build that cannot write these events. Ship a fix forward.
+
+The consumer also reads each env's DLQ, so dead letters are replayed once the cause is fixed. Inserts skip exact duplicates. A message that still fails is logged as `audit_events_backup` in Workers logs.
+
 ## Issuer and clients on stage
 
 Tokens carry `iss`, so stage has its own issuer, `https://auth.stage.alummahnow.net`. It also has its own D1 (`al-ummah-now-d1-stage`), KV and signing keys. A stage token is never valid in prod.
