@@ -2,6 +2,7 @@
 import { logger } from "./logger.server";
 import { getAppUrl } from "./config";
 import { getOpenAuthClient, subjects } from "./openauth.client.server";
+import { ensureFreshTokens, persistSessionTokens, sessionKey, type StoredSession } from "./session-tokens.server";
 
 /**
  * Check if user has admin access based on their roles
@@ -14,18 +15,7 @@ export function hasAdminRole(roles: string[]): boolean {
 }
 
 // Session data structure stored in KV
-interface SessionData {
-  user: {
-    id: string;
-    email: string;
-    roles: string[];
-  };
-  tokens: {
-    access: string;
-    refresh?: string;
-  };
-  expiresAt: string;
-}
+type SessionData = StoredSession;
 
 export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE: KVNamespace }) {
   const url = new URL(request.url);
@@ -52,7 +42,7 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
 
   // Verify session token with AUTH_STORAGE KV
   try {
-    const sessionData = await env.AUTH_STORAGE.get(`session:${sessionToken}`);
+    const sessionData = await env.AUTH_STORAGE.get(sessionKey(sessionToken));
     if (!sessionData) {
       logger.warn('Session not found in KV storage');
       return null;
@@ -66,19 +56,20 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
       logger.error('Failed to parse session data, deleting corrupted session', {
         error: parseError instanceof Error ? parseError.message : String(parseError)
       });
-      await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
+      await env.AUTH_STORAGE.delete(sessionKey(sessionToken));
       return null;
     }
 
     // Check if session is expired
     if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
       logger.info('Session expired', { userId: session.user?.id, email: session.user?.email });
-      await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
+      await env.AUTH_STORAGE.delete(sessionKey(sessionToken));
       return null;
     }
 
     // Return both user data and tokens for verification
     return {
+      sessionToken,
       user: session.user,
       tokens: session.tokens
     };
@@ -145,9 +136,32 @@ export async function requireAuth(
         email: sessionData.user.email
       });
 
-      const verified = await client.verify(subjects, sessionData.tokens.access, {
-        refresh: sessionData.tokens.refresh,
+      // Refresh ahead of expiry and persist the rotated pair: the issuer
+      // only honours the previous refresh token for 60 s after rotation.
+      const fresh = await ensureFreshTokens({
+        kv: env.AUTH_STORAGE,
+        sessionToken: sessionData.sessionToken,
+        tokens: sessionData.tokens,
+        client,
       });
+      if (!fresh.ok) {
+        logger.warn('Session tokens could not be refreshed', {
+          reason: fresh.reason,
+          userId: sessionData.user.id
+        });
+        throw redirectToLogin(request);
+      }
+
+      const verified = await client.verify(subjects, fresh.tokens.access, {
+        refresh: fresh.tokens.refresh,
+      });
+
+      // verify() refreshes an already expired token itself; the rotated
+      // pair must be saved or the next request re-sends a dead refresh token.
+      if (!verified?.err && verified?.tokens) {
+        await persistSessionTokens(env.AUTH_STORAGE, sessionData.sessionToken, verified.tokens);
+        logger.info('Persisted tokens refreshed during verification', { userId: sessionData.user.id });
+      }
 
       // Check if verification returned an error
       if (verified?.err) {
