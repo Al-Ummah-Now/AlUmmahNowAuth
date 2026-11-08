@@ -10,7 +10,7 @@
     "deploy": "wrangler deploy",
     "deploy:qa": "wrangler deploy --config wrangler.qa.jsonc",
     "deploy:stage": "wrangler deploy --env stage",
-    "types": "wrangler types",
+    "types": "wrangler types --env-file .dev.vars.example --strict-vars=false",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run --reporter=verbose",

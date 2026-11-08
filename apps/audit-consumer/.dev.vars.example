@@ -1,0 +1,2 @@
+# Local secrets for the audit consumer. Copy to .dev.vars (never commit .dev.vars).
+# `pnpm types` reads only this file, so keep values as placeholders.

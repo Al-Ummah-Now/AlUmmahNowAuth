@@ -2,3 +2,7 @@
 # Copy this file to .dev.vars and wrangler will use it automatically
 AUTH_SERVER_URL=http://localhost:8787
 APP_URL=http://localhost:5175
+
+# Secret (placeholder only; real value goes in .dev.vars, which is gitignored).
+# `pnpm types` reads THIS file, never .dev.vars.
+ADMIN_CLIENT_SECRET=replace-me
