@@ -22,6 +22,7 @@ import { getEndpointRateLimit } from './services/rate-limit-config';
 import { getAuditEmitter } from './audit-emitter';
 import { createRateLimitExceededEvent } from './audit-events';
 import { trackEvent } from './utils/analytics';
+import { tokenRateLimitSubject } from './utils/token-rate-limit-subject';
 import { AdminEnterpriseRoutes } from './admin-enterprise-routes';
 import { AdminTenantRoutes } from './admin-tenant-routes';
 import { routeAdminDLQ } from './admin-dlq-routes';
@@ -464,7 +465,6 @@ async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
 	}
 
 	const clientIP = getClientIP(request);
-	const rateLimitKey = `token:${url.pathname}:${clientIP}`;
 
 	// Get configurable rate limit based on environment
 	const rateLimitConfig = await getEndpointRateLimit(
@@ -475,7 +475,10 @@ async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
 
 	// Allow higher limits for localhost development
 	const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-	const limit = isLocalhost ? 100 : rateLimitConfig.limit;
+	// Server-side exchanges from our own Workers share one egress IP: bucket them per zone
+	const subject = tokenRateLimitSubject(request, url.pathname, clientIP, rateLimitConfig.limit);
+	const rateLimitKey = subject.key;
+	const limit = isLocalhost ? Math.max(100, subject.limit) : subject.limit;
 
 	const rateLimit = await checkRateLimit(
 		env.AUTH_STORAGE,
@@ -488,6 +491,7 @@ async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
 		const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
 		logger.warn('Rate limit exceeded for token endpoint', {
 			clientIP,
+			firstParty: subject.firstParty,
 			endpoint: url.pathname,
 			retryAfter,
 		});
