@@ -1,8 +1,8 @@
 /**
  * E2E Test: Profile app switcher (header launcher + "Your apps" cards)
  *
- * - A regular member sees only Al Ummah Now and Profile.
- * - An admin also sees Al Ummah Now Admin and Auth Admin.
+ * - A regular member sees the www site, Al Ummah Now and Profile.
+ * - An admin also sees the CMS, Al Ummah Now Admin and Auth Admin.
  * - Links point at the environment's own hosts (QA links never go to prod).
  * - The launcher follows the menu-button keyboard pattern.
  * - Arabic renders RTL, including on a phone-sized viewport.
@@ -24,16 +24,22 @@ const ENV: 'qa' | 'production' | 'local' =
 
 const EXPECTED_URLS = {
   qa: {
+    www: 'https://www.qa.alummahnow.net',
+    cms: 'https://cms.qa.alummahnow.net',
     videos: 'https://videos.qa.alummahnow.net',
     'content-admin': 'https://admin.qa.alummahnow.net',
     'auth-admin': 'https://admin.auth.qa.alummahnow.net',
   },
   production: {
+    www: 'https://www.alummahnow.net',
+    cms: 'https://cms.alummahnow.net',
     videos: 'https://videos.alummahnow.net',
     'content-admin': 'https://admin.alummahnow.net',
     'auth-admin': 'https://admin.auth.alummahnow.net',
   },
   local: {
+    www: 'http://localhost:4321',
+    cms: 'http://localhost:8585',
     videos: 'http://localhost:3001',
     'content-admin': 'http://localhost:3091',
     'auth-admin': 'http://localhost:3303',
@@ -63,7 +69,7 @@ async function promoteToAdmin(page: Page, email: string) {
 }
 
 test.describe('Profile app switcher', () => {
-  test('regular user sees only Al Ummah Now and Profile, with env URLs', async ({ page }) => {
+  test('regular user sees www, Al Ummah Now and Profile, with env URLs', async ({ page }) => {
     const user = TEST_USERS.user();
     await login(page, user.email);
 
@@ -71,8 +77,10 @@ test.describe('Profile app switcher', () => {
     await expect(page.locator('#navMenu a:has-text("Admin")')).toHaveCount(0);
 
     const items = await openLauncher(page);
-    await expect(items).toHaveCount(2);
-    await expect(page.locator('#appsMenu [data-app]')).toHaveCount(2);
+    await expect(items).toHaveCount(3);
+    await expect(page.locator('#appsMenu [data-app]')).toHaveCount(3);
+    await expect(page.locator('#appsMenu [data-app="www"]')).toHaveAttribute('href', EXPECTED_URLS.www);
+    await expect(page.locator('#appsMenu [data-app="cms"]')).toHaveCount(0);
     await expect(page.locator('#appsMenu [data-app="videos"]')).toHaveAttribute('href', EXPECTED_URLS.videos);
     await expect(page.locator('#appsMenu [data-app="profile"]')).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('#appsMenu')).not.toContainText('Admin');
@@ -81,8 +89,9 @@ test.describe('Profile app switcher', () => {
     // "Your apps" cards: no admin apps for members, no greyed-out entries
     await page.keyboard.press('Escape');
     const cards = page.locator('#yourApps .app-card');
-    await expect(cards).toHaveCount(1);
-    await expect(cards.first()).toHaveAttribute('href', EXPECTED_URLS.videos);
+    await expect(cards).toHaveCount(2);
+    await expect(cards.first()).toHaveAttribute('href', EXPECTED_URLS.www);
+    await expect(cards.nth(1)).toHaveAttribute('href', EXPECTED_URLS.videos);
     await expect(page.locator('#yourApps')).not.toContainText('Administration');
   });
 
@@ -106,6 +115,8 @@ test.describe('Profile app switcher', () => {
 
     await page.keyboard.press('ArrowDown');
     await expect(items.nth(1)).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(items.nth(2)).toBeFocused();
     await page.keyboard.press('ArrowDown'); // wraps
     await expect(items.nth(0)).toBeFocused();
     await page.keyboard.press('End');
@@ -125,14 +136,14 @@ test.describe('Profile app switcher', () => {
     // Enter follows the focused link in the same tab
     await page.keyboard.press('Home');
     const [request] = await Promise.all([
-      page.waitForRequest((r) => r.isNavigationRequest() && r.url().startsWith(EXPECTED_URLS.videos), { timeout: 15000 }),
+      page.waitForRequest((r) => r.isNavigationRequest() && r.url().startsWith(EXPECTED_URLS.www), { timeout: 15000 }),
       page.keyboard.press('Enter'),
     ]);
-    expect(request.url().startsWith(EXPECTED_URLS.videos)).toBe(true);
+    expect(request.url().startsWith(EXPECTED_URLS.www)).toBe(true);
     expect(page.context().pages()).toHaveLength(1);
   });
 
-  test('admin also sees Al Ummah Now Admin and Auth Admin', async ({ page }) => {
+  test('admin also sees the CMS, Al Ummah Now Admin and Auth Admin', async ({ page }) => {
     const admin = TEST_USERS.admin();
     await register(page, admin.email);
     await promoteToAdmin(page, admin.email);
@@ -143,7 +154,8 @@ test.describe('Profile app switcher', () => {
     await login(page, admin.email);
 
     const items = await openLauncher(page);
-    await expect(items).toHaveCount(4);
+    await expect(items).toHaveCount(6);
+    await expect(page.locator('#appsMenu [data-app="cms"]')).toHaveAttribute('href', EXPECTED_URLS.cms);
     await expect(page.locator('#appsMenu [data-app="videos"]')).toHaveAttribute('href', EXPECTED_URLS.videos);
     await expect(page.locator('#appsMenu [data-app="content-admin"]')).toHaveAttribute('href', EXPECTED_URLS['content-admin']);
     await expect(page.locator('#appsMenu [data-app="auth-admin"]')).toHaveAttribute('href', EXPECTED_URLS['auth-admin']);
@@ -151,7 +163,7 @@ test.describe('Profile app switcher', () => {
     await shot(page, 'admin-desktop-menu');
 
     await page.keyboard.press('Escape');
-    await expect(page.locator('#yourApps .app-card')).toHaveCount(3);
+    await expect(page.locator('#yourApps .app-card')).toHaveCount(5);
     await page.locator('#yourApps').scrollIntoViewIfNeeded();
     await shot(page, 'admin-desktop-cards');
 
