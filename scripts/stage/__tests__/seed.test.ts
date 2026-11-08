@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hashClientSecret, toStageRedirectUris } from '../seed.ts';
+import { hashClientSecret, stageRedirectUrisFor, toStageRedirectUris } from '../seed.ts';
 // openauth's own verifier: the stage admin secret must be accepted by the issuer
 import { verifyClientSecret } from '../../../apps/auth/node_modules/@al-ummah-now/openauth/dist/esm/client/secret-generator.js';
 
@@ -36,5 +36,27 @@ describe('hashClientSecret', () => {
 		expect(hash).toMatch(/^\$pbkdf2-sha256\$100000\$/);
 		expect(await verifyClientSecret('a-stage-secret', hash)).toBe(true);
 		expect(await verifyClientSecret('wrong', hash)).toBe(false);
+	});
+});
+
+describe('stageRedirectUrisFor', () => {
+	it('rewrites www and cms hosts', () => {
+		expect(
+			toStageRedirectUris(['https://www.alummahnow.net/auth/callback', 'https://cms.alummahnow.net/sso/callback', 'http://localhost:4321/auth/callback'])
+		).toEqual(['https://www.stage.alummahnow.net/auth/callback', 'https://cms.stage.alummahnow.net/sso/callback']);
+	});
+
+	it('prefers the live prod values when the client exists in prod', () => {
+		expect(stageRedirectUrisFor(['https://cms.alummahnow.net/sso/callback?x=1'], ['https://cms.alummahnow.net/sso/callback'])).toEqual([
+			'https://cms.stage.alummahnow.net/sso/callback?x=1',
+		]);
+	});
+
+	it('falls back to the seeded values for a client not in prod yet', () => {
+		expect(stageRedirectUrisFor(undefined, ['https://cms.alummahnow.net/sso/callback'])).toEqual(['https://cms.stage.alummahnow.net/sso/callback']);
+	});
+
+	it('is a no-op for rows already rewritten to stage', () => {
+		expect(stageRedirectUrisFor(undefined, ['https://cms.stage.alummahnow.net/sso/callback'])).toEqual([]);
 	});
 });
