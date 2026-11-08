@@ -51,7 +51,13 @@ export const APPS: AppRule[] = [
 		dir: 'apps/admin',
 		production: {
 			env: null,
-			vars: { AUTH_SERVER_URL: 'https://auth.alummahnow.net', APP_URL: 'https://admin.auth.alummahnow.net' },
+			vars: {
+				AUTH_SERVER_URL: 'https://auth.alummahnow.net',
+				APP_URL: 'https://admin.auth.alummahnow.net',
+				// Auth Admin client in prod D1: login client AND the M2M client whose
+				// secret is the worker's ADMIN_CLIENT_SECRET.
+				ADMIN_CLIENT_ID: '1448ed27-39a6-417d-b4c8-07f881e81269',
+			},
 			allowedHosts: ['admin.auth.alummahnow.net'],
 			forbiddenNames: TEST_ONLY,
 		},
