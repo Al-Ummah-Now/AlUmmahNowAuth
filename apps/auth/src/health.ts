@@ -8,7 +8,7 @@
  */
 import { logger } from './logger';
 
-export const REQUIRED_SECRETS = ['CLIENT_SECRET_SALT', 'KEY_ENCRYPTION_MASTER_KEY', 'RESEND_API_KEY'] as const;
+export const REQUIRED_SECRETS = ['CLIENT_SECRET_SALT', 'KEY_ENCRYPTION_MASTER_KEY', 'RESEND_API_KEY', 'SESSION_SECRET'] as const;
 
 const CHECK_TIMEOUT_MS = 3000;
 

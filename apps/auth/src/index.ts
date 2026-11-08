@@ -240,6 +240,15 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // Create session and tenant services for enterprise issuer (storage already created above)
     const sessionService = new D1SessionAdapter(env.AUTH_DB);
     const tenantService = new D1TenantAdapter(env.AUTH_DB);
+    // SESSION_SECRET encrypts the __session SSO cookie (A256GCM JWE). The all-zero
+    // fallback is a public key, so production refuses to run without the secret.
+    if (!env.SESSION_SECRET && env.ENVIRONMENT === 'production') {
+      logger.error('SESSION_SECRET is not set; refusing to issue SSO sessions with a public key');
+      return new Response('Server misconfigured', { status: 503 });
+    }
+    if (!env.SESSION_SECRET) {
+      logger.warn('SESSION_SECRET is not set; using the insecure development key');
+    }
     const sessionSecret = hexToSecret(env.SESSION_SECRET || '0'.repeat(64));
 
     // RBAC service already created above (Phase 3: reused for both endpoints and token enrichment)
