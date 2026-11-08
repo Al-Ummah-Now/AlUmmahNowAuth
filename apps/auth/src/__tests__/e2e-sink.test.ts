@@ -140,10 +140,10 @@ describe('send-code handler with the sink', () => {
 	};
 	let ip = 0;
 
-	function handler(overrides: Record<string, unknown> = {}) {
+	function handler(overrides: Record<string, unknown> = {}, fixedIp?: string) {
 		ip += 1;
 		const url = new URL('https://auth.qa.alummahnow.net/password/register');
-		const request = new Request(url, { method: 'POST', headers: { 'CF-Connecting-IP': `198.51.100.${ip}` } });
+		const request = new Request(url, { method: 'POST', headers: { 'CF-Connecting-IP': fixedIp ?? `198.51.100.${ip}` } });
 		return createSendCodeHandler(userService, {
 			request,
 			env: { ...sinkEnv(), RESEND_API_KEY: 're_test_key', ...overrides },
@@ -169,6 +169,21 @@ describe('send-code handler with the sink', () => {
 			type: 'code_send_failed',
 		});
 		expect(await env.AUTH_STORAGE.get(sinkKey('missing-key@e2e.alummahnow.net'))).toBeNull();
+	});
+
+	it('limits E2E addresses per address, not per IP, on QA (one CI runner, many users)', async () => {
+		for (let i = 0; i < 8; i++) {
+			const email = `ratelimit-${i}@e2e.alummahnow.net`;
+			await expect(handler({}, '203.0.113.7')(email, '333333')).resolves.toBeUndefined();
+			expect(await env.AUTH_STORAGE.get(sinkKey(email))).not.toBeNull();
+		}
+	});
+
+	it('keeps the per-IP limit for E2E addresses in production', async () => {
+		const prod = { ENVIRONMENT: 'production', OPENAUTH_ISSUER: 'https://auth.alummahnow.net' };
+		const results = [];
+		for (let i = 0; i < 8; i++) results.push(await handler(prod, '203.0.113.8')(`prod-rl-${i}@e2e.alummahnow.net`, '444444'));
+		expect(results).toContainEqual({ type: 'code_send_failed' });
 	});
 
 	it('emails E2E addresses in production', async () => {

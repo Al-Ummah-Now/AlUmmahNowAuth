@@ -381,7 +381,11 @@ export function createSendCodeHandler(
 
 		// Rate limiting: configurable via KV, with environment-specific defaults
 		const clientIP = getClientIP(request);
-		const rateLimitKey = `login:${clientIP}`;
+		// QA/stage E2E addresses (sink active, never in prod) are limited per address
+		// instead of per IP: a CI runner signs up dozens of users from one IP, and
+		// each test uses its own address, so the per-address limit still applies.
+		const sinkThisCode = await shouldSinkCode(env, email);
+		const rateLimitKey = sinkThisCode ? `login:e2e:${email.toLowerCase()}` : `login:${clientIP}`;
 		const rateLimitConfig = await getEndpointRateLimit(
 			env.AUTH_STORAGE,
 			'login',
@@ -466,7 +470,7 @@ export function createSendCodeHandler(
 
 			// QA/stage E2E addresses: store the code for the test instead of emailing it.
 			// Runs after RESEND_API_KEY resolves, so a missing secret still fails here.
-			if (await shouldSinkCode(env, email)) {
+			if (sinkThisCode) {
 				await storeSinkCode(env, email, code);
 				logger.info('Verification code stored in E2E sink', { email });
 				return;
