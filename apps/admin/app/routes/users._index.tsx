@@ -21,6 +21,7 @@ import { UserRoleManager } from "../components/user-role-manager";
 import { AdminLayout } from "../components/admin-layout";
 import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
+import { LoadErrorBanner } from "../components/load-error-banner";
 import { logger } from "../lib/logger.server";
 // Role assignment uses M2M auth through admin-api.server.ts
 import {
@@ -54,6 +55,8 @@ interface LoaderData {
   allRoles: Array<{ id: string; name: string; is_system: boolean; description?: string }>;
   user: { id: string; email: string } | null;
   authServerUrl: string;
+  /** Set when users or roles could not be fetched, so the page never shows a failure as "no users". */
+  loadError?: string;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -102,7 +105,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     if (isErrorResponse(usersResponse)) {
       console.error("Error fetching users:", usersResponse.error);
-      return { users: [], allRoles: [], user: { id: currentUser.id, email: currentUser.email }, authServerUrl };
+      return { users: [], allRoles: [], user: { id: currentUser.id, email: currentUser.email }, authServerUrl, loadError: usersResponse.error };
     }
 
     // Transform the API response to match component expectations
@@ -123,10 +126,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const allRoles: Role[] = isErrorResponse(rolesResponse) ? [] : rolesResponse;
     console.debug("[users._index] Final allRoles count:", allRoles.length);
 
-    return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl };
+    const loadError = isErrorResponse(rolesResponse) ? `Roles: ${rolesResponse.error}` : undefined;
+    return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl, loadError };
   } catch (error) {
     console.error("Error loading users:", error);
-    return { users: [], allRoles: [], user: { id: currentUser.id, email: currentUser.email }, authServerUrl };
+    return {
+      users: [],
+      allRoles: [],
+      user: { id: currentUser.id, email: currentUser.email },
+      authServerUrl,
+      loadError: error instanceof Error ? error.message : "Request failed",
+    };
   }
 }
 
@@ -323,7 +333,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 }
 
 export default function Users() {
-  const { users, allRoles, user, authServerUrl } = useLoaderData<LoaderData>();
+  const { users, allRoles, user, authServerUrl, loadError } = useLoaderData<LoaderData>();
   const revalidator = useRevalidator();
   const fetcher = useFetcher();
   const [searchQuery, setSearchQuery] = useState("");
@@ -535,6 +545,8 @@ export default function Users() {
         </p>
       </div>
 
+      <LoadErrorBanner what="users" error={loadError} />
+
       <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -643,7 +655,7 @@ export default function Users() {
               />
             </div>
 
-            {users.length === 0 ? (
+            {loadError && users.length === 0 ? null : users.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <User className="h-12 w-12 text-[rgb(var(--color-muted-foreground))] mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No users found</h3>

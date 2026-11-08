@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData, useFetcher } from "react-router";
+import { LoadErrorBanner } from "../components/load-error-banner";
 import { Plus, Pencil, Trash2, Shield, Users } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -60,6 +61,8 @@ interface LoaderData {
   roles: RoleWithUserCount[];
   user: { id: string; email: string } | null;
   authServerUrl: string;
+  /** Set when roles could not be fetched, so the page never shows a failure as "no roles". */
+  loadError?: string;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -109,7 +112,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     if (isErrorResponse(rolesResponse)) {
       console.error("Error fetching roles:", rolesResponse.error);
-      return { roles: [], user, authServerUrl };
+      return { roles: [], user, authServerUrl, loadError: rolesResponse.error };
     }
 
     // Get user counts for each role via API
@@ -129,7 +132,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return { roles: rolesWithCounts, user, authServerUrl };
   } catch (error) {
     console.error("Error loading roles:", error);
-    return { roles: [], user, authServerUrl };
+    return { roles: [], user, authServerUrl, loadError: error instanceof Error ? error.message : "Request failed" };
   }
 }
 
@@ -205,7 +208,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 }
 
 export default function Roles() {
-  const { roles, user, authServerUrl } = useLoaderData<LoaderData>();
+  const { roles, user, authServerUrl, loadError } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
   const [searchQuery, setSearchQuery] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -266,6 +269,8 @@ export default function Roles() {
           Manage RBAC roles and permission assignments
         </p>
       </div>
+
+      <LoadErrorBanner what="roles" error={loadError} />
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -334,7 +339,7 @@ export default function Roles() {
               />
             </div>
 
-            {roles.length === 0 ? (
+            {loadError && roles.length === 0 ? null : roles.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Shield className="h-12 w-12 text-[rgb(var(--color-muted-foreground))] mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No roles found</h3>
