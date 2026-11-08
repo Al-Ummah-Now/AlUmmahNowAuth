@@ -22,6 +22,7 @@ import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { getAuditEmitter } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType, createAuditEvent } from '../audit-events';
 import { logger } from '../logger';
+import { revokeUser } from '../revocation/revocation-list';
 
 export const REAUTH_MAX_AGE_SECONDS = 600;
 const AUDIT_EXPORT_LIMIT = 1000;
@@ -40,6 +41,8 @@ export interface VerifiedUser {
 	subject?: string;
 	clientId?: string;
 	authTime?: number;
+	jti?: string;
+	exp?: number;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -58,6 +61,11 @@ export async function verifyUserAccessToken(request: Request, env: Env): Promise
 	const header = request.headers.get('Authorization') ?? '';
 	const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
 	if (!token) return unauthorized('A user access token is required');
+	return verifyUserToken(token, env);
+}
+
+/** A user access token of this issuer (signature, issuer, expiry), or the 401 to send. */
+export async function verifyUserToken(token: string, env: Env): Promise<VerifiedUser | Response> {
 	let claims: UserTokenClaims;
 	try {
 		const jwks = createLocalJWKSet(await getJWKS(env));
@@ -77,6 +85,8 @@ export async function verifyUserAccessToken(request: Request, env: Env): Promise
 		subject: typeof claims.sub === 'string' ? claims.sub : undefined,
 		clientId: typeof claims.aud === 'string' ? claims.aud : undefined,
 		authTime: typeof claims.auth_time === 'number' ? claims.auth_time : undefined,
+		jti: typeof claims.jti === 'string' ? claims.jti : undefined,
+		exp: typeof claims.exp === 'number' ? claims.exp : undefined,
 	};
 }
 
@@ -141,6 +151,7 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	if (row.status === 'deleted') {
 		// Idempotent retry; also cleans refresh tokens of accounts deleted before this was fixed
 		const removed = await removeKvRefreshTokens(storage, user.subject);
+		await revokeUser(env.TOKEN_REVOCATIONS, row.id, 'account_deleted');
 		if (removed > 0) logger.info('[account] Removed refresh tokens of a deleted account', { userId: row.id, removed });
 		return json({ deleted: true, userId: row.id, deletedAt: row.deleted_at });
 	}
@@ -162,6 +173,8 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 
 	// No refresh token of this user can mint access tokens any more: KV (OpenAuth) and D1
 	const kvRefreshTokensRemoved = await removeKvRefreshTokens(storage, user.subject);
+	// Every other sign-in (other subjects, access tokens already out): the revocation list
+	await revokeUser(env.TOKEN_REVOCATIONS, row.id, 'account_deleted');
 	const nowUnix = Math.floor(Date.now() / 1000);
 	const revoked = await env.AUTH_DB.prepare(
 		`UPDATE refresh_tokens SET revoked = 1, revoked_at = ?, revoked_reason = 'account_deleted'
@@ -190,6 +203,33 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	logger.info('[account] Account deleted by its owner', { userId: row.id });
 	const after = await findUser(env.AUTH_DB, row.id);
 	return json({ deleted: true, userId: row.id, deletedAt: after?.deleted_at ?? Date.now() });
+}
+
+/**
+ * POST /account/sign-out-all: "sign out of all devices". Every sign-in of the
+ * caller made up to now stops working: refresh tokens are refused, access
+ * tokens are rejected by the APIs within the revocation bound. This client is
+ * signed out too and signs in again.
+ */
+export async function handleSignOutAll(request: Request, env: Env, ctx: ExecutionContext, requestId: string): Promise<Response> {
+	const user = await verifyUserAccessToken(request, env);
+	if (user instanceof Response) return user;
+	const entry = await revokeUser(env.TOKEN_REVOCATIONS, user.userId, 'sign_out_all');
+	if (!entry) return json({ error: 'temporarily_unavailable', error_description: 'Sign-out of all devices is not available' }, 503);
+	const kvRefreshTokensRemoved = await removeKvRefreshTokens(CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE }), user.subject);
+	ctx.waitUntil(
+		getAuditEmitter().emit(
+			createAuditEvent(AuditEventType.LOGOUT, {
+				severity: AuditEventSeverity.INFO,
+				userId: user.userId,
+				ipAddress: request.headers.get('CF-Connecting-IP'),
+				userAgent: request.headers.get('User-Agent'),
+				requestId,
+				metadata: { scope: 'all_devices', clientId: user.clientId, kvRefreshTokensRemoved },
+			}),
+		),
+	);
+	return json({ signedOut: true, revokedBefore: entry.before });
 }
 
 export async function handleAccountExport(request: Request, env: Env): Promise<Response> {

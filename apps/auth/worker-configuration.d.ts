@@ -7,6 +7,7 @@ declare namespace Cloudflare {
 	}
 	interface Env {
 		AUTH_STORAGE: KVNamespace;
+		TOKEN_REVOCATIONS: KVNamespace;
 		ENVIRONMENT: string;
 		PROFILE_CLIENT_ID: string;
 		ALLOWED_ORIGINS: string;

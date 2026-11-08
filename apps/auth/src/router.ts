@@ -23,7 +23,7 @@ import { getAuditEmitter } from './audit-emitter';
 import { createRateLimitExceededEvent } from './audit-events';
 import { trackEvent } from './utils/analytics';
 import { tokenRateLimitSubject } from './utils/token-rate-limit-subject';
-import { handleAccountExport, handleDeleteAccount } from './routes/account-routes';
+import { handleAccountExport, handleDeleteAccount, handleSignOutAll } from './routes/account-routes';
 import { AdminEnterpriseRoutes } from './admin-enterprise-routes';
 import { AdminTenantRoutes } from './admin-tenant-routes';
 import { routeAdminDLQ } from './admin-dlq-routes';
@@ -643,6 +643,11 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 		case '/account/export':
 			if (request.method !== 'GET') return methodNotAllowed('GET');
 			return handleAccountExport(request, rctx.env);
+
+		// Sign out of all devices (#437): revokes every sign-in of the caller
+		case '/account/sign-out-all':
+			if (request.method !== 'POST') return methodNotAllowed('POST');
+			return handleSignOutAll(request, rctx.env, rctx.ctx, rctx.requestId);
 	}
 
 	// Handle prefix-based routes
