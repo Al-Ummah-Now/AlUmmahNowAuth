@@ -43,6 +43,8 @@ export interface DeepHealth {
 	status: 'ok' | 'degraded';
 	environment: string | null;
 	issuer: string | null;
+	/** Worker version that served this request (release smoke checks the candidate). */
+	version: string | null;
 	checks: Record<string, boolean>;
 }
 
@@ -78,5 +80,6 @@ export async function deepHealth(env: Env): Promise<DeepHealth> {
 	const checks: Record<string, boolean> = {};
 	for (const [name, result] of entries) checks[name] = await result;
 	const status = Object.values(checks).every(Boolean) ? 'ok' : 'degraded';
-	return { status, environment, issuer, checks };
+	const version = (env as unknown as { CF_VERSION_METADATA?: { id?: string } }).CF_VERSION_METADATA?.id ?? null;
+	return { status, environment, issuer, version, checks };
 }

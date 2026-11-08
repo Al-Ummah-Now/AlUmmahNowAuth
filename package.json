@@ -28,6 +28,12 @@
     "deploy:qa:admin": "pnpm --filter admin run deploy:qa",
     "deploy:qa:profile": "pnpm --filter profile run deploy:qa",
     "deploy:qa:consumer": "pnpm --filter audit-consumer run deploy:qa",
+    "deploy:stage": "pnpm run stage:seed && pnpm run deploy:stage:auth && pnpm run deploy:stage:admin && pnpm run deploy:stage:profile && pnpm run deploy:stage:consumer",
+    "deploy:stage:auth": "pnpm --filter auth run deploy:stage",
+    "deploy:stage:admin": "pnpm --filter admin run deploy:stage",
+    "deploy:stage:profile": "pnpm --filter profile run deploy:stage",
+    "deploy:stage:consumer": "pnpm --filter audit-consumer run deploy:stage",
+    "stage:seed": "node --experimental-strip-types --no-warnings scripts/stage/seed.ts",
     "migrations:local": "pnpm --filter auth run migrations:local",
     "migrations:remote": "pnpm --filter auth run migrations:remote",
     "migrations:qa": "pnpm --filter auth run migrations:qa",
@@ -59,7 +65,8 @@
     "check:schema": "node --experimental-strip-types --no-warnings scripts/release/schema-snapshot.ts --check",
     "check:secrets": "node --experimental-strip-types --no-warnings scripts/release/check-secrets.ts",
     "secrets:rotate-client": "node --experimental-strip-types --no-warnings scripts/release/rotate-client-secret.ts",
-    "secrets:seed": "node --experimental-strip-types --no-warnings scripts/release/seed-worker-secret.ts"
+    "secrets:seed": "node --experimental-strip-types --no-warnings scripts/release/seed-worker-secret.ts",
+    "smoke": "node --experimental-strip-types --no-warnings scripts/release/smoke.ts"
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {

@@ -11,6 +11,7 @@
     "predeploy": "npm run build",
     "deploy": "wrangler deploy",
     "deploy:qa": "pnpm build && node scripts/patch-qa-config.js && wrangler deploy --config build/server/wrangler.json",
+    "deploy:stage": "pnpm build && node --experimental-strip-types --no-warnings ../../scripts/release/admin-config.ts stage && wrangler deploy --config build/server/wrangler.stage.json",
     "typecheck": "react-router typegen && tsc",
     "type-check": "react-router typegen && tsc",
     "test": "vitest run --passWithNoTests",

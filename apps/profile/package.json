@@ -8,6 +8,7 @@
     "dev": "wrangler dev --port 3302 --inspector-port 3312",
     "deploy": "wrangler deploy",
     "deploy:qa": "wrangler deploy --config wrangler.qa.json",
+    "deploy:stage": "wrangler deploy --env stage",
     "type-check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --reporter=verbose",

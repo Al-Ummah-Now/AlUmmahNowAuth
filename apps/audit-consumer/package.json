@@ -9,6 +9,7 @@
     "dev": "wrangler dev --port 3304",
     "deploy": "wrangler deploy",
     "deploy:qa": "wrangler deploy --config wrangler.qa.jsonc",
+    "deploy:stage": "wrangler deploy --env stage",
     "types": "wrangler types",
     "type-check": "tsc --noEmit",
     "test": "vitest run",

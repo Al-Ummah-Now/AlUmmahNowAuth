@@ -80,13 +80,15 @@ AlUmmahNowAuth/
 
 ## 🌐 Live Deployments
 
-- **Auth Server**: [https://al-ummah-now-auth.alummahnow.workers.dev](https://al-ummah-now-auth.alummahnow.workers.dev)
-- **Admin Dashboard**: [https://al-ummah-now-auth-admin.alummahnow.workers.dev](https://al-ummah-now-auth-admin.alummahnow.workers.dev)
-- **Profile App**: [https://al-ummah-now-profile.alummahnow.workers.dev](https://al-ummah-now-profile.alummahnow.workers.dev)
-- **Preview Deployments**: Auto-generated for each PR
-  - Auth: `https://al-ummah-now-auth-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
-  - Admin: `https://al-ummah-now-auth-admin-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
-  - Profile: `https://al-ummah-now-profile-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
+| | Production | Stage (release candidate) | QA (PRs) |
+|---|---|---|---|
+| Auth server | https://auth.alummahnow.net | https://auth.stage.alummahnow.net | https://auth.qa.alummahnow.net |
+| Profile | https://profile.auth.alummahnow.net | https://profile.auth.stage.alummahnow.net | https://profile.auth.qa.alummahnow.net |
+| Admin dashboard | https://admin.auth.alummahnow.net | https://admin.auth.stage.alummahnow.net | https://admin.auth.qa.alummahnow.net |
+
+Stage has production config with separate data; changes are tested there before
+production. See [CICD.md](CICD.md#stage-environment) and
+[docs/release-pipeline.md](docs/release-pipeline.md).
 
 ## 🚀 Quick Start
 
