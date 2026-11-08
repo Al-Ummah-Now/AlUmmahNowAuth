@@ -21,7 +21,8 @@
     }
   ],
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 1
   },
   "routes": [
     {
@@ -36,6 +37,7 @@
   ],
   "env": {
     "stage": {
+      "observability": { "enabled": true, "head_sampling_rate": 0.1 },
       "name": "al-ummah-now-auth-admin-stage",
       "routes": [
         {

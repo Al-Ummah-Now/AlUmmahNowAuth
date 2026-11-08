@@ -97,12 +97,19 @@ function clearSessionCookie(isLocalhost: boolean) {
   return `profile_session=; Path=/; HttpOnly; ${secure}SameSite=Lax; Max-Age=0`;
 }
 
-// Get OpenAuth client
+// One OpenAuth client per isolate: the client caches discovery and JWKS
+// inside itself, so a client per request fetched both on every verify.
+// Rebuilt every 10 minutes so a rotated signing key is picked up.
+const AUTH_CLIENT_TTL_MS = 10 * 60 * 1000;
+const authClients = new Map<string, { client: ReturnType<typeof createClient>; createdAt: number }>();
+
 function getAuthClient(authServerUrl: string) {
-  return createClient({
-    clientID: PROFILE_CLIENT_ID,
-    issuer: authServerUrl,
-  });
+  const now = Date.now();
+  const hit = authClients.get(authServerUrl);
+  if (hit && now - hit.createdAt < AUTH_CLIENT_TTL_MS && now >= hit.createdAt) return hit.client;
+  const client = createClient({ clientID: PROFILE_CLIENT_ID, issuer: authServerUrl });
+  authClients.set(authServerUrl, { client, createdAt: now });
+  return client;
 }
 
 // Get auth server URL
