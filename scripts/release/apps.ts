@@ -9,6 +9,8 @@ const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET'];
 const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'd1_databases', name: 'AUTH_DB' },
 	{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
+	// Revocation list (#437): without it sign-out-all and deletion can't revoke sessions
+	{ kind: 'kv_namespaces', name: 'TOKEN_REVOCATIONS' },
 	{ kind: 'queue_producer', name: 'AUDIT_QUEUE' },
 	{ kind: 'secrets_store_secrets', name: 'CLIENT_SECRET_SALT' },
 	{ kind: 'secrets_store_secrets', name: 'KEY_ENCRYPTION_MASTER_KEY' },
@@ -25,6 +27,8 @@ export const APPS: AppRule[] = [
 			vars: {
 				ENVIRONMENT: 'production',
 				OPENAUTH_ISSUER: 'https://auth.alummahnow.net',
+				// 15-minute access tokens (#437); clients refresh silently
+				ACCESS_TOKEN_TTL: '900',
 				SIGN_IN_FALLBACK_URL: 'https://videos.alummahnow.net/',
 				FRONTCHANNEL_LOGOUT_URLS: 'https://profile.auth.alummahnow.net/logout,https://admin.auth.alummahnow.net/logout,https://videos.alummahnow.net/api/auth/logout,https://admin.alummahnow.net/api/auth/logout,https://www.alummahnow.net/auth/logout,https://cms.alummahnow.net/sso/logout',
 				CLIENT_REGISTRY_MODE: 'enforce',
@@ -35,7 +39,7 @@ export const APPS: AppRule[] = [
 		},
 		stage: {
 			env: 'stage',
-			vars: { ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net', CLIENT_REGISTRY_MODE: 'enforce' },
+			vars: { ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net', ACCESS_TOKEN_TTL: '900', CLIENT_REGISTRY_MODE: 'enforce' },
 			requiredBindings: AUTH_BINDINGS,
 			allowedHosts: ['*.stage.alummahnow.net'],
 			testOnlyNames: TEST_ONLY,
