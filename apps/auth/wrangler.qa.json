@@ -52,7 +52,8 @@
   },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.1
+    "head_sampling_rate": 0.1,
+    "logs": { "enabled": true, "head_sampling_rate": 0.1 }
   },
   "analytics_engine_datasets": [
     {
