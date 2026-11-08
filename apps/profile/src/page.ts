@@ -118,6 +118,8 @@ const STYLES = `
             width: 40px; height: 40px; border-radius: 10px;
             display: inline-flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;
         }
+        .app-tile-www { background: linear-gradient(135deg, #14b8a6, #0f766e); }
+        .app-tile-cms { background: linear-gradient(135deg, #ef4444, #b91c1c); }
         .app-tile-videos { background: linear-gradient(135deg, #0ea5e9, #0369a1); }
         .app-tile-profile { background: linear-gradient(135deg, #10b981, #047857); }
         .app-tile-content-admin { background: linear-gradient(135deg, #f59e0b, #b45309); }

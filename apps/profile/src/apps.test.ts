@@ -15,20 +15,25 @@ describe("normalizeRole", () => {
 
 describe("role filtering", () => {
   it("a regular member sees only Al Ummah Now and Profile", () => {
-    expect(ids(["Member"])).toEqual(["videos", "profile"]);
+    expect(ids(["Member"])).toEqual(["www", "videos", "profile"]);
   });
 
   it("a signed-out visitor (no roles) sees only public apps", () => {
-    expect(ids([])).toEqual(["videos", "profile"]);
+    expect(ids([])).toEqual(["www", "videos", "profile"]);
   });
 
   it("Admin and Super Admin see both admin apps", () => {
-    expect(ids(["Admin", "Member"])).toEqual(["videos", "profile", "content-admin", "auth-admin"]);
-    expect(ids(["Super Admin"])).toEqual(["videos", "profile", "content-admin", "auth-admin"]);
+    expect(ids(["Admin", "Member"])).toEqual(["www", "videos", "profile", "content-admin", "cms", "auth-admin"]);
+    expect(ids(["Super Admin"])).toEqual(["www", "videos", "profile", "content-admin", "cms", "auth-admin"]);
   });
 
-  it("a Moderator sees the content admin but not the auth admin (matches each app's guard)", () => {
-    expect(ids(["Moderator"])).toEqual(["videos", "profile", "content-admin"]);
+  it("a Moderator sees the content admin and the CMS but not the auth admin (matches each app's guard)", () => {
+    expect(ids(["Moderator"])).toEqual(["www", "videos", "profile", "content-admin", "cms"]);
+  });
+
+  it("a member never sees the CMS; every allowed role does", () => {
+    expect(ids(["Member"])).not.toContain("cms");
+    for (const role of ["Super Admin", "Admin", "Moderator"]) expect(ids([role])).toContain("cms");
   });
 
   it("does not emit disabled admin entries for users without access", () => {
@@ -50,12 +55,16 @@ describe("environment URLs", () => {
     expect(url("production", "videos")).toBe("https://videos.alummahnow.net");
     expect(url("production", "content-admin")).toBe("https://admin.alummahnow.net");
     expect(url("production", "auth-admin")).toBe("https://admin.auth.alummahnow.net");
+    expect(url("production", "www")).toBe("https://www.alummahnow.net");
+    expect(url("production", "cms")).toBe("https://cms.alummahnow.net");
   });
 
   it("QA links only to QA hosts", () => {
     expect(url("qa", "videos")).toBe("https://videos.qa.alummahnow.net");
     expect(url("qa", "content-admin")).toBe("https://admin.qa.alummahnow.net");
     expect(url("qa", "auth-admin")).toBe("https://admin.auth.qa.alummahnow.net");
+    expect(url("qa", "www")).toBe("https://www.qa.alummahnow.net");
+    expect(url("qa", "cms")).toBe("https://cms.qa.alummahnow.net");
     for (const app of appsForUser(["Super Admin"], "qa", "en")) {
       if (!app.current) expect(app.url).toMatch(/^https:\/\/[a-z.]+\.qa\.alummahnow\.net$/);
     }
@@ -73,7 +82,7 @@ describe("environment URLs", () => {
 
   it("stage lists only apps deployed on stage (no dead links, no prod fallback)", () => {
     const stage = appsForUser(["Super Admin"], "stage", "en");
-    expect(stage.map((a) => a.id)).toEqual(["profile", "auth-admin"]);
+    expect(stage.map((a) => a.id)).toEqual(["www", "profile", "cms", "auth-admin"]);
     expect(stage.find((a) => a.id === "auth-admin")?.url).toBe("https://admin.auth.stage.alummahnow.net");
     expect(resolveAppEnv("stage", "profile.auth.stage.alummahnow.net")).toBe("stage");
   });
