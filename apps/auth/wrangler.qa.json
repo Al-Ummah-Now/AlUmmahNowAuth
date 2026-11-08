@@ -15,6 +15,10 @@
     {
       "binding": "AUTH_STORAGE",
       "id": "14fd32ab385b496c88b5dba88c2492ea"
+    },
+    {
+      "binding": "TOKEN_REVOCATIONS",
+      "id": "e6e662fc9cd9420797ddfa8060eb6956"
     }
   ],
   "d1_databases": [

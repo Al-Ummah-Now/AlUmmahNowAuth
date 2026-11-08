@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import * as v from 'valibot';
 import { revokeSessionTokens, revokeUserTokens } from '../custom/token-revocation';
+import { revokeUser } from '../revocation/revocation-list';
 import { requireAdmin, requirePermission } from '../middleware/admin-auth';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventType, AuditEventSeverity } from '../audit-events';
@@ -269,6 +270,8 @@ adminSessionRoutes.delete(
 			const result = await revokeSessionTokens(session.id, c.env.AUTH_DB);
 			totalTokensRevoked += result.revoked;
 		}
+		// OpenAuth refresh tokens and access tokens already out (#437)
+		await revokeUser(c.env.TOKEN_REVOCATIONS, userId, 'admin_sessions_revoked');
 
 		// Revoke all account sessions
 		await c.env.AUTH_DB.prepare(`
@@ -371,6 +374,8 @@ adminSessionRoutes.post(
 
 		// Revoke all app tokens via user tokens method
 		const tokenResult = await revokeUserTokens(userId, c.env.AUTH_DB);
+		// OpenAuth refresh tokens and access tokens already out (#437)
+		await revokeUser(c.env.TOKEN_REVOCATIONS, userId, 'admin_force_logout');
 
 		// Emit critical audit event
 		await emitAuditEvent({

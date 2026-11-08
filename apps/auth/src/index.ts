@@ -33,6 +33,8 @@ import { routeRequest, type RouterContext } from "./router";
 import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
 import { tenantCustomDomains } from "./utils/tenant-domains";
+import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
+import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -175,6 +177,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminUserApp.use('*', requireAdmin());  // M2M auth required
     adminUserApp.use('*', adminContextMiddleware);
     adminUserApp.use('*', methodCompatMiddleware);
+    // Suspend/delete/session wipe/forced reset sign the user out everywhere (#437)
+    adminUserApp.use('*', revokeOnAdminUserAction(env.TOKEN_REVOCATIONS));
     // Mount custom user listing route FIRST - provides users with RBAC roles
     adminUserApp.route('/', userListRoutes(env.AUTH_DB));
     // Then OpenAuth's user CRUD routes (GET /:id, POST /, PATCH /:id, DELETE /:id, etc.)
@@ -228,8 +232,14 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       return routedResponse;
     }
 
-    // Token endpoints (/token, /token/introspect, /token/revoke) are
-    // handled by OpenAuth issuer with consistent JWKS keys
+    // Token endpoints (/token, /token/introspect) are handled by the OpenAuth
+    // issuer with consistent JWKS keys. /token/revoke is ours (#437): the
+    // issuer's needs client authentication we don't use, and access tokens go
+    // on the revocation list the APIs read.
+    if (request.method === 'POST' && url.pathname === '/token/revoke') {
+      return await handleTokenRevoke(request, env, storage);
+    }
+    const accessTtl = parseAccessTtl(env.ACCESS_TOKEN_TTL);
 
     // Initialize OpenAuth enterprise issuer with multi-account session support
     logger.debug('Initializing OpenAuth enterprise issuer', {
@@ -261,7 +271,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // Pin the issuer: used for the `iss` claim, discovery documents and token
       // verification instead of the request Host / X-Forwarded-* headers.
       issuer: env.OPENAUTH_ISSUER || undefined,
-      storage,
+      // Refresh tokens of revoked sign-ins read as missing; old sessions get
+      // the current access-token lifetime on their next refresh (#437)
+      storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, accessTtl }),
+      ...(accessTtl ? { ttl: { access: accessTtl } } : {}),
       sessionService,
       tenantService,
       sessionSecret,
@@ -289,8 +302,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         customDomains: tenantCustomDomains(env.OPENAUTH_ISSUER),
       },
       providers: {
-        password: PasswordProvider(
-          PasswordUI({
+        password: PasswordProvider({
+          ...PasswordUI({
             sendCode: createSendCodeHandler(
               userService,
               { request, env, ctx, requestId, url },
@@ -300,7 +313,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
               input_code: "Code (check your inbox)",
             },
           }),
-        ),
+          // A password reset signs the account out everywhere (#437)
+          onPasswordChanged: async (email: string) => {
+            await revokeOnPasswordChange(env.AUTH_DB, env.TOKEN_REVOCATIONS, email);
+          },
+        }),
       },
       theme: (() => {
         // Randomly select a background image

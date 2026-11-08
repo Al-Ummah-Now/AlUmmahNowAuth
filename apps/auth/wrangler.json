@@ -12,6 +12,11 @@
       "binding": "AUTH_STORAGE",
       "id": "c3f796d40db8420c920aef1ce10a7f13",
       "preview_id": "c9f1b1f1492e4a61b5e20d1872aa14fb"
+    },
+    {
+      "binding": "TOKEN_REVOCATIONS",
+      "id": "2afbb5f5d5414c9ea1a7d54013cfe724",
+      "preview_id": "e6e662fc9cd9420797ddfa8060eb6956"
     }
   ],
   "d1_databases": [
@@ -69,6 +74,10 @@
         {
           "binding": "AUTH_STORAGE",
           "id": "c3f796d40db8420c920aef1ce10a7f13"
+        },
+        {
+          "binding": "TOKEN_REVOCATIONS",
+          "id": "2afbb5f5d5414c9ea1a7d54013cfe724"
         }
       ],
       "d1_databases": [
@@ -146,6 +155,10 @@
         {
           "binding": "AUTH_STORAGE",
           "id": "72435739e09d455db7f80820b0eab79c"
+        },
+        {
+          "binding": "TOKEN_REVOCATIONS",
+          "id": "0831520b71144a6e848ed62918602c13"
         }
       ],
       "d1_databases": [

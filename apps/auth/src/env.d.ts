@@ -19,6 +19,8 @@ interface AnalyticsEngineDataset {
 declare global {
   interface Env {
     AUTH_STORAGE: KVNamespace;
+    /** Token revocation list shared with the resource servers (u:<usr_id>). */
+    TOKEN_REVOCATIONS?: KVNamespace;
     AUDIT_WEBHOOK_URL: string;
     AUDIT_WEBHOOK_SECRET: string;
     PROFILE_APP_URL: string;
@@ -37,6 +39,11 @@ declare global {
     AUTH_ANALYTICS?: AnalyticsEngineDataset;
     TEST_PROMOTE_SECRET?: string;
     ACCESS_TOKEN_EXPIRY?: number;
+    /**
+     * Access-token lifetime in seconds (#437), e.g. "900". Unset: the issuer
+     * default (30 days). Existing sessions are capped on their next refresh.
+     */
+    ACCESS_TOKEN_TTL?: string;
     REFRESH_TOKEN_EXPIRY?: number;
     // Environment identifier: "production", "qa", or "development"
     ENVIRONMENT?: string;
