@@ -109,7 +109,7 @@ return this.addCorsHeaders(await this.handleRevocation(request, env, ctx), reque
 #### Local Development: `apps/auth/.dev.vars`
 ```
 PROFILE_APP_URL=http://localhost:8788
-RESEND_API_KEY=re_Gbo89D5V_8JjVP6irP3zLoyrJsY6HGR1X
+RESEND_API_KEY=re_REPLACE_ME
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:8788
 OPENAUTH_ISSUER=http://localhost:8787
 ```
