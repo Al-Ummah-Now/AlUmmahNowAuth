@@ -7,7 +7,7 @@
  * - The launcher follows the menu-button keyboard pattern.
  * - Arabic renders RTL, including on a phone-sized viewport.
  *
- * Screenshots are written to test-results/app-switcher/ (uploaded by CI).
+ * Screenshots are written to each test's folder under test-results/ as app-switcher-*.png (uploaded by CI).
  */
 
 import { test, expect, Page } from '@playwright/test';
@@ -41,7 +41,7 @@ const EXPECTED_URLS = {
 }[ENV];
 
 const shot = (page: Page, name: string) =>
-  page.screenshot({ path: test.info().outputPath(`../app-switcher/${name}.png`), fullPage: false });
+  page.screenshot({ path: test.info().outputPath(`app-switcher-${name}.png`), fullPage: false });
 
 async function openLauncher(page: Page) {
   const trigger = page.locator('#appsTrigger');
