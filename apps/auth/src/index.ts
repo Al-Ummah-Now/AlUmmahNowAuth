@@ -4,6 +4,7 @@ import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from 
 import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
+import { hexToSecret } from "./utils/crypto";
 import { matchOrigin, getAllowedOrigins } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
