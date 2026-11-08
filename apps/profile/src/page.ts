@@ -142,7 +142,8 @@ const STYLES = `
         }
         .app-card:hover { border-color: #38bdf8; transform: translateY(-1px); }
         .app-card-text { flex: 1; }
-        .app-card-arrow { color: #64748b; font-size: 1.5rem; line-height: 1; }
+        .app-card-arrow { color: #64748b; flex-shrink: 0; }
+        [dir="rtl"] .app-card-arrow { transform: scaleX(-1); }
 
         /* Account Switcher Dropdown */
         .account-switcher { position: relative; display: inline-block; }
