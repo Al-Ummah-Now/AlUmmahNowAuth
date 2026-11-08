@@ -12,6 +12,14 @@ import { createLoginSuccessEvent, createLoginFailedEvent } from '../audit-events
 import { trackEvent } from '../utils/analytics';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
 import { Storage, type StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
+import type { PasswordSendCodeError } from '@al-ummah-now/openauth/provider/password';
+
+/**
+ * Returned from sendCode when the code could not be delivered. The password
+ * provider re-renders the same form with a localized "couldn't send the code"
+ * message instead of the error escaping to the issuer (server_error redirect).
+ */
+const CODE_SEND_FAILED: PasswordSendCodeError = { type: 'code_send_failed' };
 
 /**
  * Context passed to auth handlers from the main request
@@ -308,6 +316,12 @@ export interface SendCodeContext {
  *   auth page) and reveal which emails are registered. Returning normally lets the
  *   provider show the "enter code" screen exactly as it does for a real account.
  *
+ * Delivery problems (rate limit, missing RESEND_API_KEY, invalid address, Resend
+ * rejecting or failing the send) return `{ type: "code_send_failed" }` instead of
+ * throwing, so the user stays on the same form, sees a localized error and can
+ * fix the address. The unknown-email no-op above happens before any of these, so
+ * forgot-password still never reveals whether an account exists.
+ *
  * @param userService - Service for looking up users
  * @param handlerCtx - Context from the main request handler
  * @param passwordStorage - OpenAuth storage holding password credentials at
@@ -341,7 +355,7 @@ export function createSendCodeHandler(
 		return passwordRecord !== undefined && passwordRecord !== null;
 	}
 
-	return async (email: string, code: string): Promise<void> => {
+	return async (email: string, code: string): Promise<void | PasswordSendCodeError> => {
 		// Resolve all imports
 		const [
 			checkRateLimit,
@@ -405,9 +419,7 @@ export function createSendCodeHandler(
 				userAgent: request.headers.get('User-Agent') ?? undefined,
 			});
 
-			throw new Error(
-				`Too many login attempts. Please try again in ${Math.ceil(retryAfter / 60)} minutes.`
-			);
+			return CODE_SEND_FAILED;
 		}
 
 		logger.debug('Rate limit check passed', {
@@ -490,7 +502,7 @@ export function createSendCodeHandler(
 				email,
 				error: error instanceof Error ? error.message : String(error),
 			});
-			throw error;
+			return CODE_SEND_FAILED;
 		}
 	};
 }
