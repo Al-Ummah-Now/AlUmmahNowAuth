@@ -28,7 +28,8 @@ async function openProfileSignIn(page: Page): Promise<string> {
 async function submitLogin(page: Page, email: string) {
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', PASSWORD);
-  await page.click('button:has-text("Continue")');
+  // The submit button is localized ("Continue" / "متابعة")
+  await page.click('form[data-component="form"] button[data-component="button"]');
 }
 
 async function expectNoRawError(page: Page) {

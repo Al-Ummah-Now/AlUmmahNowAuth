@@ -7,7 +7,7 @@
  * bookmarked /password/authorize), it links to this fallback: the main web app.
  */
 
-type RestartEnv = Pick<Env, 'PROFILE_APP_URL'> & { SIGN_IN_FALLBACK_URL?: string };
+type RestartEnv = { PROFILE_APP_URL?: string; SIGN_IN_FALLBACK_URL?: string };
 
 function httpUrl(value: string | undefined): string | undefined {
 	if (!value) return undefined;
