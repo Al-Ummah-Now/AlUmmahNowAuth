@@ -12,6 +12,7 @@
     "tail": "wrangler tail --format pretty",
     "deploy": "wrangler deploy --env production",
     "deploy:qa": "wrangler deploy --config wrangler.qa.json",
+    "deploy:stage": "wrangler deploy --env stage",
     "predeploy": "npx openauth migrate AUTH_DB --remote --withSeed && wrangler d1 migrations apply AUTH_DB --remote && npx openauth bootstrap-secrets AUTH_DB --remote",
     "predeploy:qa": "npx openauth migrate AUTH_DB -c wrangler.qa.json --remote --withSeed && wrangler -c wrangler.qa.json d1 migrations apply AUTH_DB --remote && npx openauth bootstrap-secrets AUTH_DB -c wrangler.qa.json --remote",
     "migrations:local": "npx openauth migrate AUTH_DB --local --withSeed && wrangler d1 migrations apply AUTH_DB --local && npx openauth bootstrap-secrets AUTH_DB --local",

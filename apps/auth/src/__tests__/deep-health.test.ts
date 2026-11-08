@@ -16,6 +16,7 @@ function deployedEnv(overrides: Record<string, unknown> = {}): Env {
     KEY_ENCRYPTION_MASTER_KEY: secret('key'),
     RESEND_API_KEY: secret('re_test'),
     SESSION_SECRET: 'ab'.repeat(32),
+    CF_VERSION_METADATA: { id: 'version-under-test', tag: '', timestamp: '' },
     ...overrides,
   } as unknown as Env;
 }
@@ -27,6 +28,7 @@ describe('deepHealth', () => {
       status: 'ok',
       environment: 'production',
       issuer: 'https://auth.alummahnow.net',
+      version: expect.any(String),
       checks: {
         config: true,
         d1: true,

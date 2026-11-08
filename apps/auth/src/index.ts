@@ -30,6 +30,7 @@ import { requireAdmin } from "./middleware/admin-auth";
 import { handleTokenCron } from "./cron/token-cron";
 import { routeRequest, type RouterContext } from "./router";
 import { deepHealth } from "./health";
+import { tenantCustomDomains } from "./utils/tenant-domains";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -266,12 +267,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       rbacService,
       clientDb: env.AUTH_DB,
       tenantResolver: {
-        customDomains: new Map([
-          ['localhost', 'default'],
-          ['127.0.0.1', 'default'],
-          ['auth.alummahnow.net', 'default'],
-          ['auth.qa.alummahnow.net', 'default'],
-        ]),
+        customDomains: tenantCustomDomains(env.OPENAUTH_ISSUER),
       },
       providers: {
         password: PasswordProvider(

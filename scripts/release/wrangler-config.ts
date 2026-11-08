@@ -126,6 +126,10 @@ export interface EnvRule {
 	allowedHosts: string[];
 	/** Binding or var names that must NOT appear (test-only material). */
 	forbiddenNames?: string[];
+	/** Test-only bindings this env may have that production must not (ignored by parity). */
+	testOnlyNames?: string[];
+	/** Workers without HTTP routes (queue consumers) set this to false. Default true. */
+	requireRoutes?: boolean;
 }
 
 export interface AppRule {
@@ -170,7 +174,7 @@ export function checkEnv(app: string, resolved: ResolvedEnv, rule: EnvRule): str
 		}
 	}
 
-	if (resolved.hosts.length === 0) {
+	if (resolved.hosts.length === 0 && rule.requireRoutes !== false) {
 		errors.push(`${where}: no routes; a deployed env must declare its hostnames`);
 	}
 	for (const host of resolved.hosts) {
@@ -195,10 +199,13 @@ export function checkEnv(app: string, resolved: ResolvedEnv, rule: EnvRule): str
 }
 
 /** Stage and prod must have the same binding names and kinds (SPEC §8 parity). */
-export function checkParity(app: string, prod: ResolvedEnv, stage: ResolvedEnv): string[] {
-	const key = (b: Binding) => `${b.kind}:${b.name}`;
+export function checkParity(app: string, prod: ResolvedEnv, stage: ResolvedEnv, testOnly: string[] = []): string[] {
+	// Queue consumers are named after their queue, which differs per env by design.
+	let consumer = 0;
+	const key = (b: Binding) => (b.kind === 'queue_consumer' ? `queue_consumer:#${consumer++}` : `${b.kind}:${b.name}`);
 	const p = new Set(prod.bindings.map(key));
-	const s = new Set(stage.bindings.map(key));
+	consumer = 0;
+	const s = new Set(stage.bindings.filter((b) => !testOnly.includes(b.name)).map(key));
 	const errors: string[] = [];
 	for (const k of p) if (!s.has(k)) errors.push(`${app}: binding ${k} is in production but not in stage`);
 	for (const k of s) if (!p.has(k)) errors.push(`${app}: binding ${k} is in stage but not in production`);
@@ -220,7 +227,7 @@ export function checkApp(rule: AppRule, config: WranglerConfig): string[] {
 	if (rule.stage && rule.stage.env && config.env?.[rule.stage.env]) {
 		const stage = resolveEnv(config, rule.stage.env);
 		errors.push(...checkEnv(rule.app, stage, rule.stage));
-		if (prod) errors.push(...checkParity(rule.app, prod, stage));
+		if (prod) errors.push(...checkParity(rule.app, prod, stage, rule.stage.testOnlyNames));
 	}
 	return errors;
 }

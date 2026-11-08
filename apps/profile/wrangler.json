@@ -30,5 +30,29 @@
   ],
   "compatibility_flags": [
     "nodejs_compat"
-  ]
+  ],
+  "env": {
+    "stage": {
+      "name": "al-ummah-now-profile-stage",
+      "routes": [
+        {
+          "pattern": "profile.auth.stage.alummahnow.net",
+          "zone_name": "alummahnow.net",
+          "custom_domain": true
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_STORAGE",
+          "id": "72435739e09d455db7f80820b0eab79c"
+        }
+      ],
+      "vars": {
+        "AUTH_SERVER_URL": "https://auth.stage.alummahnow.net",
+        "APP_URL": "https://profile.auth.stage.alummahnow.net",
+        "ADMIN_URL": "https://admin.auth.stage.alummahnow.net",
+        "CF_WEB_ANALYTICS_TOKEN": ""
+      }
+    }
+  }
 }

@@ -127,7 +127,91 @@
           "store_id": "f8eddc9944d041919ed8dc7d08d32308",
           "secret_name": "RESEND_API_KEY"
         }
-      ]
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "stage": {
+      "name": "al-ummah-now-auth-stage",
+      "routes": [
+        {
+          "pattern": "auth.stage.alummahnow.net",
+          "zone_name": "alummahnow.net",
+          "custom_domain": true
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_STORAGE",
+          "id": "72435739e09d455db7f80820b0eab79c"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "AUTH_DB",
+          "database_name": "al-ummah-now-d1-stage",
+          "database_id": "c7886ef6-c70b-4b7f-a65b-3df9f9aba9e2",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-events-stage"
+          }
+        ]
+      },
+      "vars": {
+        "ENVIRONMENT": "stage",
+        "PROFILE_APP_URL": "https://profile.auth.stage.alummahnow.net/",
+        "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
+        "ALLOWED_ORIGINS": "*.stage.alummahnow.net",
+        "OPENAUTH_ISSUER": "https://auth.stage.alummahnow.net",
+        "AUDIT_WEBHOOK_URL": "",
+        "AUDIT_WEBHOOK_SECRET": ""
+      },
+      "triggers": {
+        "crons": [
+          "0 * * * *"
+        ]
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "AUTH_ANALYTICS",
+          "dataset": "auth_events_stage"
+        }
+      ],
+      "tail_consumers": [],
+      "secrets_store_secrets": [
+        {
+          "binding": "CLIENT_SECRET_SALT",
+          "store_id": "f8eddc9944d041919ed8dc7d08d32308",
+          "secret_name": "CLIENT_SECRET_SALT_STAGE"
+        },
+        {
+          "binding": "KEY_ENCRYPTION_MASTER_KEY",
+          "store_id": "f8eddc9944d041919ed8dc7d08d32308",
+          "secret_name": "KEY_ENCRYPTION_MASTER_KEY_STAGE"
+        },
+        {
+          "binding": "RESEND_API_KEY",
+          "store_id": "f8eddc9944d041919ed8dc7d08d32308",
+          "secret_name": "RESEND_API_KEY"
+        },
+        {
+          "binding": "E2E_CODE_SINK_SECRET",
+          "store_id": "f8eddc9944d041919ed8dc7d08d32308",
+          "secret_name": "E2E_CODE_SINK_SECRET_STAGE"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
     }
+  },
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
   }
 }

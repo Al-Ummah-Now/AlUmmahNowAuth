@@ -164,6 +164,49 @@ GitHub Actions posts a comment on each PR with preview URLs:
 - Both apps share the same D1 database
 ```
 
+### Stage Environment
+
+**Purpose**: the release candidate's test slot. Same code and config shape as
+production, separate data. See `docs/release-pipeline.md` and AlUmmahNow's
+`docs/release-pipeline/SPEC.md` for the full design.
+
+| Worker | Hostname |
+|--------|----------|
+| `al-ummah-now-auth-stage` | `https://auth.stage.alummahnow.net` |
+| `al-ummah-now-profile-stage` | `https://profile.auth.stage.alummahnow.net` |
+| `al-ummah-now-auth-admin-stage` | `https://admin.auth.stage.alummahnow.net` |
+| `al-ummah-now-audit-consumer-stage` | (queue consumer, no route) |
+
+**Config**: `env.stage` in each app's wrangler file, next to `env.production`.
+`pnpm check:config` fails if stage drifts from production (bindings, vars) or if
+a stage binding points at a production resource.
+
+**Data**: D1 `al-ummah-now-d1-stage`, its own KV namespace, queue
+`audit-events-stage` (+ DLQ) and Secrets Store secrets with a `_STAGE` suffix.
+No production user data. `pnpm stage:seed` brings the stage D1 to the production
+schema (openauth + app migrations), seeds roles and copies the clients'
+**live** production redirect URIs with stage hostnames (read-only query on prod).
+It refuses to run unless the target DB name ends in `-stage`.
+
+**Rate limits**: stage uses production defaults (QA uses higher ones), so
+rate-limit bugs show up on stage. E2E addresses (`@e2e.alummahnow.net`) are
+limited per address rather than per IP while the code sink is active.
+
+**Commands**:
+
+```bash
+pnpm deploy:stage           # seed + deploy all four stage workers
+pnpm smoke --env stage      # issuer, JWKS, deep health, authorize per client, home pages
+E2E_AUTH_SERVER_URL=https://auth.stage.alummahnow.net \
+E2E_PROFILE_URL=https://profile.auth.stage.alummahnow.net \
+E2E_ADMIN_URL=https://admin.auth.stage.alummahnow.net \
+E2E_CODE_SINK_SECRET=... TEST_PROMOTE_SECRET=... \
+  npx playwright test e2e/tests/release e2e/tests/auth/forgot-password.spec.ts
+```
+
+The release workflow (phase 4) runs these automatically before promoting to
+production.
+
 ### Production Environment
 
 **Purpose**: Live production system

@@ -32,6 +32,7 @@ export const APPS: AppRule[] = [
 			vars: { ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net' },
 			requiredBindings: AUTH_BINDINGS,
 			allowedHosts: ['*.stage.alummahnow.net'],
+			testOnlyNames: TEST_ONLY,
 		},
 	},
 	{
@@ -43,6 +44,12 @@ export const APPS: AppRule[] = [
 			vars: { AUTH_SERVER_URL: 'https://auth.alummahnow.net', APP_URL: 'https://profile.auth.alummahnow.net' },
 			allowedHosts: ['profile.auth.alummahnow.net'],
 			forbiddenNames: TEST_ONLY,
+		},
+		stage: {
+			env: 'stage',
+			vars: { AUTH_SERVER_URL: 'https://auth.stage.alummahnow.net', APP_URL: 'https://profile.auth.stage.alummahnow.net' },
+			requiredBindings: [{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' }],
+			allowedHosts: ['*.stage.alummahnow.net'],
 		},
 	},
 	{
@@ -60,6 +67,41 @@ export const APPS: AppRule[] = [
 			},
 			allowedHosts: ['admin.auth.alummahnow.net'],
 			forbiddenNames: TEST_ONLY,
+		},
+		stage: {
+			env: 'stage',
+			vars: {
+				AUTH_SERVER_URL: 'https://auth.stage.alummahnow.net',
+				APP_URL: 'https://admin.auth.stage.alummahnow.net',
+				// prod's "Auth Admin" client; prod itself still points at a missing client (#190)
+				ADMIN_CLIENT_ID: '1448ed27-39a6-417d-b4c8-07f881e81269',
+			},
+			requiredBindings: [{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' }],
+			allowedHosts: ['*.stage.alummahnow.net'],
+		},
+	},
+	{
+		app: 'audit-consumer',
+		configPath: 'apps/audit-consumer/wrangler.jsonc',
+		dir: 'apps/audit-consumer',
+		production: {
+			env: null,
+			requiredBindings: [
+				{ kind: 'd1_databases', name: 'AUDIT_DB' },
+				{ kind: 'queue_consumer', name: 'audit-events' },
+			],
+			allowedHosts: [],
+			requireRoutes: false,
+			forbiddenNames: TEST_ONLY,
+		},
+		stage: {
+			env: 'stage',
+			requiredBindings: [
+				{ kind: 'd1_databases', name: 'AUDIT_DB' },
+				{ kind: 'queue_consumer', name: 'audit-events-stage' },
+			],
+			allowedHosts: [],
+			requireRoutes: false,
 		},
 	},
 ];

@@ -30,5 +30,30 @@
   // Observability
   "observability": {
     "enabled": true
+  },
+
+  // Stage (release pipeline): consumes the stage auth worker's audit queue
+  "env": {
+    "stage": {
+      "name": "al-ummah-now-audit-consumer-stage",
+      "d1_databases": [
+        {
+          "binding": "AUDIT_DB",
+          "database_name": "al-ummah-now-d1-stage",
+          "database_id": "c7886ef6-c70b-4b7f-a65b-3df9f9aba9e2"
+        }
+      ],
+      "queues": {
+        "consumers": [
+          {
+            "queue": "audit-events-stage",
+            "max_batch_size": 50,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "audit-events-stage-dlq"
+          }
+        ]
+      }
+    }
   }
 }
