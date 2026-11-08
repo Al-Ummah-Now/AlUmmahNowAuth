@@ -1,18 +1,24 @@
 /**
- * @fileoverview Test endpoints for E2E testing (development/localhost only)
+ * @fileoverview Test endpoints for E2E testing (development, QA and stage only)
  *
- * These endpoints are disabled in production and provide testing utilities:
+ * Disabled in production. Every route also requires the X-E2E-Secret header
+ * (E2E_CODE_SINK_SECRET binding, see utils/e2e-sink.ts) and answers 404 without it.
+ * Routes:
  * - /test/email/:email - Retrieve verification code sent to email
  * - /test/promote/:email - Promote user to admin role
  * - /test/tokens/:email - Get token info for a user
  */
 
 import { logger } from '../logger';
+import { isAuthorizedTestRequest, sinkKey } from '../utils/e2e-sink';
 
 interface TestRoutesEnv {
 	AUTH_STORAGE: KVNamespace;
 	AUTH_DB: D1Database;
 	TEST_PROMOTE_SECRET?: string;
+	ENVIRONMENT?: string;
+	OPENAUTH_ISSUER?: string;
+	E2E_CODE_SINK_SECRET?: unknown;
 }
 
 interface TestRouteContext {
@@ -21,7 +27,7 @@ interface TestRouteContext {
 
 /**
  * Handle test email retrieval endpoint
- * GET /test/email/:email
+ * GET /test/email/:email[?consume=1]
  *
  * Retrieves the verification code that was sent to an email address.
  * Used by E2E tests to complete the login flow.
@@ -29,13 +35,13 @@ interface TestRouteContext {
 export async function handleTestEmailGet(
 	email: string,
 	env: TestRoutesEnv,
-	ctx: TestRouteContext
+	ctx: TestRouteContext,
+	consume = false
 ): Promise<Response> {
 	logger.debug('Test endpoint: retrieving email code', { email });
 
 	try {
-		const testKey = `test:email:${email}`;
-		const stored = await env.AUTH_STORAGE.get(testKey);
+		const stored = await env.AUTH_STORAGE.get(sinkKey(email));
 
 		if (!stored) {
 			ctx.waitUntil(logger.finalizeRequest());
@@ -46,6 +52,8 @@ export async function handleTestEmailGet(
 		}
 
 		const data = JSON.parse(stored);
+		// consume=1: delete after reading, so a later read only sees a newer code
+		if (consume) await env.AUTH_STORAGE.delete(sinkKey(email));
 		ctx.waitUntil(logger.finalizeRequest());
 		return new Response(JSON.stringify({ code: data.code, emailId: data.emailId }), {
 			status: 200,
@@ -488,14 +496,20 @@ export async function routeTestEndpoints(
 	const url = new URL(request.url);
 
 	// Test endpoints disabled in production
-	if (isProduction) {
+	if (isProduction || !url.pathname.startsWith('/test/')) {
 		return null;
+	}
+
+	if (!(await isAuthorizedTestRequest(env, request))) {
+		logger.warn('Rejected unauthorized test route request', { path: url.pathname });
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response('Not Found', { status: 404 });
 	}
 
 	// GET /test/email/:email
 	if (url.pathname.startsWith('/test/email/') && request.method === 'GET') {
 		const email = decodeURIComponent(url.pathname.split('/test/email/')[1]);
-		return handleTestEmailGet(email, env, ctx);
+		return handleTestEmailGet(email, env, ctx, url.searchParams.get('consume') === '1');
 	}
 
 	// POST /test/promote/:email

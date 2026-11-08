@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 import { register } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
-import { setupEmailInterception } from '../../utils/email-interceptor';
+import { setupEmailInterception, sinkHasCode } from '../../utils/email-interceptor';
 import { ResendTestClient } from '../../utils/resend-client';
 
 // Test password for all E2E test users
@@ -47,7 +47,12 @@ test.describe('Forgot Password Flow', () => {
     await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
-    // No email may have been sent to the unknown address
+    // No code may have been sent to the unknown address
+    const sinkResult = await sinkHasCode(unknownEmail);
+    if (sinkResult !== null) {
+      expect(sinkResult).toBe(false);
+      return;
+    }
     const resendApiKey = process.env.RESEND_API_KEY || process.env.E2E_RESEND_API_KEY;
     test.skip(!resendApiKey, 'RESEND_API_KEY not set - cannot verify that no email was sent');
     const resend = new ResendTestClient(resendApiKey!);

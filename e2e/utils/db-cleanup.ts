@@ -13,7 +13,7 @@ const AUTH_APP_PATH = join(__dirname, '../../apps/auth');
 /**
  * Clean up test users from D1 database
  *
- * Removes all users with email addresses containing '@e2e-test.local'
+ * Removes all users with email addresses containing '@e2e.alummahnow.net'
  * This is safe since real users will never have this domain.
  */
 export async function cleanupTestUsers(): Promise<void> {
@@ -22,7 +22,7 @@ export async function cleanupTestUsers(): Promise<void> {
   try {
     // Delete all users with e2e test emails
     execSync(
-      `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "DELETE FROM user WHERE email LIKE '%@e2e-test.local'"`,
+      `npx wrangler d1 execute AUTH_DB --local --persist-to=../../.wrangler/state --command "DELETE FROM user WHERE email LIKE '%@e2e.alummahnow.net'"`,
       {
         cwd: AUTH_APP_PATH,
         stdio: 'pipe' // Suppress output unless there's an error

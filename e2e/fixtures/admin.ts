@@ -35,6 +35,8 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   const response = await page.request.post(`${TEST_URLS.authServer}/test/promote/${encodeURIComponent(email)}`, {
     headers: {
       'X-Test-Secret': testSecret,
+      // Every /test/* route requires the E2E secret (apps/auth/src/utils/e2e-sink.ts)
+      'X-E2E-Secret': process.env.E2E_CODE_SINK_SECRET ?? '',
     },
     failOnStatusCode: false,
   });
