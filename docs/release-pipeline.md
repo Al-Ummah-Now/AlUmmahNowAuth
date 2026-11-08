@@ -10,6 +10,8 @@ This page covers only what is specific to this repo.
 
 ## Workers and environments
 
+One trunk: `main`. PRs are tested on QA (deployed from the PR head), and every merge to `main` is released through stage to production. There are no integration branches here, and this stays so. AlUmmahNow is converging to the same model (its SPEC §3.1, phase C).
+
 | Worker | QA | stage | prod |
 |---|---|---|---|
 | auth (issuer) | `al-ummah-now-auth-qa` · auth.qa.alummahnow.net | `al-ummah-now-auth-stage` · auth.stage.alummahnow.net | `al-ummah-now-auth` · auth.alummahnow.net |
