@@ -17,11 +17,18 @@ export function jwt(exp: number, tag = "t"): string {
 export class FakeKV {
   store = new Map<string, string>();
   puts: Array<{ key: string; value: string; expirationTtl?: number }> = [];
+  /** Runs before each put lands (e.g. to inject a racing logout). */
+  beforePut: ((key: string) => Promise<void>) | null = null;
 
   async get(key: string): Promise<string | null> {
     return this.store.get(key) ?? null;
   }
   async put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void> {
+    const hook = this.beforePut;
+    if (hook) {
+      this.beforePut = null;
+      await hook(key);
+    }
     this.puts.push({ key, value, expirationTtl: opts?.expirationTtl });
     this.store.set(key, value);
   }

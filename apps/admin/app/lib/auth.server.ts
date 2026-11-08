@@ -2,7 +2,13 @@
 import { logger } from "./logger.server";
 import { getAppUrl } from "./config";
 import { getOpenAuthClient, subjects } from "./openauth.client.server";
-import { ensureFreshTokens, persistSessionTokens, sessionKey, type StoredSession } from "./session-tokens.server";
+import {
+  ensureFreshTokens,
+  isSessionRevoked,
+  persistSessionTokens,
+  sessionKey,
+  type StoredSession,
+} from "./session-tokens.server";
 
 /**
  * Check if user has admin access based on their roles
@@ -42,7 +48,16 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
 
   // Verify session token with AUTH_STORAGE KV
   try {
-    const sessionData = await env.AUTH_STORAGE.get(sessionKey(sessionToken));
+    const [sessionData, revoked] = await Promise.all([
+      env.AUTH_STORAGE.get(sessionKey(sessionToken)),
+      isSessionRevoked(env.AUTH_STORAGE, sessionToken),
+    ]);
+    if (revoked) {
+      // Logged out; a racing token refresh may have written the session back.
+      logger.info('Session was logged out');
+      if (sessionData) await env.AUTH_STORAGE.delete(sessionKey(sessionToken));
+      return null;
+    }
     if (!sessionData) {
       logger.warn('Session not found in KV storage');
       return null;
@@ -159,7 +174,11 @@ export async function requireAuth(
       // verify() refreshes an already expired token itself; the rotated
       // pair must be saved or the next request re-sends a dead refresh token.
       if (!verified?.err && verified?.tokens) {
-        await persistSessionTokens(env.AUTH_STORAGE, sessionData.sessionToken, verified.tokens);
+        const saved = await persistSessionTokens(env.AUTH_STORAGE, sessionData.sessionToken, verified.tokens);
+        if (!saved) {
+          logger.warn('Session logged out during verification', { userId: sessionData.user.id });
+          throw redirectToLogin(request);
+        }
         logger.info('Persisted tokens refreshed during verification', { userId: sessionData.user.id });
       }
 

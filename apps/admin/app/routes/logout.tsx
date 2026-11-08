@@ -1,12 +1,18 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
 import { logger } from "../lib/logger.server";
-import { getAuthServerUrl } from "../lib/config";
+import { getAuthServerUrl, getOAuthClientId } from "../lib/config";
+import { revokeSession } from "../lib/session-tokens.server";
 import { singleSignOutNext } from "../lib/single-sign-out";
 
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_STORAGE?: KVNamespace; AUTH_SERVER_URL?: string };
+  const env = context?.cloudflare?.env as {
+    AUTH_STORAGE?: KVNamespace;
+    AUTH_SERVER_URL?: string;
+    ADMIN_CLIENT_ID?: string;
+    OAUTH_CLIENT_ID?: string;
+  };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
@@ -27,10 +33,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     const sessionToken = cookies["auth_session"];
 
-    // Delete session from KV storage
+    // Tombstone + delete the KV session (so a racing token refresh cannot
+    // bring it back) and revoke its refresh token at the issuer.
     if (sessionToken && env?.AUTH_STORAGE) {
       try {
-        await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
+        await revokeSession({
+          kv: env.AUTH_STORAGE,
+          sessionToken,
+          issuer: getAuthServerUrl(request, env),
+          clientId: getOAuthClientId(env),
+        });
         logger.logAuth('User logged out', { sessionToken: sessionToken.substring(0, 10) + '...' });
       } catch (error) {
         logger.error('Error deleting session', {
