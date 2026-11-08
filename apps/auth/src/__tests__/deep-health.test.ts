@@ -15,6 +15,7 @@ function deployedEnv(overrides: Record<string, unknown> = {}): Env {
     CLIENT_SECRET_SALT: secret('salt'),
     KEY_ENCRYPTION_MASTER_KEY: secret('key'),
     RESEND_API_KEY: secret('re_test'),
+    SESSION_SECRET: 'ab'.repeat(32),
     ...overrides,
   } as unknown as Env;
 }
@@ -34,8 +35,15 @@ describe('deepHealth', () => {
         'secret:CLIENT_SECRET_SALT': true,
         'secret:KEY_ENCRYPTION_MASTER_KEY': true,
         'secret:RESEND_API_KEY': true,
+        'secret:SESSION_SECRET': true,
       },
     });
+  });
+
+  it('is degraded when SESSION_SECRET is missing (SSO cookie would use the zero key)', async () => {
+    const report = await deepHealth(deployedEnv({ SESSION_SECRET: undefined }));
+    expect(report.status).toBe('degraded');
+    expect(report.checks['secret:SESSION_SECRET']).toBe(false);
   });
 
   it('is degraded when RESEND_API_KEY is not bound (incident 2026-11-07)', async () => {
