@@ -44,7 +44,9 @@
     "CLIENT_REGISTRY_MODE": "enforce"
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "enabled": true, "head_sampling_rate": 1 }
   },
   "analytics_engine_datasets": [
     {
@@ -52,11 +54,7 @@
       "dataset": "auth_events"
     }
   ],
-  "tail_consumers": [
-    {
-      "service": "al-ummah-now-auth-tail"
-    }
-  ],
+  "tail_consumers": [],
   "env": {
     "production": {
       "name": "al-ummah-now-auth",
@@ -112,11 +110,7 @@
           "dataset": "auth_events"
         }
       ],
-      "tail_consumers": [
-        {
-          "service": "al-ummah-now-auth-tail"
-        }
-      ],
+      "tail_consumers": [],
       "secrets_store_secrets": [
         {
           "binding": "CLIENT_SECRET_SALT",
@@ -139,6 +133,7 @@
       }
     },
     "stage": {
+      "observability": { "enabled": true, "head_sampling_rate": 0.1, "logs": { "enabled": true, "head_sampling_rate": 0.1 } },
       "name": "al-ummah-now-auth-stage",
       "routes": [
         {

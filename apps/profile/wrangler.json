@@ -19,7 +19,9 @@
     "CF_WEB_ANALYTICS_TOKEN": ""
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "enabled": true, "head_sampling_rate": 1 }
   },
   "routes": [
     {
@@ -33,6 +35,7 @@
   ],
   "env": {
     "stage": {
+      "observability": { "enabled": true, "head_sampling_rate": 0.1, "logs": { "enabled": true, "head_sampling_rate": 0.1 } },
       "name": "al-ummah-now-profile-stage",
       "routes": [
         {

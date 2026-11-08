@@ -29,12 +29,17 @@
 
   // Observability
   "observability": {
-    "enabled": true
+    "enabled": true,
+    // Low traffic: keep every invocation. Lower this when traffic grows.
+    "head_sampling_rate": 1,
+    "logs": { "enabled": true, "head_sampling_rate": 1 }
   },
 
   // Stage (release pipeline): consumes the stage auth worker's audit queue
   "env": {
     "stage": {
+      // Workers Logs bills per line: log 10% of invocations (sampling drops errors too)
+      "observability": { "enabled": true, "head_sampling_rate": 0.1, "logs": { "enabled": true, "head_sampling_rate": 0.1 } },
       "name": "al-ummah-now-audit-consumer-stage",
       "d1_databases": [
         {
