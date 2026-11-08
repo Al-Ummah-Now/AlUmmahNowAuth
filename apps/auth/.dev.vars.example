@@ -7,3 +7,12 @@ PROFILE_APP_URL=http://localhost:8788
 # E2E email-code sink for @e2e.alummahnow.net addresses. Set the same value as
 # E2E_CODE_SINK_SECRET in the shell that runs Playwright.
 E2E_CODE_SINK_SECRET=local-e2e-secret
+
+# Secrets (Secrets Store / `wrangler secret` in deployed envs). Placeholders only:
+# `pnpm types` reads THIS file (never .dev.vars), so real values never reach
+# worker-configuration.d.ts. Put real local values in .dev.vars, which is gitignored.
+RESEND_API_KEY=replace-me
+SESSION_SECRET=replace-me
+CLIENT_SECRET_SALT=replace-me
+KEY_ENCRYPTION_MASTER_KEY=replace-me
+TEST_PROMOTE_SECRET=replace-me

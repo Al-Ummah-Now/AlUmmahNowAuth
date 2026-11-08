@@ -69,7 +69,8 @@
     "smoke": "node --experimental-strip-types --no-warnings scripts/release/smoke.ts",
     "release:promote": "node --experimental-strip-types --no-warnings scripts/release/promote.ts",
     "release:rollback": "node --experimental-strip-types --no-warnings scripts/release/rollback.ts",
-    "db:migrate": "node --experimental-strip-types --no-warnings scripts/release/d1-migrate.ts"
+    "db:migrate": "node --experimental-strip-types --no-warnings scripts/release/d1-migrate.ts",
+    "check:committed-secrets": "node scripts/check-committed-secrets.mjs"
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {

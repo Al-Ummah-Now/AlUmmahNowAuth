@@ -10,9 +10,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { ResendTestClient } from './resend-client';
 
-// Load .env.test in worker processes (playwright.config.ts only loads in main process)
+// Load .env.test (falling back to .env.test.example) in worker processes (playwright.config.ts only loads in main process)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, '../../.env.test') });
+dotenv.config({
+  path: [path.resolve(__dirname, '../../.env.test'), path.resolve(__dirname, '../../.env.test.example')],
+});
 
 // Resend API key from environment
 const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.E2E_RESEND_API_KEY;

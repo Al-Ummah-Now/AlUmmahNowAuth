@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Load test environment variables
-dotenv.config({ path: path.resolve(__dirname, '.env.test') });
+// Local overrides in .env.test (gitignored) win; .env.test.example (committed, placeholders) fills the rest.
+dotenv.config({ path: [path.resolve(__dirname, '.env.test'), path.resolve(__dirname, '.env.test.example')] });
 
 /**
  * Playwright E2E Test Configuration
