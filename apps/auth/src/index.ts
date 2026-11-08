@@ -30,6 +30,7 @@ import { adminContextMiddleware, methodCompatMiddleware, clientResponseCompatMid
 import { requireAdmin } from "./middleware/admin-auth";
 import { handleTokenCron } from "./cron/token-cron";
 import { routeRequest, type RouterContext } from "./router";
+import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 
@@ -372,7 +373,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Call issuer to handle the request
     // OpenAuth enterprise issuer manages sessions via D1SessionAdapter and sets the __session cookie
-    const issuerResponse = await app.fetch(request, env, ctx);
+    let issuerResponse = await app.fetch(request, env, ctx);
+
+    // Picker "Sign out" of the last account: single sign-out (#219)
+    if (request.method === 'POST' && url.pathname === ACCOUNT_PICKER_REMOVE_PATH) {
+      issuerResponse = await afterAccountPickerRemove(request, env, issuerResponse);
+    }
 
     // DEBUG: Log what the issuer returned
     const isRedirect = issuerResponse.status >= 300 && issuerResponse.status < 400;
