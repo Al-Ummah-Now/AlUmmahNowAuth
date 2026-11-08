@@ -67,7 +67,15 @@ describe("environment URLs", () => {
       expect(app.urls.qa).toMatch(/\.qa\.alummahnow\.net$/);
       expect(app.urls.local).toMatch(/^http:\/\/localhost:\d+$/);
       expect(app.urls.qa).not.toBe(app.urls.production);
+      if (app.urls.stage !== null) expect(app.urls.stage).toMatch(/\.stage\.alummahnow\.net$/);
     }
+  });
+
+  it("stage lists only apps deployed on stage (no dead links, no prod fallback)", () => {
+    const stage = appsForUser(["Super Admin"], "stage", "en");
+    expect(stage.map((a) => a.id)).toEqual(["profile", "auth-admin"]);
+    expect(stage.find((a) => a.id === "auth-admin")?.url).toBe("https://admin.auth.stage.alummahnow.net");
+    expect(resolveAppEnv("stage", "profile.auth.stage.alummahnow.net")).toBe("stage");
   });
 
   it("the current app (profile) links to its own root and is marked current", () => {

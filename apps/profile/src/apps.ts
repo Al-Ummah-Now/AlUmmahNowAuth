@@ -11,7 +11,7 @@
  * served to this app, but this catalog is deliberately self-contained for now.
  */
 
-export type AppEnv = "production" | "qa" | "local";
+export type AppEnv = "production" | "qa" | "stage" | "local";
 
 export type Locale = "en" | "ar";
 
@@ -26,7 +26,8 @@ export interface AppEntry {
   name: Record<Locale, string>;
   description: Record<Locale, string>;
   icon: AppIcon;
-  urls: Record<AppEnv, string>;
+  /** null = the app has no deployment in that environment, so it is hidden there */
+  urls: Record<AppEnv, string | null>;
   /**
    * Roles allowed to see the app, as normalized role ids (see normalizeRole).
    * An empty list means every visitor sees it. These mirror each app's own
@@ -48,6 +49,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
     urls: {
       production: "https://videos.alummahnow.net",
       qa: "https://videos.qa.alummahnow.net",
+      stage: null,
       local: "http://localhost:3001",
     },
     requiredRoles: [],
@@ -64,6 +66,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
     urls: {
       production: "https://profile.auth.alummahnow.net",
       qa: "https://profile.auth.qa.alummahnow.net",
+      stage: "https://profile.auth.stage.alummahnow.net",
       local: "http://localhost:3302",
     },
     requiredRoles: [],
@@ -80,6 +83,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
     urls: {
       production: "https://admin.alummahnow.net",
       qa: "https://admin.qa.alummahnow.net",
+      stage: null,
       local: "http://localhost:3091",
     },
     // AlUmmahNow apps/admin-web/src/lib/roles.ts ADMIN_ROLES
@@ -97,6 +101,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
     urls: {
       production: "https://admin.auth.alummahnow.net",
       qa: "https://admin.auth.qa.alummahnow.net",
+      stage: "https://admin.auth.stage.alummahnow.net",
       local: "http://localhost:3303",
     },
     // apps/admin/app/lib/auth.server.ts hasAdminRole
@@ -122,7 +127,7 @@ export function normalizeRole(role: string): string {
  */
 export function resolveAppEnv(appEnv: string | undefined, hostname: string): AppEnv | null {
   if (hostname === "localhost" || hostname === "127.0.0.1") return "local";
-  if (appEnv === "production" || appEnv === "qa") return appEnv;
+  if (appEnv === "production" || appEnv === "qa" || appEnv === "stage") return appEnv;
   return null;
 }
 
@@ -155,7 +160,9 @@ export function appsForUser(
   currentId: AppId = CURRENT_APP_ID,
 ): VisibleApp[] {
   return catalog
-    .filter((app) => (env ? canSeeApp(app, roles) : app.id === currentId))
+    .filter((app) =>
+      app.id === currentId || (env !== null && app.urls[env] !== null && canSeeApp(app, roles)),
+    )
     .map((app) => ({
       id: app.id,
       category: app.category,
@@ -164,7 +171,7 @@ export function appsForUser(
       icon: app.icon,
       // The current app links to its own root so a misconfigured env can't
       // send the user elsewhere.
-      url: app.id === currentId ? "/" : app.urls[env as AppEnv],
+      url: app.id === currentId ? "/" : (app.urls[env as AppEnv] as string),
       current: app.id === currentId,
     }));
 }

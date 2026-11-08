@@ -50,7 +50,7 @@
       "vars": {
         "AUTH_SERVER_URL": "https://auth.stage.alummahnow.net",
         "APP_URL": "https://profile.auth.stage.alummahnow.net",
-        "ADMIN_URL": "https://admin.auth.stage.alummahnow.net",
+        "APP_ENV": "stage",
         "CF_WEB_ANALYTICS_TOKEN": ""
       }
     }
