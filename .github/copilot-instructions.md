@@ -230,7 +230,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 - Auth: `https://al-ummah-now-auth.alummahnow.workers.dev`
 - Admin: `https://al-ummah-now-auth-admin.alummahnow.workers.dev`
 
-**GitHub Actions**: `.github/workflows/deploy.yml` handles CI/CD with separate jobs for auth/admin
+**GitHub Actions**: `.github/workflows/release.yml` releases every merge to main (stage, E2E, then production at 0% → 100% with auto-rollback); `rollback.yml` is the one-click rollback; `test.yml` runs PR checks and QA E2E
 
 **Deployment Secrets** (required):
 - `CLOUDFLARE_API_TOKEN` - For Wrangler deployments
@@ -300,4 +300,4 @@ See `ROADMAP.md` for detailed feature breakdown and timeline.
 - `apps/admin/app/lib/config.ts` - Environment-based configuration (auth server URLs)
 - `apps/admin/app/routes/auth.callback.tsx` - OAuth callback handler, token exchange
 - `apps/auth/migrations/` - Database schema migrations (run sequentially)
-- `.github/workflows/deploy.yml` - CI/CD pipeline for both apps
+- `.github/workflows/release.yml` - stage-then-promote release pipeline (see CICD.md)

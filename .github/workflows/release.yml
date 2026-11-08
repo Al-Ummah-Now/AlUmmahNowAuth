@@ -1,0 +1,252 @@
+name: Release
+
+# Stage-then-promote (docs/release-pipeline.md). Every merge to main:
+#   build once → stage (secrets check, deploy, smoke, E2E) → production (secrets check,
+#   migrate, candidates at 0%, pre-traffic smoke through the version override, 100%,
+#   smoke, auto-rollback).
+# Nothing reaches production traffic without passing on stage first.
+# Rollback: .github/workflows/rollback.yml or `pnpm release:rollback --env production`.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+# One release at a time, and never cancel one half-way through a promote
+concurrency:
+  group: auth-release
+  cancel-in-progress: false
+
+# The Cloudflare token is set only on the steps that call Cloudflare, never on
+# install/build steps (dependency lifecycle scripts run there).
+
+jobs:
+  build:
+    name: Build once
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm run type-check
+
+      - name: Release checks (wrangler configs, schema snapshot, release scripts)
+        run: |
+          pnpm run check:config
+          pnpm run check:schema
+          pnpm run test:scripts
+
+      # Bundles are env-independent (no build-time defines): the same files are
+      # uploaded to stage and to production.
+      - name: Bundle auth and profile
+        run: |
+          (cd apps/auth && npx wrangler deploy --dry-run -c wrangler.json --env production --outdir ../../dist/auth)
+          (cd apps/profile && npx wrangler deploy --dry-run -c wrangler.json --outdir ../../dist/profile)
+
+      - name: Build admin, derive its stage config
+        run: |
+          pnpm --filter admin run build
+          node --experimental-strip-types --no-warnings scripts/release/admin-config.ts stage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: |
+            dist/
+            apps/admin/build/
+          retention-days: 30
+
+  stage:
+    name: Stage (deploy, smoke, E2E)
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: stage
+      url: https://auth.stage.alummahnow.net
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-bundle
+
+      - name: Stage database (migrations, roles, client redirect URIs)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm run stage:seed
+
+      # Pre-promote: every deployed stage worker has its required secrets and
+      # client ids (scripts/release/secrets-manifest.ts). Fails the release.
+      - name: Secrets check (stage)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node --experimental-strip-types --no-warnings scripts/release/check-secrets.ts --env stage | tee secrets-check.txt
+          status=${PIPESTATUS[0]}
+          { echo '### Secrets check (stage)'; echo '```'; cat secrets-check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      # Same mechanics as production, so every release also rehearses the promote
+      - name: Deploy candidates to stage
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types --no-warnings scripts/release/promote.ts --env stage --message "release ${GITHUB_SHA::7}"
+
+      - name: Deploy audit consumer to stage
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: apps/audit-consumer
+        run: npx wrangler deploy --env stage
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E on stage (release regressions, auth flows)
+        env:
+          E2E_AUTH_SERVER_URL: https://auth.stage.alummahnow.net
+          E2E_PROFILE_URL: https://profile.auth.stage.alummahnow.net
+          E2E_ADMIN_URL: https://admin.auth.stage.alummahnow.net
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_STAGE }}
+          TEST_PROMOTE_SECRET: ${{ secrets.TEST_PROMOTE_SECRET_STAGE }}
+        # "code delivery failure" needs Resend to reject example.com, which only QA's
+        # Resend key does; stage uses production's key. It runs on every PR in QA.
+        run: npx playwright test e2e/tests/release e2e/tests/auth --grep-invert "code delivery failure"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: stage-e2e-report
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 14
+
+  production:
+    name: Production (migrate, 0% smoke, promote)
+    needs: stage
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://auth.alummahnow.net
+    steps:
+      - uses: actions/checkout@v6
+
+      # A newer commit on main means a newer release is queued behind this one
+      # (concurrency auth-release). Never promote a stale candidate: e.g. a build
+      # from before a migration-carrying merge. The newer run releases instead.
+      - name: Still the head of main?
+        id: head
+        run: |
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$head" != "$GITHUB_SHA" ]; then
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::main moved to ${head::7} while releasing ${GITHUB_SHA::7}; not promoting. The run for ${head::7} releases instead."
+            echo "### Superseded: main is at ${head::7}; ${GITHUB_SHA::7} was not promoted" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.head.outputs.current == 'true'
+
+      - uses: actions/setup-node@v6
+        if: steps.head.outputs.current == 'true'
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        if: steps.head.outputs.current == 'true'
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - run: pnpm install --frozen-lockfile
+        if: steps.head.outputs.current == 'true'
+
+      - uses: actions/download-artifact@v4
+        if: steps.head.outputs.current == 'true'
+        with:
+          name: release-bundle
+
+      # Pre-promote: every deployed production worker has its required secrets and
+      # client ids (scripts/release/secrets-manifest.ts). Fails the release.
+      - name: Secrets check (production)
+        if: steps.head.outputs.current == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node --experimental-strip-types --no-warnings scripts/release/check-secrets.ts --env production | tee secrets-check.txt
+          status=${PIPESTATUS[0]}
+          { echo '### Secrets check (production)'; echo '```'; cat secrets-check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      # Expand-only migrations (enforced by check:migrations), so the code still
+      # serving keeps working; a rollback never needs to undo them.
+      - name: Migrate production database
+        if: steps.head.outputs.current == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types --no-warnings scripts/release/d1-migrate.ts --env production
+
+      - name: Promote (0% + override smoke → 100% → smoke, auto-rollback)
+        if: steps.head.outputs.current == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types --no-warnings scripts/release/promote.ts --env production --message "release ${GITHUB_SHA::7}"
+
+      - name: Summary
+        if: always() && steps.head.outputs.current == 'true'
+        run: |
+          if [ -f release-result.json ]; then
+            { echo '### Production release'; echo '```json'; cat release-result.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.head.outputs.current == 'true'
+        with:
+          name: release-result
+          path: release-result.json
+          if-no-files-found: ignore
+          retention-days: 90

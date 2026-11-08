@@ -211,3 +211,4 @@ apps/auth/test-results/
 apps/auth/src/audit-emitter-enhanced-old.ts
 .npmrc
 .playwright-mcp/
+release-result.json
