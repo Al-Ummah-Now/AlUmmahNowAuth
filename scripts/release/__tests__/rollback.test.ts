@@ -5,8 +5,10 @@ describe('rollback', () => {
 	it('rolls back every production worker to its previous version by default', () => {
 		const cmds = rollbackCommands('/repo', parseRollbackArgs(['--env', 'production']));
 		expect(cmds.map((c) => c.worker)).toEqual(['al-ummah-now-auth', 'al-ummah-now-profile', 'al-ummah-now-auth-admin']);
-		expect(cmds[0].listArgv).toEqual(['deployments', 'list', '--json', '-c', 'wrangler.json', '--env', 'production']);
-		expect(cmds[0].argv('v1')).toEqual(['rollback', 'v1', '-c', 'wrangler.json', '--env', 'production', '-y', '--message', 'manual rollback']);
+		expect(cmds[0].listArgv).toEqual(['deployments', 'list', '--json', '--name', 'al-ummah-now-auth']);
+		expect(cmds[0].argv('v1')).toEqual(['rollback', 'v1', '--name', 'al-ummah-now-auth', '-y', '--message', 'manual rollback']);
+		// no config files: admin's only exists after a build, and rollback.yml does not build
+		for (const c of cmds) expect([...c.listArgv, ...c.argv('v1')].join(' ')).not.toMatch(/-c |wrangler\.json|--env/);
 	});
 
 	it('targets one worker and version', () => {
