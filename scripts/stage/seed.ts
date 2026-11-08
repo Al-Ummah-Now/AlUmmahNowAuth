@@ -27,6 +27,8 @@ export const STAGE_HOSTS: Record<string, string> = {
 	'admin.alummahnow.net': 'admin.stage.alummahnow.net',
 	'profile.auth.alummahnow.net': 'profile.auth.stage.alummahnow.net',
 	'admin.auth.alummahnow.net': 'admin.auth.stage.alummahnow.net',
+	'www.alummahnow.net': 'www.stage.alummahnow.net',
+	'cms.alummahnow.net': 'cms.stage.alummahnow.net',
 };
 
 /** Rewrites prod redirect URIs to stage; drops localhost and unknown hosts. */
@@ -45,6 +47,16 @@ export function toStageRedirectUris(uris: string[]): string[] {
 		out.push(url.toString());
 	}
 	return [...new Set(out)];
+}
+
+/**
+ * Stage redirect URIs for one client: prod's live values when the client exists
+ * in prod, else its seeded (prod-host) values. Stage releases before prod, so a
+ * client added by a new migration reaches stage first; rewriting its seed lets
+ * stage test it in the same release. Already-rewritten rows yield [] (no change).
+ */
+export function stageRedirectUrisFor(prodUris: string[] | undefined, seeded: string[]): string[] {
+	return toStageRedirectUris(prodUris ?? seeded);
 }
 
 /** Same format as @al-ummah-now/openauth's hashClientSecret (PBKDF2-SHA256, 100k). */
@@ -79,12 +91,7 @@ function rewriteRedirectUris(): void {
 	const clients = query<{ id: string; redirect_uris: string }>("SELECT id, redirect_uris FROM oauth_clients WHERE redirect_uris <> '[]'");
 	for (const client of clients) {
 		const current = JSON.parse(client.redirect_uris) as string[];
-		const source = prod.get(client.id);
-		if (!source) {
-			process.stdout.write(`  client ${client.id}: not in prod, left as seeded\n`);
-			continue;
-		}
-		const stage = toStageRedirectUris(source);
+		const stage = stageRedirectUrisFor(prod.get(client.id), current);
 		if (stage.length === 0 || JSON.stringify(stage) === JSON.stringify(current)) continue;
 		query(`UPDATE oauth_clients SET redirect_uris = ${sqlString(JSON.stringify(stage))}, updated_at = ${Date.now()} WHERE id = ${sqlString(client.id)}`);
 		process.stdout.write(`  client ${client.id}: ${stage.join(', ')}\n`);
