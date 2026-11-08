@@ -1,0 +1,73 @@
+name: Rollback
+
+# One-click rollback (docs/release-pipeline.md). Puts workers back on the version
+# they served before their latest deployment, or on a given version, then smokes.
+# Code only: migrations are expand-only and stay applied.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment
+        type: choice
+        options: [production, stage]
+        default: production
+      app:
+        description: Worker(s) to roll back
+        type: choice
+        options: [all, auth, profile, admin]
+        default: all
+      version:
+        description: Version id to roll back to (optional; needs a single app)
+        type: string
+        required: false
+      reason:
+        description: Why (shown in the Cloudflare deployment history)
+        type: string
+        default: rollback from GitHub Actions
+
+permissions:
+  contents: read
+  packages: read
+
+# Never run alongside a release (it would race the promote)
+concurrency:
+  group: auth-release
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Roll back ${{ inputs.app }} (${{ inputs.environment }})
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - run: pnpm install --frozen-lockfile
+
+      # Inputs go through env, never interpolated into the script
+      - name: Roll back and smoke
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          APP: ${{ inputs.app }}
+          VERSION: ${{ inputs.version }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          args=(--env "$ENVIRONMENT" --app "$APP" --reason "$REASON (by $GITHUB_ACTOR)")
+          if [ -n "$VERSION" ]; then args+=(--to "$VERSION"); fi
+          node --experimental-strip-types --no-warnings scripts/release/rollback.ts "${args[@]}"

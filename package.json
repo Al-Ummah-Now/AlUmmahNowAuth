@@ -66,7 +66,10 @@
     "check:secrets": "node --experimental-strip-types --no-warnings scripts/release/check-secrets.ts",
     "secrets:rotate-client": "node --experimental-strip-types --no-warnings scripts/release/rotate-client-secret.ts",
     "secrets:seed": "node --experimental-strip-types --no-warnings scripts/release/seed-worker-secret.ts",
-    "smoke": "node --experimental-strip-types --no-warnings scripts/release/smoke.ts"
+    "smoke": "node --experimental-strip-types --no-warnings scripts/release/smoke.ts",
+    "release:promote": "node --experimental-strip-types --no-warnings scripts/release/promote.ts",
+    "release:rollback": "node --experimental-strip-types --no-warnings scripts/release/rollback.ts",
+    "db:migrate": "node --experimental-strip-types --no-warnings scripts/release/d1-migrate.ts"
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {

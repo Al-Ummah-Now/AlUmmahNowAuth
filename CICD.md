@@ -57,37 +57,26 @@ jobs:
       - run: pnpm run type-check
 ```
 
-### Deploy Workflow (`deploy.yml`)
+### Release Workflow (`release.yml`)
 
-**Trigger**: Push to `main` (production), Pull requests to `main` (preview)
+**Trigger**: push to `main` (every merge), or run by hand. One release at a time
+(`concurrency: auth-release`, never cancelled half-way).
 
-**Jobs**:
+| Job | What it does |
+|---|---|
+| **Build once** | Type check, `check:config`, `check:schema`, `test:scripts`; bundles auth and profile (`wrangler deploy --dry-run --outdir dist/…`), builds admin and derives its stage config. The same files go to stage and production. |
+| **Stage** | `stage:seed` (migrations, roles, prod's live redirect URIs with stage hosts); deploys the candidates to stage with the same promote mechanics as production; deploys the audit consumer; runs the release regressions and auth E2E on stage. |
+| **Production** | `d1-migrate.ts --env production` (expand-only migrations); `promote.ts --env production`: upload versions → candidates at 0% → wait until the override serves the candidate → smoke through `Cloudflare-Workers-Version-Overrides` → 100% + `triggers deploy` → smoke → automatic rollback on any failure. Result in the job summary and the `release-result` artifact. |
 
-#### 1. Test
-- Install dependencies
-- Run TypeScript type checking
-- Required for all subsequent deployment jobs
+A failed stage job stops the release: production is not touched. The audit
+consumer is not deployed to production by CI (it never was); deploy it by hand
+until that is decided (see docs/release-pipeline.md).
 
-#### 2. Deploy Auth Preview (PR only)
-- Deploys auth server to preview environment
-- URL pattern: `https://al-ummah-now-auth-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
-- Uses PR number in worker name for isolation
+### Rollback Workflow (`rollback.yml`)
 
-#### 3. Deploy Admin Preview (PR only)
-- Builds admin dashboard
-- Deploys to preview environment
-- URL pattern: `https://al-ummah-now-auth-admin-pr-{PR-NUMBER}.mahmoud-s-darwish.workers.dev/`
-- Posts comment to PR with preview URLs
-
-#### 4. Deploy Auth Production (main branch only)
-- Applies database migrations to production
-- Deploys auth server to production
-- URL: `https://al-ummah-now-auth.alummahnow.workers.dev`
-
-#### 5. Deploy Admin Production (main branch only)
-- Builds admin dashboard
-- Deploys to production
-- URL: `https://al-ummah-now-auth-admin.alummahnow.workers.dev`
+One click: **Actions → Rollback → Run workflow** (environment, `all` or one
+worker, optional version id). Same as `pnpm release:rollback`. Code only:
+migrations stay applied (they are expand-only).
 
 ## Release gates
 
@@ -100,7 +89,7 @@ These run on every PR (`test.yml` → **Release Checks**) and are part of the re
 | `pnpm check:schema` | `apps/auth/schema.snapshot.sql` / `schema.qa.snapshot.sql` don't match what the migrations (openauth + app) produce. | `pnpm schema:snapshot` and commit the result with the migration. |
 | `pnpm test:scripts` | The release scripts' own tests fail. | |
 
-Prod deploys also run `pnpm check:config` first (`deploy.yml` → Test).
+The release workflow runs `check:config`, `check:schema` and `test:scripts` again in its build job.
 
 `GET /health?deep=1` on any auth deployment reports, as booleans, whether D1, KV, the audit queue and each required Secrets Store secret resolve (HTTP 503 if any don't). Release smoke tests use it. Plain `/health` stays dependency-free.
 
@@ -323,46 +312,26 @@ pnpm deploy:auth
 
 ### Automated Deployment
 
-**Production Deployment Flow**:
-1. Developer pushes to `main` branch
-2. GitHub Actions triggers deploy workflow
-3. Run tests (type-check)
-4. Apply database migrations (auth server)
-5. Deploy auth server
-6. Build admin dashboard
-7. Deploy admin dashboard
-8. Services are live
+Every merge to `main` runs `release.yml` (above): build once → stage → E2E →
+production at 0% → smoke → 100% → smoke. There are no per-PR preview deployments;
+PRs are tested on QA (`test.yml` → QA Deploy and E2E).
 
-**Preview Deployment Flow**:
-1. Developer opens pull request
-2. GitHub Actions triggers preview deployments
-3. Run tests (type-check)
-4. Deploy auth server to preview URL
-5. Build and deploy admin dashboard to preview URL
-6. Post comment with preview URLs
-7. Update comment on subsequent commits
+Manual production deploys (`pnpm deploy:auth` etc.) bypass stage. Use them only
+to recover when the workflow itself is broken.
 
 ### Rollback Process
 
-**Cloudflare Workers Rollback**:
-1. Navigate to Cloudflare Dashboard
-2. Select Workers → Your Worker
-3. Click "Deployments" tab
-4. Select previous version
-5. Click "Rollback to this deployment"
-
-**Database Rollback**:
 ```bash
-# Create reverse migration
-cd apps/auth/migrations
-# Create XXXX_rollback_description.sql with reverse changes
-
-# Apply locally first
-pnpm run migrations:local
-
-# Test thoroughly, then apply to production
-pnpm run migrations:remote
+pnpm release:rollback --env production                    # every worker, previous version
+pnpm release:rollback --env production --app auth --to <version-id>
 ```
+
+or **Actions → Rollback**. Both run the smoke afterwards and exit non-zero if it
+fails. Version ids for each release are in the release run's summary.
+
+**Database**: never rolled back. Migrations are expand-only (add tables, columns,
+indexes); code that no longer needs a column stops using it, and a later
+release drops it once no deployed version reads it.
 
 ## Secrets Management
 
@@ -534,7 +503,7 @@ wrangler d1 execute AUTH_DB --command="SELECT * FROM logs ORDER BY timestamp DES
 **Cause**: Workflow permissions or branch protection
 
 **Solution**:
-1. Check workflow permissions in `.github/workflows/deploy.yml`
+1. Check workflow permissions in `.github/workflows/release.yml`
 2. Verify PR is targeting `main` branch
 3. Check workflow logs for errors
 4. Ensure secrets are properly configured

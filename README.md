@@ -174,19 +174,16 @@ pnpm run migrations:remote
 
 ### Deployment
 
-Deploy both apps:
+Merging to `main` releases automatically: build once → stage → E2E on stage →
+production at 0% traffic → smoke → 100% → smoke, with automatic rollback.
+
 ```bash
-pnpm deploy
+pnpm deploy:stage                          # deploy the current tree to stage by hand
+pnpm smoke --env production                # smoke checks (safe against production)
+pnpm release:rollback --env production     # one-command rollback (or Actions → Rollback)
 ```
 
-Deploy individual apps:
-```bash
-# Auth server
-pnpm deploy:auth
-
-# Admin dashboard
-pnpm deploy:admin
-```
+Details: [CICD.md](CICD.md), [docs/release-pipeline.md](docs/release-pipeline.md).
 
 ## 📝 Configuration
 
