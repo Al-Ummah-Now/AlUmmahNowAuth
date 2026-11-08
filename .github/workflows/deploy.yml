@@ -272,7 +272,9 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/auth
-          command: deploy
+          # wrangler.json's top level is the local dev config (localhost issuer, no
+          # secrets); production lives under env.production
+          command: deploy --env production
 
   deploy-profile-production:
     runs-on: ubuntu-latest
