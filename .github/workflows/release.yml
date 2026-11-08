@@ -1,8 +1,9 @@
 name: Release
 
 # Stage-then-promote (docs/release-pipeline.md). Every merge to main:
-#   build once → stage (deploy, smoke, E2E) → production (migrate, candidates at 0%,
-#   pre-traffic smoke through the version override, 100%, smoke, auto-rollback).
+#   build once → stage (secrets check, deploy, smoke, E2E) → production (secrets check,
+#   migrate, candidates at 0%, pre-traffic smoke through the version override, 100%,
+#   smoke, auto-rollback).
 # Nothing reaches production traffic without passing on stage first.
 # Rollback: .github/workflows/rollback.yml or `pnpm release:rollback --env production`.
 
@@ -107,6 +108,19 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm run stage:seed
 
+      # Pre-promote: every deployed stage worker has its required secrets and
+      # client ids (scripts/release/secrets-manifest.ts). Fails the release.
+      - name: Secrets check (stage)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node --experimental-strip-types --no-warnings scripts/release/check-secrets.ts --env stage | tee secrets-check.txt
+          status=${PIPESTATUS[0]}
+          { echo '### Secrets check (stage)'; echo '```'; cat secrets-check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
       # Same mechanics as production, so every release also rehearses the promote
       - name: Deploy candidates to stage
         env:
@@ -171,6 +185,19 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-bundle
+
+      # Pre-promote: every deployed production worker has its required secrets and
+      # client ids (scripts/release/secrets-manifest.ts). Fails the release.
+      - name: Secrets check (production)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node --experimental-strip-types --no-warnings scripts/release/check-secrets.ts --env production | tee secrets-check.txt
+          status=${PIPESTATUS[0]}
+          { echo '### Secrets check (production)'; echo '```'; cat secrets-check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
       # Expand-only migrations (enforced by check:migrations), so the code still
       # serving keeps working; a rollback never needs to undo them.

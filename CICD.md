@@ -65,8 +65,8 @@ jobs:
 | Job | What it does |
 |---|---|
 | **Build once** | Type check, `check:config`, `check:schema`, `test:scripts`; bundles auth and profile (`wrangler deploy --dry-run --outdir dist/…`), builds admin and derives its stage config. The same files go to stage and production. |
-| **Stage** | `stage:seed` (migrations, roles, prod's live redirect URIs with stage hosts); deploys the candidates to stage with the same promote mechanics as production; deploys the audit consumer; runs the release regressions and auth E2E on stage. |
-| **Production** | `d1-migrate.ts --env production` (expand-only migrations); `promote.ts --env production`: upload versions → candidates at 0% → wait until the override serves the candidate → smoke through `Cloudflare-Workers-Version-Overrides` → 100% + `triggers deploy` → smoke → automatic rollback on any failure. Result in the job summary and the `release-result` artifact. |
+| **Stage** | `stage:seed` (migrations, roles, prod's live redirect URIs with stage hosts); `check:secrets --env stage` (every stage worker has its required secrets and client ids); deploys the candidates to stage with the same promote mechanics as production; deploys the audit consumer; runs the release regressions and auth E2E on stage. |
+| **Production** | `check:secrets --env production` (fails the release before anything changes); `d1-migrate.ts --env production` (expand-only migrations); `promote.ts --env production`: upload versions → candidates at 0% → wait until the override serves the candidate → smoke through `Cloudflare-Workers-Version-Overrides` → 100% + `triggers deploy` → smoke → automatic rollback on any failure. Result in the job summary and the `release-result` artifact. |
 
 A failed stage job stops the release: production is not touched. The audit
 consumer is not deployed to production by CI (it never was); deploy it by hand
@@ -313,7 +313,7 @@ pnpm deploy:auth
 ### Automated Deployment
 
 Every merge to `main` runs `release.yml` (above): build once → stage → E2E →
-production at 0% → smoke → 100% → smoke. There are no per-PR preview deployments;
+secrets check → production at 0% → smoke → 100% → smoke. There are no per-PR preview deployments;
 PRs are tested on QA (`test.yml` → QA Deploy and E2E).
 
 Manual production deploys (`pnpm deploy:auth` etc.) bypass stage. Use them only
