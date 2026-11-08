@@ -23,6 +23,7 @@ import { getAuditEmitter } from './audit-emitter';
 import { createRateLimitExceededEvent } from './audit-events';
 import { trackEvent } from './utils/analytics';
 import { tokenRateLimitSubject } from './utils/token-rate-limit-subject';
+import { handleAccountExport, handleDeleteAccount } from './routes/account-routes';
 import { AdminEnterpriseRoutes } from './admin-enterprise-routes';
 import { AdminTenantRoutes } from './admin-tenant-routes';
 import { routeAdminDLQ } from './admin-dlq-routes';
@@ -32,6 +33,9 @@ import { BrowserSessionService } from './services/browser-session.service';
 import { parseSessionCookie } from './utils/session-cookie';
 import { requireAdmin } from './middleware/admin-auth';
 import { verifyAdminAuth } from './auth-middleware';
+
+const methodNotAllowed = (allow: string) =>
+	new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: { Allow: allow, 'Content-Type': 'application/json' } });
 
 /**
  * Router context containing all dependencies
@@ -630,6 +634,15 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 
 		case '/authorize':
 			return handleAuthorizeRedirect(rctx);
+
+		// Self-service account deletion and export (Epic 9.7): the user's own token
+		case '/account':
+			if (request.method !== 'DELETE') return methodNotAllowed('DELETE');
+			return handleDeleteAccount(request, rctx.env, rctx.ctx, rctx.requestId);
+
+		case '/account/export':
+			if (request.method !== 'GET') return methodNotAllowed('GET');
+			return handleAccountExport(request, rctx.env);
 	}
 
 	// Handle prefix-based routes

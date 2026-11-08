@@ -125,9 +125,16 @@ export class D1SessionAdapter implements SessionService {
 		refreshToken: string;
 		clientId: string;
 		ttl: number;
+		/**
+		 * When the user authenticated (ms); defaults to now. Silent SSO passes the
+		 * session's original time so a silent sign-on never refreshes it: it is the
+		 * OIDC auth_time behind "sign in again" checks (account deletion).
+		 */
+		authenticatedAt?: number;
 	}): Promise<AccountSession> {
 		const id = `as_${crypto.randomUUID().replace(/-/g, '')}`;
 		const now = Date.now();
+		const authenticatedAt = params.authenticatedAt ?? now;
 		const expiresAt = now + params.ttl * 1000;
 
 		// Check if account already exists for this user in this session
@@ -146,7 +153,7 @@ export class D1SessionAdapter implements SessionService {
 					WHERE browser_session_id = ? AND user_id = ?`
 				)
 				.bind(
-					now,
+					authenticatedAt,
 					expiresAt,
 					params.subjectType,
 					JSON.stringify(params.subjectProperties),
@@ -174,7 +181,7 @@ export class D1SessionAdapter implements SessionService {
 				browser_session_id: params.browserSessionId,
 				user_id: params.userId,
 				is_active: true,
-				authenticated_at: now,
+				authenticated_at: authenticatedAt,
 				expires_at: expiresAt,
 				subject_type: params.subjectType,
 				subject_properties: params.subjectProperties,
@@ -211,7 +218,7 @@ export class D1SessionAdapter implements SessionService {
 				id,
 				params.browserSessionId,
 				params.userId,
-				now,
+				authenticatedAt,
 				expiresAt,
 				params.subjectType,
 				JSON.stringify(params.subjectProperties),
@@ -231,7 +238,7 @@ export class D1SessionAdapter implements SessionService {
 			browser_session_id: params.browserSessionId,
 			user_id: params.userId,
 			is_active: true,
-			authenticated_at: now,
+			authenticated_at: authenticatedAt,
 			expires_at: expiresAt,
 			subject_type: params.subjectType,
 			subject_properties: params.subjectProperties,
