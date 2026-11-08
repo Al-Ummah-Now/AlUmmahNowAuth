@@ -82,10 +82,11 @@ test.describe('Single sign-on across profile, admin and web', () => {
     expect(new URL(page.url()).origin).toBe(new URL(TEST_URLS.adminDashboard).origin);
 
     if (WEB_URL) {
+      // The click starts on the web app itself, so wait for its OAuth callback
+      const callback = page.waitForResponse((r) => r.url().startsWith(`${WEB_URL}/api/callback`), { timeout: 20000 });
       await openWebSignIn(page);
-      await page.waitForURL((u) => u.origin === new URL(WEB_URL).origin && !u.pathname.startsWith('/api/'), {
-        timeout: 20000,
-      });
+      await callback;
+      await page.waitForLoadState('load');
       expect(page.url()).not.toContain('/auth/error');
       expect(await webSignedIn(page)).toBe(true);
     }

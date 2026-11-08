@@ -40,10 +40,10 @@ test.describe('Client registry at /authorize', () => {
     const res = await page.goto(authorizeUrl(PROFILE_CLIENT_ID, `${TEST_URLS.profileApp}/not-the-callback`));
     expect(res?.status()).toBe(400);
     await expectClientError(page, 'redirect_uri_not_registered');
-    await expect(page.locator('h1')).toHaveText("This app can't sign you in here");
+    await expect(page.locator('h1[data-component="title"]')).toHaveText("This app can't sign you in here");
 
     await page.goto(authorizeUrl(PROFILE_CLIENT_ID, `${TEST_URLS.profileApp}/not-the-callback`, '&lang=ar'));
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-    await expect(page.locator('h1')).toHaveText('لا يمكن لهذا التطبيق تسجيل دخولك هنا');
+    await expect(page.locator('h1[data-component="title"]')).toHaveText('لا يمكن لهذا التطبيق تسجيل دخولك هنا');
   });
 });
