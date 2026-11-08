@@ -223,6 +223,45 @@ pnpm deploy:admin
 
 **Important**: Both apps share the same D1 database.
 
+### 🔑 Secrets per app
+
+Names and purposes only. Values live in Cloudflare (Secrets Store or worker secrets) and GitHub secrets, never in git.
+The source of truth is [`scripts/release/secrets-manifest.ts`](scripts/release/secrets-manifest.ts). Update it in the same PR as any code that reads a new secret.
+
+| App (Worker) | Secret | Where | Envs | Purpose |
+|---|---|---|---|---|
+| auth (`al-ummah-now-auth[-qa\|-stage]`) | `KEY_ENCRYPTION_MASTER_KEY` | Secrets Store (`…_QA`, `…_STAGE`) | all | Encrypts JWT signing keys at rest in D1 |
+| | `RESEND_API_KEY` | Secrets Store | all | Sign-in and verification email |
+| | `SESSION_SECRET` | worker secret (64 hex chars) | all | Encrypts the `__session` SSO cookie. Production returns 503 without it |
+| | `CLIENT_SECRET_SALT` | Secrets Store (`…_QA`, `…_STAGE`) | all | Legacy: required by deep health, read by no code (client secrets use per-secret PBKDF2 salts) |
+| | `E2E_CODE_SINK_SECRET` | Secrets Store (`…_QA`, `…_STAGE`) | qa, stage only | Gates `/test/*` and the E2E email-code sink. **Forbidden in production** |
+| | `TEST_PROMOTE_SECRET` | worker secret | qa, stage only | E2E role-promotion route. **Forbidden in production** |
+| admin (`al-ummah-now-auth-admin[-qa\|-stage]`) | `ADMIN_CLIENT_SECRET` | worker secret | all | `client_credentials` secret of `ADMIN_CLIENT_ID` (the "Auth Admin" client) for M2M calls to auth `/admin/*` |
+| profile, audit-consumer | none | | | |
+
+Client ids that must exist (enabled) in each env's auth D1 `oauth_clients`:
+
+| App | Client id comes from | prod | qa |
+|---|---|---|---|
+| auth | `PROFILE_CLIENT_ID` var | `109a1087-…` | `109a1087-…` |
+| admin | `ADMIN_CLIENT_ID` var (login **and** M2M) | `1448ed27-…` Auth Admin | `2448ed27-…` Auth Admin |
+| profile | hard-coded | `109a1087-…` | `109a1087-…` |
+
+GitHub secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (deploys), `RESEND_API_KEY`, `E2E_CODE_SINK_SECRET_QA` and `E2E_ADMIN_CLIENT_SECRET` (QA E2E; the last must equal the QA admin worker's `ADMIN_CLIENT_SECRET`, and `qa-e2e.yml` writes it there), plus the `*_STAGE` equivalents.
+
+**Check:** `pnpm check:secrets [--env production|qa|stage]` reads what is *deployed* and fails on any missing secret, any Secrets Store binding to a deleted secret, any test-only secret in production, or any client id missing from that env's auth D1. It runs daily, on PRs that touch configs, and as a reusable workflow (`.github/workflows/secrets-check.yml`) for the release pipeline's pre-promote step.
+
+**Rotating a client secret:** secrets are stored only as hashes, so "seeding" one means rotating it. First list **every** consumer: worker secrets and GitHub secrets in both repos. Then run:
+
+```bash
+node --experimental-strip-types scripts/release/rotate-client-secret.ts \
+  --db <auth D1 uuid> --client <oauth_clients.id> \
+  --worker <worker>:<SECRET_NAME> [--gh-secret <owner/repo>:<NAME>] \
+  --token-url https://auth[.qa].alummahnow.net/token --scope "admin:users admin:roles"
+```
+
+The old secret stays valid for `--grace` seconds (default 3600) while consumers update. The new value is never printed or written to disk. To set a missing generated secret (for example `SESSION_SECRET`), use `scripts/release/seed-worker-secret.ts --worker <worker>:<NAME>`. It refuses to overwrite an existing secret without `--force`.
+
 ## 🎨 Admin Dashboard Features
 
 - **Dashboard**: User statistics and system overview
