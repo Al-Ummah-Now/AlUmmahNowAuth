@@ -5,18 +5,22 @@ import type { MiddlewareHandler } from 'hono';
 import { logger } from '../logger';
 import { revokeUser, type RevocationReason } from './revocation-list';
 
-/** Admin user API (`/admin/users`) actions that must sign the user out everywhere. */
+/**
+ * Admin user API actions that must sign the user out everywhere. The router
+ * strips `/admin/users` before the admin user app sees the request, so the
+ * app's paths are `/:id/suspend`; the full path is accepted too.
+ */
 const ADMIN_USER_ACTIONS: Array<{ method: string; pattern: RegExp; reason: RevocationReason }> = [
-	{ method: 'POST', pattern: /^\/admin\/users\/([^/]+)\/suspend$/, reason: 'admin_suspended' },
-	{ method: 'POST', pattern: /^\/admin\/users\/([^/]+)\/force-password-reset$/, reason: 'admin_password_reset' },
-	{ method: 'DELETE', pattern: /^\/admin\/users\/([^/]+)$/, reason: 'admin_deleted' },
+	{ method: 'POST', pattern: /^(?:\/admin\/users)?\/([^/]+)\/suspend$/, reason: 'admin_suspended' },
+	{ method: 'POST', pattern: /^(?:\/admin\/users)?\/([^/]+)\/force-password-reset$/, reason: 'admin_password_reset' },
+	{ method: 'DELETE', pattern: /^(?:\/admin\/users)?\/([^/]+)$/, reason: 'admin_deleted' },
 ];
 
 export function adminUserActionReason(method: string, pathname: string): { userId: string; reason: RevocationReason } | null {
 	for (const action of ADMIN_USER_ACTIONS) {
 		if (action.method !== method) continue;
 		const match = action.pattern.exec(pathname);
-		if (match?.[1] && match[1] !== 'tokens') return { userId: decodeURIComponent(match[1]), reason: action.reason };
+		if (match?.[1] && match[1] !== 'tokens' && match[1] !== 'admin') return { userId: decodeURIComponent(match[1]), reason: action.reason };
 	}
 	return null;
 }

@@ -6,22 +6,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { generateKeyPair, exportSPKI, SignJWT } from 'jose';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
+import { Hono } from 'hono';
 import worker from '../index';
 import { setupDatabase } from '../test-setup';
 import { clearJWKSCache, SIGNING_KEY_KV_KEY } from '../utils/jwks-cache';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import {
-	MAX_REVOKED_JTIS,
 	REVOCATION_TTL_SECONDS,
 	isRevoked,
 	readRevocation,
 	revocationKey,
-	revokeAccessToken,
 	revokeUser,
 	type RevocationEntry,
 } from '../revocation/revocation-list';
 import { guardIssuerStorage, parseAccessTtl } from '../revocation/token-gate';
-import { adminUserActionReason, revokeOnPasswordChange } from '../revocation/lifecycle';
+import { adminUserActionReason, revokeOnAdminUserAction, revokeOnPasswordChange } from '../revocation/lifecycle';
 
 const ISSUER = 'http://localhost:3301';
 const E = env as unknown as Env;
@@ -62,31 +61,14 @@ describe('revocation list', () => {
 		expect(second!.reason).toBe('password_changed');
 	});
 
-	it('revokeAccessToken lists one jti until it expires and keeps the list bounded', async () => {
-		const { kv } = memoryKv();
-		const t = Date.UTC(2026, 10, 8, 12, 0, 0);
-		expect(await revokeAccessToken(kv, 'usr_a', 'expired', t / 1000 - 1, t)).toBeNull();
-		await revokeAccessToken(kv, 'usr_a', 'j1', t / 1000 + 900, t);
-		const entry = await readRevocation(kv, 'usr_a');
-		expect(entry!.jtis).toEqual({ j1: t / 1000 + 900 });
-		expect(entry!.before).toBeUndefined();
-		// Expired jtis are pruned on the next write
-		await revokeAccessToken(kv, 'usr_a', 'j2', t / 1000 + 2000, t + 1000_000);
-		expect(Object.keys((await readRevocation(kv, 'usr_a'))!.jtis!)).toEqual(['j2']);
-		for (let i = 0; i < MAX_REVOKED_JTIS + 5; i++) await revokeAccessToken(kv, 'usr_b', `j${i}`, t / 1000 + 900 + i, t);
-		expect(Object.keys((await readRevocation(kv, 'usr_b'))!.jtis!)).toHaveLength(MAX_REVOKED_JTIS);
-	});
-
-	it('isRevoked: sign-in time decides, iat stands in, listed jtis always lose', () => {
-		const entry: RevocationEntry = { v: 1, before: 1000, jtis: { bad: 5000 }, updatedAt: 0 };
+	it('isRevoked: sign-in time decides, iat stands in', () => {
+		const entry: RevocationEntry = { v: 1, before: 1000, updatedAt: 0 };
 		expect(isRevoked(null, { iat: 1 })).toBe(false);
 		expect(isRevoked(entry, { authTime: 999, iat: 2000 })).toBe(true); // refreshed after, signed in before
 		expect(isRevoked(entry, { authTime: 1000, iat: 1000 })).toBe(false);
 		expect(isRevoked(entry, { iat: 999 })).toBe(true);
 		expect(isRevoked(entry, { iat: 1001 })).toBe(false);
 		expect(isRevoked(entry, {})).toBe(true);
-		expect(isRevoked(entry, { authTime: 3000, jti: 'bad' })).toBe(true);
-		expect(isRevoked({ v: 1, jtis: { bad: 1 }, updatedAt: 0 }, { authTime: 1, jti: 'ok' })).toBe(false);
 	});
 
 	it('does nothing without the KV binding', async () => {
@@ -100,13 +82,29 @@ describe('revocation list', () => {
 		for (const bad of [undefined, '', 'abc', '30', '90.5', '-900']) expect(parseAccessTtl(bad)).toBeUndefined();
 	});
 
-	it('maps admin user actions to revocations', () => {
+	it('maps admin user actions to revocations (paths as the admin user app sees them, and full paths)', () => {
+		expect(adminUserActionReason('POST', '/usr_x/suspend')).toEqual({ userId: 'usr_x', reason: 'admin_suspended' });
+		expect(adminUserActionReason('DELETE', '/usr_x')).toEqual({ userId: 'usr_x', reason: 'admin_deleted' });
 		expect(adminUserActionReason('POST', '/admin/users/usr_x/suspend')).toEqual({ userId: 'usr_x', reason: 'admin_suspended' });
 		expect(adminUserActionReason('DELETE', '/admin/users/usr_x')).toEqual({ userId: 'usr_x', reason: 'admin_deleted' });
 		expect(adminUserActionReason('POST', '/admin/users/usr_x/force-password-reset')).toMatchObject({ reason: 'admin_password_reset' });
 		expect(adminUserActionReason('POST', '/admin/users/usr_x/unsuspend')).toBeNull();
 		expect(adminUserActionReason('GET', '/admin/users/usr_x')).toBeNull();
 		expect(adminUserActionReason('PATCH', '/admin/users/usr_x')).toBeNull();
+	});
+
+	it('the admin middleware revokes after a successful action under the production mount (router strips /admin/users)', async () => {
+		const { kv, data } = memoryKv();
+		const app = new Hono();
+		app.use('*', revokeOnAdminUserAction(kv));
+		app.post('/:id/suspend', (c) => c.json({ ok: true }));
+		app.delete('/:id', (c) => (c.req.param('id') === 'usr_missing' ? c.json({}, 404) : c.json({ ok: true })));
+		expect((await app.request('http://auth/usr_s/suspend', { method: 'POST' })).status).toBe(200);
+		expect(JSON.parse(data.get('u:usr_s')!).reason).toBe('admin_suspended');
+		await app.request('http://auth/usr_d', { method: 'DELETE' });
+		expect(JSON.parse(data.get('u:usr_d')!).reason).toBe('admin_deleted');
+		await app.request('http://auth/usr_missing', { method: 'DELETE' });
+		expect(data.has('u:usr_missing')).toBe(false);
 	});
 });
 
@@ -231,27 +229,10 @@ describe('revocation through the worker', () => {
 		expect((await call('/account/sign-out-all', { method: 'GET', headers: { Authorization: `Bearer ${t}` } })).status).toBe(405);
 	});
 
-	it('POST /token/revoke lists a valid access token by jti; forged or foreign tokens change nothing', async () => {
-		const jti = crypto.randomUUID();
-		const t = await userToken('usr_rev', { jti });
+	it('POST /token/revoke accepts an access token (200) without listing it: it expires within ACCESS_TOKEN_TTL', async () => {
+		const t = await userToken('usr_rev');
 		expect((await call('/token/revoke', form({ token: t }))).status).toBe(200);
-		expect((await readRevocation(KV(), 'usr_rev'))!.jtis![jti]).toBeGreaterThan(nowS());
-
-		// Another client presenting the token: 200, nothing written
-		const t2 = await userToken('usr_other');
-		expect((await call('/token/revoke', form({ token: t2, client_id: 'someone-else' }))).status).toBe(200);
-		expect(await readRevocation(KV(), 'usr_other')).toBeNull();
-
-		// Signed by another key: 200, nothing written
-		const forger = (await generateKeyPair('ES256')).privateKey;
-		const forged = await new SignJWT({ mode: 'access', type: 'user', properties: { id: 'usr_other' }, jti: 'x' })
-			.setProtectedHeader({ alg: 'ES256', kid: 'rev-kid' })
-			.setIssuer(ISSUER)
-			.setIssuedAt()
-			.setExpirationTime('15m')
-			.sign(forger);
-		expect((await call('/token/revoke', form({ token: forged }))).status).toBe(200);
-		expect(await readRevocation(KV(), 'usr_other')).toBeNull();
+		expect(await readRevocation(KV(), 'usr_rev')).toBeNull();
 	});
 
 	it('POST /token/revoke deletes a refresh token, but only for the client it was issued to', async () => {

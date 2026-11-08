@@ -14,14 +14,14 @@
  *   refresh and nobody has to sign in again.
  *
  * handleTokenRevoke is POST /token/revoke (RFC 7009) in front of the issuer:
- * a refresh token is deleted, a user access token is added to the list until
- * it expires. Always 200, as the RFC asks, so tokens can't be probed.
+ * a refresh token is deleted (single sign-out). Access tokens are not listed
+ * (see revocation-list.ts); they expire within ACCESS_TOKEN_TTL. Always 200,
+ * as the RFC asks, so tokens can't be probed.
  */
 import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { logger } from '../logger';
-import { verifyUserToken } from '../routes/account-routes';
-import { isRevoked, readRevocation, revokeAccessToken } from './revocation-list';
+import { isRevoked, readRevocation } from './revocation-list';
 
 interface TokenRecord {
 	properties?: { id?: string };
@@ -93,7 +93,7 @@ function presentedClientIds(request: Request, form: FormData): string[] {
 const ok = () =>
 	new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
-export async function handleTokenRevoke(request: Request, env: Env, storage: StorageAdapter): Promise<Response> {
+export async function handleTokenRevoke(request: Request, storage: StorageAdapter): Promise<Response> {
 	let form: FormData;
 	try {
 		form = await request.formData();
@@ -112,15 +112,9 @@ export async function handleTokenRevoke(request: Request, env: Env, storage: Sto
 	}
 	const clients = presentedClientIds(request, form);
 
-	if (token.split('.').length === 3) {
-		// Access token: only a valid user token of this issuer can be listed
-		const user = await verifyUserToken(token, env);
-		if (user instanceof Response || !user.jti || !user.exp) return ok();
-		if (clients.length && user.clientId && clients.some((id) => id !== user.clientId)) return ok();
-		await revokeAccessToken(env.TOKEN_REVOCATIONS, user.userId, user.jti, user.exp);
-		logger.info('[revocation] Access token revoked', { userId: user.userId });
-		return ok();
-	}
+	// Access tokens are short-lived and not listed (RFC 7009 lets a server
+	// support refresh tokens only); sign-out everywhere is /account/sign-out-all
+	if (token.split('.').length === 3) return ok();
 
 	const parts = token.split(':');
 	const secret = parts.pop();

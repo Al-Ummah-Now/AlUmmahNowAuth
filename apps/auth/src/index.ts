@@ -234,10 +234,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Token endpoints (/token, /token/introspect) are handled by the OpenAuth
     // issuer with consistent JWKS keys. /token/revoke is ours (#437): the
-    // issuer's needs client authentication we don't use, and access tokens go
-    // on the revocation list the APIs read.
+    // issuer's needs client authentication our public clients don't have.
     if (request.method === 'POST' && url.pathname === '/token/revoke') {
-      return await handleTokenRevoke(request, env, storage);
+      return await handleTokenRevoke(request, storage);
     }
     const accessTtl = parseAccessTtl(env.ACCESS_TOKEN_TTL);
 
