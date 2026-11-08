@@ -1,21 +1,16 @@
-import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkersConfig({
+// The profile worker's testable logic (app catalog, i18n, launcher markup) is
+// pure TypeScript, so unit tests run in plain Node rather than the Workers pool.
+export default defineConfig({
   test: {
-    poolOptions: {
-      workers: {
-        wrangler: {
-          configPath: "./wrangler.toml",
-        },
-      },
-    },
+    include: ["src/**/*.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
       include: ["src/**/*.ts"],
       exclude: [
         "src/**/*.test.ts",
-        "src/**/*.spec.ts",
         "src/index.ts", // Main worker entry point - integration tested
       ],
     },

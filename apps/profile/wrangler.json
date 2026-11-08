@@ -15,7 +15,7 @@
   "vars": {
     "AUTH_SERVER_URL": "https://auth.alummahnow.net",
     "APP_URL": "https://profile.auth.alummahnow.net",
-    "ADMIN_URL": "https://admin.auth.alummahnow.net",
+    "APP_ENV": "production",
     "CF_WEB_ANALYTICS_TOKEN": ""
   },
   "observability": {
