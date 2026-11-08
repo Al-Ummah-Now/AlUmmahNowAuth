@@ -19,10 +19,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const client = getOpenAuthClient(request, env);
 
   // Generate authorize URL using OpenAuth client
-  // Use prompt=select_account to show account picker on first login
   logger.debug('Generating authorize URL for login');
   const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
-  const authorizeUrl = `${baseAuthorizeUrl}&prompt=select_account`;
+  // No prompt: an existing sign-in (single sign-on) completes silently
+  const authorizeUrl = baseAuthorizeUrl;
   logger.info('Redirecting to auth server', { authorizeUrl });
 
   return redirect(authorizeUrl);

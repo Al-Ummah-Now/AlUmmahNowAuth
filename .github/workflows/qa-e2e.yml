@@ -314,6 +314,7 @@ jobs:
           E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
           E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          E2E_WEB_URL: https://videos.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
@@ -368,6 +369,7 @@ jobs:
           E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
           E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          E2E_WEB_URL: https://videos.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
@@ -422,6 +424,7 @@ jobs:
           E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
           E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          E2E_WEB_URL: https://videos.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
@@ -472,6 +475,7 @@ jobs:
           E2E_AUTH_SERVER_URL: https://auth.qa.alummahnow.net
           E2E_PROFILE_URL: https://profile.auth.qa.alummahnow.net
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
+          E2E_WEB_URL: https://videos.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}

@@ -8,6 +8,7 @@ import { hexToSecret } from "./utils/crypto";
 import { matchOrigin, getAllowedOrigins } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
+import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
 import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-handlers";
 import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
 import { PasswordUI } from "@al-ummah-now/openauth/ui/password";
@@ -266,6 +267,13 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       subjects,
       rbacService,
       clientDb: env.AUTH_DB,
+      // Unrecoverable sign-in state (stale tab, bookmark, cookies cleared) shows a
+      // friendly en/ar "Start sign-in again" page; this is where it links when the
+      // sign-in's app is unknown.
+      restart: { fallbackUrl: signInFallbackUrl(env) },
+      // Unknown/disabled clients and unregistered redirect_uris (exact match)
+      // get a clear error page (enforce) or are only logged (report)
+      clientRegistry: clientRegistryMode(env),
       tenantResolver: {
         customDomains: tenantCustomDomains(env.OPENAUTH_ISSUER),
       },

@@ -12,6 +12,9 @@ declare namespace Cloudflare {
 		AUDIT_WEBHOOK_URL: "";
 		AUDIT_WEBHOOK_SECRET: "";
 		PROFILE_APP_URL: string;
+		SIGN_IN_FALLBACK_URL: string;
+		FRONTCHANNEL_LOGOUT_URLS: string;
+		CLIENT_REGISTRY_MODE: string;
 		RESEND_API_KEY: string;
 		ALLOWED_ORIGINS: string;
 		OPENAUTH_ISSUER: string;

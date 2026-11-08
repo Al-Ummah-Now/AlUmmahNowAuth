@@ -22,7 +22,13 @@ export const APPS: AppRule[] = [
 		dir: 'apps/auth',
 		production: {
 			env: 'production',
-			vars: { ENVIRONMENT: 'production', OPENAUTH_ISSUER: 'https://auth.alummahnow.net' },
+			vars: {
+				ENVIRONMENT: 'production',
+				OPENAUTH_ISSUER: 'https://auth.alummahnow.net',
+				SIGN_IN_FALLBACK_URL: 'https://videos.alummahnow.net/',
+				FRONTCHANNEL_LOGOUT_URLS: 'https://profile.auth.alummahnow.net/logout,https://admin.auth.alummahnow.net/logout',
+				CLIENT_REGISTRY_MODE: 'report',
+			},
 			requiredBindings: AUTH_BINDINGS,
 			allowedHosts: ['auth.alummahnow.net'],
 			forbiddenNames: TEST_ONLY,

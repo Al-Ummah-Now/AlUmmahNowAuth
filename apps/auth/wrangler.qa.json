@@ -40,7 +40,10 @@
     "ALLOWED_ORIGINS": "https://profile.auth.qa.alummahnow.net,https://admin.auth.qa.alummahnow.net",
     "OPENAUTH_ISSUER": "https://auth.qa.alummahnow.net",
     "AUDIT_WEBHOOK_URL": "",
-    "AUDIT_WEBHOOK_SECRET": ""
+    "AUDIT_WEBHOOK_SECRET": "",
+    "SIGN_IN_FALLBACK_URL": "https://videos.qa.alummahnow.net/",
+    "FRONTCHANNEL_LOGOUT_URLS": "https://profile.auth.qa.alummahnow.net/logout,https://admin.auth.qa.alummahnow.net/logout",
+    "CLIENT_REGISTRY_MODE": "enforce"
   },
   "triggers": {
     "crons": [

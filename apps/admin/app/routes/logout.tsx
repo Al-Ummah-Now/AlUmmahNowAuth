@@ -1,9 +1,12 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
 import { logger } from "../lib/logger.server";
+import { getAuthServerUrl } from "../lib/config";
+import { singleSignOutNext } from "../lib/single-sign-out";
+
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { AUTH_STORAGE?: KVNamespace };
+  const env = context?.cloudflare?.env as { AUTH_STORAGE?: KVNamespace; AUTH_SERVER_URL?: string };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
 
   // Initialize logger
@@ -37,10 +40,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
   }
 
-  // Clear the session cookie and redirect to home
-  return redirect("/", {
+  // Clear the session cookie, then sign out everywhere (auth server chain)
+  return redirect(singleSignOutNext(new URL(request.url), getAuthServerUrl(request, env)), {
     headers: {
       "Set-Cookie": "auth_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+      "Cache-Control": "no-store",
     },
   });
 }

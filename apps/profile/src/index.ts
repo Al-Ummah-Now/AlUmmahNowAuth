@@ -111,6 +111,26 @@ function getAuthServerUrl(request: Request, env: Env): string {
   return 'https://auth.alummahnow.net';
 }
 
+/**
+ * Where /logout goes after clearing the local session: back into the auth
+ * server's single sign-out chain (?next=<auth>/logout?...), or start it.
+ */
+function singleSignOutNext(url: URL, authServerUrl: string): string {
+  const auth = new URL(authServerUrl);
+  const next = url.searchParams.get("next");
+  if (next) {
+    try {
+      const target = new URL(next);
+      if (target.origin === auth.origin && target.pathname === "/logout") return target.toString();
+    } catch {
+      // ignore a malformed next
+    }
+  }
+  const start = new URL("/logout", auth.origin);
+  start.searchParams.set("return", `${url.origin}/`);
+  return start.toString();
+}
+
 // Get the current app URL (for OAuth redirect_uri)
 function getAppUrl(request: Request, env: Env): string {
   // Use environment variable (configured in wrangler.json or .dev.vars)
@@ -152,11 +172,14 @@ export default {
         }
       }
 
+      // Single sign-out: the auth server ends the shared sign-in and asks every
+      // app to clear its own session, coming back here with ?next=
       return new Response(null, {
         status: 302,
         headers: {
-          "Location": "/",
+          "Location": singleSignOutNext(url, authServerUrl),
           "Set-Cookie": clearSessionCookie(isLocalhost),
+          "Cache-Control": "no-store",
         },
       });
     }

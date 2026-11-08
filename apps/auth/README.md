@@ -361,6 +361,34 @@ See [AUTHENTICATION_FLOWS.md](../../AUTHENTICATION_FLOWS.md) for detailed flow d
 8. **Client creates session** and stores tokens
 9. **User is authenticated** and can access protected resources
 
+## Sign-in Flows (per tab)
+
+Each `/authorize` call starts its own flow (openauth >= 1.0.19). The flow id
+travels in the URL (`?auth_flow=`), so several tabs and apps (web, profile,
+admin) can sign in at once in one browser, and each completes to its own client.
+
+**KV Key:** `oauth:flow::{id}` (22-char random id)
+
+**KV Value (v1):**
+```json
+{
+  "v": 1,
+  "authorization": { "client_id": "...", "redirect_uri": "...", "state": "...", "pkce": {} },
+  "binding": "sha256(oa_flow_bind cookie) hex",
+  "createdAt": 0,
+  "expiresAt": 0,
+  "completedAt": 0,
+  "provider": { "provider": { "type": "start" } }
+}
+```
+
+- TTL: 24h. It drops to 1h once a code is issued (`completedAt`), which lets a
+  resubmitted form send the user back to the app.
+- The record is bound to the browser through the httpOnly `oa_flow_bind` cookie,
+  so a flow id from another browser is rejected.
+- When a sign-in can't be resumed, users see a friendly en/ar "Start sign-in
+  again" page that links to the app that started it, or to `SIGN_IN_FALLBACK_URL`.
+
 ## Session Management
 
 Sessions are stored in Cloudflare KV with a 7-day TTL.
