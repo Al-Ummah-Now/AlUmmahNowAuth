@@ -13,7 +13,6 @@ import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
 import { frontChannelLogoutUrls, logoutReturnUrl } from '../handlers/logout-handler';
-import { resolveSessionSecret } from '../utils/session-secret';
 
 const ISSUER = 'http://localhost:3301';
 const EMAIL = 'sso-test@example.com';
@@ -139,29 +138,5 @@ describe('logout helpers', () => {
 		expect(logoutReturnUrl(e, 'https://videos.example/watch', 'https://auth.example')).toBe('https://videos.example/watch');
 		expect(logoutReturnUrl(e, 'https://evil.example/', 'https://auth.example')).toBe('https://videos.example/');
 		expect(logoutReturnUrl(e, '//evil.example/', 'https://auth.example')).toBe('https://videos.example/');
-	});
-});
-
-describe('session cookie key', () => {
-	it('uses a valid SESSION_SECRET', async () => {
-		const hex = 'ab'.repeat(32);
-		const { key, source } = await resolveSessionSecret({ SESSION_SECRET: hex });
-		expect(source).toBe('SESSION_SECRET');
-		expect(key[0]).toBe(0xab);
-	});
-
-	it('derives a stable non-zero key from the master key, never the all-zero key', async () => {
-		const a = await resolveSessionSecret({ SESSION_SECRET: '0'.repeat(64), KEY_ENCRYPTION_MASTER_KEY: 'master-1' });
-		const b = await resolveSessionSecret({ KEY_ENCRYPTION_MASTER_KEY: 'master-1' });
-		const c = await resolveSessionSecret({ KEY_ENCRYPTION_MASTER_KEY: 'master-2' });
-		expect(a.source).toBe('derived');
-		expect(a.key).toHaveLength(32);
-		expect([...a.key].some((x) => x !== 0)).toBe(true);
-		expect([...b.key]).toEqual([...a.key]);
-		expect([...c.key]).not.toEqual([...a.key]);
-	});
-
-	it('falls back to the insecure default only without any key material', async () => {
-		expect((await resolveSessionSecret({})).source).toBe('insecure-default');
 	});
 });

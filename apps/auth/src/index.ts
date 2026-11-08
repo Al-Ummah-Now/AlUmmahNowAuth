@@ -8,7 +8,6 @@ import { matchOrigin, getAllowedOrigins } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
 import { signInFallbackUrl } from "./utils/sign-in-restart";
-import { resolveSessionSecret } from "./utils/session-secret";
 import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-handlers";
 import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
 import { PasswordUI } from "@al-ummah-now/openauth/ui/password";

@@ -16,7 +16,6 @@ import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 const PASSWORD = 'TestPassword123!'; // same as fixtures/auth.ts
 const WEB_URL = process.env.E2E_WEB_URL; // e.g. https://videos.qa.alummahnow.net
-const WEB_CLIENT_ID = process.env.E2E_WEB_CLIENT_ID ?? '3f8c9b2e-4d6a-4b8e-9f3a-2c7d5e8f1a6b';
 const WEB_SIGNED_IN_COOKIES = ['al_ummah_session', 'access_token'];
 
 /** Every time the browser lands on the auth server's sign-in form. */
@@ -37,12 +36,11 @@ async function openAdmin(page: Page) {
   }
 }
 
-/** Starts the web app's own sign-in (its client id and /api/callback). */
+/** Clicks the web app's own Sign In (menu → Sign In), whatever its callback URL is. */
 async function openWebSignIn(page: Page) {
-  const redirect = `${WEB_URL}/api/callback?locale=en`;
-  await page.goto(
-    `${TEST_URLS.authServer}/authorize?client_id=${WEB_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(redirect)}`
-  );
+  await page.goto(`${WEB_URL}/en`);
+  await page.locator('button[aria-haspopup="menu"]').first().click();
+  await page.locator('[role="menu"] form button[type="submit"]').first().click();
 }
 
 async function webSignedIn(page: Page) {
@@ -109,6 +107,10 @@ test.describe('Single sign-on across profile, admin and web', () => {
     await expect(page.locator('input[type="password"]')).toBeVisible();
 
     if (WEB_URL) {
+      // The web app is not in the front-channel chain until its /api/auth/logout
+      // ships (AlUmmahNow#220), so drop its local session here: what matters is
+      // that the auth server no longer signs it in silently.
+      await page.context().clearCookies({ domain: new URL(WEB_URL).hostname });
       await openWebSignIn(page);
       await expect(page).toHaveURL(new RegExp(`${TEST_URLS.authServer}/password/authorize`), { timeout: 20000 });
     }

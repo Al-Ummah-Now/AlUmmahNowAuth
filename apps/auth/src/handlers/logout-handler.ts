@@ -22,7 +22,7 @@ import { getAuditEmitter } from '../audit-emitter';
 import { createLogoutEvent } from '../audit-events';
 import { trackEvent } from '../utils/analytics';
 import { addSecurityHeaders } from '../utils/security-headers';
-import { resolveSessionSecret } from '../utils/session-secret';
+import { sessionCookieKey } from '../utils/session-secret';
 import { signInFallbackUrl } from '../utils/sign-in-restart';
 import { D1SessionAdapter } from '../adapters/session-adapter';
 import { parseCookie, decryptSessionCookie } from '@al-ummah-now/openauth/session/cookie';
@@ -35,8 +35,7 @@ interface LogoutEnv {
 	AUTH_STORAGE: KVNamespace;
 	AUTH_DB?: D1Database;
 	AUTH_ANALYTICS?: AnalyticsEngineDataset;
-	SESSION_SECRET?: unknown;
-	KEY_ENCRYPTION_MASTER_KEY?: unknown;
+	SESSION_SECRET?: string;
 	FRONTCHANNEL_LOGOUT_URLS?: string;
 	SIGN_IN_FALLBACK_URL?: string;
 	PROFILE_APP_URL?: string;
@@ -82,8 +81,7 @@ export function logoutReturnUrl(env: LogoutEnv, requested: string | null, authOr
 async function revokeBrowserSession(request: Request, env: LogoutEnv): Promise<boolean> {
 	const cookie = parseCookie(request.headers.get('Cookie'), SESSION_COOKIE);
 	if (!cookie || !env.AUTH_DB) return false;
-	const { key } = await resolveSessionSecret(env);
-	const payload = await decryptSessionCookie(cookie, key);
+	const payload = await decryptSessionCookie(cookie, sessionCookieKey(env));
 	if (!payload) return false;
 	return new D1SessionAdapter(env.AUTH_DB).revokeSpecificSession(payload.sid, payload.tid);
 }
