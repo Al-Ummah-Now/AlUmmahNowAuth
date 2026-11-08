@@ -2,11 +2,24 @@
  * Debug endpoint to test M2M authentication flow
  * GET /debug/m2m - Tests the M2M token request and /admin/roles API call
  *
- * This endpoint is for debugging only and should be disabled in production.
+ * Unauthenticated, so it only answers on non-production hosts (QA E2E uses it
+ * to prove the M2M secret works) and returns 404 everywhere else. It reports a
+ * role count, never the roles themselves.
  */
 
 import type { LoaderFunctionArgs } from "react-router";
-import { listRoles, type Role } from "../lib/admin-api.server";
+import { listRoles } from "../lib/admin-api.server";
+
+/** Hosts where this unauthenticated probe may answer. Production is never listed. */
+export function isDebugHost(appUrl: string | undefined, requestUrl: string): boolean {
+  let host: string;
+  try {
+    host = new URL(appUrl || requestUrl).hostname;
+  } catch {
+    return false;
+  }
+  return host === "localhost" || host === "127.0.0.1" || /\.(qa|stage)\.alummahnow\.net$/.test(host);
+}
 
 interface DebugResponse {
   success: boolean;
@@ -17,7 +30,6 @@ interface DebugResponse {
   };
   m2mTest?: {
     rolesCount: number;
-    roles?: Role[];
     error?: string;
   };
   error?: string;
@@ -28,7 +40,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
     ADMIN_CLIENT_SECRET?: string;
+    APP_URL?: string;
   };
+
+  if (!isDebugHost(env.APP_URL, request.url)) {
+    return new Response("Not Found", { status: 404 });
+  }
 
   const response: DebugResponse = {
     success: false,
@@ -69,7 +86,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     response.success = true;
     response.m2mTest = {
       rolesCount: rolesResult.length,
-      roles: rolesResult,
     };
 
     return Response.json(response);
