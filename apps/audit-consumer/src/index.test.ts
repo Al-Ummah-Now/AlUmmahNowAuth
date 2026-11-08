@@ -148,11 +148,33 @@ describe('Audit Consumer Worker', () => {
       await worker.queue(batchOf([msg]), { AUDIT_DB: db } as any);
 
       expect(bound[0].sql).toContain('INSERT INTO audit_events');
-      expect(bound[0].args).toEqual([
+      expect(bound[0].args.slice(0, 10)).toEqual([
         '2026-01-01T00:00:00.000Z', 'tenant.created', 'info', 'admin-1', '203.0.113.1',
         'test', 'req-1', JSON.stringify({ tenantId: 't1' }), 1, null,
       ]);
       expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it('skips an event already stored, so redelivery and DLQ replay are idempotent', async () => {
+      const { db, bound } = mockDb();
+      const msg = appMessage('m1');
+      await worker.queue(
+        { messages: [msg], queue: 'audit-events-dlq', ackAll: vi.fn(), retryAll: vi.fn() } as never,
+        { AUDIT_DB: db } as never
+      );
+
+      expect(bound).toHaveLength(1);
+      expect(bound[0].sql).toMatch(/WHERE NOT EXISTS/);
+      expect(bound[0].sql.match(/\?/g)).toHaveLength(bound[0].args.length);
+      expect(bound[0].args.slice(10)).toEqual([
+        '2026-01-01T00:00:00.000Z',
+        'tenant.created',
+        'admin-1',
+        '203.0.113.1',
+        'req-1',
+        JSON.stringify({ tenantId: 't1' }),
+      ]);
+      expect(msg.ack).toHaveBeenCalledOnce();
     });
 
     it('routes mixed batches to the right tables', async () => {

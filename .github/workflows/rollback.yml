@@ -3,6 +3,9 @@ name: Rollback
 # One-click rollback (docs/release-pipeline.md). Puts workers back on the version
 # they served before their latest deployment, or on a given version, then smokes.
 # Code only: migrations are expand-only and stay applied.
+# The audit consumer is deliberately not an option: it accepts every audit message
+# format, so it is safe with any auth version, and its previous versions on production
+# are the build that sent every event to the DLQ. To change it, release a fix.
 
 on:
   workflow_dispatch:

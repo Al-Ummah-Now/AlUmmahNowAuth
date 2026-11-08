@@ -95,6 +95,7 @@ export const APPS: AppRule[] = [
 			requiredBindings: [
 				{ kind: 'd1_databases', name: 'AUDIT_DB' },
 				{ kind: 'queue_consumer', name: 'audit-events' },
+				{ kind: 'queue_consumer', name: 'audit-events-dlq' },
 			],
 			allowedHosts: [],
 			requireRoutes: false,
@@ -105,6 +106,7 @@ export const APPS: AppRule[] = [
 			requiredBindings: [
 				{ kind: 'd1_databases', name: 'AUDIT_DB' },
 				{ kind: 'queue_consumer', name: 'audit-events-stage' },
+				{ kind: 'queue_consumer', name: 'audit-events-stage-dlq' },
 			],
 			allowedHosts: [],
 			requireRoutes: false,
