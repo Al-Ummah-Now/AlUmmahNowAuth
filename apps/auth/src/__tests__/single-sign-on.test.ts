@@ -113,6 +113,70 @@ describe('single sign-on (worker)', () => {
 		expect(await browser.authorize(ADMIN)).toContain('/password/authorize');
 	});
 
+	/** The account most recently signed in (each test signs in a fresh browser). */
+	async function newestAccount() {
+		const row = await (env as unknown as Env).AUTH_DB.prepare(
+			'SELECT user_id, browser_session_id FROM account_sessions ORDER BY authenticated_at DESC, rowid DESC LIMIT 1'
+		).first<{ user_id: string; browser_session_id: string }>();
+		return row!;
+	}
+
+	/** POSTs the picker's "Sign out" form for the browser's newest account, as the picker renders it. */
+	async function pickerSignOut(browser: Browser, client: { id: string; redirect: string }) {
+		const row = await newestAccount();
+		const res = await browser.fetch('/account-picker/remove', {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({
+				user_id: row.user_id,
+				client_id: client.id,
+				redirect_uri: client.redirect,
+				response_type: 'code',
+				state: 'picker',
+			}).toString(),
+		});
+		expect(res.status).toBe(302);
+		return new URL(res.headers.get('location')!);
+	}
+
+	it('picker "Sign out" of the last account is single sign-out (#219)', async () => {
+		const browser = new Browser();
+		await browser.signIn(PROFILE);
+		const before = await browserSessionCount();
+
+		// Before: back to /authorize?prompt=select_account with every app still signed in
+		const location = await pickerSignOut(browser, ADMIN);
+		expect(location.origin + location.pathname).toBe(`${ISSUER}/logout`);
+		expect(location.searchParams.get('return')).toBe('http://localhost:5175/');
+
+		// The /logout chain ends the browser session and walks every app
+		const chain = await browser.fetch(location.pathname + location.search);
+		expect(new URL(chain.headers.get('location')!).origin).toBe('http://localhost:3302');
+		expect(browser.jar.has('__session')).toBe(false);
+		expect(await browserSessionCount()).toBe(before - 1);
+		expect(await browser.authorize(ADMIN)).toContain('/password/authorize');
+		expect(await browser.authorize(PROFILE)).toContain('/password/authorize');
+	});
+
+	it('picker "Sign out" with other accounts left only removes that one', async () => {
+		const browser = new Browser();
+		await browser.signIn(PROFILE);
+		const row = await newestAccount();
+		// A second, older account in the same browser session
+		await (env as unknown as Env).AUTH_DB.prepare(
+			`INSERT INTO account_sessions (id, browser_session_id, user_id, is_active, authenticated_at, expires_at, subject_type, subject_properties, refresh_token, client_id)
+			 SELECT ?, browser_session_id, ?, 0, authenticated_at - 1000, expires_at, subject_type, subject_properties, refresh_token, client_id
+			 FROM account_sessions WHERE browser_session_id = ? AND user_id = ?`
+		)
+			.bind(crypto.randomUUID(), 'usr_other_account', row.browser_session_id, row.user_id)
+			.run();
+
+		const location = await pickerSignOut(browser, ADMIN);
+		expect(location.pathname).toBe('/authorize');
+		expect(location.searchParams.get('prompt')).toBe('select_account');
+		expect(browser.jar.has('__session')).toBe(true);
+	});
+
 	it('logout never redirects to a foreign site', async () => {
 		const res = await new Browser().fetch(`/logout?step=99&return=${encodeURIComponent('https://evil.example/')}`);
 		expect(res.headers.get('location')).toBe(logoutReturnUrl(env as unknown as Env, null, ISSUER));

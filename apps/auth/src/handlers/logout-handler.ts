@@ -77,13 +77,23 @@ export function logoutReturnUrl(env: LogoutEnv, requested: string | null, authOr
 	return allowed.has(target.origin) ? target.toString() : fallback;
 }
 
+/** The shared browser session (`__session`) this request carries, if any. */
+export async function browserSessionRef(
+	request: Request,
+	env: Pick<LogoutEnv, 'SESSION_SECRET'>
+): Promise<{ sid: string; tid: string } | null> {
+	const cookie = parseCookie(request.headers.get('Cookie'), SESSION_COOKIE);
+	if (!cookie) return null;
+	const payload = await decryptSessionCookie(cookie, sessionCookieKey(env));
+	return payload ? { sid: payload.sid, tid: payload.tid } : null;
+}
+
 /** Ends the shared browser session (all accounts in it) in D1. */
 async function revokeBrowserSession(request: Request, env: LogoutEnv): Promise<boolean> {
-	const cookie = parseCookie(request.headers.get('Cookie'), SESSION_COOKIE);
-	if (!cookie || !env.AUTH_DB) return false;
-	const payload = await decryptSessionCookie(cookie, sessionCookieKey(env));
-	if (!payload) return false;
-	return new D1SessionAdapter(env.AUTH_DB).revokeSpecificSession(payload.sid, payload.tid);
+	if (!env.AUTH_DB) return false;
+	const ref = await browserSessionRef(request, env);
+	if (!ref) return false;
+	return new D1SessionAdapter(env.AUTH_DB).revokeSpecificSession(ref.sid, ref.tid);
 }
 
 export async function handleLogout(
