@@ -25,8 +25,17 @@ describe('single sign-out chain', () => {
 		expect(CHAINS[env].split(',')).toContain(`https://videos${SUB[env]}.alummahnow.net/api/auth/logout`);
 	});
 
-	it('qa reaches the videos admin (admin-web front-channel, AlUmmahNow #295)', () => {
-		expect(CHAINS.qa.split(',')).toContain('https://admin.qa.alummahnow.net/api/auth/logout');
+	it.each(Object.keys(CHAINS))('%s reaches the videos admin (admin-web front-channel, AlUmmahNow #295)', (env) => {
+		const list = CHAINS[env].split(',');
+		const admin = `https://admin${SUB[env]}.alummahnow.net/api/auth/logout`;
+		expect(list).toContain(admin);
+		// Walked after the videos site, like on QA
+		expect(list.indexOf(admin)).toBe(list.indexOf(`https://videos${SUB[env]}.alummahnow.net/api/auth/logout`) + 1);
+	});
+
+	it('the pinned production value in scripts/release/apps.ts matches wrangler.json', () => {
+		const apps = readFileSync(resolve(ROOT, 'scripts/release/apps.ts'), 'utf8');
+		expect(apps).toContain(`FRONTCHANNEL_LOGOUT_URLS: '${CHAINS.production}'`);
 	});
 
 	it.each(Object.keys(CHAINS))('%s lists each app once, on its own environment, over https', (env) => {
