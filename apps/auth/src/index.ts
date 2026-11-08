@@ -275,6 +275,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // Unknown/disabled clients and unregistered redirect_uris (exact match)
       // get a clear error page (enforce) or are only logged (report)
       clientRegistry: clientRegistryMode(env),
+      // Device authorization grant (RFC 8628, Epic 9.2) for TV apps: codes live
+      // 10 min, polling every 5 s (slow_down on faster), /activate is the en/ar
+      // page where the user enters the code. Only clients registered with the
+      // device_code grant may use it. Cloudflare sets cf-connecting-ip (the
+      // rate-limit key) and clients cannot override it.
+      device: {
+        expiresIn: 600,
+        interval: 5,
+        ipHeader: "cf-connecting-ip",
+      },
       tenantResolver: {
         customDomains: tenantCustomDomains(env.OPENAUTH_ISSUER),
       },
