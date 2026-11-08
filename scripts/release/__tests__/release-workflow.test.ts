@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -19,8 +20,33 @@ describe('release.yml', () => {
 
 	it('builds the audit consumer once and deploys that bundle to both envs', () => {
 		expect(workflow).toContain('--outdir ../../dist/audit-consumer');
-		expect(workflow).toContain('wrangler deploy ../../dist/audit-consumer/index.js --no-bundle --env stage');
-		expect(workflow).toMatch(/wrangler deploy \.\.\/\.\.\/dist\/audit-consumer\/index\.js --no-bundle\n/);
+	});
+
+	// Runs the commands exactly as written in the workflow, plus --dry-run: wrangler
+	// resolves the config and the target env before it would upload anything.
+	describe('audit consumer deploy commands', () => {
+		const root = join(__dirname, '../../..');
+		const sh = (command: string, cwd: string) => execSync(command, { cwd, shell: '/bin/bash', encoding: 'utf8', stdio: 'pipe' });
+		const deployCommand = (stepName: string) => {
+			const step = steps.find((s) => s.includes(`- name: ${stepName}`));
+			const command = step?.match(/^\s+run: (npx wrangler deploy .*)$/m)?.[1];
+			if (!command) throw new Error(`no deploy command in step ${stepName}`);
+			return command;
+		};
+
+		beforeAll(() => {
+			const bundle = workflow.match(/^\s+(\(cd apps\/audit-consumer && npx wrangler deploy --dry-run .*\))$/m)?.[1];
+			if (!bundle) throw new Error('no audit consumer bundle command in the build job');
+			sh(bundle, root);
+		}, 120_000);
+
+		it.each([
+			['Deploy audit consumer to stage', 'al-ummah-now-d1-stage'],
+			['Deploy audit consumer to production', 'af76f007-e21e-43aa-88de-ebfefe46fb56'],
+		])('%s resolves its worker and database', (stepName, database) => {
+			const output = sh(`${deployCommand(stepName)} --dry-run 2>&1`, join(root, 'apps/audit-consumer'));
+			expect(output).toContain(database);
+		}, 120_000);
 	});
 
 	it('deploys the production consumer after the migration and before the promote', () => {

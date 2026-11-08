@@ -129,7 +129,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: apps/audit-consumer
-        run: npx wrangler deploy ../../dist/audit-consumer/index.js --no-bundle --env stage
+        run: npx wrangler deploy ../../dist/audit-consumer/index.js --no-bundle -c wrangler.jsonc --env stage
 
       # Same mechanics as production, so every release also rehearses the promote
       - name: Deploy candidates to stage
@@ -244,13 +244,14 @@ jobs:
       # outright, after the migration it may depend on and before the auth candidates
       # that publish to it. It accepts every message format of the auth version it
       # replaces, so a failed promote or an auth rollback can leave it in place.
+      # -c is required: given a script path, wrangler looks for the config next to it
       - name: Deploy audit consumer to production
         if: steps.head.outputs.current == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: apps/audit-consumer
-        run: npx wrangler deploy ../../dist/audit-consumer/index.js --no-bundle
+        run: npx wrangler deploy ../../dist/audit-consumer/index.js --no-bundle -c wrangler.jsonc
 
       - name: Promote (0% + override smoke → 100% → smoke, auto-rollback)
         if: steps.head.outputs.current == 'true'
