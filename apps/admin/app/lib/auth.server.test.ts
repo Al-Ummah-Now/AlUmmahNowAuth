@@ -13,6 +13,7 @@ vi.mock("./openauth.client.server", () => ({
 }));
 
 const { requireAuth } = await import("./auth.server");
+const { revokeSession } = await import("./session-tokens.server");
 
 const SID = "sid-1";
 const ADMIN = { type: "user", properties: { id: "u1", email: "admin@example.com", roles: ["Admin"] } };
@@ -103,5 +104,33 @@ describe("requireAuth(…, true) token refresh", () => {
     expect((thrown as Response).status).toBe(302);
     expect(new URL((thrown as Response).headers.get("Location")!).pathname).toBe("/login");
     expect(client.verify).not.toHaveBeenCalled();
+  });
+
+  it("logout races refresh -> stays logged out", async () => {
+    kv.store.set(`session:${SID}`, JSON.stringify(storedSession(jwt(NOW_S + 60, "old"), "user:r0")));
+    client.refresh.mockImplementation(async () => {
+      // The admin logs out in another tab while this request refreshes.
+      await revokeSession({ kv: kv.asKV(), sessionToken: SID });
+      return { err: false, tokens: { access: jwt(NOW_S + 900), refresh: "user:r1", expiresIn: 900 } };
+    });
+
+    const thrown = await requireAuth(request(), env(), true).catch((e: unknown) => e);
+    expect((thrown as Response).status).toBe(302);
+    expect(kv.store.has(`session:${SID}`)).toBe(false);
+
+    // And the next request with the old cookie is not let back in.
+    const again = await requireAuth(request(), env(), true).catch((e: unknown) => e);
+    expect(new URL((again as Response).headers.get("Location")!).pathname).toBe("/login");
+  });
+
+  it("a session resurrected by a stale write is rejected while its tombstone exists", async () => {
+    kv.store.set(`session:${SID}`, JSON.stringify(storedSession(jwt(NOW_S + 900), "user:r0")));
+    kv.store.set(`revoked:${SID}`, "1");
+
+    const thrown = await requireAuth(request(), env(), true).catch((e: unknown) => e);
+
+    expect((thrown as Response).status).toBe(302);
+    expect(client.verify).not.toHaveBeenCalled();
+    expect(kv.store.has(`session:${SID}`)).toBe(false);
   });
 });

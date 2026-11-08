@@ -39,6 +39,59 @@ export function sessionKey(sessionToken: string): string {
   return `session:${sessionToken}`;
 }
 
+/**
+ * Logout tombstone. Deleting `session:<sid>` alone is not enough: a request
+ * that read the session just before logout can put it back with refreshed
+ * tokens (KV is eventually consistent, so that window can be wide). The
+ * tombstone outlives any session (sessions last at most 7 days from sign-in)
+ * and every read and write path treats a tombstoned session as gone.
+ */
+export function revokedKey(sessionToken: string): string {
+  return `revoked:${sessionToken}`;
+}
+
+export const REVOKED_TTL_SECONDS = DEFAULT_SESSION_TTL_SECONDS;
+
+export async function isSessionRevoked(kv: KVNamespace, sessionToken: string): Promise<boolean> {
+  return (await kv.get(revokedKey(sessionToken))) !== null;
+}
+
+/**
+ * End a session for good: tombstone it, delete it, and (best effort) revoke
+ * its refresh token at the issuer. Returns once KV is updated; issuer
+ * failures, including a 404 from an issuer without /token/revoke yet, are
+ * logged and ignored.
+ */
+export async function revokeSession(opts: {
+  kv: KVNamespace;
+  sessionToken: string;
+  issuer?: string;
+  clientId?: string;
+  fetch?: typeof fetch;
+}): Promise<void> {
+  const { kv, sessionToken } = opts;
+  const session = await readSession(kv, sessionToken);
+  await kv.put(revokedKey(sessionToken), "1", { expirationTtl: REVOKED_TTL_SECONDS });
+  await kv.delete(sessionKey(sessionToken));
+
+  const refresh = session?.tokens?.refresh;
+  if (!refresh || !opts.issuer || !opts.clientId) return;
+  try {
+    const response = await (opts.fetch ?? fetch)(new URL("/token/revoke", opts.issuer).toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: refresh, client_id: opts.clientId }).toString(),
+    });
+    if (!response.ok && response.status !== 404) {
+      logger.warn("Refresh token revocation failed", { status: response.status });
+    }
+  } catch (error) {
+    logger.warn("Refresh token revocation failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /** `exp` (seconds since epoch) of a JWT, without verifying it; null if unreadable. */
 export function decodeJwtExp(token: string): number | null {
   const parts = token.split(".");
@@ -84,24 +137,28 @@ async function readSession(kv: KVNamespace, sessionToken: string): Promise<Store
 
 /**
  * Write `tokens` into the KV session, keeping its expiresAt and the time it
- * has left (refreshing tokens does not extend the 7-day session).
+ * has left (refreshing tokens does not extend the 7-day session). Never
+ * writes back a session that was logged out; returns whether it wrote.
  */
 export async function persistSessionTokens(
   kv: KVNamespace,
   sessionToken: string,
   tokens: SessionTokens,
   nowMs: number = Date.now(),
-): Promise<void> {
-  const session = await readSession(kv, sessionToken);
-  if (!session) {
-    logger.warn("Session vanished before refreshed tokens could be saved");
-    return;
+): Promise<boolean> {
+  const [session, revoked] = await Promise.all([
+    readSession(kv, sessionToken),
+    isSessionRevoked(kv, sessionToken),
+  ]);
+  if (!session || revoked) {
+    logger.warn("Session gone or logged out; refreshed tokens not saved", { revoked });
+    return false;
   }
   const expiresAtMs = Date.parse(session.expiresAt);
   const remaining = Number.isFinite(expiresAtMs)
     ? Math.floor((expiresAtMs - nowMs) / 1000)
     : DEFAULT_SESSION_TTL_SECONDS;
-  if (remaining <= 0) return; // expired; getAuthenticatedUser deletes it next time
+  if (remaining <= 0) return false; // expired; getAuthenticatedUser deletes it next time
 
   const updated: StoredSession = {
     ...session,
@@ -110,11 +167,19 @@ export async function persistSessionTokens(
   await kv.put(sessionKey(sessionToken), JSON.stringify(updated), {
     expirationTtl: Math.max(MIN_KV_TTL_SECONDS, remaining),
   });
+
+  // Logout may have landed between the read and the put: undo the write.
+  if (await isSessionRevoked(kv, sessionToken)) {
+    await kv.delete(sessionKey(sessionToken));
+    logger.warn("Session logged out during token refresh; write undone");
+    return false;
+  }
+  return true;
 }
 
 export type FreshTokensResult =
   | { ok: true; tokens: SessionTokens; source: "current" | "stored" | "refreshed" }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; revoked?: boolean };
 
 /**
  * Tokens that are good for at least REFRESH_SKEW_SECONDS more, refreshing
@@ -138,15 +203,22 @@ export async function ensureFreshTokens(opts: {
     return { ok: true, tokens: opts.tokens, source: "current" };
   }
 
-  // Another request may have rotated the tokens since this one read them.
-  const stored = await readSession(kv, sessionToken);
-  if (stored?.tokens?.access && stored.tokens.access !== opts.tokens.access && !needsRefresh(stored.tokens.access, now())) {
+  // Another request may have rotated the tokens since this one read them,
+  // or the session may have been logged out.
+  const [stored, revoked] = await Promise.all([
+    readSession(kv, sessionToken),
+    isSessionRevoked(kv, sessionToken),
+  ]);
+  if (revoked || !stored) {
+    return { ok: false, reason: revoked ? "session logged out" : "session gone", revoked };
+  }
+  if (stored.tokens?.access && stored.tokens.access !== opts.tokens.access && !needsRefresh(stored.tokens.access, now())) {
     logger.debug("Using tokens already refreshed by another request");
     return { ok: true, tokens: stored.tokens, source: "stored" };
   }
 
-  const refreshToken = stored?.tokens?.refresh ?? opts.tokens.refresh;
-  const currentAccess = stored?.tokens?.access ?? opts.tokens.access;
+  const refreshToken = stored.tokens?.refresh ?? opts.tokens.refresh;
+  const currentAccess = stored.tokens?.access ?? opts.tokens.access;
   if (!refreshToken) {
     return isExpired(currentAccess, now())
       ? { ok: false, reason: "access token expired and session has no refresh token" }
@@ -158,7 +230,9 @@ export async function ensureFreshTokens(opts: {
     const refreshed = await client.refresh(refreshToken);
     if (!refreshed.err && refreshed.tokens) {
       const tokens = { access: refreshed.tokens.access, refresh: refreshed.tokens.refresh };
-      await persistSessionTokens(kv, sessionToken, tokens, now());
+      if (!(await persistSessionTokens(kv, sessionToken, tokens, now()))) {
+        return { ok: false, reason: "session logged out during refresh", revoked: true };
+      }
       logger.info("Access token refreshed ahead of expiry");
       return { ok: true, tokens, source: "refreshed" };
     }
