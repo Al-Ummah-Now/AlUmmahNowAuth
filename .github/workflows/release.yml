@@ -168,27 +168,48 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # A newer commit on main means a newer release is queued behind this one
+      # (concurrency auth-release). Never promote a stale candidate: e.g. a build
+      # from before a migration-carrying merge. The newer run releases instead.
+      - name: Still the head of main?
+        id: head
+        run: |
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$head" != "$GITHUB_SHA" ]; then
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::main moved to ${head::7} while releasing ${GITHUB_SHA::7}; not promoting. The run for ${head::7} releases instead."
+            echo "### Superseded: main is at ${head::7}; ${GITHUB_SHA::7} was not promoted" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: pnpm/action-setup@v4
+        if: steps.head.outputs.current == 'true'
 
       - uses: actions/setup-node@v6
+        if: steps.head.outputs.current == 'true'
         with:
           node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
+        if: steps.head.outputs.current == 'true'
         run: |
           echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - run: pnpm install --frozen-lockfile
+        if: steps.head.outputs.current == 'true'
 
       - uses: actions/download-artifact@v4
+        if: steps.head.outputs.current == 'true'
         with:
           name: release-bundle
 
       # Pre-promote: every deployed production worker has its required secrets and
       # client ids (scripts/release/secrets-manifest.ts). Fails the release.
       - name: Secrets check (production)
+        if: steps.head.outputs.current == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -202,26 +223,28 @@ jobs:
       # Expand-only migrations (enforced by check:migrations), so the code still
       # serving keeps working; a rollback never needs to undo them.
       - name: Migrate production database
+        if: steps.head.outputs.current == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types --no-warnings scripts/release/d1-migrate.ts --env production
 
       - name: Promote (0% + override smoke → 100% → smoke, auto-rollback)
+        if: steps.head.outputs.current == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types --no-warnings scripts/release/promote.ts --env production --message "release ${GITHUB_SHA::7}"
 
       - name: Summary
-        if: always()
+        if: always() && steps.head.outputs.current == 'true'
         run: |
           if [ -f release-result.json ]; then
             { echo '### Production release'; echo '```json'; cat release-result.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.head.outputs.current == 'true'
         with:
           name: release-result
           path: release-result.json

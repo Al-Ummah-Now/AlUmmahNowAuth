@@ -68,7 +68,11 @@ jobs:
 | **Stage** | `stage:seed` (migrations, roles, prod's live redirect URIs with stage hosts); `check:secrets --env stage` (every stage worker has its required secrets and client ids); deploys the candidates to stage with the same promote mechanics as production; deploys the audit consumer; runs the release regressions and auth E2E on stage. |
 | **Production** | `check:secrets --env production` (fails the release before anything changes); `d1-migrate.ts --env production` (expand-only migrations); `promote.ts --env production`: upload versions → candidates at 0% → wait until the override serves the candidate → smoke through `Cloudflare-Workers-Version-Overrides` → 100% + `triggers deploy` → smoke → automatic rollback on any failure. Result in the job summary and the `release-result` artifact. |
 
-A failed stage job stops the release: production is not touched. The audit
+A failed stage job stops the release: production is not touched. If `main` has
+moved on while a release runs (a newer merge is queued behind it), the
+production job promotes nothing and says so in the summary; the newer run
+releases the newer commit, so a candidate built before a later merge is never
+promoted. The audit
 consumer is not deployed to production by CI (it never was); deploy it by hand
 until that is decided (see docs/release-pipeline.md).
 
@@ -77,6 +81,14 @@ until that is decided (see docs/release-pipeline.md).
 One click: **Actions → Rollback → Run workflow** (environment, `all` or one
 worker, optional version id). Same as `pnpm release:rollback`. Code only:
 migrations stay applied (they are expand-only).
+
+The target is resolved from `wrangler deployments list` (the version served
+before the current one, or `--to`). **Dry run** (`--dry-run`, or the workflow's
+dry-run box) resolves and prints the targets, then stops before moving traffic.
+Use it to check what a rollback would do on production. A real rollback after a
+release that changed sign-in or the database puts users on code that may not
+match their cookies or the migrated D1, so prefer a fix-forward there and
+drill rollbacks on stage.
 
 ## Release gates
 

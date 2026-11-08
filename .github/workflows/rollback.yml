@@ -25,6 +25,10 @@ on:
         description: Why (shown in the Cloudflare deployment history)
         type: string
         default: rollback from GitHub Actions
+      dry_run:
+        description: Dry run (resolve and print the target versions, move no traffic)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,7 +41,7 @@ concurrency:
 
 jobs:
   rollback:
-    name: Roll back ${{ inputs.app }} (${{ inputs.environment }})
+    name: Roll back ${{ inputs.app }} (${{ inputs.environment }})${{ inputs.dry_run && ' [dry run]' || '' }}
     runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     steps:
@@ -66,7 +70,9 @@ jobs:
           APP: ${{ inputs.app }}
           VERSION: ${{ inputs.version }}
           REASON: ${{ inputs.reason }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=(--env "$ENVIRONMENT" --app "$APP" --reason "$REASON (by $GITHUB_ACTOR)")
           if [ -n "$VERSION" ]; then args+=(--to "$VERSION"); fi
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
           node --experimental-strip-types --no-warnings scripts/release/rollback.ts "${args[@]}"
