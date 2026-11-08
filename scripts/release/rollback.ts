@@ -67,15 +67,19 @@ export function rollbackTarget(deploymentsJson: string, worker: string, to?: str
 	throw new Error(`${worker} has no earlier version to roll back to`);
 }
 
-/** Per worker: how to list its deployments, and the wrangler rollback argv for a resolved target version. */
+/**
+ * Per worker: how to list its deployments, and the wrangler rollback argv for a
+ * resolved target version. Workers are addressed by --name, not by config, so a
+ * rollback needs no build output (admin's config only exists after a build).
+ */
 export function rollbackCommands(root: string, args: RollbackArgs): { worker: string; cwd: string; listArgv: string[]; argv: (target: string) => string[] }[] {
 	return releaseApps(root, args.env)
 		.filter((a) => args.apps.includes(a.app))
 		.map((a) => ({
 			worker: a.worker,
 			cwd: a.cwd,
-			listArgv: ['deployments', 'list', '--json', ...a.configArgs],
-			argv: (target: string) => ['rollback', target, ...a.configArgs, '-y', '--message', args.reason.slice(0, 100)],
+			listArgv: ['deployments', 'list', '--json', '--name', a.worker],
+			argv: (target: string) => ['rollback', target, '--name', a.worker, '-y', '--message', args.reason.slice(0, 100)],
 		}));
 }
 

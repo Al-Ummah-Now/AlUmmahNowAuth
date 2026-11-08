@@ -140,6 +140,8 @@ jobs:
 
       - name: E2E on stage (release regressions, auth flows)
         env:
+          # Test the deployed stage workers; without this Playwright starts local dev servers
+          SKIP_WEB_SERVER: true
           E2E_AUTH_SERVER_URL: https://auth.stage.alummahnow.net
           E2E_PROFILE_URL: https://profile.auth.stage.alummahnow.net
           E2E_ADMIN_URL: https://admin.auth.stage.alummahnow.net
