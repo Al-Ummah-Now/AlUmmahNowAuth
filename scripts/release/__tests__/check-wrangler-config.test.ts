@@ -112,7 +112,7 @@ describe('auth env.stage parity', () => {
 		const stage = JSON.parse(JSON.stringify(prod)) as Record<string, unknown>;
 		stage.name = 'al-ummah-now-auth-stage';
 		stage.routes = [{ pattern: 'auth.stage.alummahnow.net', custom_domain: true }];
-		stage.vars = { ...(prod.vars as object), ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net', PROFILE_APP_URL: 'https://profile.auth.stage.alummahnow.net/' };
+		stage.vars = { ...(prod.vars as object), ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net', PROFILE_APP_URL: 'https://profile.auth.stage.alummahnow.net/', CLIENT_REGISTRY_MODE: 'enforce' };
 		mutate(stage);
 		config.env!.stage = stage;
 		return checkApp(authRule, config);
@@ -127,6 +127,13 @@ describe('auth env.stage parity', () => {
 			s.queues = { producers: [] };
 		});
 		expect(errors).toContain('auth: binding queue_producer:AUDIT_QUEUE is in production but not in stage');
+	});
+
+	it('fails when stage does not enforce the client registry', () => {
+		const errors = withStage((s) => {
+			(s.vars as Record<string, string>).CLIENT_REGISTRY_MODE = 'report';
+		});
+		expect(errors).toContain('auth (env.stage): vars.CLIENT_REGISTRY_MODE must be "enforce", found "report"');
 	});
 
 	it('fails when stage uses the prod issuer', () => {

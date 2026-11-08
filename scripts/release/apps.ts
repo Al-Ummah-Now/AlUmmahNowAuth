@@ -35,7 +35,8 @@ export const APPS: AppRule[] = [
 		},
 		stage: {
 			env: 'stage',
-			vars: { ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net' },
+			// Stage enforces the client registry so release E2E proves it before prod runs it
+			vars: { ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net', CLIENT_REGISTRY_MODE: 'enforce' },
 			requiredBindings: AUTH_BINDINGS,
 			allowedHosts: ['*.stage.alummahnow.net'],
 			testOnlyNames: TEST_ONLY,
