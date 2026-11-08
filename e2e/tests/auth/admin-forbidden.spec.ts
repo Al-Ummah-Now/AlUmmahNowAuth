@@ -34,9 +34,11 @@ test.describe('Auth admin: member without an admin role (#219)', () => {
   test('the access-denied page stays put and offers sign out, another account and your apps', async ({ page }) => {
     await memberOnForbidden(page, 'forbidden-stays');
 
+    // Navigation requests only: hydration's history.replaceState also fires
+    // framenavigated, for the same URL, without leaving the page
     const navigations: string[] = [];
-    page.on('framenavigated', (f) => {
-      if (f === page.mainFrame()) navigations.push(f.url());
+    page.on('request', (r) => {
+      if (r.isNavigationRequest() && r.frame() === page.mainFrame()) navigations.push(r.url());
     });
     // The old page left for the picker after 3 s
     await page.waitForTimeout(6000);
