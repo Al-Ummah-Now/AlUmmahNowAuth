@@ -4,12 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      deploy_previews:
-        description: 'Deploy preview environments'
-        required: false
-        type: boolean
-        default: false
 
 # packages: read is required for GITHUB_TOKEN to pull @al-ummah-now/* from GitHub Packages
 permissions:
@@ -37,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -51,181 +45,10 @@ jobs:
       - name: Run TypeScript check
         run: pnpm run type-check
 
-  deploy-auth-preview:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: read
-      pull-requests: write
-      repository-projects: write
-    name: Deploy Auth Preview
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_previews == 'true'
-    needs: test
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Setup GitHub Packages
-        run: |
-          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Deploy Auth to Cloudflare Workers (Preview)
-        id: deploy-auth
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/auth
-          command: deploy --name al-ummah-now-auth-pr-${{ github.event.number }}
-
-  deploy-profile-preview:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: read
-      pull-requests: write
-      repository-projects: write
-    name: Deploy Profile Preview
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_previews == 'true'
-    needs: test
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Setup GitHub Packages
-        run: |
-          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Deploy Profile to Cloudflare Workers (Preview)
-        id: deploy-profile
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/profile
-          command: deploy --name al-ummah-now-profile-pr-${{ github.event.number }}
-
-  deploy-admin-preview:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: read
-      pull-requests: write
-      repository-projects: write
-    name: Deploy Admin Preview
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_previews == 'true'
-    needs: test
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Setup GitHub Packages
-        run: |
-          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build Admin App
-        working-directory: apps/admin
-        run: pnpm run build
-
-      - name: Deploy Admin to Cloudflare Workers (Preview)
-        id: deploy-admin
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/admin
-          command: deploy --name al-ummah-now-auth-admin-pr-${{ github.event.number }}
-
-      - name: Comment Preview URLs
-        uses: actions/github-script@v8
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_previews == 'true'
-        with:
-          script: |
-            const authUrl = `https://al-ummah-now-auth-pr-${{ github.event.number }}.mahmoud-s-darwish.workers.dev`;
-            const profileUrl = `https://al-ummah-now-profile-pr-${{ github.event.number }}.mahmoud-s-darwish.workers.dev`;
-            const adminUrl = `https://al-ummah-now-auth-admin-pr-${{ github.event.number }}.mahmoud-s-darwish.workers.dev`;
-
-            const body = `🚀 **Preview deployments ready!**
-
-            🔐 **Auth Server**: ${authUrl}
-            👤 **Profile App**: ${profileUrl}
-            🛠️ **Admin Dashboard**: ${adminUrl}
-
-            **Test the changes:**
-            - Start with the **Profile App** to test the authentication flow
-            - The auth server will redirect to the profile app automatically
-            - Access the admin dashboard to manage users
-            - All apps share the same D1 database
-
-            This preview will be automatically updated with new commits to this PR.
-
-            **Note**: These are dedicated preview deployments for PR #${{ github.event.number }}`;
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const existingComment = comments.find(comment =>
-              comment.user.login === 'github-actions[bot]' &&
-              comment.body.includes('Preview deployments ready!')
-            );
-
-            if (existingComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body: body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: body
-              });
-            }
+      # Fails if a prod config or deploy command would ship the wrong wrangler env
+      # (see docs/release-pipeline.md).
+      - name: Check wrangler configs
+        run: pnpm run check:config
 
   deploy-auth-production:
     runs-on: ubuntu-latest
@@ -247,7 +70,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -296,7 +119,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -335,7 +158,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages

@@ -51,7 +51,12 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:report": "playwright show-report e2e-report"
+    "test:e2e:report": "playwright show-report e2e-report",
+    "test:scripts": "vitest run --dir scripts",
+    "check:config": "node --experimental-strip-types --no-warnings scripts/release/check-wrangler-config.ts",
+    "check:migrations": "node --experimental-strip-types --no-warnings scripts/release/migration-guard.ts",
+    "schema:snapshot": "node --experimental-strip-types --no-warnings scripts/release/schema-snapshot.ts --write",
+    "check:schema": "node --experimental-strip-types --no-warnings scripts/release/schema-snapshot.ts --check"
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {

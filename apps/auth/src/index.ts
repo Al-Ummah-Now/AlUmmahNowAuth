@@ -29,6 +29,7 @@ import { adminContextMiddleware, methodCompatMiddleware, clientResponseCompatMid
 import { requireAdmin } from "./middleware/admin-auth";
 import { handleTokenCron } from "./cron/token-cron";
 import { routeRequest, type RouterContext } from "./router";
+import { deepHealth } from "./health";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -79,6 +80,17 @@ export default {
     const { pathname } = new URL(request.url);
 
     if (pathname === '/health' && (request.method === 'GET' || request.method === 'HEAD')) {
+      // ?deep=1: release smoke check that every required binding resolves (src/health.ts)
+      if (request.method === 'GET' && new URL(request.url).searchParams.get('deep') === '1') {
+        const report = await deepHealth(env);
+        return withRequestId(
+          new Response(JSON.stringify(report), {
+            status: report.status === 'ok' ? 200 : 503,
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+          }),
+          requestId
+        );
+      }
       return withRequestId(healthResponse(request.method), requestId);
     }
 

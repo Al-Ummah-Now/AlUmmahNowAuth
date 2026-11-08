@@ -7,6 +7,7 @@ The Al Ummah Now Auth system uses GitHub Actions for continuous integration and 
 ## Table of Contents
 
 - [GitHub Actions Workflows](#github-actions-workflows)
+- [Release gates](#release-gates)
 - [Deployment Environments](#deployment-environments)
 - [Automated Testing](#automated-testing)
 - [Deployment Process](#deployment-process)
@@ -18,7 +19,7 @@ The Al Ummah Now Auth system uses GitHub Actions for continuous integration and 
 
 ### Test Suite Workflow (`test.yml`)
 
-**Trigger**: Push to `main` or `develop`, Pull requests to `main`
+**Trigger**: Push to `main`, Pull requests to `main`
 
 **Jobs**:
 
@@ -87,6 +88,21 @@ jobs:
 - Builds admin dashboard
 - Deploys to production
 - URL: `https://al-ummah-now-auth-admin.alummahnow.workers.dev`
+
+## Release gates
+
+These run on every PR (`test.yml` → **Release Checks**) and are part of the release pipeline (see [docs/release-pipeline.md](docs/release-pipeline.md)). Run them locally before pushing:
+
+| Command | Fails when | Fix |
+|---|---|---|
+| `pnpm check:config` | A deployed wrangler env is wrong: auth `env.production` without `ENVIRONMENT=production`, the prod issuer, or the Secrets Store bindings; a test-only binding in prod; a localhost value; a non-prod route. Also fails on any `wrangler deploy` / `versions upload` for auth without `--env` or `--config` (the 2026-11-07 incident). | Fix the config or command. Rules live in `scripts/release/apps.ts`. |
+| `pnpm check:migrations <base>` | An existing file in `apps/*/migrations*/` was modified, deleted or renamed, or a new one sorts before the latest. | Add a new migration instead. |
+| `pnpm check:schema` | `apps/auth/schema.snapshot.sql` / `schema.qa.snapshot.sql` don't match what the migrations (openauth + app) produce. | `pnpm schema:snapshot` and commit the result with the migration. |
+| `pnpm test:scripts` | The release scripts' own tests fail. | |
+
+Prod deploys also run `pnpm check:config` first (`deploy.yml` → Test).
+
+`GET /health?deep=1` on any auth deployment reports, as booleans, whether D1, KV, the audit queue and each required Secrets Store secret resolve (HTTP 503 if any don't). Release smoke tests use it. Plain `/health` stays dependency-free.
 
 ## Deployment Environments
 

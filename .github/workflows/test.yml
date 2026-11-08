@@ -2,7 +2,7 @@ name: Test Suite
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -25,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -39,9 +39,9 @@ jobs:
       - name: TypeScript type check
         run: pnpm run type-check
 
-      - name: Auth app dry run
+      - name: Auth app dry run (production config)
         working-directory: apps/auth
-        run: pnpm exec wrangler deploy --dry-run
+        run: pnpm exec wrangler deploy --dry-run --env production
 
   security-check:
     runs-on: ubuntu-latest
@@ -56,7 +56,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -101,28 +101,45 @@ jobs:
 
           echo "✅ All required documentation files are present"
 
-  migration-check:
+  # Release-pipeline data and config gates (docs/release-pipeline.md):
+  # wrangler configs, append-only migrations, D1 schema snapshot.
+  release-checks:
     runs-on: ubuntu-latest
-    name: Migration Check
+    name: Release Checks (config, migrations, schema)
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - name: Check migration files
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
         run: |
-          echo "Checking migration files..."
-          ls -la apps/auth/migrations/
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
-          # Validate SQL syntax (basic check)
-          for file in apps/auth/migrations/*.sql; do
-            if [ -f "$file" ]; then
-              echo "Validating $file"
-              # Basic SQL syntax validation
-              grep -E "(CREATE|ALTER|INSERT|UPDATE|DELETE)" "$file" > /dev/null || (echo "Invalid SQL in $file" && exit 1)
-            fi
-          done
+      - name: Install dependencies
+        run: pnpm install
 
-          echo "✅ All migration files are valid"
+      - name: Release script tests
+        run: pnpm test:scripts
+
+      - name: Wrangler config check
+        run: pnpm check:config
+
+      - name: Migrations are append-only
+        run: pnpm check:migrations "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
+
+      - name: D1 schema snapshot is current
+        run: pnpm check:schema
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -137,7 +154,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -165,7 +182,7 @@ jobs:
   # cancel-in-progress: false a running deploy/E2E is never cancelled.
   qa-e2e:
     name: QA
-    needs: [lint-and-type-check, unit-tests]
+    needs: [lint-and-type-check, unit-tests, release-checks]
     concurrency:
       group: auth-qa-deploy
       cancel-in-progress: false
