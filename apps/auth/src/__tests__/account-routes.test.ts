@@ -107,6 +107,27 @@ describe('self-service account endpoints (worker)', () => {
 		expect(await Storage.get(kv, ['email', 'usr_bob@example.com', 'password'])).toBeTruthy();
 	});
 
+	it("removes the caller's OpenAuth refresh tokens from KV, so the deleted account can't refresh (prod finding)", async () => {
+		const kv = CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE });
+		await Storage.set(kv, ['oauth:refresh', 'user:abc', 'tok-1'], { subject: 'user:abc' });
+		await Storage.set(kv, ['oauth:refresh', 'user:abc', 'tok-2'], { subject: 'user:abc' });
+		await Storage.set(kv, ['oauth:refresh', 'user:other', 'tok-3'], { subject: 'user:other' });
+		expect((await del(await userToken('usr_alice'))).status).toBe(200);
+		expect(await Storage.get(kv, ['oauth:refresh', 'user:abc', 'tok-1'])).toBeFalsy();
+		expect(await Storage.get(kv, ['oauth:refresh', 'user:abc', 'tok-2'])).toBeFalsy();
+		expect(await Storage.get(kv, ['oauth:refresh', 'user:other', 'tok-3'])).toBeTruthy();
+	});
+
+	it('a retry on an already deleted account still removes leftover refresh tokens', async () => {
+		const kv = CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE });
+		const t = await userToken('usr_alice');
+		expect((await del(t)).status).toBe(200);
+		// Left over from a deletion made before refresh tokens were removed
+		await Storage.set(kv, ['oauth:refresh', 'user:abc', 'tok-late'], { subject: 'user:abc' });
+		expect((await del(t)).status).toBe(200);
+		expect(await Storage.get(kv, ['oauth:refresh', 'user:abc', 'tok-late'])).toBeFalsy();
+	});
+
 	it('requires a recent sign-in: stale or missing auth_time gets the step-up challenge', async () => {
 		for (const t of [await userToken('usr_alice', REAUTH_MAX_AGE_SECONDS + 60), await token({ properties: { id: 'usr_alice' } })]) {
 			const res = await del(t);

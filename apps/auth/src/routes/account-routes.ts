@@ -36,6 +36,8 @@ interface UserTokenClaims extends JWTPayload {
 
 export interface VerifiedUser {
 	userId: string;
+	/** OpenAuth subject (`sub`): the key of the user's refresh tokens in KV. */
+	subject?: string;
 	clientId?: string;
 	authTime?: number;
 }
@@ -72,6 +74,7 @@ export async function verifyUserAccessToken(request: Request, env: Env): Promise
 	}
 	return {
 		userId: claims.properties.id,
+		subject: typeof claims.sub === 'string' ? claims.sub : undefined,
 		clientId: typeof claims.aud === 'string' ? claims.aud : undefined,
 		authTime: typeof claims.auth_time === 'number' ? claims.auth_time : undefined,
 	};
@@ -105,6 +108,18 @@ interface UserRow {
 	deleted_at: number | null;
 }
 
+/**
+ * OpenAuth keeps refresh tokens in KV under ["oauth:refresh", subject, token]
+ * (the D1 refresh_tokens table only mirrors some flows). Without removing
+ * them, a deleted account could keep minting access tokens by refreshing.
+ */
+async function removeKvRefreshTokens(storage: ReturnType<typeof CloudflarePatchedStorage>, subject: string | undefined): Promise<number> {
+	if (!subject) return 0;
+	const keys = await Array.fromAsync(Storage.scan(storage, ['oauth:refresh', subject]));
+	for (const [key] of keys) await Storage.remove(storage, key);
+	return keys.length;
+}
+
 async function findUser(db: D1Database, userId: string): Promise<UserRow | null> {
 	return db
 		.prepare(
@@ -122,11 +137,14 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 
 	const row = await findUser(env.AUTH_DB, user.userId);
 	if (!row) return json({ error: 'not_found', error_description: 'Account not found' }, 404);
+	const storage = CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE });
 	if (row.status === 'deleted') {
+		// Idempotent retry; also cleans refresh tokens of accounts deleted before this was fixed
+		const removed = await removeKvRefreshTokens(storage, user.subject);
+		if (removed > 0) logger.info('[account] Removed refresh tokens of a deleted account', { userId: row.id, removed });
 		return json({ deleted: true, userId: row.id, deletedAt: row.deleted_at });
 	}
 
-	const storage = CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE });
 	const userAdapter = new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' });
 	// KV user record and email index, when the account has them (older accounts live only in D1)
 	try {
@@ -142,7 +160,8 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 		await Storage.remove(storage, ['email', email, 'password']);
 	}
 
-	// No refresh token of this user can mint access tokens any more
+	// No refresh token of this user can mint access tokens any more: KV (OpenAuth) and D1
+	const kvRefreshTokensRemoved = await removeKvRefreshTokens(storage, user.subject);
 	const nowUnix = Math.floor(Date.now() / 1000);
 	const revoked = await env.AUTH_DB.prepare(
 		`UPDATE refresh_tokens SET revoked = 1, revoked_at = ?, revoked_reason = 'account_deleted'
@@ -159,7 +178,12 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 				ipAddress: request.headers.get('CF-Connecting-IP'),
 				userAgent: request.headers.get('User-Agent'),
 				requestId,
-				metadata: { initiatedBy: 'self', clientId: user.clientId, refreshTokensRevoked: revoked.meta?.changes ?? 0 },
+				metadata: {
+					initiatedBy: 'self',
+					clientId: user.clientId,
+					refreshTokensRevoked: revoked.meta?.changes ?? 0,
+					kvRefreshTokensRemoved,
+				},
 			}),
 		),
 	);
