@@ -11,8 +11,10 @@ on:
         type: boolean
         default: false
 
+# packages: read is required for GITHUB_TOKEN to pull @al-ummah-now/* from GitHub Packages
 permissions:
   contents: read
+  packages: read
   actions: read
   checks: write
 
@@ -21,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Test
@@ -39,7 +42,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -52,6 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Auth Preview
@@ -72,7 +76,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -91,6 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Profile Preview
@@ -111,7 +116,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -130,6 +135,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Admin Preview
@@ -150,7 +156,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -225,6 +231,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Auth Production
@@ -245,7 +252,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -271,6 +278,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Profile Production
@@ -291,7 +299,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies
@@ -309,6 +317,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
       pull-requests: write
       repository-projects: write
     name: Deploy Admin Production
@@ -329,7 +338,7 @@ jobs:
 
       - name: Setup GitHub Packages
         run: |
-          echo "@meywd:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
 
       - name: Install dependencies

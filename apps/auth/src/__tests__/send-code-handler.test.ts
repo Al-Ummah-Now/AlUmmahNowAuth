@@ -1,0 +1,137 @@
+/**
+ * Tests for the password provider's sendCode callback (createSendCodeHandler).
+ *
+ * Regression coverage for the "Forgot password?" bug: submitting an unknown
+ * email on /password/change used to throw, which escaped the provider and
+ * bounced the browser to the client app with server_error (and enumerated
+ * accounts). An unknown email must now be a silent no-op so the provider
+ * moves to the "enter code" screen exactly as it does for a real account.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { env } from 'cloudflare:test';
+import { MemoryStorage } from '@al-ummah-now/openauth/storage/memory';
+import { Storage } from '@al-ummah-now/openauth/storage/storage';
+
+const sendEmailMock = vi.fn();
+vi.mock('../email', () => ({
+	default: (...args: unknown[]) => sendEmailMock(...args),
+}));
+
+import { createSendCodeHandler, type UserServiceLike } from '../handlers/auth-handlers';
+
+const KNOWN_USER_EMAIL = 'known-user@example.com';
+const PASSWORD_ONLY_EMAIL = 'password-only@example.com';
+const UNKNOWN_EMAIL = 'nobody@example.com';
+
+function makeUserService(): UserServiceLike {
+	return {
+		getUserByEmail: vi.fn(async (_tenantId: string, email: string) =>
+			email === KNOWN_USER_EMAIL ? { id: 'user-1', email } : null
+		),
+		createUser: vi.fn(),
+		updateLastLogin: vi.fn(),
+	};
+}
+
+let ipCounter = 0;
+
+function makeHandler(
+	pathname: string,
+	userService: UserServiceLike,
+	storage?: ReturnType<typeof MemoryStorage>
+) {
+	// Unique IP per handler so the KV-backed rate limit never carries over between tests
+	ipCounter += 1;
+	const url = new URL(`https://auth.example.com${pathname}`);
+	const request = new Request(url, {
+		method: 'POST',
+		headers: { 'CF-Connecting-IP': `203.0.113.${ipCounter}` },
+	});
+	const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() } as unknown as ExecutionContext;
+	return createSendCodeHandler(
+		userService,
+		{
+			request,
+			env: {
+				AUTH_STORAGE: env.AUTH_STORAGE,
+				RESEND_API_KEY: 'test-resend-key',
+				ENVIRONMENT: 'test',
+			},
+			ctx,
+			requestId: 'test-request',
+			url,
+		},
+		storage
+	);
+}
+
+describe('createSendCodeHandler', () => {
+	let storage: ReturnType<typeof MemoryStorage>;
+
+	beforeEach(async () => {
+		sendEmailMock.mockReset();
+		sendEmailMock.mockResolvedValue({ success: true, emailId: 'email-123' });
+		storage = MemoryStorage();
+		await Storage.set(storage, ['email', PASSWORD_ONLY_EMAIL, 'password'], {
+			hash: 'h',
+			salt: 's',
+			iterations: 1,
+		});
+	});
+
+	describe('password change flow (/password/change)', () => {
+		it('does not throw and sends no email for an unknown email', async () => {
+			const sendCode = makeHandler('/password/change', makeUserService(), storage);
+
+			await expect(sendCode(UNKNOWN_EMAIL, '123456')).resolves.toBeUndefined();
+			expect(sendEmailMock).not.toHaveBeenCalled();
+		});
+
+		it('sends a code to a user that exists in UserService', async () => {
+			const sendCode = makeHandler('/password/change', makeUserService(), storage);
+
+			await sendCode(KNOWN_USER_EMAIL, '123456');
+
+			expect(sendEmailMock).toHaveBeenCalledTimes(1);
+			expect(sendEmailMock.mock.calls[0][0]).toMatchObject({ to: KNOWN_USER_EMAIL });
+		});
+
+		it('sends a code to an account that only has a password record', async () => {
+			const userService = makeUserService();
+			const sendCode = makeHandler('/password/change', userService, storage);
+
+			await sendCode(PASSWORD_ONLY_EMAIL, '123456');
+
+			expect(userService.getUserByEmail).toHaveBeenCalledWith('default', PASSWORD_ONLY_EMAIL);
+			expect(sendEmailMock).toHaveBeenCalledTimes(1);
+			expect(sendEmailMock.mock.calls[0][0]).toMatchObject({ to: PASSWORD_ONLY_EMAIL });
+		});
+
+		it('still treats an unknown email as a no-op when no password storage is passed', async () => {
+			const sendCode = makeHandler('/password/change', makeUserService());
+
+			await expect(sendCode(UNKNOWN_EMAIL, '123456')).resolves.toBeUndefined();
+			expect(sendEmailMock).not.toHaveBeenCalled();
+		});
+
+		it('propagates email delivery failures for a real account', async () => {
+			sendEmailMock.mockRejectedValueOnce(new Error('Resend down'));
+			const sendCode = makeHandler('/password/change', makeUserService(), storage);
+
+			await expect(sendCode(KNOWN_USER_EMAIL, '123456')).rejects.toThrow('Resend down');
+		});
+	});
+
+	describe('registration flow (/password/register)', () => {
+		it('sends a code to a brand new email without any existence check', async () => {
+			const userService = makeUserService();
+			const sendCode = makeHandler('/password/register', userService, storage);
+
+			await sendCode(UNKNOWN_EMAIL, '123456');
+
+			expect(userService.getUserByEmail).not.toHaveBeenCalled();
+			expect(sendEmailMock).toHaveBeenCalledTimes(1);
+			expect(sendEmailMock.mock.calls[0][0]).toMatchObject({ to: UNKNOWN_EMAIL });
+		});
+	});
+});

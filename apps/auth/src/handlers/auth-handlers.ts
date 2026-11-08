@@ -11,6 +11,7 @@ import { getAuditEmitter } from '../audit-emitter';
 import { createLoginSuccessEvent, createLoginFailedEvent } from '../audit-events';
 import { trackEvent } from '../utils/analytics';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
+import { Storage, type StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 
 /**
  * Context passed to auth handlers from the main request
@@ -298,13 +299,26 @@ export interface SendCodeContext {
  *
  * This handler sends verification codes to users and performs rate limiting.
  *
+ * OpenAuth's password provider only calls sendCode from two flows:
+ * - registration (`/password/register`): the account does not exist yet, so no
+ *   existence check is done.
+ * - password change / "Forgot password?" (`/password/change`): if the email has
+ *   no account, we return WITHOUT sending anything. Throwing here would escape
+ *   the provider (the issuer turns it into a server_error and the user leaves the
+ *   auth page) and reveal which emails are registered. Returning normally lets the
+ *   provider show the "enter code" screen exactly as it does for a real account.
+ *
  * @param userService - Service for looking up users
  * @param handlerCtx - Context from the main request handler
+ * @param passwordStorage - OpenAuth storage holding password credentials at
+ *   ["email", email, "password"]. Lets accounts with a password but no
+ *   UserService record still receive a reset code.
  * @returns The sendCode callback function
  */
 export function createSendCodeHandler(
 	userService: UserServiceLike,
-	handlerCtx: SendCodeContext
+	handlerCtx: SendCodeContext,
+	passwordStorage?: StorageAdapter
 ) {
 	const { request, env, ctx, requestId, url } = handlerCtx;
 
@@ -319,6 +333,13 @@ export function createSendCodeHandler(
 	const rateLimitEventPromise = import('../audit-events').then(
 		(m) => m.createRateLimitExceededEvent
 	);
+
+	async function hasAccount(email: string): Promise<boolean> {
+		if (await userService.getUserByEmail('default', email)) return true;
+		if (!passwordStorage) return false;
+		const passwordRecord = await Storage.get(passwordStorage, ['email', email, 'password']);
+		return passwordRecord !== undefined && passwordRecord !== null;
+	}
 
 	return async (email: string, code: string): Promise<void> => {
 		// Resolve all imports
@@ -395,15 +416,18 @@ export function createSendCodeHandler(
 			remaining: rateLimit.remaining,
 		});
 
-		// Check if user exists BEFORE sending code (sign-in only, not registration)
-		// Skip this check for registration flow - user won't exist yet
+		// Registration: the account doesn't exist yet, so skip the existence check.
+		// Otherwise (password change / forgot password) only send to real accounts,
+		// and treat unknown emails as a silent no-op (see JSDoc above).
 		const isRegistration = url.pathname.includes('/register');
 		if (!isRegistration) {
-			const existingUser = await userService.getUserByEmail('default', email);
-			if (!existingUser) {
-				logger.warn('Login attempted for non-existent user', { email });
-				// Use generic error to prevent user enumeration
-				throw new Error('Incorrect email or password');
+			const accountExists = await hasAccount(email);
+			if (!accountExists) {
+				logger.warn('Password reset code requested for unknown email; not sending', {
+					email,
+					pathname: url.pathname,
+				});
+				return;
 			}
 		}
 

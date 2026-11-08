@@ -255,13 +255,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       providers: {
         password: PasswordProvider(
           PasswordUI({
-            sendCode: createSendCodeHandler(userService, {
-              request,
-              env,
-              ctx,
-              requestId,
-              url,
-            }),
+            sendCode: createSendCodeHandler(
+              userService,
+              { request, env, ctx, requestId, url },
+              storage,
+            ),
             copy: {
               input_code: "Code (check your inbox)",
             },
