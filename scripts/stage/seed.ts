@@ -31,7 +31,15 @@ export const STAGE_HOSTS: Record<string, string> = {
 	'cms.alummahnow.net': 'cms.stage.alummahnow.net',
 };
 
-/** Rewrites prod redirect URIs to stage; drops localhost and unknown hosts. */
+/** The native apps' private-use URI schemes (Epic 9.1): the same on every environment. */
+export const NATIVE_SCHEMES = new Set(['alummahnow:', 'alummahnow-studio:']);
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]']);
+const STAGE_HOST_SET = new Set(Object.values(STAGE_HOSTS));
+
+/**
+ * Rewrites prod redirect URIs to stage; drops localhost and unknown hosts.
+ * Native app redirects (our custom schemes, loopback http://127.0.0.1) are kept as they are.
+ */
 export function toStageRedirectUris(uris: string[]): string[] {
 	const out: string[] = [];
 	for (const uri of uris) {
@@ -41,6 +49,13 @@ export function toStageRedirectUris(uris: string[]): string[] {
 		} catch {
 			continue;
 		}
+		if (NATIVE_SCHEMES.has(url.protocol) || (url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname))) {
+			out.push(uri);
+			continue;
+		}
+		if (url.protocol !== 'https:' && url.protocol !== 'http:') continue;
+		// Already rewritten (a row seeded before prod has it): no change
+		if (STAGE_HOST_SET.has(url.hostname)) return [];
 		const stageHost = STAGE_HOSTS[url.hostname];
 		if (!stageHost) continue;
 		url.hostname = stageHost;

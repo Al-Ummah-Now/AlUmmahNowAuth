@@ -25,6 +25,17 @@ describe('toStageRedirectUris', () => {
 		expect(toStageRedirectUris(['https://admin.example.com/callback', 'com.example.app://callback'])).toEqual([]);
 	});
 
+	it('keeps native app redirects (custom schemes, loopback) and rewrites their universal links', () => {
+		expect(
+			toStageRedirectUris(['alummahnow://auth/callback', 'https://videos.alummahnow.net/app/auth/callback', 'http://127.0.0.1/auth/callback', 'alummahnow-studio://auth/callback'])
+		).toEqual(['alummahnow://auth/callback', 'https://videos.stage.alummahnow.net/app/auth/callback', 'http://127.0.0.1/auth/callback', 'alummahnow-studio://auth/callback']);
+		expect(toStageRedirectUris(['http://localhost:3000/cb', 'evil://videos.alummahnow.net/cb'])).toEqual([]);
+	});
+
+	it('is idempotent on rows already rewritten, including native ones', () => {
+		expect(toStageRedirectUris(['alummahnow://auth/callback', 'https://videos.stage.alummahnow.net/app/auth/callback'])).toEqual([]);
+	});
+
 	it('is idempotent on already-stage URIs', () => {
 		expect(toStageRedirectUris(['https://videos.stage.alummahnow.net/api/callback'])).toEqual([]);
 	});
