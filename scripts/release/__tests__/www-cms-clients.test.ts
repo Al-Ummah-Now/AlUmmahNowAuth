@@ -43,16 +43,25 @@ const CASES = [
 	{
 		env: 'production (and stage, rewritten by scripts/stage/seed.ts)',
 		snapshot: 'apps/auth/schema.snapshot.sql',
-		www: { id: 'd34701ed-03de-43f8-95a8-91cd1e1874bb', uri: 'https://www.alummahnow.net/auth/callback' },
-		cms: { id: 'd06fd65a-5b79-45bc-8bfd-a856b8502330', uri: 'https://cms.alummahnow.net/sso/callback' },
+		www: { id: 'd34701ed-03de-43f8-95a8-91cd1e1874bb', uris: ['https://www.alummahnow.net/auth/callback'] },
+		cms: { id: 'd06fd65a-5b79-45bc-8bfd-a856b8502330', uris: ['https://cms.alummahnow.net/sso/callback'] },
 	},
 	{
 		env: 'qa',
 		snapshot: 'apps/auth/schema.qa.snapshot.sql',
-		www: { id: 'ecda6f18-89cb-415c-b746-7e77184d75a2', uri: 'https://www.qa.alummahnow.net/auth/callback' },
-		cms: { id: '0e613f49-674b-490a-93e5-97a35d586da1', uri: 'https://cms.qa.alummahnow.net/sso/callback' },
+		www: { id: 'ecda6f18-89cb-415c-b746-7e77184d75a2', uris: ['http://localhost:4321/auth/callback', 'https://www.qa.alummahnow.net/auth/callback'] },
+		cms: { id: '0e613f49-674b-490a-93e5-97a35d586da1', uris: ['http://localhost:8585/sso/callback', 'https://cms.qa.alummahnow.net/sso/callback'] },
 	},
 ];
+
+describe('www and cms clients: production has no localhost redirect URIs', () => {
+	it('keeps localhost out of the prod rows', () => {
+		const clients = clientsAfterMigrations('apps/auth/schema.snapshot.sql');
+		for (const id of [CASES[0].www.id, CASES[0].cms.id]) {
+			expect(clients.get(id)?.redirect_uris.some((u) => u.includes('localhost'))).toBe(false);
+		}
+	});
+});
 
 describe.each(CASES)('www and cms clients: $env', ({ snapshot, www, cms }) => {
 	const clients = clientsAfterMigrations(snapshot);
@@ -60,7 +69,7 @@ describe.each(CASES)('www and cms clients: $env', ({ snapshot, www, cms }) => {
 	it('registers www as a public PKCE client with its exact callback', () => {
 		const c = clients.get(www.id);
 		expect(c?.name).toBe('Al Ummah Now (www)');
-		expect(c?.redirect_uris).toEqual(['http://localhost:4321/auth/callback', www.uri]);
+		expect(c?.redirect_uris).toEqual(www.uris);
 		expect(JSON.parse(c!.metadata)).toEqual({ type: 'public' });
 		expect(c?.secret).toBeNull();
 		expect(c?.grants).not.toContain('client_credentials');
@@ -69,7 +78,7 @@ describe.each(CASES)('www and cms clients: $env', ({ snapshot, www, cms }) => {
 	it('registers cms as a public PKCE client with its exact callback', () => {
 		const c = clients.get(cms.id);
 		expect(c?.name).toBe('CMS');
-		expect(c?.redirect_uris).toEqual(['http://localhost:8585/sso/callback', cms.uri]);
+		expect(c?.redirect_uris).toEqual(cms.uris);
 		expect(JSON.parse(c!.metadata)).toEqual({ type: 'public' });
 		expect(c?.secret).toBeNull();
 		expect(c?.grants).not.toContain('client_credentials');
