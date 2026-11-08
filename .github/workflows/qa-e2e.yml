@@ -27,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -184,9 +184,11 @@ jobs:
           echo "✅ Warmup complete - encryption keys should now be loaded"
 
       - name: Verify RBAC roles exist
+        env:
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
         run: |
           echo "Verifying RBAC roles were seeded..."
-          response=$(curl -s https://auth.qa.alummahnow.net/test/debug/roles)
+          response=$(curl -s -H "X-E2E-Secret: $E2E_CODE_SINK_SECRET" https://auth.qa.alummahnow.net/test/debug/roles)
           echo "Response: $response"
           total=$(echo "$response" | jq -r '.total // 0')
           echo "Total roles found: $total"
@@ -199,11 +201,13 @@ jobs:
           echo "✅ All $total RBAC roles are present"
 
       - name: Verify OAuth client configuration
+        env:
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
         run: |
           echo "Verifying OAuth client configuration for M2M..."
           # Check the Auth Admin client used for M2M requests
           client_id="2448ed27-39a6-417d-b4c8-07f881e81269"
-          response=$(curl -s "https://auth.qa.alummahnow.net/test/debug/clients/$client_id")
+          response=$(curl -s -H "X-E2E-Secret: $E2E_CODE_SINK_SECRET" "https://auth.qa.alummahnow.net/test/debug/clients/$client_id")
           echo "Auth Admin client response: $response"
 
           tenant_id=$(echo "$response" | jq -r '.client.tenant_id // "null"')
@@ -221,7 +225,7 @@ jobs:
           # Also show all clients for debugging
           echo ""
           echo "All OAuth clients:"
-          all_clients=$(curl -s "https://auth.qa.alummahnow.net/test/debug/clients")
+          all_clients=$(curl -s -H "X-E2E-Secret: $E2E_CODE_SINK_SECRET" "https://auth.qa.alummahnow.net/test/debug/clients")
           echo "$all_clients" | jq '.clients[] | {id, tenant_id, name}'
 
       - name: Verify JWKS endpoint is accessible
@@ -238,19 +242,6 @@ jobs:
           fi
           keys_count=$(echo "$jwks_body" | jq '.keys | length')
           echo "✅ JWKS endpoint accessible with $keys_count keys"
-
-      - name: Debug KV storage keys
-        run: |
-          echo "Listing KV storage keys to find signing key location..."
-          response=$(curl -s "https://auth.qa.alummahnow.net/test/debug/kv")
-          echo "KV debug response:"
-          echo "$response" | jq '.'
-          echo ""
-          echo "Key names:"
-          echo "$response" | jq -r '.keys[]' 2>/dev/null || echo "No keys found or error"
-          echo ""
-          echo "Keys with values (first 200 chars):"
-          echo "$response" | jq '.keysWithValues[]' 2>/dev/null || echo "No values found"
 
       - name: Verify Admin M2M authentication flow
         run: |
@@ -301,7 +292,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -325,6 +316,7 @@ jobs:
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v5
@@ -354,7 +346,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -378,6 +370,7 @@ jobs:
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v5
@@ -407,7 +400,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -431,6 +424,7 @@ jobs:
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v5
@@ -444,7 +438,7 @@ jobs:
 
   e2e-profile-integration:
     runs-on: ubuntu-24.04  # Playwright has no browser builds for ubuntu-latest (26.04)
-    name: E2E Profile & Integration (13 tests)
+    name: E2E Profile, Integration & Release
     needs: [deploy-qa]
     steps:
       - name: Checkout code
@@ -456,7 +450,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Setup GitHub Packages
@@ -470,8 +464,8 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run Profile & Integration tests
-        run: pnpm exec playwright test e2e/tests/profile/ e2e/tests/integration/
+      - name: Run Profile, Integration & Release regression tests
+        run: pnpm exec playwright test e2e/tests/profile/ e2e/tests/integration/ e2e/tests/release/
         env:
           CI: true
           SKIP_WEB_SERVER: true
@@ -480,6 +474,7 @@ jobs:
           E2E_ADMIN_URL: https://admin.auth.qa.alummahnow.net
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v5

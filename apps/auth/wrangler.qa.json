@@ -71,6 +71,11 @@
       "binding": "RESEND_API_KEY",
       "store_id": "f8eddc9944d041919ed8dc7d08d32308",
       "secret_name": "RESEND_API_KEY"
+    },
+    {
+      "binding": "E2E_CODE_SINK_SECRET",
+      "store_id": "f8eddc9944d041919ed8dc7d08d32308",
+      "secret_name": "E2E_CODE_SINK_SECRET_QA"
     }
   ],
   "compatibility_flags": [

@@ -493,3 +493,14 @@ $ pnpm test:e2e:report                 # View results
 - Explore example tests in `e2e/tests/`
 - Write tests for new features
 - Check CI/CD workflow in `.github/workflows/test.yml`
+
+## Verification codes (E2E code sink)
+
+Test users get `@e2e.alummahnow.net` addresses (`generateTestEmail`). On local, QA and stage, auth does not email codes for that domain. It stores them in KV, and the helpers read them through `GET /test/email/<addr>?consume=1` with the `X-E2E-Secret` header (`e2e/utils/email-interceptor.ts`).
+
+- Local: set `E2E_CODE_SINK_SECRET` in `apps/auth/.dev.vars` and export the same value before `pnpm test:e2e`.
+- QA: the worker binds Secrets Store `E2E_CODE_SINK_SECRET_QA`; CI passes GitHub secret `E2E_CODE_SINK_SECRET_QA` to the E2E jobs.
+- Without `E2E_CODE_SINK_SECRET`, the helpers fall back to the Resend API (`RESEND_API_KEY`).
+- Every `/test/*` route needs the header and answers 404 without it. None of them exist in production. Design and guarantees: `docs/release-pipeline.md`.
+
+Release regression specs live in `e2e/tests/release/` and run in the QA E2E job.

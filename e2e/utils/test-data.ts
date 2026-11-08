@@ -18,12 +18,15 @@ export interface TestUser {
 }
 
 /**
- * Generate a unique test email address
+ * Generate a unique test email address.
+ *
+ * e2e.alummahnow.net has no MX record. On QA/stage, auth stores codes for this
+ * domain in its E2E sink instead of emailing them (apps/auth/src/utils/e2e-sink.ts).
  */
 export function generateTestEmail(prefix: string = 'test'): string {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(7);
-  return `${prefix}-${timestamp}-${random}@e2e-test.local`;
+  return `${prefix}-${timestamp}-${random}@e2e.alummahnow.net`;
 }
 
 /**

@@ -1,3 +1,9 @@
 # Local development environment variables for E2E testing
 # Copy this file to .dev.vars and wrangler will use it automatically
 PROFILE_APP_URL=http://localhost:8788
+
+# E2E test support (local/QA/stage only; never set in production).
+# Gates every /test/* route (send it as the X-E2E-Secret header) and enables the
+# E2E email-code sink for @e2e.alummahnow.net addresses. Set the same value as
+# E2E_CODE_SINK_SECRET in the shell that runs Playwright.
+E2E_CODE_SINK_SECRET=local-e2e-secret

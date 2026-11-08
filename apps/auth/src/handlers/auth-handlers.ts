@@ -10,6 +10,7 @@ import { getClientIP } from '../rate-limit';
 import { getAuditEmitter } from '../audit-emitter';
 import { createLoginSuccessEvent, createLoginFailedEvent } from '../audit-events';
 import { trackEvent } from '../utils/analytics';
+import { shouldSinkCode, sinkKey, storeSinkCode } from '../utils/e2e-sink';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
 import { Storage, type StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import type { PasswordSendCodeError } from '@al-ummah-now/openauth/provider/password';
@@ -285,6 +286,9 @@ export interface SendCodeEnv {
 	AUTH_STORAGE: KVNamespace;
 	RESEND_API_KEY?: string | SecretBinding;
 	ENVIRONMENT?: string;
+	OPENAUTH_ISSUER?: string;
+	/** QA/stage only (never bound in prod): enables the E2E code sink, see utils/e2e-sink.ts */
+	E2E_CODE_SINK_SECRET?: string | SecretBinding;
 	AUTH_ANALYTICS?: AnalyticsEngineDataset;
 }
 
@@ -460,6 +464,14 @@ export function createSendCodeHandler(
 
 			logger.debug('Using RESEND_API_KEY from environment');
 
+			// QA/stage E2E addresses: store the code for the test instead of emailing it.
+			// Runs after RESEND_API_KEY resolves, so a missing secret still fails here.
+			if (await shouldSinkCode(env, email)) {
+				await storeSinkCode(env, email, code);
+				logger.info('Verification code stored in E2E sink', { email });
+				return;
+			}
+
 			// Generate email content from professional template
 			const emailData = {
 				code,
@@ -482,9 +494,8 @@ export function createSendCodeHandler(
 
 			// For E2E tests, store the email ID in KV so tests can retrieve it
 			if (isLocalhost && emailResult.emailId) {
-				const testKey = `test:email:${email}`;
 				await env.AUTH_STORAGE.put(
-					testKey,
+					sinkKey(email),
 					JSON.stringify({
 						emailId: emailResult.emailId,
 						code,
