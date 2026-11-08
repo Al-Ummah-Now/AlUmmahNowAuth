@@ -26,6 +26,8 @@ declare global {
     SIGN_IN_FALLBACK_URL?: string;
     /** Comma-separated app logout URLs walked on single sign-out */
     FRONTCHANNEL_LOGOUT_URLS?: string;
+    /** "enforce" | "report": check /authorize against oauth_clients */
+    CLIENT_REGISTRY_MODE?: string;
     PROFILE_CLIENT_ID?: string;
     RESEND_API_KEY: SecretBinding;
     ALLOWED_ORIGINS: string;

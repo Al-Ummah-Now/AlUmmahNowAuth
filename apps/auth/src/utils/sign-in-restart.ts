@@ -23,3 +23,13 @@ function httpUrl(value: string | undefined): string | undefined {
 export function signInFallbackUrl(env: RestartEnv): string {
 	return httpUrl(env.SIGN_IN_FALLBACK_URL) ?? httpUrl(env.PROFILE_APP_URL) ?? '/';
 }
+
+/**
+ * CLIENT_REGISTRY_MODE: "enforce" rejects /authorize for unknown or disabled
+ * clients and unregistered redirect_uris; "report" only logs them; anything
+ * else turns the check off.
+ */
+export function clientRegistryMode(env: { CLIENT_REGISTRY_MODE?: string }): { mode: 'enforce' | 'report' } | undefined {
+	const mode = env.CLIENT_REGISTRY_MODE?.trim();
+	return mode === 'enforce' || mode === 'report' ? { mode } : undefined;
+}

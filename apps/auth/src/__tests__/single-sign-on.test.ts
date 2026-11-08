@@ -9,6 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import worker from '../index';
 import { setupDatabase } from '../test-setup';
+import { PROFILE, ADMIN, registerTestClients } from './helpers/clients';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
@@ -17,8 +18,6 @@ import { frontChannelLogoutUrls, logoutReturnUrl } from '../handlers/logout-hand
 const ISSUER = 'http://localhost:3301';
 const EMAIL = 'sso-test@example.com';
 const PASSWORD = 'Sso-Test-123!';
-const PROFILE = { id: '109a1087-6626-40f7-8a7f-7f42f83f4f30', redirect: 'http://localhost:3302/callback' };
-const ADMIN = { id: '1448ed27-39a6-417d-b4c8-07f881e81269', redirect: 'http://localhost:5175/callback' };
 
 class Browser {
 	jar = new Map<string, string>();
@@ -66,6 +65,7 @@ async function browserSessionCount() {
 describe('single sign-on (worker)', () => {
 	beforeAll(async () => {
 		await setupDatabase();
+		await registerTestClients();
 		const storage = CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE });
 		await Storage.set(storage, ['email', EMAIL, 'password'], await ScryptHasher().hash(PASSWORD));
 	});
