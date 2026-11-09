@@ -32,6 +32,7 @@ import { handleTokenCron } from "./cron/token-cron";
 import { routeRequest, type RouterContext } from "./router";
 import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
+import { AUTH_THEME } from "./ui/theme";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
@@ -319,77 +320,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
           },
         }),
       },
-      theme: (() => {
-        // Randomly select a background image
-        const backgroundImages = [
-          'https://images.alummahnow.net/background_1.jpg',
-          'https://images.alummahnow.net/background_3.jpg',
-        ];
-        const randomBg = backgroundImages[Math.floor(Math.random() * backgroundImages.length)];
-
-        // Detect locale from URL parameter (OpenAuth also does this, but we need it for direction)
-        const locale = url.searchParams.get('lang') || 'en';
-        const isRtl = locale === 'ar';
-
-        return {
-          title: {
-            en: "Al Ummah Now",
-            ar: "الأمة الآن",
-          },
-          locale: locale as 'en' | 'ar',
-          direction: isRtl ? 'rtl' : 'ltr',
-          primary: {
-            light: "#d4930d",  // Warm amber gold on light mode
-            dark: "#f5b014",   // Warm golden on dark mode
-          },
-          background: {
-            light: "#1a1a1a",
-            dark: "#0c0a09",
-          },
-          favicon: "https://al-ummah-now-images.b-cdn.net/favicon_io/favicon.ico",
-          logo: {
-            dark: "https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png",
-            light: "https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png",
-          },
-          radius: "md",
-          font: {
-            family: "Cairo, sans-serif",
-          },
-          css: `
-            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
-
-            @font-face {
-              font-family: 'Farsi Simple Bold';
-              src: url('https://cdn.alummahnow.net/fonts/Farsi%20Simple%20Bold%20Regular.ttf') format('truetype');
-              font-display: swap;
-            }
-
-            [data-component="root"] {
-              background-image: url('${randomBg}');
-              background-size: cover;
-              background-position: center;
-              background-repeat: no-repeat;
-            }
-
-            [data-component="center"] {
-              background: rgba(0, 0, 0, 0.4);
-              padding: 2rem;
-              border-radius: 1rem;
-              backdrop-filter: blur(10px);
-            }
-
-            /* Golden halo around logo */
-            [data-component="logo"] {
-              filter: drop-shadow(0 0 15px rgba(245, 176, 20, 0.6)) drop-shadow(0 0 30px rgba(245, 176, 20, 0.3));
-            }
-
-            /* Style title with Farsi font for Arabic */
-            [data-component="title"] {
-              font-family: ${isRtl ? '"Farsi Simple Bold"' : 'Cairo, sans-serif'};
-            }
-          `,
-        };
-      })(),
+      // Request-independent: OpenAuth keeps the theme in an isolate-wide global (ui/theme.ts)
+      theme: AUTH_THEME,
       onSuccess: createOnSuccessHandler(userService, rbacService, {
         request,
         env,
