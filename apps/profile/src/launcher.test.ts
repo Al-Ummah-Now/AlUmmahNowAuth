@@ -52,7 +52,7 @@ describe("renderHomePage", () => {
 
   it("sets lang and dir for Arabic and offers a switch back to English", () => {
     const html = renderHomePage({ ...base, locale: "ar" });
-    expect(html).toContain('<html lang="ar" dir="rtl">');
+    expect(html).toContain('<html lang="ar" dir="rtl" data-theme="fawanees">');
     expect(html).toContain('href="?lang=en"');
     expect(html).toContain("تطبيقاتك");
   });
