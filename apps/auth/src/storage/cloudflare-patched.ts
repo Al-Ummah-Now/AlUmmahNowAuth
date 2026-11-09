@@ -22,10 +22,15 @@
  * Issue: https://github.com/openauthjs/openauth/issues/XXX (to be filed)
  */
 
-import { joinKey, splitKey, type StorageAdapter } from "@al-ummah-now/openauth/storage/storage";
+import { joinKey, splitKey, type AtomicStorageAdapter, type StorageAdapter } from "@al-ummah-now/openauth/storage/storage";
 
 export interface CloudflarePatchedStorageOptions {
   namespace: KVNamespace;
+  /**
+   * Strongly consistent store for single-use and rotating credentials
+   * (D1AtomicStorage). KV alone cannot make them single-use across PoPs.
+   */
+  atomic?: AtomicStorageAdapter;
 }
 
 /**
@@ -33,6 +38,7 @@ export interface CloudflarePatchedStorageOptions {
  */
 export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOptions): StorageAdapter {
   return {
+    ...(options.atomic ? { atomic: options.atomic } : {}),
     async get(key: string[]): Promise<Record<string, unknown> | undefined> {
       const value = await options.namespace.get(joinKey(key), "json");
       if (!value) return undefined;

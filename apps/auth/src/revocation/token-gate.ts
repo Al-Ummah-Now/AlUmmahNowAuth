@@ -47,10 +47,32 @@ export function parseAccessTtl(value: string | number | undefined): number | und
 	return Number.isInteger(n) && n >= 60 ? n : undefined;
 }
 
+/** Caps a code's or refresh token's access-token lifetime at ACCESS_TOKEN_TTL. */
+function capAccessTtl<T extends TokenRecord | undefined>(value: T, accessTtl: number | undefined): T {
+	const access = value?.ttl?.access;
+	if (value && accessTtl && typeof access === 'number' && access > accessTtl) {
+		return { ...value, ttl: { ...value.ttl, access: accessTtl } };
+	}
+	return value;
+}
+
 export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorageGuard): StorageAdapter {
 	if (!guard.revocations && !guard.accessTtl) return storage;
+	const atomic = storage.atomic;
 	return {
 		...storage,
+		// Authorization codes live in the atomic store: cap them there too
+		...(atomic
+			? {
+					atomic: {
+						...atomic,
+						async get(key: string[]) {
+							const value = (await atomic.get(key)) as TokenRecord | undefined;
+							return key[0] === 'oauth:code' ? capAccessTtl(value, guard.accessTtl) : value;
+						},
+					},
+				}
+			: {}),
 		async get(key: string[]) {
 			const value = (await storage.get(key)) as TokenRecord | undefined;
 			if (!value || !GUARDED.has(key[0] ?? '')) return value;
@@ -64,11 +86,7 @@ export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorage
 					return undefined;
 				}
 			}
-			const access = value.ttl?.access;
-			if (guard.accessTtl && typeof access === 'number' && access > guard.accessTtl) {
-				return { ...value, ttl: { ...value.ttl, access: guard.accessTtl } };
-			}
-			return value;
+			return capAccessTtl(value, guard.accessTtl);
 		},
 	};
 }
