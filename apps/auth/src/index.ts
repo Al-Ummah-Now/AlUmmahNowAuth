@@ -115,7 +115,7 @@ export default {
    * and wrangler.qa.json) and mapped to jobs in cron/token-cron.ts.
    */
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    logger.setDatabase(env.AUTH_DB, true);
+    logger.setDatabase(env.AUTH_DB, false);
     logger.setContext(ctx);
     setupAuditEmitter(env, ctx);
 
@@ -143,8 +143,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       ? env.ENVIRONMENT === 'production'
       : (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1');
 
-    // Initialize D1 logging (optional - set to false to disable)
-    logger.setDatabase(env.AUTH_DB, true);
+    // D1 logging stays off: every log line cost ~4 rows written (row, two
+    // indexes, autoincrement) and nothing reads the table. Logs go to Workers Logs.
+    logger.setDatabase(env.AUTH_DB, false);
     logger.setContext(ctx);
 
     // Initialize request context to prevent stale timer usage

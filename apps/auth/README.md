@@ -513,7 +513,7 @@ Application logs are stored in D1 for debugging and monitoring.
 import { logger } from './logger';
 
 // Initialize (done automatically in index.ts)
-logger.setDatabase(env.AUTH_DB, true);
+logger.setDatabase(env.AUTH_DB, false); // D1 logging off: use Workers Logs
 logger.setContext(ctx);
 
 // Log messages
@@ -818,7 +818,7 @@ Enable detailed logging:
 
 ```typescript
 // src/index.ts
-logger.setDatabase(env.AUTH_DB, true); // true = verbose logging
+logger.setDatabase(env.AUTH_DB, false); // D1 logging off: use Workers Logs
 ```
 
 View logs:
