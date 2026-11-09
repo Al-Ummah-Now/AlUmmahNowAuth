@@ -28,6 +28,11 @@
       "pattern": "profile.auth.alummahnow.net",
       "zone_name": "alummahnow.net",
       "custom_domain": true
+    },
+    {
+      "pattern": "account.alummahnow.net",
+      "zone_name": "alummahnow.net",
+      "custom_domain": true
     }
   ],
   "compatibility_flags": [
@@ -40,6 +45,11 @@
       "routes": [
         {
           "pattern": "profile.auth.stage.alummahnow.net",
+          "zone_name": "alummahnow.net",
+          "custom_domain": true
+        },
+        {
+          "pattern": "account.stage.alummahnow.net",
           "zone_name": "alummahnow.net",
           "custom_domain": true
         }
