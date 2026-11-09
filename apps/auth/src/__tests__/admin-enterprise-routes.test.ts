@@ -52,7 +52,8 @@ vi.mock('../audit-emitter', () => ({
 
 // Mock rate limiting to always allow
 vi.mock('../rate-limit', () => ({
-  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now() + 3600000 }),
+  withinRateLimit: vi.fn().mockResolvedValue(true),
+  RATE_LIMIT_PERIOD_SECONDS: 60,
   getClientIP: vi.fn().mockReturnValue('127.0.0.1'),
 }));
 

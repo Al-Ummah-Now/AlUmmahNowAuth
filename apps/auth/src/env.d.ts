@@ -55,6 +55,16 @@ declare global {
     PASSWORD_IP_LIMITER?: RateLimit;
     /** Workers Rate Limiting: POST /password/* per email (AU-2) */
     PASSWORD_EMAIL_LIMITER?: RateLimit;
+    /** Workers Rate Limiting (AU-1): /token per user (refresh) or per client IP */
+    TOKEN_LIMITER?: RateLimit;
+    /** Workers Rate Limiting (AU-1): /token per client for our own server-side apps */
+    TOKEN_CLIENT_LIMITER?: RateLimit;
+    /** Workers Rate Limiting (AU-1): verification emails per client IP (per address for E2E) */
+    SEND_CODE_LIMITER?: RateLimit;
+    /** Workers Rate Limiting (AU-1): admin API per admin */
+    ADMIN_LIMITER?: RateLimit;
+    /** Workers Rate Limiting (AU-1): destructive admin actions per admin */
+    ADMIN_SENSITIVE_LIMITER?: RateLimit;
   }
 }
 

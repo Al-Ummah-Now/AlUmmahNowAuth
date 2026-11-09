@@ -15,7 +15,7 @@ import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter';
 import { adminErrorResponse } from './utils/error-response';
 import { AuditEventType, AuditEventSeverity, createSecurityAlertEvent } from './audit-events';
-import { checkRateLimit, getClientIP } from './rate-limit';
+import { getClientIP, withinRateLimit } from './rate-limit';
 import * as v from 'valibot';
 
 // ============================================================================
@@ -546,10 +546,9 @@ export class AdminEnterpriseRoutes {
       const authResult = await verifyAdminRequest(request, env, 'admin:users');
       const authContext = authResult.type === 'user' ? authResult : { user: authResult.actingUser, isAdmin: true };
 
-      // Rate limiting for destructive operations
-      const rateLimitIP = getClientIP(request);
-      const rateLimit = await checkRateLimit(this.kv, `admin:token:revoke:${rateLimitIP}`, 10, 3600);
-      if (!rateLimit.allowed) {
+      // Rate limiting for destructive operations (AU-1): per acting admin
+      const actor = authContext.user?.id ? `user:${authContext.user.id}` : `ip:${getClientIP(request)}`;
+      if (!(await withinRateLimit(env.ADMIN_SENSITIVE_LIMITER, `admin:token:revoke:${actor}`))) {
         return createAuthErrorResponse('Rate limit exceeded', 429);
       }
 

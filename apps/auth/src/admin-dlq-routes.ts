@@ -7,7 +7,7 @@
 import * as v from 'valibot';
 import { DLQReplayService } from './dlq-replay';
 import { getUserSession } from './session';
-import { checkRateLimit, getClientIP } from './rate-limit';
+import { RATE_LIMIT_PERIOD_SECONDS, getClientIP, withinRateLimit } from './rate-limit';
 import { logger } from './logger';
 
 const replaySchema = v.object({
@@ -65,21 +65,13 @@ export async function handleDLQReplay(
     return new Response('Unauthorized', { status: 401 });
   }
 
-  // Rate limiting: 10 replay requests per hour per admin (Issue #5)
+  // Rate limiting (AU-1): ADMIN_SENSITIVE_LIMITER per client IP (this route has no admin identity)
   const clientIP = getClientIP(request);
-  const rateLimitKey = `admin:dlq:replay:${clientIP}`;
-  const rateLimit = await checkRateLimit(
-    env.AUTH_STORAGE,
-    rateLimitKey,
-    10, // limit
-    3600 // 1 hour in seconds
-  );
-
-  if (!rateLimit.allowed) {
-    const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+  if (!(await withinRateLimit(env.ADMIN_SENSITIVE_LIMITER, `admin:dlq:replay:${clientIP}`))) {
+    const retryAfter = RATE_LIMIT_PERIOD_SECONDS;
     return Response.json({
       error: 'Too Many Requests',
-      details: `Rate limit exceeded. Try again in ${Math.ceil(retryAfter / 60)} minutes.`,
+      details: `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
       retryAfter,
     }, {
       status: 429,
@@ -289,21 +281,13 @@ export async function handleDLQResetStale(
     return new Response('Unauthorized', { status: 401 });
   }
 
-  // Rate limiting: 10 reset requests per hour per admin
+  // Rate limiting (AU-1): ADMIN_SENSITIVE_LIMITER per client IP (this route has no admin identity)
   const clientIP = getClientIP(request);
-  const rateLimitKey = `admin:dlq:reset-stale:${clientIP}`;
-  const rateLimit = await checkRateLimit(
-    env.AUTH_STORAGE,
-    rateLimitKey,
-    10, // limit
-    3600 // 1 hour in seconds
-  );
-
-  if (!rateLimit.allowed) {
-    const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+  if (!(await withinRateLimit(env.ADMIN_SENSITIVE_LIMITER, `admin:dlq:reset-stale:${clientIP}`))) {
+    const retryAfter = RATE_LIMIT_PERIOD_SECONDS;
     return Response.json({
       error: 'Too Many Requests',
-      details: `Rate limit exceeded. Try again in ${Math.ceil(retryAfter / 60)} minutes.`,
+      details: `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
       retryAfter,
     }, {
       status: 429,

@@ -18,6 +18,12 @@ const AUTH_BINDINGS: Binding[] = [
 	// Password brute-force limits (AU-2)
 	{ kind: 'ratelimits', name: 'PASSWORD_IP_LIMITER' },
 	{ kind: 'ratelimits', name: 'PASSWORD_EMAIL_LIMITER' },
+	// Every rate limit is a Workers Rate Limiting binding (AU-1)
+	{ kind: 'ratelimits', name: 'TOKEN_LIMITER' },
+	{ kind: 'ratelimits', name: 'TOKEN_CLIENT_LIMITER' },
+	{ kind: 'ratelimits', name: 'SEND_CODE_LIMITER' },
+	{ kind: 'ratelimits', name: 'ADMIN_LIMITER' },
+	{ kind: 'ratelimits', name: 'ADMIN_SENSITIVE_LIMITER' },
 ];
 
 export const APPS: AppRule[] = [
