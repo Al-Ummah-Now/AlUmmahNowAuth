@@ -17,7 +17,7 @@ Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the
 | B5 | auth | Hub pages for B1–B4b, step-up flow | B1–B4b |
 | B6 | AlUmmahNow | Privacy page link to `<account>/data`. #444 read-only email explanation and link to `<account>/personal-info#email` | B5 live on prod |
 | C1 | auth | Account events: `account-events` queue, signed SETs to subscribed clients, retry and DLQ | B5 |
-| C2 | auth | Deletion in the hub: auth `DELETE /account` plus the `account.deleted` event | C1, Q3 answered |
+| C2 | auth | Deletion in the hub: auth `DELETE /account` plus the `account.deleted` event | C1 (Q3 decided: apps delete everything) |
 | C3 | AlUmmahNow | Videos receiver: verify the SET, erase on `account.deleted` with its own queue. Then auth migration 0018 subscribes Videos | C1 on QA |
 | C4 | auth | Migration 0019 (drop old redirect URIs), remove `PROFILE_APP_URL` fallback | A1 plus one full release |
 | T1 | auth | QA-only migration removing the theme demo redirect URIs from #249 | Theme demos torn down (any time, independent of the hub) |
@@ -129,7 +129,7 @@ Acceptance: QA E2E: a throwaway account is deleted, signing in with it fails, an
 
 ## C3: Videos receiver (AlUmmahNow)
 
-Scope: an endpoint in api-videos that verifies the SET against auth's JWKS (issuer and audience = Videos' client id), is idempotent on `jti`, and enqueues erasure on Videos' own queue. A worker runs the existing resumable `eraseUserData` to completion and sends `UserDataErased`. Then auth migration `0018_client_event_subscriptions.sql` subscribes Videos per env.
+Scope (Q3: Videos deletes all of the user's data): an endpoint in api-videos that verifies the SET against auth's JWKS (issuer and audience = Videos' client id), is idempotent on `jti`, and enqueues erasure on Videos' own queue. A worker runs the existing resumable `eraseUserData` to completion and sends `UserDataErased`. Then auth migration `0018_client_event_subscriptions.sql` subscribes Videos per env.
 
 Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data, a replayed `jti` is a no-op, a bad signature is refused. QA E2E across both repos: delete in the hub, and the channel is gone on Videos QA shortly after.
 

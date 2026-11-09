@@ -340,7 +340,7 @@ Phase A changes no auth behaviour, so it can ship as soon as it is reviewed. Eac
 
 1. ~~**Photo.**~~ **Answered 2026-11-08: no photo in auth** (§2.3). The hub shows initials and never reads from Videos.
 2. ~~**Email change signs you out everywhere.**~~ **Answered 2026-11-08: email is permanent**, so there is no email change (§5.3).
-3. **Deletion scope.** Deleting your account in the hub deletes auth's data and tells every subscribed app, which then deletes its own data for you: for Videos, your channels and videos (§5.4). Videos keeps its own "erase my Videos data" option. Agree that deleting the account should mean deleting everywhere, rather than apps keeping data under a deleted account?
+3. ~~**Deletion scope.**~~ **Answered 2026-11-08: yes.** When an account is deleted, every app subscribed to `account.deleted` deletes all of that user's data on its side. For Videos, that means channels, videos and everything else it holds. The event model in §5.4 is unchanged: auth deletes its own data and publishes the event, and each app does its own clean-up. Videos keeps its own "erase my Videos data" option for erasing Videos data without deleting the account.
 4. **Old host lifetime.** Keep the `profile.auth.*` 301 permanently (it costs nothing), or remove the routes after 90 days? **Recommendation: permanent.**
 
 ## 12. Changes after owner review (2026-11-08)
@@ -353,3 +353,4 @@ Phase A changes no auth behaviour, so it can ship as soon as it is reviewed. Eac
 - **Migrations renumbered:** `migrations-qa/0014` is taken by the theme demo redirect (#249), so this work starts at 0015 in both directories: 0015 hub client, 0016 audit index, 0017 registry metadata, 0018 event subscriptions, 0019 drop the old redirect URI. A QA-only migration removes the theme demo URIs when the demos are torn down.
 - **Email events:** with email permanent, no `account.email_changed` event exists. `account.deleted` is the only event type.
 - **Email is permanent (Q2):** email change is removed everywhere: the `/account/email/*` APIs, its flow, rate limits, KV state, copy, tests and the `identifier-changed` event. Personal info shows the email read-only with "create a new account and move your channels" and the generic add-account flow. Losing the old mailbox is recovered in the app that holds the data (Videos: super admin channel transfer, AlUmmahNow #460), never by auth.
+- **Deletion scope (Q3):** decided as everywhere. Every subscribed app deletes all of the user's data when it receives `account.deleted`. Subscribing to the event commits an app to that. The event model is unchanged.
