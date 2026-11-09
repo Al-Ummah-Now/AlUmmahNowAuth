@@ -23,6 +23,7 @@ import {
   getSession as getStoredSession,
   type StoredSession,
 } from "./session-store";
+import { aliasRedirect } from "./alias";
 
 const PROFILE_CLIENT_ID = "109a1087-6626-40f7-8a7f-7f42f83f4f30";
 
@@ -162,6 +163,9 @@ const INVALID_STATE_PAGE = `<!DOCTYPE html>
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+    const alias = aliasRedirect(request.url, env.APP_URL);
+    if (alias) return alias;
+
     const url = new URL(request.url);
     const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
     const authServerUrl = getAuthServerUrl(request, env);
