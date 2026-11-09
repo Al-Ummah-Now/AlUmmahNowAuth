@@ -24,6 +24,7 @@ const BINDING_KEYS = [
 	'hyperdrive',
 	'vectorize',
 	'version_metadata',
+	'ratelimits',
 ] as const;
 
 /** Keys wrangler inherits from the top level when a named env omits them. */

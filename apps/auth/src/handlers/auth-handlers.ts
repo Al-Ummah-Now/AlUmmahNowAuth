@@ -11,6 +11,7 @@ import { getAuditEmitter } from '../audit-emitter';
 import { createLoginSuccessEvent, createLoginFailedEvent } from '../audit-events';
 import { trackEvent } from '../utils/analytics';
 import { shouldSinkCode, sinkKey, storeSinkCode } from '../utils/e2e-sink';
+import { CODE_TTL_SECONDS, recordCode } from '../security/password-attempts';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
 import { Storage, type StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import type { PasswordSendCodeError } from '@al-ummah-now/openauth/provider/password';
@@ -284,6 +285,8 @@ export function createOnSuccessHandler(
  */
 export interface SendCodeEnv {
 	AUTH_STORAGE: KVNamespace;
+	/** password_codes: attempt counter and expiry of each sent code (AU-2) */
+	AUTH_DB: D1Database;
 	RESEND_API_KEY?: string | SecretBinding;
 	ENVIRONMENT?: string;
 	OPENAUTH_ISSUER?: string;
@@ -451,6 +454,10 @@ export function createSendCodeHandler(
 			}
 		}
 
+		// The code's attempt counter and expiry (AU-2); the provider's checkCode
+		// hook rejects any code without a live row here
+		await recordCode(env.AUTH_DB, email, code);
+
 		// Track login attempt in analytics
 		trackEvent(env, {
 			event: 'login_attempt',
@@ -480,7 +487,7 @@ export function createSendCodeHandler(
 			const emailData = {
 				code,
 				email,
-				expiryMinutes: 1440, // 24 hours (matches OpenAuth's provider session TTL)
+				expiryMinutes: CODE_TTL_SECONDS / 60, // enforced by recordCode/checkCode
 			};
 			const htmlContent = emailTemplates.getVerificationCodeTemplate(emailData);
 			const textContent = emailTemplates.getVerificationCodePlainText(emailData);

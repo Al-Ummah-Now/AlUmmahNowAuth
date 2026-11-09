@@ -37,6 +37,7 @@ import { requestTheme } from "./ui/theme";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
+import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -268,6 +269,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // RBAC service already created above (Phase 3: reused for both endpoints and token enrichment)
 
+    // Attempt limits for the password provider's POSTs and email codes (AU-2).
+    // PasswordUI reads this copy object on every render, so the guard can swap in
+    // a "too many attempts" message for this request.
+    const passwordCopy: PasswordCopy = { input_code: "Code (check your inbox)" };
+    const passwordGuard = await guardPasswordRequest(request, env, url, passwordCopy);
+
     // Create enterprise issuer with multi-account session support
     const { app } = createMultiTenantIssuer({
       // Pin the issuer: used for the `iss` claim, discovery documents and token
@@ -312,10 +319,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
               { request, env, ctx, requestId, url },
               storage,
             ),
-            copy: {
-              input_code: "Code (check your inbox)",
-            },
+            copy: passwordCopy,
           }),
+          // Every submitted email code is counted in D1: 5 tries, 15 minutes, single use
+          checkCode: passwordGuard.checkCode,
           // A password reset signs the account out everywhere (#437)
           onPasswordChanged: async (email: string) => {
             await revokeOnPasswordChange(env.AUTH_DB, env.TOKEN_REVOCATIONS, email);
@@ -334,7 +341,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Call issuer to handle the request
     // OpenAuth enterprise issuer manages sessions via D1SessionAdapter and sets the __session cookie
-    let issuerResponse = await app.fetch(request, env, ctx);
+    let issuerResponse = await passwordGuard.finish(await app.fetch(passwordGuard.request, env, ctx));
 
     // Picker "Sign out" of the last account: single sign-out (#219)
     if (request.method === 'POST' && url.pathname === ACCOUNT_PICKER_REMOVE_PATH) {

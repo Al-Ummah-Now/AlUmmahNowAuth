@@ -10,6 +10,7 @@
 
 import { TokenCleanupService } from '../services/token-cleanup';
 import { logger } from '../logger';
+import { purgeExpiredAttempts } from '../security/password-attempts';
 
 export type CronJobName = 'token-cleanup';
 
@@ -57,6 +58,8 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 			case 'token-cleanup': {
 				const result = await TokenCleanupService.runCleanup(env);
 				logger.info('Token cleanup completed', { ...result });
+				// Password attempt rows that no longer limit anything (AU-2)
+				await purgeExpiredAttempts(env.AUTH_DB);
 				break;
 			}
 		}

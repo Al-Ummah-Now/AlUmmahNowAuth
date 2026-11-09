@@ -1,5 +1,18 @@
 // Test setup file - runs before all tests
 import { env } from "cloudflare:test";
+import passwordAttemptsSql from "../migrations/0020_password_attempts.sql?raw";
+
+/** Statements of a migration file (comments stripped). */
+function sqlStatements(sql: string): string[] {
+  return sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n")
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 
 // Create the database schema for testing
 export async function setupDatabase() {
@@ -279,6 +292,11 @@ export async function setupDatabase() {
       VALUES (?, 'default', ?, 'active', ?, ?, 0)
     `).bind(userId, `${userId}@test.com`, now, now).run();
   }
+
+  // Password attempt counters (AU-2): the real migration file, rows cleared
+  for (const stmt of sqlStatements(passwordAttemptsSql)) await env.AUTH_DB.prepare(stmt).run();
+  await env.AUTH_DB.prepare(`DELETE FROM password_codes`).run();
+  await env.AUTH_DB.prepare(`DELETE FROM password_login_attempts`).run();
 }
 
 // Run setup automatically when this module is imported

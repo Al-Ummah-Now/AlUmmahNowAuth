@@ -15,6 +15,9 @@ const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'secrets_store_secrets', name: 'CLIENT_SECRET_SALT' },
 	{ kind: 'secrets_store_secrets', name: 'KEY_ENCRYPTION_MASTER_KEY' },
 	{ kind: 'secrets_store_secrets', name: 'RESEND_API_KEY' },
+	// Password brute-force limits (AU-2)
+	{ kind: 'ratelimits', name: 'PASSWORD_IP_LIMITER' },
+	{ kind: 'ratelimits', name: 'PASSWORD_EMAIL_LIMITER' },
 ];
 
 export const APPS: AppRule[] = [
