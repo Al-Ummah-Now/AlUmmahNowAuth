@@ -1,40 +1,48 @@
 import { describe, expect, it } from 'vitest';
 import { Layout } from '@al-ummah-now/openauth/ui/base';
-import { setTheme } from '@al-ummah-now/openauth/ui/theme';
-import { AUTH_THEME, BACKGROUND_IMAGES, authTheme } from './theme';
+import * as openauthTheme from '@al-ummah-now/openauth/ui/theme';
+import { BACKGROUND_IMAGES, authTheme, requestTheme } from './theme';
 
 type LayoutProps = Parameters<typeof Layout>[0];
 
-/** Renders OpenAuth's page shell the way its password pages do (theme from the global). */
-async function renderShell(locale: 'en' | 'ar'): Promise<string> {
-	const node = Layout({ locale, children: 'page' } as LayoutProps);
+/** Renders OpenAuth's page shell with a theme passed to this render. */
+async function renderShell(locale: 'en' | 'ar', theme = requestTheme()): Promise<string> {
+	const node = Layout({ locale, theme, children: 'page' } as LayoutProps);
 	return String(await node.toString());
 }
 
 const htmlTag = (html: string) => html.match(/<html[^>]*>/)?.[0] ?? '';
 
-describe('sign-in theme (shared by every request in the isolate)', () => {
-	it('is the same whichever request built it: no locale, no direction', () => {
-		expect(AUTH_THEME).not.toHaveProperty('locale');
-		expect(AUTH_THEME).not.toHaveProperty('direction');
+describe('sign-in theme (passed per request)', () => {
+	it('OpenAuth no longer keeps a theme in a global', () => {
+		expect(openauthTheme).not.toHaveProperty('setTheme');
+		expect(openauthTheme).not.toHaveProperty('getTheme');
+	});
+
+	it('carries no locale or direction: the request decides those', () => {
+		const theme = requestTheme();
+		expect(theme).not.toHaveProperty('locale');
+		expect(theme).not.toHaveProperty('direction');
 		expect(authTheme(BACKGROUND_IMAGES[0])).toEqual(authTheme(BACKGROUND_IMAGES[0]));
 	});
 
-	it('an Arabic page is rtl even when an English request set the global theme last', async () => {
-		// The race: an English request's setTheme lands between an Arabic request's
-		// setTheme and its render. With a request-independent theme that is harmless.
-		setTheme(AUTH_THEME);
-		expect(htmlTag(await renderShell('ar'))).toMatch(/lang="ar"[^>]*dir="rtl"|dir="rtl"[^>]*lang="ar"/);
-		expect(htmlTag(await renderShell('en'))).toMatch(/lang="en"[^>]*dir="ltr"|dir="ltr"[^>]*lang="en"/);
+	it('picks one of the background images for each request', () => {
+		expect(requestTheme(() => 0).css).toContain(BACKGROUND_IMAGES[0]);
+		expect(requestTheme(() => 0.99).css).toContain(BACKGROUND_IMAGES[BACKGROUND_IMAGES.length - 1]);
 	});
 
-	it('a theme carrying a direction overrides the locale (why the theme must not have one)', async () => {
-		setTheme({ ...AUTH_THEME, direction: 'ltr' } as typeof AUTH_THEME);
-		expect(htmlTag(await renderShell('ar'))).toContain('dir="ltr"');
-		setTheme(AUTH_THEME);
+	it('concurrent renders keep their own language and direction', async () => {
+		const pages = await Promise.all(
+			Array.from({ length: 8 }, (_, i) => renderShell(i % 2 ? 'ar' : 'en', requestTheme(() => (i % 2 ? 0 : 0.99))))
+		);
+		pages.forEach((html, i) => {
+			const tag = htmlTag(html);
+			if (i % 2) expect(tag).toMatch(/lang="ar"[^>]*dir="rtl"|dir="rtl"[^>]*lang="ar"/);
+			else expect(tag).toMatch(/lang="en"[^>]*dir="ltr"|dir="ltr"[^>]*lang="en"/);
+		});
 	});
 
 	it('uses the Farsi title font for Arabic through CSS, not per request', () => {
-		expect(AUTH_THEME.css).toMatch(/:lang\(ar\) \[data-component="title"\]\s*\{\s*font-family: "Farsi Simple Bold";/);
+		expect(requestTheme().css).toMatch(/:lang\(ar\) \[data-component="title"\]\s*\{\s*font-family: "Farsi Simple Bold";/);
 	});
 });

@@ -46,6 +46,8 @@ export function buildAuthorizeUrl(o: {
   redirectUri: string;
   state: string;
   prompt?: LoginPrompt;
+  /** Only an explicit Arabic request is passed on; the sign-in pages default to English. */
+  lang?: "ar";
 }): string {
   const url = new URL("/authorize", o.authServerUrl);
   url.searchParams.set("response_type", "code");
@@ -53,6 +55,7 @@ export function buildAuthorizeUrl(o: {
   url.searchParams.set("redirect_uri", o.redirectUri);
   url.searchParams.set("state", o.state);
   if (o.prompt) url.searchParams.set("prompt", o.prompt);
+  if (o.lang === "ar") url.searchParams.set("lang", "ar");
   return url.toString();
 }
 

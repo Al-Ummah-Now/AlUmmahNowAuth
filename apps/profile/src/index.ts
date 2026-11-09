@@ -2,7 +2,7 @@ import { createClient } from "@al-ummah-now/openauth/client";
 import { createSubjects } from "@al-ummah-now/openauth/subject";
 import * as v from "valibot";
 import { appsForUser, resolveAppEnv } from "./apps";
-import { langCookie, pickLocale } from "./i18n";
+import { localeOf, pickLocale } from "./i18n";
 import { renderHomePage } from "./page";
 import {
   buildAuthorizeUrl,
@@ -276,6 +276,8 @@ export default {
         redirectUri: `${getAppUrl(request, env)}/callback`,
         state,
         prompt: parsePrompt(url.searchParams.get('prompt')),
+        // The sign-in pages follow the language the profile link asked for
+        lang: localeOf(new URL(returnTo, 'https://profile.invalid').searchParams.get('lang')) === 'ar' ? 'ar' : undefined,
       });
       return new Response(null, {
         status: 302,
@@ -391,7 +393,7 @@ export default {
         if (lapsed) headers.append("Set-Cookie", clearSessionCookie(isLocalhost));
         return new Response(null, { status: 302, headers });
       }
-      const { locale, fromQuery } = pickLocale(request);
+      const locale = pickLocale(request);
       const roles = session?.user?.roles ?? [];
       const appEnv = resolveAppEnv(env.APP_ENV, url.hostname);
       if (!appEnv) {
@@ -411,9 +413,8 @@ export default {
       const headers = new Headers({
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Language': locale,
-        'Vary': 'Cookie, Accept-Language',
+        'Vary': 'Cookie',
       });
-      if (fromQuery) headers.append('Set-Cookie', langCookie(locale, isLocalhost));
       return new Response(html, { headers });
     }
 

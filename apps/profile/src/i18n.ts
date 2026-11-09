@@ -1,8 +1,6 @@
 import type { Locale } from "./apps";
 
 export const LOCALES: readonly Locale[] = ["en", "ar"];
-export const LANG_COOKIE = "profile_lang";
-
 const en = {
   pageTitle: "Al Ummah Now - User Profile",
   brand: "Al Ummah Now",
@@ -97,41 +95,16 @@ export function dirFor(locale: Locale): "ltr" | "rtl" {
   return locale === "ar" ? "rtl" : "ltr";
 }
 
-function readCookie(cookieHeader: string | null, name: string): string | null {
-  if (!cookieHeader) return null;
-  for (const part of cookieHeader.split(/;\s*/)) {
-    const [key, ...rest] = part.split("=");
-    if (key === name) return rest.join("=");
-  }
-  return null;
-}
-
 /**
- * Locale precedence: ?lang= (explicit switch) > saved cookie > Accept-Language > en.
- * Returns whether the choice came from the query so the caller can persist it.
+ * English unless the link asks for another language with `?lang=` (only "ar"
+ * today). Neither a saved cookie nor the browser's Accept-Language is used, so
+ * the profile matches the sign-in pages; an unsupported value is English.
  */
-export function pickLocale(request: Request): { locale: Locale; fromQuery: boolean } {
-  const query = new URL(request.url).searchParams.get("lang");
-  if (isLocale(query)) return { locale: query, fromQuery: true };
-
-  const cookie = readCookie(request.headers.get("Cookie"), LANG_COOKIE);
-  if (isLocale(cookie)) return { locale: cookie, fromQuery: false };
-
-  const accept = request.headers.get("Accept-Language") ?? "";
-  const ranked = accept
-    .split(",")
-    .map((part) => {
-      const [tag, ...params] = part.trim().split(";");
-      const q = params.find((p) => p.trim().startsWith("q="));
-      return { lang: tag.toLowerCase().split("-")[0], q: q ? Number(q.trim().slice(2)) : 1 };
-    })
-    .filter((x) => x.lang && !Number.isNaN(x.q) && x.q > 0)
-    .sort((a, b) => b.q - a.q);
-  const match = ranked.find((x) => isLocale(x.lang));
-  return { locale: match ? (match.lang as Locale) : "en", fromQuery: false };
+export function pickLocale(request: Request): Locale {
+  return localeOf(new URL(request.url).searchParams.get("lang"));
 }
 
-export function langCookie(locale: Locale, isLocalhost: boolean): string {
-  const secure = isLocalhost ? "" : "Secure; ";
-  return `${LANG_COOKIE}=${locale}; Path=/; ${secure}SameSite=Lax; Max-Age=${365 * 24 * 60 * 60}`;
+/** A supported locale for a `lang` value, English otherwise. */
+export function localeOf(lang: string | null | undefined): Locale {
+  return isLocale(lang) ? lang : "en";
 }
