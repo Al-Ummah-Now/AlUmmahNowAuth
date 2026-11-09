@@ -79,3 +79,16 @@ describe("return path cookie", () => {
     expect(savedReturnPath(`${LOGIN_COOKIE}=state-1.${encodeURIComponent("//evil.example")}`, "state-1")).toBe("/");
   });
 });
+
+describe("stateMatches", () => {
+  it("needs the login cookie and an identical state", async () => {
+    const { stateMatches } = await import("./sign-in");
+    const pair = loginCookie("state-1", "/", false).split(";")[0];
+    expect(stateMatches(pair, "state-1")).toBe(true);
+    expect(stateMatches(pair, "state-2")).toBe(false);
+    expect(stateMatches(pair, "state-")).toBe(false);
+    expect(stateMatches(pair, null)).toBe(false);
+    expect(stateMatches(null, "state-1")).toBe(false);
+    expect(stateMatches(`${LOGIN_COOKIE}=.%2F`, "")).toBe(false);
+  });
+});

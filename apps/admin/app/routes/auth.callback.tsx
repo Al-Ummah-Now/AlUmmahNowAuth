@@ -4,7 +4,7 @@ import { getAppUrl, getAuthServerUrl, getOAuthClientId } from "../lib/config";
 import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 import { hasAdminRole } from "../lib/auth.server";
-import { clearLoginCookie, loginPath, readCookie, savedReturnPath } from "../lib/sign-in";
+import { clearLoginCookie, loginPath, readCookie, savedReturnPath, stateMatches } from "../lib/sign-in";
 import { revokeSession } from "../lib/session-tokens.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -39,13 +39,23 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       headers: { "Set-Cookie": clearLoginCookie(), "Cache-Control": "no-store" },
     });
 
+  // The callback must answer this browser's own /login (state == login
+  // cookie). Checked before any code exchange or session change: a forged
+  // callback link must not sign the browser in as someone else (login CSRF)
+  // or revoke its current session.
+  if (!stateMatches(request.headers.get("Cookie"), url.searchParams.get("state"))) {
+    logger.warn('OAuth callback rejected: missing or mismatched state');
+    await logger.finalizeRequest();
+    return failed("invalid_state");
+  }
+
   if (error) {
     // Silent sign-in (prompt=none) found no signed-in account: now show the
     // sign-in form. A plain authorize never answers login_required, so no loop.
     if (error === 'login_required') {
       logger.info('Silent sign-in needs a login; retrying without prompt');
       await logger.finalizeRequest();
-      return redirect(loginPath(returnTo));
+      return redirect(loginPath(returnTo), { headers: { "Set-Cookie": clearLoginCookie() } });
     }
     logger.warn('OAuth error received', { error });
     await logger.finalizeRequest();
@@ -143,7 +153,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       });
       await logger.finalizeRequest();
       // A stable access-denied page; it builds its own sign-out / switch-account links (#219)
-      return redirect(`/forbidden?email=${encodeURIComponent(userInfo.properties.email)}`);
+      return redirect(`/forbidden?email=${encodeURIComponent(userInfo.properties.email)}`, {
+        headers: { "Set-Cookie": clearLoginCookie() },
+      });
     }
 
     // Store session in KV
@@ -193,7 +205,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // Fallback if no KV available
     logger.warn('No KV storage available, using demo mode');
     await logger.finalizeRequest();
-    return redirect("/?demo=true");
+    return redirect("/?demo=true", { headers: { "Set-Cookie": clearLoginCookie() } });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error("Auth callback error", {

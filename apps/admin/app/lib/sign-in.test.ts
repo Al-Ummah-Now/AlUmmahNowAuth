@@ -32,3 +32,14 @@ describe("admin sign-in helpers", () => {
     expect(savedReturnPath(null, "st")).toBe("/");
   });
 });
+
+describe("stateMatches", () => {
+  it("needs the login cookie and an identical state", async () => {
+    const { stateMatches } = await import("./sign-in");
+    const pair = loginCookie("st", "/").split(";")[0];
+    expect(stateMatches(pair, "st")).toBe(true);
+    expect(stateMatches(pair, "sx")).toBe(false);
+    expect(stateMatches(pair, null)).toBe(false);
+    expect(stateMatches(null, "st")).toBe(false);
+  });
+});

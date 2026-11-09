@@ -108,13 +108,42 @@ describe("auth admin sign-in routes", () => {
     expect(kv.store.has("revoked:old")).toBe(true);
   });
 
+  describe("callback state check (login CSRF)", () => {
+    const cases: Array<[string, string, string]> = [
+      ["missing state", "/auth/callback?code=c", `${LOGIN_COOKIE}=st-1.%2Fusers`],
+      ["mismatched state", "/auth/callback?code=c&state=forged", `${LOGIN_COOKIE}=st-1.%2Fusers`],
+      ["missing login cookie", "/auth/callback?code=c&state=st-1", ""],
+    ];
+    for (const [name, path, loginCookieHeader] of cases) {
+      it(`${name} -> failed('invalid_state'): no token exchange, the old session is not revoked`, async () => {
+        kv.store.set("session:old", JSON.stringify(storedSession(jwt(NOW_S + 900), "r-old")));
+        const res = await settle(callback.loader(args(path, [loginCookieHeader, "auth_session=old"].filter(Boolean).join("; "))));
+        expect(res.status).toBe(302);
+        const location = new URL(res.headers.get("Location")!, APP);
+        expect(location.pathname).toBe("/login");
+        expect(location.searchParams.get("error")).toBe("invalid_state");
+        expect(client.exchange).not.toHaveBeenCalled();
+        expect(kv.store.has("session:old")).toBe(true);
+        expect(kv.store.has("revoked:old")).toBe(false);
+        const cookies = setCookies(res);
+        expect(cookies.some((c) => c.startsWith("auth_session="))).toBe(false);
+        expect(cookies.some((c) => c.startsWith(`${LOGIN_COOKIE}=;`))).toBe(true);
+      });
+    }
+
+    it("/login shows invalid_state as friendly text, not the raw code", async () => {
+      const data = (await login.loader(args("/login?error=invalid_state"))) as { error: string };
+      expect(data.error).not.toMatch(/invalid_state/);
+    });
+  });
+
   it("callback login_required -> /login without prompt (the form), keeping the path", async () => {
     const res = await settle(callback.loader(args("/auth/callback?error=login_required&state=st-1", `${LOGIN_COOKIE}=st-1.${encodeURIComponent("/roles")}`)));
     expect(res.headers.get("Location")).toBe("/login?redirect=%2Froles");
   });
 
   it("other callback errors go to /login?error= (shown, not looped)", async () => {
-    const res = await settle(callback.loader(args("/auth/callback?error=access_denied")));
+    const res = await settle(callback.loader(args("/auth/callback?error=access_denied&state=st-1", `${LOGIN_COOKIE}=st-1.%2F`)));
     expect(res.headers.get("Location")).toBe("/login?redirect=%2F&error=access_denied");
   });
 

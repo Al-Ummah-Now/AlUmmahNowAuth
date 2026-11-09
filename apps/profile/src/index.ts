@@ -13,6 +13,7 @@ import {
   readCookie,
   safeReturnPath,
   savedReturnPath,
+  stateMatches,
 } from "./sign-in";
 import {
   SESSION_COOKIE,
@@ -145,6 +146,19 @@ function getAppUrl(request: Request, env: Env): string {
   console.warn('APP_URL not configured, using request origin:', url.origin);
   return url.origin;
 }
+
+/** Shown when a callback does not match this browser's sign-in (stale, replayed or forged link). */
+const INVALID_STATE_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Sign-in did not complete</title></head>
+<body style="font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f172a; color: #f8fafc; display: flex; min-height: 100vh; align-items: center; justify-content: center; margin: 0;">
+  <main style="text-align: center; max-width: 420px; padding: 2rem;" data-testid="sign-in-expired">
+    <h1 style="font-size: 1.5rem;">Sign-in did not complete</h1>
+    <p style="color: #94a3b8;">This sign-in link has expired or was already used.</p>
+    <p><a href="/login" data-action="retry" style="display: inline-block; padding: 0.75rem 1.5rem; background: #0ea5e9; color: #fff; border-radius: 8px; text-decoration: none;">Sign in again</a></p>
+  </main>
+</body>
+</html>`;
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -280,6 +294,20 @@ export default {
         for (const c of cookies) headers.append("Set-Cookie", c);
         return new Response(null, { status: 302, headers });
       };
+
+      // The callback must answer this browser's own /login (state == login
+      // cookie). Checked before any code exchange or session change: a forged
+      // callback link must not sign the browser in as someone else (login
+      // CSRF) or end its current session.
+      if (!stateMatches(request.headers.get("Cookie"), url.searchParams.get('state'))) {
+        console.warn('OAuth callback rejected: missing or mismatched state');
+        const headers = new Headers({
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        headers.append("Set-Cookie", clearLoginCookie(isLocalhost));
+        return new Response(INVALID_STATE_PAGE, { status: 400, headers });
+      }
 
       if (error) {
         // Silent sign-in found no signed-in account: now show the sign-in form
