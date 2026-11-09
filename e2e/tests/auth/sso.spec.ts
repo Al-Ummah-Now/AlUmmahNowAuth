@@ -11,7 +11,7 @@
  *   4. every app needs a sign-in again
  */
 import { test, expect, type Page } from '@playwright/test';
-import { register, logout } from '../../fixtures/auth';
+import { register, logout, expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 const PASSWORD = 'TestPassword123!'; // same as fixtures/auth.ts
@@ -27,13 +27,9 @@ function trackSignInForm(page: Page): string[] {
   return visits;
 }
 
-/** Admin dashboard reached and signed in (sidebar "Users" link). */
+/** Opens the admin dashboard (no landing page: it signs in silently or shows the form). */
 async function openAdmin(page: Page) {
   await page.goto(TEST_URLS.adminDashboard);
-  const users = page.locator('a:has-text("Users")');
-  if (!(await users.isVisible().catch(() => false))) {
-    await page.locator('a:has-text("Admin Sign In"), a:has-text("Sign In")').first().click();
-  }
 }
 
 /** Clicks the web app's own Sign In (menu → Sign In), whatever its callback URL is. */
@@ -68,7 +64,6 @@ test.describe('Single sign-on across profile, admin and web', () => {
 
     // 1. Sign in to profile (the only sign-in form in this test)
     await page.goto(TEST_URLS.profileApp);
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
     await expect(page).toHaveURL(new RegExp(`${TEST_URLS.authServer}/password/authorize`));
     await page.fill('input[type="email"]', email);
     await page.fill('input[type="password"]', PASSWORD);
@@ -95,13 +90,12 @@ test.describe('Single sign-on across profile, admin and web', () => {
     // 3. Log out (from profile)
     await page.goto(TEST_URLS.profileApp);
     await logout(page);
-    expect(new URL(page.url()).origin).toBe(new URL(TEST_URLS.profileApp).origin);
     const authCookies = await page.context().cookies(TEST_URLS.authServer);
     expect(authCookies.find((c) => c.name === '__session')).toBeUndefined();
 
     // 4. Every app needs a sign-in again
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
 
     await openAdmin(page);
     await expect(page).toHaveURL(new RegExp(`${TEST_URLS.authServer}/password/authorize`), { timeout: 20000 });

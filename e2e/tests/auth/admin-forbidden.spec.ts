@@ -11,7 +11,7 @@
  * single sign-out.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { register } from '../../fixtures/auth';
+import { register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 const admin = () => new URL(TEST_URLS.adminDashboard).origin;
@@ -19,8 +19,8 @@ const admin = () => new URL(TEST_URLS.adminDashboard).origin;
 /** Signed in on profile (shared sign-in), then opens the auth admin as that member. */
 async function memberOnForbidden(page: Page, prefix: string) {
   await register(page, generateTestEmail(prefix));
+  // No landing page: the admin signs in silently with the shared sign-in
   await page.goto(TEST_URLS.adminDashboard);
-  await page.locator('a:has-text("Admin Sign In"), a:has-text("Sign In")').first().click();
   await expect(page).toHaveURL(new RegExp(`^${admin()}/forbidden`), { timeout: 30000 });
 }
 
@@ -65,10 +65,11 @@ test.describe('Auth admin: member without an admin role (#219)', () => {
     // Sign out ends the shared sign-in: profile is signed out and the admin asks for a password
     await page.goto(`${admin()}/forbidden`);
     await page.getByTestId('forbidden-sign-out').click();
-    await page.waitForURL((u) => u.origin === admin() && u.pathname === '/', { timeout: 30000 });
+    // The chain returns to the admin, which (signed out) goes straight to the form
+    await expectSignInPage(page, 30000);
     expect(await authSession(page)).toBeUndefined();
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
   });
 
   test('"Sign out" on the account picker signs out of every app', async ({ page }) => {
@@ -80,10 +81,11 @@ test.describe('Auth admin: member without an admin role (#219)', () => {
     await expect(signOut).toBeVisible();
     await signOut.click();
 
-    // The /logout chain walks every app and returns to the app being signed in to
-    await page.waitForURL((u) => u.origin === admin(), { timeout: 30000 });
+    // The /logout chain walks every app and returns to the app being signed in
+    // to, which (signed out) goes straight to the sign-in form
+    await expectSignInPage(page, 30000);
     expect(await authSession(page)).toBeUndefined();
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
   });
 });

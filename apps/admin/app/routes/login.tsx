@@ -1,10 +1,20 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { redirect } from "react-router";
+import { redirect, useLoaderData } from "react-router";
 import { getAppUrl } from "../lib/config";
 import { getOpenAuthClient } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
+import { loginCookie, loginPath, parsePrompt, safeReturnPath, withPrompt } from "../lib/sign-in";
 
-// Redirect directly to auth server instead of showing a login page
+/**
+ * Straight to the auth server, no page of our own. No prompt by default: a
+ * browser already signed in to Al Ummah Now comes back with a code silently
+ * for auth's active account, everyone else gets the sign-in form.
+ * `prompt=none` (silent re-auth after switching or a lapsed refresh) and
+ * `prompt=login` (add an account) on request. `redirect` is where to land.
+ *
+ * A failed sign-in comes back here with ?error= and is shown with a retry
+ * link instead of redirecting again, so a persistent error cannot loop.
+ */
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as { APP_URL?: string; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string };
   const ctx = context?.cloudflare?.ctx as ExecutionContext;
@@ -12,29 +22,44 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Initialize logger
   logger.setDatabase(null, false);
   if (ctx) logger.setContext(ctx);
-  
+
   logger.logLoader('login', request);
+
+  const url = new URL(request.url);
+  const returnTo = safeReturnPath(url.searchParams.get("redirect") ?? url.searchParams.get("return"));
+  const error = url.searchParams.get("error");
+  if (error) {
+    return { error, retryUrl: loginPath(returnTo) };
+  }
 
   const appUrl = getAppUrl(request, env);
   const client = getOpenAuthClient(request, env);
-
-  // Generate authorize URL using OpenAuth client
-  logger.debug('Generating authorize URL for login');
-  const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
-  // No prompt: an existing sign-in (single sign-on) completes silently
-  const authorizeUrl = baseAuthorizeUrl;
+  const { url: baseAuthorizeUrl, challenge } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  const authorizeUrl = withPrompt(baseAuthorizeUrl, parsePrompt(url.searchParams.get("prompt")));
   logger.info('Redirecting to auth server', { authorizeUrl });
 
-  return redirect(authorizeUrl);
+  return redirect(authorizeUrl, {
+    headers: {
+      "Set-Cookie": loginCookie(challenge.state, returnTo),
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 export default function Login() {
-  // This should never render as loader redirects
+  const data = useLoaderData<typeof loader>();
+  // Only rendered for a failed sign-in (the loader redirects otherwise)
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))] flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(var(--color-primary))] mx-auto mb-4"></div>
-        <p className="text-[rgb(var(--color-foreground))]">Redirecting to authentication...</p>
+    <div className="min-h-screen bg-[rgb(var(--color-background))] flex items-center justify-center p-6">
+      <div className="text-center max-w-md" data-testid="login-error">
+        <h1 className="text-xl font-semibold text-[rgb(var(--color-foreground))] mb-3">Sign-in did not complete</h1>
+        <p className="text-sm text-[rgb(var(--color-muted-foreground))] mb-6 break-words">{data?.error}</p>
+        <a
+          href={data?.retryUrl ?? "/login"}
+          className="inline-block rounded-lg px-4 py-2.5 text-sm font-semibold bg-[rgb(var(--color-primary))] text-[rgb(var(--color-primary-foreground))]"
+        >
+          Try again
+        </a>
       </div>
     </div>
   );

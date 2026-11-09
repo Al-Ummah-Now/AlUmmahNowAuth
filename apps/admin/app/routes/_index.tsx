@@ -2,12 +2,10 @@ import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData } from "react-router";
 import { Users, ShieldCheck, Activity, Database, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Button } from "../components/ui/button";
 import { AdminLayout } from "../components/admin-layout";
 import { getUserStats, getRoleStats, getUsersByRole, isErrorResponse } from "../lib/admin-api.server";
-import { requireAuth } from "../lib/auth.server";
+import { redirectToLogin, requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl, getAppUrl } from "../lib/config";
-import { getOpenAuthClient } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 
 export const meta: MetaFunction = () => {
@@ -39,51 +37,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   logger.debug('Configuration loaded', { authServerUrl, appUrl });
 
-  // Get OpenAuth client
-  const client = getOpenAuthClient(request, env);
-
-  // Generate authorize URL
-  logger.debug('Generating authorize URL');
-  const { url: baseAuthorizeUrl } = await client.authorize(`${appUrl}/auth/callback`, "code");
-  // No prompt: an existing sign-in (single sign-on) completes silently
-  const authorizeUrl = baseAuthorizeUrl;
-  logger.debug('Authorize URL generated', { authorizeUrl });
-
-  // Check if user is authenticated
-  let isAuthenticated = false;
+  // No landing page: without a usable admin session requireAuth throws a
+  // redirect into sign-in (silent when the browser is signed in to Al Ummah Now)
   let user: { id: string; email: string; roles: string[] } | null = null;
-
   try {
-    logger.debug('Checking authentication');
     user = await requireAuth(request, env, true);
-    isAuthenticated = true;
     logger.logAuth('User authenticated', { userId: user.id, email: user.email });
-  } catch (_error) {
-    // Not authenticated - show welcome page
-    isAuthenticated = false;
-    logger.debug('User not authenticated');
-  }
-
-  // If not authenticated, return data for welcome page
-  if (!isAuthenticated) {
-    logger.info('Returning welcome page data');
-    return {
-      isAuthenticated: false,
-      user: null,
-      totalUsers: 0,
-      adminUsers: 0,
-      totalRoles: 0,
-      systemRoles: 0,
-      customRoles: 0,
-      usersByRole: [],
-      authServerUrl,
-      appUrl,
-      authorizeUrl,
-    };
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    throw redirectToLogin(request);
   }
 
   // If authenticated, return dashboard data
-  // At this point user is guaranteed to be non-null because isAuthenticated is true
+  // requireAuth returned a user, so this only guards the type
   if (!user) {
     logger.error('User is null despite isAuthenticated being true');
     return {
@@ -186,143 +152,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function Index() {
   const data = useLoaderData<typeof loader>();
-
-  // Show welcome page if not authenticated
-  if (!data.isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[rgb(var(--color-background))]">
-        {/* Navigation */}
-        <nav className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-          <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img
-                  src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                  alt="Al Ummah Now"
-                  className="h-10 w-10 rounded-lg"
-                />
-                <div>
-                  <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">Al Ummah Now</h1>
-                  <p className="text-sm text-[rgb(var(--color-muted-foreground))]">Admin Dashboard</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button asChild>
-                  <a href={data.authorizeUrl}>Sign In</a>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        {/* Welcome Content */}
-        <main className="container mx-auto px-4 py-16">
-          <div className="max-w-4xl mx-auto text-center">
-            {/* Hero Section */}
-            <div className="mb-12">
-              <div className="flex justify-center mb-6">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-[rgb(var(--color-primary))] opacity-20 blur-3xl rounded-full"></div>
-                  <img
-                    src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                    alt="Al Ummah Now"
-                    className="h-24 w-24 rounded-2xl relative z-10"
-                  />
-                </div>
-              </div>
-              <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-[rgb(var(--color-primary))] to-[rgb(var(--color-accent))] bg-clip-text text-transparent">
-                Welcome to Al Ummah Now
-              </h1>
-              <p className="text-xl text-[rgb(var(--color-muted-foreground))] mb-8 max-w-2xl mx-auto">
-                Secure authentication and user management system for the Muslim community.
-                Manage users, roles, and access with confidence.
-              </p>
-              <div className="flex justify-center gap-4">
-                <Button size="lg" asChild>
-                  <a href={data.authorizeUrl}>
-                    <ShieldCheck className="h-5 w-5 mr-2" />
-                    Admin Sign In
-                  </a>
-                </Button>
-                <Button size="lg" variant="outline" asChild>
-                  <a href={data.authServerUrl} target="_blank" rel="noopener noreferrer">
-                    Auth Portal
-                  </a>
-                </Button>
-              </div>
-            </div>
-
-            {/* Features Grid */}
-            <div className="grid md:grid-cols-3 gap-6 mt-16">
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-center mb-4">
-                    <div className="h-12 w-12 rounded-lg bg-[rgb(var(--color-primary))]/10 flex items-center justify-center">
-                      <Users className="h-6 w-6 text-[rgb(var(--color-primary))]" />
-                    </div>
-                  </div>
-                  <CardTitle>User Management</CardTitle>
-                  <CardDescription>
-                    Create, update, and manage user accounts with full CRUD capabilities
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-center mb-4">
-                    <div className="h-12 w-12 rounded-lg bg-[rgb(var(--color-accent))]/10 flex items-center justify-center">
-                      <ShieldCheck className="h-6 w-6 text-[rgb(var(--color-accent))]" />
-                    </div>
-                  </div>
-                  <CardTitle>Role-Based Access</CardTitle>
-                  <CardDescription>
-                    Assign admin and user roles with granular permission control
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-center mb-4">
-                    <div className="h-12 w-12 rounded-lg bg-[rgb(var(--color-primary))]/10 flex items-center justify-center">
-                      <Activity className="h-6 w-6 text-[rgb(var(--color-primary))]" />
-                    </div>
-                  </div>
-                  <CardTitle>Real-Time Analytics</CardTitle>
-                  <CardDescription>
-                    Monitor user activity and system statistics in real-time
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            </div>
-
-            {/* Info Section */}
-            <div className="mt-16 bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))] rounded-xl p-8">
-              <h2 className="text-2xl font-bold mb-4">Admin Access Required</h2>
-              <p className="text-[rgb(var(--color-muted-foreground))] mb-6">
-                This dashboard is restricted to administrators only. Sign in with your admin credentials
-                to access user management features and system analytics.
-              </p>
-              <div className="flex items-center justify-center gap-2 text-sm text-[rgb(var(--color-muted-foreground))]">
-                <Database className="h-4 w-4" />
-                <span>Powered by OpenAuth • Cloudflare Workers • D1 Database</span>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        {/* Footer */}
-        <footer className="border-t border-[rgb(var(--color-border))] mt-20">
-          <div className="container mx-auto px-4 py-8">
-            <p className="text-center text-sm text-[rgb(var(--color-muted-foreground))]">
-              © 2025 Al Ummah Now. Built with React Router v7 and shadcn/ui.
-            </p>
-          </div>
-        </footer>
-      </div>
-    );
-  }
 
   // Show dashboard if authenticated
   return (

@@ -4,6 +4,24 @@ import * as v from "valibot";
 import { appsForUser, resolveAppEnv } from "./apps";
 import { langCookie, pickLocale } from "./i18n";
 import { renderHomePage } from "./page";
+import {
+  buildAuthorizeUrl,
+  clearLoginCookie,
+  loginCookie,
+  loginPath,
+  parsePrompt,
+  readCookie,
+  safeReturnPath,
+  savedReturnPath,
+} from "./sign-in";
+import {
+  SESSION_COOKIE,
+  createSession as createStoredSession,
+  endSession,
+  ensureFreshTokens,
+  getSession as getStoredSession,
+  type StoredSession,
+} from "./session-store";
 
 const PROFILE_CLIENT_ID = "109a1087-6626-40f7-8a7f-7f42f83f4f30";
 
@@ -25,66 +43,37 @@ interface Env {
   CF_WEB_ANALYTICS_TOKEN?: string;
 }
 
-// Session management helpers
-async function getSession(request: Request, storage: KVNamespace) {
-  const cookieHeader = request.headers.get("Cookie");
-  if (!cookieHeader) return null;
-
-  const cookies = Object.fromEntries(
-    cookieHeader.split("; ").map(c => {
-      const [key, ...v] = c.split("=");
-      return [key, v.join("=")];
-    })
-  );
-
-  const sessionToken = cookies["profile_session"];
-  if (!sessionToken) return null;
-
-  try {
-    const sessionData = await storage.get(`session:${sessionToken}`);
-    if (!sessionData) return null;
-
-    // Parse session data with error handling
-    let session: {
-      expiresAt?: string;
-      user?: { id: string; email: string; roles: string[] };
-      tokens?: { access: string; refresh: string };
-    };
-    try {
-      session = JSON.parse(sessionData);
-    } catch (parseError) {
-      console.error("Failed to parse session data, deleting corrupted session:", parseError);
-      await storage.delete(`session:${sessionToken}`);
-      return null;
-    }
-
-    // Check if session is expired
-    if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
-      await storage.delete(`session:${sessionToken}`);
-      return null;
-    }
-
-    return session;
-  } catch (error) {
-    console.error("Error retrieving session:", error);
-    return null;
-  }
+function sessionTokenOf(request: Request): string | null {
+  return readCookie(request.headers.get("Cookie"), SESSION_COOKIE);
 }
 
-async function createSession(storage: KVNamespace, sessionData: {
-  user: { id: string; email: string; roles: string[] };
-  tokens: { access: string; refresh: string };
-  expiresAt: string;
-}) {
-  const sessionToken = crypto.randomUUID();
+async function getSession(request: Request, storage: KVNamespace) {
+  return getStoredSession(storage, sessionTokenOf(request));
+}
 
-  await storage.put(
-    `session:${sessionToken}`,
-    JSON.stringify(sessionData),
-    { expirationTtl: 7 * 24 * 60 * 60 } // 7 days
-  );
-
-  return sessionToken;
+/**
+ * The session with tokens fresh for the next REFRESH_SKEW_SECONDS, or null
+ * when there is none or its tokens can no longer be refreshed (the caller
+ * then re-authorizes silently).
+ */
+async function getFreshSession(
+  request: Request,
+  env: Env,
+  authServerUrl: string,
+): Promise<{ session: StoredSession | null; lapsed: boolean }> {
+  const token = sessionTokenOf(request);
+  const session = await getStoredSession(env.AUTH_STORAGE, token);
+  if (!session || !token) return { session: null, lapsed: false };
+  const fresh = await ensureFreshTokens({
+    kv: env.AUTH_STORAGE,
+    token,
+    tokens: session.tokens,
+    client: getAuthClient(authServerUrl),
+  });
+  if (fresh.ok) return { session: { ...session, tokens: fresh.tokens }, lapsed: false };
+  console.info("Profile session tokens could not be refreshed; re-authorizing silently", fresh.reason);
+  await endSession(env.AUTH_STORAGE, token);
+  return { session: null, lapsed: true };
 }
 
 function createSessionCookie(sessionToken: string, isLocalhost: boolean) {
@@ -165,12 +154,10 @@ export default {
 
     // Handle logout
     if (url.pathname === '/logout') {
-      const session = await getSession(request, env.AUTH_STORAGE);
-      if (session) {
-        const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
-        if (sessionToken) {
-          await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
-        }
+      const sessionToken = sessionTokenOf(request);
+      if (sessionToken) {
+        // Tombstone + delete, so a racing token refresh cannot bring it back
+        await endSession(env.AUTH_STORAGE, sessionToken);
       }
 
       // Single sign-out: the auth server ends the shared sign-in and asks every
@@ -212,9 +199,9 @@ export default {
         });
 
         // Clear the local session after revocation
-        const sessionToken = request.headers.get("Cookie")?.match(/profile_session=([^;]+)/)?.[1];
+        const sessionToken = sessionTokenOf(request);
         if (sessionToken) {
-          await env.AUTH_STORAGE.delete(`session:${sessionToken}`);
+          await endSession(env.AUTH_STORAGE, sessionToken);
         }
 
         return new Response(JSON.stringify({
@@ -239,7 +226,7 @@ export default {
 
     // API endpoint to get user info from session (roles come from JWT)
     if (url.pathname === '/api/me') {
-      const session = await getSession(request, env.AUTH_STORAGE);
+      const { session } = await getFreshSession(request, env, authServerUrl);
 
       if (!session || !session.user?.id) {
         return new Response(JSON.stringify({ error: 'Not authenticated' }), {
@@ -259,23 +246,52 @@ export default {
       });
     }
 
+    // Sign in: straight to the auth server. No prompt by default, so a browser
+    // already signed in to Al Ummah Now comes back with a code silently;
+    // prompt=none (silent re-auth) and prompt=login (add account) on request.
+    if (url.pathname === '/login') {
+      const returnTo = safeReturnPath(url.searchParams.get('return'));
+      const state = crypto.randomUUID();
+      const authorizeUrl = buildAuthorizeUrl({
+        authServerUrl,
+        clientId: PROFILE_CLIENT_ID,
+        redirectUri: `${getAppUrl(request, env)}/callback`,
+        state,
+        prompt: parsePrompt(url.searchParams.get('prompt')),
+      });
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "Location": authorizeUrl,
+          "Set-Cookie": loginCookie(state, returnTo, isLocalhost),
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     // Handle OAuth callback
     if (url.pathname === '/callback') {
       const code = url.searchParams.get('code');
       const error = url.searchParams.get('error');
+      const returnTo = savedReturnPath(request.headers.get("Cookie"), url.searchParams.get('state'));
+      const redirectWith = (location: string, ...cookies: string[]) => {
+        const headers = new Headers({ "Location": location, "Cache-Control": "no-store" });
+        headers.append("Set-Cookie", clearLoginCookie(isLocalhost));
+        for (const c of cookies) headers.append("Set-Cookie", c);
+        return new Response(null, { status: 302, headers });
+      };
 
       if (error) {
-        // Handle login_required from prompt=none - retry with normal auth flow
+        // Silent sign-in found no signed-in account: now show the sign-in form
+        // (a plain authorize never answers login_required, so this cannot loop)
         if (error === 'login_required') {
-          const appUrl = getAppUrl(request, env);
-          const redirectUri = encodeURIComponent(`${appUrl}/callback`);
-          return Response.redirect(`${authServerUrl}/authorize?response_type=code&client_id=${PROFILE_CLIENT_ID}&redirect_uri=${redirectUri}`, 302);
+          return redirectWith(loginPath(returnTo));
         }
-        return Response.redirect(`${url.origin}/?error=${encodeURIComponent(error)}`, 302);
+        return redirectWith(`/?error=${encodeURIComponent(error)}`);
       }
 
       if (!code) {
-        return Response.redirect(`${url.origin}/?error=missing_code`, 302);
+        return redirectWith('/?error=missing_code');
       }
 
       try {
@@ -305,41 +321,44 @@ export default {
         }
 
         const userInfo = verified.subject;
+        const tokens = verified.tokens ?? result.tokens;
 
-        // Create session
-        const sessionData = {
+        // A sign-in replaces any previous profile session in this browser
+        // (switching account, or signing in again after an account was removed)
+        const previous = sessionTokenOf(request);
+        if (previous) await endSession(env.AUTH_STORAGE, previous);
+
+        const sessionToken = await createStoredSession(env.AUTH_STORAGE, {
           user: {
             id: userInfo.properties.id,
             email: userInfo.properties.email,
             roles: userInfo.properties.roles,
           },
-          tokens: {
-            access: result.tokens.access,
-            refresh: result.tokens.refresh,
-          },
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        };
-
-        const sessionToken = await createSession(env.AUTH_STORAGE, sessionData);
-
-        // Redirect to homepage with session cookie
-        return new Response(null, {
-          status: 302,
-          headers: {
-            "Location": "/",
-            "Set-Cookie": createSessionCookie(sessionToken, isLocalhost),
-          },
+          tokens: { access: tokens.access, refresh: tokens.refresh },
         });
+
+        return redirectWith(returnTo, createSessionCookie(sessionToken, isLocalhost));
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error('OAuth callback error:', errorMessage);
-        return Response.redirect(`${url.origin}/?error=${encodeURIComponent(errorMessage)}`, 302);
+        return redirectWith(`/?error=${encodeURIComponent(errorMessage)}`);
       }
     }
 
     // Serve homepage
     if (url.pathname === '/' || url.pathname === '') {
-      const session = await getSession(request, env.AUTH_STORAGE);
+      const { session, lapsed } = await getFreshSession(request, env, authServerUrl);
+      // No interstitial: without a profile session go straight into sign-in
+      // (silent when the browser is signed in to Al Ummah Now). Only a failed
+      // sign-in (?error=) renders the page signed out, so errors cannot loop.
+      if (!session && !url.searchParams.has('error')) {
+        const headers = new Headers({
+          "Location": loginPath(url.pathname + url.search, lapsed ? 'none' : undefined),
+          "Cache-Control": "no-store",
+        });
+        if (lapsed) headers.append("Set-Cookie", clearSessionCookie(isLocalhost));
+        return new Response(null, { status: 302, headers });
+      }
       const { locale, fromQuery } = pickLocale(request);
       const roles = session?.user?.roles ?? [];
       const appEnv = resolveAppEnv(env.APP_ENV, url.hostname);

@@ -12,16 +12,20 @@
  * @example
  * matchOrigin('https://sub.example.com', ['*.example.com']); // true
  * matchOrigin('https://example.com', ['*.example.com']); // false (exact domain doesn't match wildcard)
+ * matchOrigin('https://evilexample.com', ['*.example.com']); // false (no dot boundary)
+ * matchOrigin('http://sub.example.com', ['*.example.com']); // false (wildcards are https only)
  * matchOrigin('https://app.example.com', ['https://app.example.com']); // true
  */
 export function matchOrigin(origin: string, allowedOrigins: string[]): boolean {
 	for (const allowed of allowedOrigins) {
 		if (allowed.startsWith('*.')) {
-			// Wildcard match: *.example.com matches sub.example.com
-			const domain = allowed.slice(2); // Remove "*."
+			// Wildcard match: *.example.com matches https://sub.example.com only.
+			// The dot boundary matters: "evilexample.com" must not match.
+			const domain = allowed.slice(2).toLowerCase(); // Remove "*."
 			try {
-				const originHost = new URL(origin).hostname;
-				if (originHost.endsWith(domain) && originHost !== domain) {
+				const parsed = new URL(origin);
+				if (parsed.protocol !== 'https:' || parsed.origin !== origin) continue;
+				if (parsed.hostname.endsWith(`.${domain}`)) {
 					return true;
 				}
 			} catch {
@@ -32,6 +36,23 @@ export function matchOrigin(origin: string, allowedOrigins: string[]): boolean {
 		}
 	}
 	return false;
+}
+
+/** The configured ALLOWED_ORIGINS entries (exact origins and `*.domain` wildcards). */
+export function configuredOrigins(env: { ALLOWED_ORIGINS?: string }): string[] {
+	return (env.ALLOWED_ORIGINS ?? '')
+		.split(',')
+		.map((o) => o.trim())
+		.filter(Boolean);
+}
+
+/**
+ * Whether a request Origin may make credentialed CORS calls to the session
+ * API (/session/*). Per env: prod `*.alummahnow.net`, stage
+ * `*.stage.alummahnow.net`, QA `*.qa.alummahnow.net` (see wrangler configs).
+ */
+export function isAllowedOrigin(origin: string | null | undefined, env: { ALLOWED_ORIGINS?: string }): origin is string {
+	return !!origin && matchOrigin(origin, configuredOrigins(env));
 }
 
 /**
@@ -83,11 +104,7 @@ export function createCorsHeaders(
 ): Record<string, string> | null {
 	if (!origin) return null;
 
-	const allowedOrigins = getAllowedOrigins(env, origin);
-	const allConfiguredOrigins = env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim()) || [];
-	const isAllowed = matchOrigin(origin, [...allowedOrigins, ...allConfiguredOrigins]);
-
-	if (!isAllowed) return null;
+	if (!isAllowedOrigin(origin, env)) return null;
 
 	return {
 		'Access-Control-Allow-Origin': origin,

@@ -5,7 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { login, logout, isLoggedIn } from '../../fixtures/auth';
+import { login, logout, isLoggedIn, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
 test.describe('Logout Flow', () => {
@@ -26,9 +26,8 @@ test.describe('Logout Flow', () => {
     loggedIn = await isLoggedIn(page);
     expect(loggedIn).toBe(false);
 
-    // Verify logged out view is visible
-    await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible();
+    // Signed out: the profile app goes straight to the sign-in form
+    await expectSignInPage(page);
   });
 
   test('should clear session cookie on logout', async ({ page }) => {
@@ -71,11 +70,9 @@ test.describe('Logout Flow', () => {
     await expect(logoutButton).toBeVisible({ timeout: 10000 });
     await logoutButton.click();
 
-    // Verify redirected to profile app homepage
-    await expect(page).toHaveURL(TEST_URLS.profileApp);
-
-    // Verify logged out state
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    // Back through the profile app, which (signed out) now sends the
+    // browser to the sign-in form instead of a landing page
+    await expectSignInPage(page);
   });
 
   test('should require re-authentication after logout', async ({ page }) => {
@@ -90,8 +87,8 @@ test.describe('Logout Flow', () => {
     // Try to access profile without logging in
     await page.goto(TEST_URLS.profileApp);
 
-    // Verify user is not authenticated
-    await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('#loggedInView')).not.toBeVisible();
+    // Verify user is not authenticated (no silent sign-in after logout)
+    await expectSignInPage(page);
+    await expect(page.locator('#loggedInView')).toHaveCount(0);
   });
 });

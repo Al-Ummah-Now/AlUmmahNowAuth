@@ -6,7 +6,7 @@
 
 import { Hono } from 'hono';
 import { logger } from './logger';
-import { matchOrigin, getAllowedOrigins } from './utils/cors';
+import { isAllowedOrigin } from './utils/cors';
 import { addSecurityHeaders } from './utils/security-headers';
 import { routeTestEndpoints } from './routes/test-routes';
 import { handleLogout } from './handlers/logout-handler';
@@ -297,21 +297,15 @@ function handleSessionCorsOptions(rctx: RouterContext): RouteResult {
 	}
 
 	const origin = request.headers.get('Origin');
-	const allowedOrigins = getAllowedOrigins(env, origin);
-	const isAllowed =
-		origin &&
-		matchOrigin(origin, [
-			...allowedOrigins,
-			...(env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim()) || []),
-		]);
 
 	const headers: HeadersInit = {
 		'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
 		'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cookie',
 		'Access-Control-Allow-Credentials': 'true',
 		'Access-Control-Max-Age': '86400',
+		Vary: 'Origin',
 	};
-	if (isAllowed && origin) {
+	if (isAllowedOrigin(origin, env)) {
 		headers['Access-Control-Allow-Origin'] = origin;
 	}
 

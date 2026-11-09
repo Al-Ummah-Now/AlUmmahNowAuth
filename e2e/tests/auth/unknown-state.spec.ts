@@ -10,16 +10,15 @@
  * a friendly en/ar "Start sign-in again" page.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { register, logout } from '../../fixtures/auth';
+import { register, logout, expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 const PASSWORD = 'TestPassword123!'; // same as fixtures/auth.ts
 const RAW_ERROR = /unknown state|invalid_state/i;
 
-/** Lands on the auth server's login page from the profile app's Sign In button. */
+/** Lands on the auth server's login page by opening the profile app (no landing page). */
 async function openProfileSignIn(page: Page): Promise<string> {
   await page.goto(TEST_URLS.profileApp);
-  await page.locator('#loggedOutView button:has-text("Sign In")').click();
   await expect(page).toHaveURL(new RegExp(`${TEST_URLS.authServer}/password/authorize`));
   await expect(page.locator('input[type="password"]')).toBeVisible();
   return page.url();
@@ -86,7 +85,6 @@ test.describe('Sign-in never shows the raw unknown-state error', () => {
     await openProfileSignIn(page);
     const adminTab = await context.newPage();
     await adminTab.goto(TEST_URLS.adminDashboard);
-    await adminTab.locator('a:has-text("Admin Sign In"), a:has-text("Sign In")').first().click();
     await expect(adminTab).toHaveURL(new RegExp(`${TEST_URLS.authServer}/password/authorize`));
 
     // Complete the FIRST tab first: it must go to profile, not to admin
@@ -111,7 +109,7 @@ test.describe('Sign-in never shows the raw unknown-state error', () => {
     const button = await expectRestartPage(page);
     await expect(button).toHaveAttribute('href', `${new URL(TEST_URLS.profileApp).origin}/`);
     await button.click();
-    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
   });
 
   test('a direct /password/authorize link shows the friendly page (en + ar)', async ({ page }) => {

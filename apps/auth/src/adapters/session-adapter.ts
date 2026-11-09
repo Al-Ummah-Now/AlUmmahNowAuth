@@ -355,12 +355,38 @@ export class D1SessionAdapter implements SessionService {
 	 * Remove an account from a browser session
 	 */
 	async removeAccount(browserSessionId: string, userId: string): Promise<void> {
+		const removed = await this.db
+			.prepare(
+				`SELECT a.is_active AS is_active, b.active_user_id AS active_user_id
+				FROM account_sessions a LEFT JOIN browser_sessions b ON b.id = a.browser_session_id
+				WHERE a.browser_session_id = ? AND a.user_id = ?`
+			)
+			.bind(browserSessionId, userId)
+			.first<{ is_active: number; active_user_id: string | null }>();
+
 		await this.db
 			.prepare(`DELETE FROM account_sessions WHERE browser_session_id = ? AND user_id = ?`)
 			.bind(browserSessionId, userId)
 			.run();
 
-		// If this was the active user, clear active_user_id
+		// Signing out of the active account hands "active" to the most recently
+		// signed-in account left, so every app's next silent /authorize signs in
+		// as that one (before, no account was active and prompt=none answered
+		// login_required although the browser was still signed in).
+		const wasActive = removed?.is_active === 1 || removed?.active_user_id === userId;
+		if (!wasActive) return;
+		const next = await this.db
+			.prepare(
+				`SELECT user_id FROM account_sessions
+				WHERE browser_session_id = ? AND expires_at > ?
+				ORDER BY authenticated_at DESC, rowid DESC LIMIT 1`
+			)
+			.bind(browserSessionId, Date.now())
+			.first<{ user_id: string }>();
+		if (next) {
+			await this.switchActiveAccount(browserSessionId, next.user_id);
+			return;
+		}
 		await this.db
 			.prepare(`UPDATE browser_sessions SET active_user_id = NULL WHERE id = ? AND active_user_id = ?`)
 			.bind(browserSessionId, userId)

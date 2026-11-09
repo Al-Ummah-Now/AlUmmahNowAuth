@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { login, isLoggedIn, getCurrentUser } from '../../fixtures/auth';
+import { login, isLoggedIn, getCurrentUser, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
 test.describe('Email-Based Login Flow', () => {
@@ -16,9 +16,8 @@ test.describe('Email-Based Login Flow', () => {
     // Navigate to profile app
     await page.goto(TEST_URLS.profileApp);
 
-    // Verify logged out state
-    await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible();
+    // Not signed in: straight to the sign-in form (no landing page)
+    await expectSignInPage(page);
 
     // Perform login
     await login(page, testUser.email);
@@ -33,22 +32,16 @@ test.describe('Email-Based Login Flow', () => {
     expect(currentUser.role.toLowerCase()).toBe(testUser.role);
   });
 
-  test('should show login button when not authenticated', async ({ page }) => {
+  test('shows no landing page when not authenticated', async ({ page }) => {
     await page.goto(TEST_URLS.profileApp);
 
-    // Verify logged out view is visible
-    await expect(page.locator('#loggedOutView')).toBeVisible();
-    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible();
-
-    // Verify logged in view is not visible
-    await expect(page.locator('#loggedInView')).not.toBeVisible();
+    // No "Welcome to Your Profile ... Sign In" interstitial: the sign-in form
+    await expectSignInPage(page);
+    await expect(page.locator('#loggedOutView')).toHaveCount(0);
   });
 
-  test('should redirect to auth server when clicking login', async ({ page }) => {
+  test('should redirect to auth server without a click', async ({ page }) => {
     await page.goto(TEST_URLS.profileApp);
-
-    // Click login button (use specific selector to avoid multiple matches)
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
 
     // Wait for redirect to auth server
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer), {
@@ -61,7 +54,6 @@ test.describe('Email-Based Login Flow', () => {
 
   test('should handle invalid email format', async ({ page }) => {
     await page.goto(TEST_URLS.profileApp);
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
 
     // Wait for auth server page
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
