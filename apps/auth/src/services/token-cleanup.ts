@@ -8,6 +8,8 @@
  * - account_sessions(..., expires_at, browser_session_id FK ON DELETE CASCADE) — epoch ms.
  * - token_usage(..., created_at) — epoch ms (DEFAULT unixepoch() * 1000).
  *
+ * - openauth_atomic(key, value, expires_at) — epoch ms, NULL = no expiry.
+ *
  * Refresh tokens are stored in KV by the OpenAuth issuer (with KV TTLs), so the legacy
  * D1 `refresh_tokens` table is not written to and is not cleaned up here.
  *
@@ -29,6 +31,7 @@ export interface CleanupResult {
 	expiredAccountSessionsDeleted: number;
 	expiredBrowserSessionsDeleted: number;
 	oldAnalyticsDeleted: number;
+	expiredAtomicDeleted: number;
 	duration: number;
 	timeBoxedExit: boolean;
 }
@@ -89,8 +92,18 @@ export class TokenCleanupService {
 			startTime,
 		);
 
+		// 4. Expired rows of the issuer's atomic store (codes, used-code markers, …)
+		const expiredAtomicDeleted = await this.batchDelete(
+			env,
+			`DELETE FROM openauth_atomic
+			 WHERE key IN (SELECT key FROM openauth_atomic WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT ?)`,
+			[now],
+			startTime,
+		);
+
 		const duration = Date.now() - startTime;
 		return {
+			expiredAtomicDeleted,
 			expiredAccountSessionsDeleted,
 			expiredBrowserSessionsDeleted,
 			oldAnalyticsDeleted,

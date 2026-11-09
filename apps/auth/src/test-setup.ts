@@ -1,6 +1,7 @@
 // Test setup file - runs before all tests
 import { env } from "cloudflare:test";
 import passwordAttemptsSql from "../migrations/0020_password_attempts.sql?raw";
+import atomicMigration from "../migrations/0021_openauth_atomic.sql?raw";
 
 /** Statements of a migration file (comments stripped). */
 function sqlStatements(sql: string): string[] {
@@ -214,6 +215,11 @@ export async function setupDatabase() {
   `).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)`).run();
+
+  // The issuer's atomic store (migrations/0021_openauth_atomic.sql), from the migration itself
+  for (const stmt of sqlStatements(atomicMigration)) {
+    await env.AUTH_DB.prepare(stmt).run();
+  }
 
   // token_usage (matches migrations/0002_jwt_tokens.sql and the live QA/prod schema)
   await env.AUTH_DB.prepare(`
