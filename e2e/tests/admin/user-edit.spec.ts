@@ -10,6 +10,11 @@ import { createUser, editUser } from '../../fixtures/admin';
 import { TEST_USERS, generateTestEmail } from '../../utils/test-data';
 
 test.describe('Admin User Editing', () => {
+  // beforeEach signs a brand-new admin up through the real UI on QA (register,
+  // emailed code, promote, fresh OAuth): about 18 s on a busy QA, which left
+  // too little of the 30 s default for the test itself.
+  test.describe.configure({ timeout: 90_000 });
+
   test.beforeEach(async ({ page }) => {
     // Login as admin
     await loginAdmin(page, TEST_USERS.admin().email);
