@@ -8,7 +8,7 @@
  * Runs against the deployed apps (QA in CI). Needs TEST_PROMOTE_SECRET to make
  * the two users admins (the auth admin only lets admins in).
  */
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 import { register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
@@ -48,6 +48,26 @@ function trackSignInForm(page: Page): string[] {
     if (frame === page.mainFrame() && new URL(frame.url()).pathname.startsWith('/password/')) visits.push(frame.url());
   });
   return visits;
+}
+
+/**
+ * Clicks an account to switch to and waits until the app has signed in again:
+ * switching is a fetch to auth's /session/switch, then a silent /login?prompt=none
+ * round trip that ends at the app's OAuth callback. The old page (with the old
+ * account) stays visible until then, so asserting right after the click races it.
+ */
+async function switchTo(page: Page, item: Locator, callback: URL) {
+  const done = page.waitForResponse(
+    (r) => {
+      const u = new URL(r.url());
+      return u.origin === callback.origin && u.pathname === callback.pathname && r.request().method() === 'GET';
+    },
+    { timeout: 30000 }
+  );
+  await item.click();
+  const res = await done;
+  expect(res.status(), `${callback.href} completes the switch`).toBe(302);
+  await page.waitForLoadState('domcontentloaded');
 }
 
 async function profileEmail(page: Page) {
@@ -108,8 +128,8 @@ test.describe('Signed in once, signed in everywhere (profile + auth admin)', () 
     let items = await profileMenu(page, 2);
     await expect(items.filter({ hasText: alice })).toHaveCount(1);
     await expect(items.filter({ hasText: bob })).toHaveCount(1);
-    await items.filter({ hasText: alice }).click();
-    expect(await profileEmail(page)).toBe(alice);
+    await switchTo(page, items.filter({ hasText: alice }), new URL('/callback', profile()));
+    await expect(page.locator('#userEmail')).toHaveText(alice, { timeout: 20000 });
     expect(forms.length, 'switching shows no form').toBe(formsBefore);
 
     // 5. The auth admin: signed in as auth's active account (Alice), menu lists both, switch to Bob
@@ -117,7 +137,7 @@ test.describe('Signed in once, signed in everywhere (profile + auth admin)', () 
     await expect(page.locator('a:has-text("Users")')).toBeVisible({ timeout: 20000 });
     items = await adminMenu(page, 2);
     await expect(items.filter({ hasText: alice })).toContainText('Active');
-    await items.filter({ hasText: bob }).click();
+    await switchTo(page, items.filter({ hasText: bob }), new URL('/auth/callback', admin()));
     await expect(page.locator('a:has-text("Users")')).toBeVisible({ timeout: 20000 });
     expect(new URL(page.url()).origin).toBe(admin());
     items = await adminMenu(page, 2);
