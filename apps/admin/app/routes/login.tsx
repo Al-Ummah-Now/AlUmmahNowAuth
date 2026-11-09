@@ -29,7 +29,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const returnTo = safeReturnPath(url.searchParams.get("redirect") ?? url.searchParams.get("return"));
   const error = url.searchParams.get("error");
   if (error) {
-    return { error, retryUrl: loginPath(returnTo) };
+    // Friendly text for known codes; the raw code stays out of the page
+    const message =
+      error === "invalid_state" ? "This sign-in link has expired or was already used." : error;
+    return { error: message, retryUrl: loginPath(returnTo) };
   }
 
   const appUrl = getAppUrl(request, env);

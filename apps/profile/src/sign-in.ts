@@ -93,3 +93,22 @@ export function savedReturnPath(cookieHeader: string | null, state: string | nul
   }
 }
 
+
+/**
+ * Whether the callback's `state` is the one this browser's /login issued
+ * (the login cookie exists and holds exactly that state). Callbacks that fail
+ * this are rejected before any code exchange or session change, so a forged
+ * callback link cannot sign the browser in as someone else (login CSRF) or
+ * end its current session.
+ */
+export function stateMatches(cookieHeader: string | null, state: string | null): boolean {
+  const raw = readCookie(cookieHeader, LOGIN_COOKIE);
+  if (!raw || !state) return false;
+  const dot = raw.indexOf(".");
+  if (dot <= 0) return false;
+  const expected = raw.slice(0, dot);
+  if (expected.length !== state.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ state.charCodeAt(i);
+  return diff === 0;
+}

@@ -94,11 +94,32 @@ describe("profile sign-in routing", () => {
     expect(kv.store.has(revokedKey("old-sid"))).toBe(true);
   });
 
-  it("callback with a mismatched state still signs in, but returns to /", async () => {
-    client.exchange.mockResolvedValue({ err: false, tokens: { access: jwt(NOW_S + 900), refresh: "r0" } });
-    client.verify.mockResolvedValue({ subject: { type: "user", properties: USER } });
-    const res = await get(`/callback?code=c1&state=other`, `${LOGIN_COOKIE}=mine.${encodeURIComponent("/?lang=ar")}`);
-    expect(res.headers.get("location")).toBe("/");
+  describe("callback state check (login CSRF)", () => {
+    const cases: Array<[string, string, string]> = [
+      ["missing state", "/callback?code=c1", `${LOGIN_COOKIE}=mine.${encodeURIComponent("/")}`],
+      ["mismatched state", "/callback?code=c1&state=forged", `${LOGIN_COOKIE}=mine.${encodeURIComponent("/")}`],
+      ["missing login cookie", "/callback?code=c1&state=mine", ""],
+    ];
+    for (const [name, path, loginCookieHeader] of cases) {
+      it(`${name} -> rejected: no token exchange, the old session is not ended`, async () => {
+        const old = seedSession(jwt(NOW_S + 900), "r-old", "old-sid");
+        const res = await get(path, [loginCookieHeader, old].filter(Boolean).join("; "));
+        expect(res.status).toBe(400);
+        const html = await res.text();
+        expect(html).toContain('href="/login"');
+        expect(html).not.toMatch(/invalid_state/i);
+        expect(client.exchange).not.toHaveBeenCalled();
+        expect(kv.store.has(sessionKey("old-sid"))).toBe(true);
+        expect(kv.store.has(revokedKey("old-sid"))).toBe(false);
+        expect(cookiePair(res, "profile_session")).toBeNull();
+        expect(setCookies(res).some((c) => c.startsWith(`${LOGIN_COOKIE}=;`))).toBe(true);
+      });
+    }
+
+    it("an error callback with a forged state is rejected too", async () => {
+      const res = await get("/callback?error=login_required&state=forged", `${LOGIN_COOKIE}=mine.%2F`);
+      expect(res.status).toBe(400);
+    });
   });
 
   it("login_required (silent sign-in found no account) -> the sign-in form via /login without prompt", async () => {
@@ -107,7 +128,7 @@ describe("profile sign-in routing", () => {
   });
 
   it("other callback errors render the page signed out (no redirect loop)", async () => {
-    const res = await get(`/callback?error=access_denied`);
+    const res = await get(`/callback?error=access_denied&state=s1`, `${LOGIN_COOKIE}=s1.%2F`);
     expect(res.headers.get("location")).toBe("/?error=access_denied");
     const page = await get("/?error=access_denied");
     expect(page.status).toBe(200);
