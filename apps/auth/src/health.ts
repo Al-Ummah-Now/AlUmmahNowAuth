@@ -72,6 +72,15 @@ export async function deepHealth(env: Env): Promise<DeepHealth> {
 			}),
 		],
 		['queue', probe('queue', async () => typeof env.AUDIT_QUEUE?.send === 'function')],
+		// Password brute-force limits (AU-2); the D1 counters work without them, but
+		// a deploy that lost the bindings must not pass the release smoke
+		[
+			'ratelimit',
+			probe(
+				'ratelimit',
+				async () => typeof env.PASSWORD_IP_LIMITER?.limit === 'function' && typeof env.PASSWORD_EMAIL_LIMITER?.limit === 'function'
+			),
+		],
 		...REQUIRED_SECRETS.map(
 			(name) => [`secret:${name}`, probe(`secret:${name}`, () => secretResolves(raw[name]))] as [string, Promise<boolean>]
 		),

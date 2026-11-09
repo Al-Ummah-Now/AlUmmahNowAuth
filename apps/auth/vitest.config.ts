@@ -14,6 +14,13 @@ export default defineWorkersConfig({
           // Use in-memory D1 database for test isolation
           // Each test file gets a fresh database via test-setup.ts
           d1Persist: false,
+          // Many tests sign the same users in from one address; the real limits
+          // (wrangler.json) would turn them into 429s. password-bruteforce.test.ts
+          // tests the limiter behaviour with its own bindings.
+          ratelimits: {
+            PASSWORD_IP_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+            PASSWORD_EMAIL_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+          },
         },
         // Disable isolation to share DB across test files
         // (required because test-setup.ts module caching causes isolation issues)

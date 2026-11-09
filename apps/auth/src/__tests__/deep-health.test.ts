@@ -34,12 +34,19 @@ describe('deepHealth', () => {
         d1: true,
         kv: true,
         queue: true,
+        ratelimit: true,
         'secret:CLIENT_SECRET_SALT': true,
         'secret:KEY_ENCRYPTION_MASTER_KEY': true,
         'secret:RESEND_API_KEY': true,
         'secret:SESSION_SECRET': true,
       },
     });
+  });
+
+  it('is degraded when a password rate-limit binding is missing (AU-2)', async () => {
+    const report = await deepHealth(deployedEnv({ PASSWORD_EMAIL_LIMITER: undefined }));
+    expect(report.status).toBe('degraded');
+    expect(report.checks.ratelimit).toBe(false);
   });
 
   it('is degraded when SESSION_SECRET is missing (SSO cookie would use the zero key)', async () => {

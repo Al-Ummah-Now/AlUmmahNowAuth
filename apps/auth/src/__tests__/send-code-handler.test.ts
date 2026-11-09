@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
+import '../test-setup';
 import { MemoryStorage } from '@al-ummah-now/openauth/storage/memory';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 
@@ -59,6 +60,7 @@ function makeHandler(
 			request,
 			env: {
 				AUTH_STORAGE: env.AUTH_STORAGE,
+				AUTH_DB: env.AUTH_DB,
 				RESEND_API_KEY: options.resendApiKey,
 				ENVIRONMENT: 'test',
 			},
@@ -187,5 +189,26 @@ describe('createSendCodeHandler', () => {
 			});
 			expect(sendEmailMock).toHaveBeenCalledTimes(5);
 		});
+	});
+});
+
+describe('createSendCodeHandler: code attempt record (AU-2)', () => {
+	it('records the sent code so checkCode accepts it, and says 15 minutes in the email', async () => {
+		const { checkCode } = await import('../security/password-attempts');
+		sendEmailMock.mockReset();
+		sendEmailMock.mockResolvedValue({ success: true, emailId: 'email-123' });
+		const sendCode = makeHandler('/password/register', makeUserService());
+		await sendCode('record-me@example.com', '424242');
+		expect(sendEmailMock.mock.calls[0][0].text).toContain('15');
+		expect(await checkCode(env.AUTH_DB, 'record-me@example.com', '111111')).toBe('wrong');
+		expect(await checkCode(env.AUTH_DB, 'record-me@example.com', '424242')).toBe('ok');
+		expect(await checkCode(env.AUTH_DB, 'record-me@example.com', '424242')).toBe('locked');
+	});
+
+	it('records nothing for an unknown account on password change', async () => {
+		const { checkCode } = await import('../security/password-attempts');
+		const sendCode = makeHandler('/password/change', makeUserService(), MemoryStorage());
+		await sendCode('nobody-here@example.com', '424242');
+		expect(await checkCode(env.AUTH_DB, 'nobody-here@example.com', '424242')).toBe('wrong');
 	});
 });

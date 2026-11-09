@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
+import '../test-setup';
 import { isAuthorizedTestRequest, isE2EAddress, shouldSinkCode, sinkKey, type E2ESinkEnv } from '../utils/e2e-sink';
 import { routeTestEndpoints } from '../routes/test-routes';
 
@@ -19,9 +20,10 @@ import { createSendCodeHandler, type UserServiceLike } from '../handlers/auth-ha
 const SECRET = 'e2e-secret-for-tests';
 const E2E_EMAIL = 'signup-1@e2e.alummahnow.net';
 
-function sinkEnv(overrides: Partial<E2ESinkEnv> = {}): E2ESinkEnv {
+function sinkEnv(overrides: Partial<E2ESinkEnv> = {}): E2ESinkEnv & { AUTH_DB: D1Database } {
 	return {
 		AUTH_STORAGE: env.AUTH_STORAGE,
+		AUTH_DB: env.AUTH_DB,
 		ENVIRONMENT: 'qa',
 		OPENAUTH_ISSUER: 'https://auth.qa.alummahnow.net',
 		E2E_CODE_SINK_SECRET: { get: async () => SECRET },
