@@ -1,6 +1,6 @@
 # Account hub: plan
 
-Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the spec and answered its §11 questions. Each step is one PR that leaves prod working, merges only when CI is green, and is merged with `gh pr merge --rebase --admin`. Auth PRs reach prod through `release.yml` on merge. AlUmmahNow PRs reach prod in the next `v*` tag.
+Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the spec and answered its §11 questions. Every step follows SPEC §0: auth and the hub never call, read or import a consuming app. Each step is one PR that leaves prod working, merges only when CI is green, and is merged with `gh pr merge --rebase --admin`. Auth PRs reach prod through `release.yml` on merge. AlUmmahNow PRs reach prod in the next `v*` tag.
 
 | Step | Repo | Title | Depends on |
 |---|---|---|---|
@@ -14,11 +14,13 @@ Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the
 | B2 | auth | Email change endpoints | B1 |
 | B3 | auth | `/account/activity` and migration 0015 | B1 |
 | B4 | auth | `/account/apps` list and remove | B1 |
-| B5 | auth | Hub pages for B1–B4, step-up flow | B1–B4 |
+| B4b | auth | Launcher and privacy links from the client registry (`/account/launcher`, migration 0016), `apps.ts` removed | B1 |
+| B5 | auth | Hub pages for B1–B4b, step-up flow | B1–B4b |
 | B6 | AlUmmahNow | Privacy page link to `<account>/data`. #444 email link to `<account>/personal-info#email` | B5 live on prod |
-| C1 | auth | Deletion orchestration in the hub | B5, Q3 answered |
-| C2 | auth | Migration 0016 (drop old redirect URIs), remove `PROFILE_APP_URL` fallback | A1 plus one full release |
-| C3 | auth | Account photo | Q1 answered (b) only |
+| C1 | auth | Account events: `account-events` queue, signed SETs to subscribed clients, retry and DLQ | B5 |
+| C2 | auth | Deletion in the hub: auth `DELETE /account` plus the `account.deleted` event | C1, Q3 answered |
+| C3 | AlUmmahNow | Videos receiver: verify the SET, erase on `account.deleted` with its own queue, refresh email on `account.email_changed`. Then auth migration 0017 subscribes Videos | C1 on QA |
+| C4 | auth | Migration 0018 (drop old redirect URIs), remove `PROFILE_APP_URL` fallback | A1 plus one full release |
 
 ---
 
@@ -60,10 +62,12 @@ Acceptance:
 Scope:
 - Split `page.ts` into one module per page: `pages/home.ts`, `pages/devices.ts`, `pages/security.ts`, `pages/data.ts`, `pages/personal-info.ts` (read-only), with a shared `layout.ts` (header with launcher and account menu, section nav, footer). Routes `/`, `/personal-info`, `/security`, `/devices`, `/data`, `/apps`.
 - Copy from SPEC §3.1 in `i18n.ts`, plus an en/ar key-parity test.
+- Initials avatar (SPEC §2.3) from the session's name or email, with the `avatar.*` token part. If the part is missing, a small fanous-tokens PR in AlUmmahNow adds it first. No photo anywhere.
+- The dependency-rule test (SPEC §8), with `apps.ts` as its one allowed exception until B4b.
 - Theme: `ACTIVE_THEME` var and the build step that writes `src/generated/theme.css`, imported as text. Until `@al-ummah-now/fanous-themes` is published, vendor Lantern's generated CSS at a pinned monorepo commit with a pin check. Component tokens only. `check:theme-colors` with an empty allowlist for `apps/profile`.
 - Devices page through browser calls to `/session/devices` (list, remove) and the hub's `POST /devices/sign-out-all` → auth `POST /account/sign-out-all`.
 - Security: "Change password" → `<auth>/password/change?redirect_uri=<hub authorize URL>`, with the note that it signs you out everywhere.
-- Data: "Download your account data" → hub `GET /data/export` streams auth `GET /account/export`. A link to Videos privacy settings.
+- Data: "Download your account data" → hub `GET /data/export` streams auth `GET /account/export`. No app links yet (they come from the registry in B4b).
 - Before and after screenshots: desktop and 390 px, en and ar, light and dark, every page.
 
 Acceptance:
@@ -107,21 +111,39 @@ Scope: list clients from the user's refresh tokens (KV by subject, D1 `refresh_t
 
 Acceptance: API tests. E2E: after removing Videos QA, its next refresh fails and it asks you to sign in.
 
+## B4b: launcher and privacy links from the registry
+
+Scope: migration `0016_client_registry_metadata.sql` in both directories, setting `metadata.launcher` and `privacy_url` for the current first-party clients with per-env URLs. Stage seed rewrites the hosts. `GET /account/launcher` filters by the caller's roles with the same `normalizeRole` rule as today. The hub renders the launcher, "Your apps" and the Data page's "Manage your data in {app}" links from it. `apps.ts` and its tests are deleted, and the dependency-rule test drops its exception. Auth admin can edit these metadata fields.
+
+Acceptance: the launcher on QA matches today's per role (a test with the old catalog as the fixture). Adding a client with launcher metadata shows it with no hub change. No app hostname is left in `apps/profile/src`.
+
 ## B5: hub pages for phase B
 
 Scope: editable name and language, the email change flow, Recent activity, the Connected apps page, and the "Confirm it's you" step-up page (SPEC §5.5) with return to the pending form.
 
 Acceptance: E2E for each flow in en and ar, axe, screenshots approved.
 
-## C1: deletion
+## C1: account events
 
-Scope: SPEC §5.4 orchestration in the hub. The confirmation page needs you to type the confirmation word and passes step-up. Erase Videos data with resume, then delete in auth, sign out, then the confirmation page. The api-videos base URL comes from a per-env var. The failure page offers a retry.
+Scope (SPEC §5.4): an `account-events` queue (`-qa`, `-stage`) and a producer binding in auth, with the same name in every env. A consumer in auth reads `oauth_clients.metadata.events`, builds a SET (RFC 8417) signed with the active JWKS key, and POSTs it (RFC 8935) through the existing webhook sink with retry and the `webhook_dlq`. Event types: RISC `account-purged` for `account.deleted`, `identifier-changed` for `account.email_changed`. The payload carries only the subject. Email change (B2) starts publishing too. The queue is added to the config check and to `release.yml` like the audit consumer.
 
-Acceptance: QA E2E: a throwaway account with a channel and a video is deleted, its Videos data is gone, and signing in with it fails. A unit test checks that auth delete never runs when erasure did not complete.
+Acceptance: unit tests (signature verifies with the JWKS, no email in the payload, unsubscribed clients get nothing, a 5xx endpoint retries and then lands in the DLQ, DLQ replay works). On QA, a test receiver subscribed through a QA-only migration row gets the event.
 
-## C2: cleanup
+## C2: deletion in the hub
 
-Scope: migration `0016_drop_profile_redirect_uris.sql` in both directories, removal of the `PROFILE_APP_URL` fallback and var, and smoke updated (the old host is still a 301 if Q4 says permanent).
+Scope: the confirmation page (type the confirmation word, step-up), then auth `DELETE /account`, which now also enqueues `account.deleted`. Then sign out and the confirmation page from SPEC §3.1. The hub calls nothing but auth.
+
+Acceptance: QA E2E: a throwaway account is deleted, signing in with it fails, and the QA test receiver gets `account-purged` for its subject. A unit test checks that `DELETE /account` returns before delivery and still succeeds when every subscriber is down.
+
+## C3: Videos receiver (AlUmmahNow)
+
+Scope: an endpoint in api-videos that verifies the SET against auth's JWKS (issuer and audience = Videos' client id), is idempotent on `jti`, and enqueues erasure on Videos' own queue. A worker runs the existing resumable `eraseUserData` to completion and sends `UserDataErased`. `identifier-changed` refreshes the profile's email copy. Then auth migration `0017_client_event_subscriptions.sql` subscribes Videos per env.
+
+Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data, a replayed `jti` is a no-op, a bad signature is refused. QA E2E across both repos: delete in the hub, and the channel is gone on Videos QA shortly after.
+
+## C4: cleanup
+
+Scope: migration `0018_drop_profile_redirect_uris.sql` in both directories, removal of the `PROFILE_APP_URL` fallback and var, and smoke updated (the old host is still a 301 if Q4 says permanent).
 
 ## Risks
 
@@ -131,4 +153,5 @@ Scope: migration `0016_drop_profile_redirect_uris.sql` in both directories, remo
 | A stale front-channel logout URL in some app | The old host still serves `/logout` (SPEC §4.2). |
 | The OpenAuth subject changes with the email | Email change revokes by user id through the revocation list, which does not depend on the subject. Covered by a B2 test. |
 | Theme package not yet published | Vendored pinned CSS with a pin check (A3). |
-| Deletion half-done | Auth delete only after erasure is complete. Erasure is resumable. |
+| An app misses the deletion event | Delivery retries, then the DLQ with replay. The app's tokens for the user are already refused by the revocation list, so missed clean-up never lets anyone act as the user. |
+| A new site needs to appear in the hub | Registry metadata only (B4b). No hub or auth code change, by design (SPEC §0). |

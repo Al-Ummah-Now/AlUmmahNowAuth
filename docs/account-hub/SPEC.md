@@ -6,6 +6,20 @@ The profile app (`apps/profile`, `profile.auth.alummahnow.net`) becomes **Al Umm
 
 Facts below were read from `origin/main` of AlUmmahNowAuth and AlUmmahNow on 2026-11-08, plus AlUmmahNow PRs #441, #444 and #455.
 
+## 0. Architectural rule: auth depends on no app
+
+**The auth server and the account hub never depend on the apps that use them** (Videos, www, CMS, admin tools, native apps, any future site). Apps depend on auth, never the reverse. Auth is an SSO provider that can be split out and used by other sites.
+
+In practice:
+
+- Neither auth nor the hub calls an app's API, reads an app's database, queue or KV, or imports an app's code or types.
+- Neither stores or serves app data, such as a photo, a display name or a channel.
+- Neither hard-codes an app's name or URL in code. When the hub needs to show an app (connected apps, the launcher, a privacy link), it reads that from auth's own **client registry** (`oauth_clients` and its `metadata`), which each app's registration fills in as data.
+- When an app must react to something in auth (account deleted, email changed), auth **publishes an event** to apps that subscribed through their client registration (§5.4). Auth never waits for the result, and each app does its own clean-up.
+- Configuration that names an app's URL purely to send the browser there is allowed (a redirect URI, a front-channel logout URL). These are generic OIDC mechanisms, filled in per client, and auth works if an app is missing.
+
+Every section below has been checked against this rule. §12 lists what it changed.
+
 ## 1. Today
 
 | Piece | Where | What it does |
@@ -33,13 +47,13 @@ Gaps found on the way, fixed by this work:
 
 | Area | Contents | Backed by |
 |---|---|---|
-| **Home** | Who you're signed in as: name, email, photo or initial. Other signed-in accounts, switch, add another account, sign out of this account, sign out of all accounts. Shortcuts to the sections below. | Browser → auth `/session/*` (exists) |
-| **Personal info** | Name. Email, with a verified change. Photo (see question Q1). Language. | New `GET/PATCH /account/profile`, new email-change endpoints |
+| **Home** | Who you're signed in as: initials avatar, name, email. Other signed-in accounts, switch, add another account, sign out of this account, sign out of all accounts. Shortcuts to the sections below. | Browser → auth `/session/*` (exists) |
+| **Personal info** | Name. Email, with a verified change. Language. No photo (§2.3). | New `GET/PATCH /account/profile`, new email-change endpoints |
 | **Security** | Change password. Recent activity: sign-ins, sign-outs, password and email changes, devices removed, from `audit_events`. | `/password/change` (exists). New `GET /account/activity` |
 | **Devices** | Where you're signed in: device, browser, approximate location from IP, last active, "This device". Remove one device. Sign out of all devices. | `/session/devices` (exists). `POST /account/sign-out-all` (exists) |
-| **Connected apps** | Apps holding a sign-in for you (Videos, Studio, TV, admin tools), when they were last used, and **Remove access**. | New `GET /account/apps`, `DELETE /account/apps/:clientId` |
-| **Data and privacy** | Download your account data. Links to each app's own data (Videos: export and erase). Delete your account. | `GET /account/export` (exists). Deletion orchestration (§5.4) |
-| **Your apps** | The launcher and "Your apps" grid, as today. | `apps.ts` |
+| **Connected apps** | Apps holding a sign-in for you, when they were last used, and **Remove access**. Names, icons and links come from the client registry, not from the apps. | New `GET /account/apps`, `DELETE /account/apps/:clientId` |
+| **Data and privacy** | Download your account data (auth's data only). For each connected app that registered a `privacy_url`, a link "Manage your data in {app}". Delete your account. | `GET /account/export` (exists). Deletion with events (§5.4) |
+| **Your apps** | The launcher and "Your apps" grid. | Phase A: the existing `apps.ts` catalog, a known exception to §0. Phase B: client registry metadata (§5.2) |
 
 ### 2.2 Stays in each app
 
@@ -50,9 +64,16 @@ The test: if it is about **who you are and how you sign in**, it belongs in the 
 | Public profile: display name, localized names, bio, photo, cover | It is the public page people see on Videos, not the sign-in identity. |
 | Channel settings (all of #441) | Per channel, Videos only. |
 | Upload defaults, video and playback preferences, timezone | Videos behaviour. |
-| Videos data export and erasure | Videos owns that data. The hub links to it and calls it during account deletion. |
+| Videos data export and erasure | Videos owns that data. The hub links to it through Videos' registered `privacy_url` and never calls it. On account deletion, Videos erases its data when it receives auth's event (§5.4). |
 
 `apps/web` keeps its settings pages and adds links to the hub where the topic is account-level (§3.2).
+
+### 2.3 Photo: none in auth (owner decision, 2026-11-08)
+
+- The auth server stores and serves **no profile photo** and issues **no `picture` claim**.
+- The hub shows an **initials avatar**: the first letter of the name, or of the email's local part when there is no name. It takes the first grapheme (`Intl.Segmenter`), so Arabic and combined characters work, and it is upper-cased where the script has case. Colours come from theme tokens, an `avatar.*` component part (background, text). If `tokens/components.json` has no such part yet, it is added in the tokens package with the usual contrast checks. That is a design-system change, not a dependency on any app.
+- Videos keeps its own profile photo and channel photos, unchanged. The hub **never reads from Videos**, neither its API nor its database.
+- **Possible later addition:** an optional account-wide photo served by a **separate profile service** (Graph-style), which apps may choose to use. It would never be in the SSO tokens or the auth server, and it is not planned.
 
 ## 3. Naming and copy
 
@@ -76,7 +97,6 @@ The product is **Al Ummah Now Account** (Arabic **حساب الأمة الآن**
 | Change email | Change email | تغيير البريد الإلكتروني |
 | Email code sent | We sent a code to {email}. | أرسلنا رمزًا إلى {email}. |
 | Email changed | Your email is now {email}. Sign in again with it. | أصبح بريدك الإلكتروني {email}. سجّل الدخول به مجددًا. |
-| Photo | Photo | الصورة |
 | Language | Language | اللغة |
 | Security | Security | الأمان |
 | Change password | Change password | تغيير كلمة المرور |
@@ -91,9 +111,9 @@ The product is **Al Ummah Now Account** (Arabic **حساب الأمة الآن**
 | Last used | Last used {time} | آخر استخدام {time} |
 | Data and privacy | Data and privacy | البيانات والخصوصية |
 | Download data | Download your account data | تنزيل بيانات حسابك |
-| App data | Data in Al Ummah Now Videos | بياناتك في فيديوهات الأمة الآن |
+| App data | Manage your data in {app} | إدارة بياناتك في {app} |
 | Delete account | Delete your account | حذف حسابك |
-| Delete warning | This permanently deletes your account, your channels and your videos. It can't be undone. | يحذف هذا حسابك وقنواتك وفيديوهاتك نهائيًا، ولا يمكن التراجع عنه. |
+| Delete warning | This permanently deletes your account. The apps you used with it are told, and each deletes the data it holds for you. It can't be undone. | يحذف هذا حسابك نهائيًا. وتُبلَّغ التطبيقات التي استخدمتها به، فيحذف كلٌّ منها بياناتك لديه. ولا يمكن التراجع عن ذلك. |
 | Step-up title | Confirm it's you | تأكيد هويتك |
 | Step-up body | For your security, sign in again to continue. | لحمايتك، سجّل الدخول مجددًا للمتابعة. |
 | Switch account | Switch account | تبديل الحساب |
@@ -115,6 +135,8 @@ The OAuth client's display name changes from "Auth Profile" to "Al Ummah Now Acc
   2. In the identity header, add **"Manage your Account"** next to "View profile". It links to `getAuthProfileUrl()` and opens in the same tab. That helper already returns the right host, and it follows the rename in §4.4.
   3. In Profile → Preferences, the email row currently says `emailCannotBeChanged`. Replace that with **"Change it in your Account"** linking to `<account>/personal-info#email`. Show the email from the auth token (`auth.user.email`) first and the profile copy second, because the token is the source of truth once email can change.
 - **Privacy page (follow-up PR after hub phase B):** the existing "manage account" link points to `<account>/data`. When the hub ships deletion (phase C), the Videos "Erase my data" section stays for Videos-only erasure, and a "Delete your whole account" link goes to `<account>/data#delete`.
+- **Client registration (phase B):** Videos fills in its registry metadata (launcher name, icon, URL, `privacy_url`), and in phase C its event subscription (§5.4). That is how Videos appears in the hub without the hub knowing about Videos.
+- **Photo:** none of this changes Videos' own profile and channel photos (§2.3).
 - **Rename in the monorepo (follow-up PR, with phase A):** `AUTH_PROFILE_URL` → `AUTH_ACCOUNT_URL`, `getAuthProfileUrl` → `getAccountUrl`, `deriveAuthProfileUrl` → `deriveAccountUrl`. The derivation changes from `profile.<auth host>` to "replace the leading `auth.` label with `account.`" (`auth.qa.alummahnow.net` → `account.qa.alummahnow.net`). Release E2E `profile-signin.spec.ts` and `targets.ts` move to the new host. `docs/compliance/GDPR.md` names the new host.
 
 ## 4. Hosting
@@ -182,9 +204,12 @@ It is server-rendered HTML with a little script, as today. It reaches auth in tw
 
 ```text
 browser ──(cookie __Host-account_session)──► hub Worker ──(Bearer user token)──► auth /account/*
-   │                                                        └──(Bearer)──► api-videos /api/privacy/* (deletion only)
    └──(cookie __session, CORS)──► auth /session/*
+
+auth ──(signed event, to subscribed clients only)──► each app's own endpoint   (§5.4)
 ```
+
+The hub talks only to auth. Neither the hub nor auth calls any app's API.
 
 ### 5.2 Auth APIs the hub needs
 
@@ -199,7 +224,8 @@ browser ──(cookie __Host-account_session)──► hub Worker ──(Bearer 
 | `GET /account/profile`, `PATCH /account/profile` | **new** | `{ name, email, locale, createdAt }`. PATCH takes `name` (1 to 100 chars, trimmed, no control characters) and `locale` (`en` or `ar`), stored in `users.name` and `users.metadata.locale`. Emits `auth.account.updated`. |
 | `POST /account/email/start`, `POST /account/email/confirm` | **new** | §5.3. |
 | `GET /account/activity?cursor=` | **new** | The caller's own `audit_events` of a fixed list of types, newest first, 20 per page, last 90 days. Returns time, type, success, coarse device from the user agent, and IP. Never returns metadata as-is. |
-| `GET /account/apps`, `DELETE /account/apps/:clientId` | **new** | Clients holding a live refresh token for the user (KV `oauth:refresh` by subject, plus D1 `refresh_tokens`), joined with `oauth_clients` for the name. DELETE removes that client's refresh tokens. Access tokens already issued expire within 15 minutes. The hub's own client is listed but can't be removed from here. |
+| `GET /account/apps`, `DELETE /account/apps/:clientId` | **new** | Clients holding a live refresh token for the user (KV `oauth:refresh` by subject, plus D1 `refresh_tokens`), joined with `oauth_clients` for name, icon and `privacy_url`. Only auth's own data, no call to any app. DELETE removes that client's refresh tokens. Access tokens already issued expire within 15 minutes. The hub's own client is listed but can't be removed from here. |
+| `GET /account/launcher` | **new** (phase B) | The launcher list, from `oauth_clients.metadata.launcher` (`name` en/ar, `description` en/ar, `icon`, `url`, `category`, `requiredRoles`), filtered by the caller's roles. It replaces the hard-coded `apps.ts` catalog, so adding a site is a registry change with no hub code. Registry fields are set through auth admin or a migration, per environment. |
 
 New endpoints go in `account-routes.ts` next to the existing ones and reuse `verifyUserAccessToken` and `requireRecentSignIn`.
 
@@ -215,18 +241,30 @@ New endpoints go in `account-routes.ts` next to the existing ones and reuse `ver
 
 Signing out everywhere is deliberate. Tokens carry the email in their properties. The OpenAuth subject may be derived from those properties, so old tokens would otherwise keep the old email until they expire. Signing in again gives every app the new email at once.
 
-Videos keeps a copy of the email on its profile. #444's change (§3.2) shows the token's email. A later Videos change can stop storing the copy.
+Once the event pipeline exists (phase C), auth also publishes an `account.email_changed` event (§5.4) carrying only the user id. Until then, apps get the new email when the user signs in again, which the sign-out above forces. An app that keeps a copy of the email, as Videos does on its profile, can refresh it on its side. #444's change (§3.2) shows the token's email anyway.
 
-### 5.4 Account deletion (phase C)
+### 5.4 Account deletion and account events (phase C)
 
-Order matters: app data first, then the sign-in, because once the account is gone its token can't erase anything.
+**Changed from the first draft.** The first draft had the hub call Videos' erase API, then auth. That broke §0. Now auth only deletes its own data and publishes an event. Each app cleans up its own data.
 
-1. Step-up (fresh sign-in).
-2. The hub calls api-videos `POST /api/privacy/erase { confirm: "DELETE" }` with the user's token, repeating with `resumeToken` until `complete`. api-videos then sends `UserDataErased` to the processor, as it does today.
-3. The hub calls auth `DELETE /account`, which soft-deletes the user, removes the password and refresh tokens, adds the user to the revocation list and emits `user.deleted`.
-4. Sign out and show a confirmation page.
+**Deletion:**
 
-If step 2 fails part-way, nothing in auth is deleted. The page says what happened and can be retried, because erasure is resumable.
+1. Step-up (fresh sign-in) on the hub's confirmation page.
+2. The hub calls auth `DELETE /account` (exists). Auth soft-deletes the user, removes the password and refresh tokens, adds the user to the revocation list, and emits `user.deleted` to the audit queue, as it already does.
+3. Auth publishes the event `account.deleted` (below).
+4. The hub signs out and shows a confirmation page: your account is deleted, and the apps you used have been told to delete their data.
+
+Auth does not wait for apps and does not know whether they have finished. Each app's handling is that app's own concern. For Videos: a handler in api-videos receives `account.deleted`, then runs its existing resumable erasure (`eraseUserData`) as a background job on its own queue, and sends `UserDataErased` to its processor as it does today. That work is planned in the AlUmmahNow repo, not here.
+
+The revocation list already makes every token of the deleted user fail at the APIs that check it (api-videos does), so nothing can act for the user while the apps clean up.
+
+**Account events: how auth tells apps, without depending on them.**
+
+- **Subscription is registry data.** A client opts in with `oauth_clients.metadata.events = { "uri": "https://…", "types": ["account.deleted", "account.email_changed"] }`. Auth has no list of apps in its code. An unsubscribed or missing app changes nothing for auth.
+- **Format:** a Security Event Token (RFC 8417), signed with auth's own keys (JWKS), so the app verifies it the same way it verifies access tokens. Deletion uses the RISC `account-purged` event type, and email change uses `identifier-changed`, both with the subject as `iss_sub`. The payload carries only the user id, never an email or a name.
+- **Delivery:** push by `POST` (RFC 8935) from a new auth queue, `account-events`, using the existing webhook sink with retry and dead-letter queue (`webhook_dlq`, ADR-001), which the admin DLQ routes can replay. The delete request only enqueues, so a slow or down app never blocks or breaks auth.
+- **Why not the audit queue directly:** `audit_events` is auth's internal log, and its schema is not a contract. Apps must not consume it. The audit queue still records the event.
+- **Why not Videos' `UserDataErased`:** that is a message on Videos' own queue. Auth sending to it would be auth depending on Videos. Videos turns `account.deleted` into its own `UserDataErased`.
 
 ### 5.5 Security model
 
@@ -242,7 +280,9 @@ If step 2 fails part-way, nothing in auth is deleted. The page says what happene
 
 ### 6.1 Schema
 
-- **No new tables.** Language goes in `users.metadata` (JSON) as `locale`. Pending email changes live in KV with a TTL.
+- **No new tables.** Language goes in `users.metadata` (JSON) as `locale`. Pending email changes live in KV with a TTL. Launcher entries, `privacy_url` and event subscriptions go in `oauth_clients.metadata` (JSON). The current clients are filled in by migration, per environment.
+- **No photo column or storage** (§2.3).
+- New queue `account-events` (and `-qa`, `-stage`) for event delivery (§5.4), with the same binding name in every env, as the config check requires.
 - **Index** `idx_audit_events_user_time ON audit_events(user_id, timestamp)` for the activity query. This is expand-only.
 
 ### 6.2 Migrations (both `migrations/` and `migrations-qa/`, append-only)
@@ -251,7 +291,9 @@ If step 2 fails part-way, nothing in auth is deleted. The page says what happene
 |---|---|---|
 | `0014_account_hub_client.sql` | `UPDATE oauth_clients SET name = 'Al Ummah Now Account', redirect_uris = '["http://localhost:3302/callback","https://account.alummahnow.net/callback","https://profile.auth.alummahnow.net/callback"]', updated_at = … WHERE id = '109a1087-…'` | Same, with `account.qa.` and `profile.auth.qa.` |
 | `0015_audit_events_user_time.sql` | the index | the index |
-| `0016_drop_profile_redirect_uris.sql` (phase C, after the old host has only redirected for a full release) | old redirect URI removed | same |
+| `0016_client_registry_metadata.sql` (phase B) | `metadata.launcher` and `privacy_url` for the current first-party clients, prod URLs | same, with QA URLs |
+| `0017_client_event_subscriptions.sql` (phase C, once an app has an endpoint) | `metadata.events` for subscribing clients | same |
+| `0018_drop_profile_redirect_uris.sql` (phase C, after the old host has only redirected for a full release) | old redirect URI removed | same |
 
 Stage replays `migrations/`, and `scripts/stage/seed.ts` rewrites the hosts, so it needs the new mapping. Regenerate `schema.snapshot.sql` and `schema.qa.snapshot.sql` (CI fails if stale). `CLIENT_REGISTRY_MODE` is `enforce`, so 0014 must run before the hub uses the new redirect URI. `release.yml` migrates before it deploys candidates, so shipping both in one PR is safe.
 
@@ -263,6 +305,7 @@ The hub follows [THEMES.md](https://github.com/Al-Ummah-Now/AlUmmahNow/blob/main
 - Light and dark from `prefers-color-scheme` in the generated CSS. No toggle and no script, so nothing flashes on load.
 - Pages use only component tokens (`--fanous-c-nav-*`, `button.*`, `form.*`, `card.*`, `tabs.*`, `menu.*`, `dialog.*`, `toast.*`, `link.text`, `divider.line`, `skeleton.*`, `empty.*`). No hex, `rgb()` or palette literals: the 55 hard-coded hex lines in `apps/profile/src` go to zero. `check:theme-colors` runs with an empty allowlist for this app.
 - Logo, wordmark, favicon and `themeColor` come from the theme slots.
+- The initials avatar (§2.3) uses the `avatar.*` component part in both modes. No image is loaded for it.
 - The theme matrix (each registered theme × light/dark × en/ar) runs a smoke page and axe on Home and Security.
 
 How tokens reach this repo depends on how the theme package ships (THEMES §"Across repos": `@al-ummah-now/fanous-themes` on GitHub Packages). Until it is published, the hub vendors the Lantern generated CSS from a pinned monorepo commit, with a CI check that the copy matches the pin.
@@ -271,10 +314,10 @@ How tokens reach this repo depends on how the theme package ships (THEMES §"Acr
 
 | Level | What |
 |---|---|
-| Unit (`apps/profile`, vitest pool workers) | Old-host 301 rules, including the `/logout` and `/callback` exceptions. Cookie attributes. State and PKCE checks. Refresh-before-call and refused-refresh handling. CSRF token and Origin check. Step-up 401 → re-auth redirect. Launcher catalog with the new host. en/ar key parity. No colour literals. |
-| Unit and API (`apps/auth`) | Each new endpoint: own data only, the hub-audience rule on writes, step-up, rate limits, audit event emitted, input validation. Email change: taken address answers like success, code expiry, attempt cap, password credential moved, old-address notice, revocation. Connected apps: only the user's clients, the hub not removable, refresh tokens gone in KV and D1. Activity: type allowlist, 90-day window, cursor, no metadata leak. Fix for the `//callback` join. |
+| Unit (`apps/profile`, vitest pool workers) | Old-host 301 rules, including the `/logout` and `/callback` exceptions. Cookie attributes. State and PKCE checks. Refresh-before-call and refused-refresh handling. CSRF token and Origin check. Step-up 401 → re-auth redirect. Launcher catalog with the new host. en/ar key parity. No colour literals. Initials: name, email fallback, Arabic and combined first grapheme. **Dependency rule:** a test fails if `apps/profile/src` or `apps/auth/src` contains an app hostname (`videos.`, `www.`, `cms.`, `admin.alummahnow`) outside wrangler config, `apps.ts` (until phase B removes it) and test fixtures. |
+| Unit and API (`apps/auth`) | Each new endpoint: own data only, the hub-audience rule on writes, step-up, rate limits, audit event emitted, input validation. Launcher: built from registry metadata, filtered by role. Account events: a signed SET verifiable with the JWKS, the payload carries no email, only subscribed clients receive it, a failing endpoint lands in the DLQ, and `DELETE /account` returns without waiting for delivery. Email change: taken address answers like success, code expiry, attempt cap, password credential moved, old-address notice, revocation. Connected apps: only the user's clients, the hub not removable, refresh tokens gone in KV and D1. Activity: type allowlist, 90-day window, cursor, no metadata leak. Fix for the `//callback` join. |
 | Migrations | The existing migration checks, snapshot regeneration, stage seed mapping test. |
-| E2E on QA (`e2e/tests/account/`, Playwright) | Old host → new host. Sign up and sign in. Two accounts: switch, sign out one, sign out all. Remove a second device (second browser context). Sign out of all devices. Password change and email change through the `@e2e.alummahnow.net` code sink. Export download. Step-up prompt. Remove a connected app, then that app has to sign in again. Every page in en and ar, light and dark, with axe. |
+| E2E on QA (`e2e/tests/account/`, Playwright) | Old host → new host. Sign up and sign in. Two accounts: switch, sign out one, sign out all. Remove a second device (second browser context). Sign out of all devices. Password change and email change through the `@e2e.alummahnow.net` code sink. Export download. Step-up prompt. Remove a connected app, then that app has to sign in again. Delete an account: a test receiver subscribed on QA gets a valid `account-purged` SET. Every page in en and ar, light and dark, with axe. That Videos then erases its data is tested in the AlUmmahNow repo, not here. |
 | Release | `scripts/release/smoke.ts`: new host 200, old host 301, client redirect URI registered. AlUmmahNow release E2E sign-in on the new host. |
 
 ## 9. Release
@@ -282,21 +325,30 @@ How tokens reach this repo depends on how the theme package ships (THEMES §"Acr
 - **This repo:** every merge to `main` goes through `release.yml`: build once, stage (deploy, smoke, E2E), then production through Workers versions (0% candidate with version-override smoke, 100%, smoke, automatic rollback). There are no manual deploys. PRs are tested on QA by `qa-e2e.yml`.
 - **AlUmmahNow:** production ships only from a `v*` tag on `main` through `release.yml`. The web follow-ups (§3.2) go out in the next tag after the hub is live on prod.
 - **Order:** (1) auth and hub phase A merge, released to stage, then prod. (2) AlUmmahNow and AlUmmahNowUI rename PRs, so their links go straight to the new host instead of through the 301. (3) Later phases.
-- Rollback of phase A is safe: the old host is still a route of the same Worker, and the old redirect URI stays registered until 0016.
+- Rollback of phase A is safe: the old host is still a route of the same Worker, and the old redirect URI stays registered until 0018.
 
 ## 10. Phasing
 
 | Phase | Ships | New auth APIs |
 |---|---|---|
-| **A: move and rename** (first release) | New hosts, old-host 301, naming and copy, the client migration, state and PKCE, token refresh, the theme and light/dark rebuild of the existing pages. Home (who you are, switch, add, sign out one/all), Devices (list, remove, sign out of all devices), Change password (link to the existing flow), Download account data, Your apps. Personal info read-only. All links in every repo. | None. Only config, the migration, the `ACCOUNT_APP_URL` var and the `//callback` fix. |
-| **B: manage** | Name and language editing, email change, Recent activity, Connected apps. #444 follow-up links. | `/account/profile`, `/account/email/*`, `/account/activity`, `/account/apps` |
-| **C: data and photo** | Account deletion orchestration, account photo (if Q1 says so), migration 0016, removal of the `PROFILE_APP_URL` fallback. | None, or an upload endpoint for Q1 |
+| **A: move and rename** (first release) | New hosts, old-host 301, naming and copy, the client migration, state and PKCE, token refresh, the theme and light/dark rebuild of the existing pages, the initials avatar. Home (who you are, switch, add, sign out one/all), Devices (list, remove, sign out of all devices), Change password (link to the existing flow), Download account data, Your apps. Personal info read-only. All links in every repo. | None. Only config, the migration, the `ACCOUNT_APP_URL` var and the `//callback` fix. |
+| **B: manage** | Name and language editing, email change, Recent activity, Connected apps, the launcher and privacy links from the client registry (`apps.ts` removed). #444 follow-up links. | `/account/profile`, `/account/email/*`, `/account/activity`, `/account/apps`, `/account/launcher` |
+| **C: deletion and events** | Account events (`account-events` queue, SETs to subscribed clients), deletion in the hub (auth data plus an event), migrations 0017 and 0018, removal of the `PROFILE_APP_URL` fallback. In AlUmmahNow: the Videos receiver that erases on `account.deleted`. | Event delivery. No new public endpoint. |
 
 Phase A changes no auth behaviour, so it can ship as soon as it is reviewed. Each later phase is a separate PR series.
 
 ## 11. Open questions for the owner
 
-1. **Photo.** (a) The hub shows your Videos profile photo and links to Videos to change it. Auth stores no photo. (b) Auth owns one account photo that every app uses by default, which needs image storage in auth. **Recommendation: (a)** until a second product needs a photo.
+1. ~~**Photo.**~~ **Answered 2026-11-08: no photo in auth** (§2.3). The hub shows initials and never reads from Videos.
 2. **Email change signs you out everywhere**, the same as a password change (§5.3). Is that acceptable? The alternative is weeks of stale emails in tokens and more code.
-3. **Deletion lives in the hub** and deletes everything: Videos content, then the account (§5.4). Videos keeps its own "erase my Videos data" option. Agree?
+3. **Deletion scope.** Deleting your account in the hub deletes auth's data and tells every subscribed app, which then deletes its own data for you: for Videos, your channels and videos (§5.4). Videos keeps its own "erase my Videos data" option. Agree that deleting the account should mean deleting everywhere, rather than apps keeping data under a deleted account?
 4. **Old host lifetime.** Keep the `profile.auth.*` 301 permanently (it costs nothing), or remove the routes after 90 days? **Recommendation: permanent.**
+
+## 12. Changes after owner review (2026-11-08)
+
+- **New §0 rule:** auth and the hub never depend on consuming apps.
+- **Photo (Q1):** no photo in auth and no `picture` claim. The hub shows an initials avatar themed with tokens. Videos photos are unchanged. A separate profile service is noted as a possible later addition (§2.3).
+- **Deletion redesigned (§5.4):** the hub no longer calls Videos' erase API. Auth deletes its own data and publishes a signed `account.deleted` event to subscribed clients. Each app, Videos included, erases its own data. The same pipeline carries `account.email_changed`.
+- **Launcher and app links:** the hard-coded `apps.ts` catalog (which names Videos, www, CMS and admin URLs) is a phase A exception and is replaced in phase B by client registry metadata. The Videos-specific "data in Videos" link and delete warning became generic.
+- **Connected apps:** checked, and already compliant. It reads only auth's own refresh tokens and client registry.
+- **Migrations renumbered:** 0016 and 0017 are registry metadata and event subscriptions. The old redirect URI is now dropped in 0018.
