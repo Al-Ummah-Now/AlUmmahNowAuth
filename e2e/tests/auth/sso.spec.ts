@@ -13,8 +13,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { register, logout, expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
+import { fillSecret } from '../../utils/secret-input';
+import { TEST_PASSWORD as PASSWORD } from '../../utils/test-credentials';
 
-const PASSWORD = 'TestPassword123!'; // same as fixtures/auth.ts
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
 const WEB_URL = process.env.E2E_WEB_URL; // e.g. https://videos.qa.alummahnow.net
 const WEB_SIGNED_IN_COOKIES = ['al_ummah_session', 'access_token'];
 
@@ -72,7 +76,7 @@ test.describe('Single sign-on across profile, admin and web', () => {
     await page.goto(TEST_URLS.profileApp);
     await expect(page).toHaveURL(new RegExp(`${TEST_URLS.authServer}/password/authorize`));
     await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', PASSWORD);
+    await fillSecret(page.locator('input[type="password"]').first(), PASSWORD);
     await page.click('form[data-component="form"] button[data-component="button"]');
     await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 

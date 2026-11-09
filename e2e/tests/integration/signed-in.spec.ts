@@ -11,8 +11,12 @@
 import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 import { register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
+import { fillSecret } from '../../utils/secret-input';
+import { TEST_PASSWORD as PASSWORD } from '../../utils/test-credentials';
 
-const PASSWORD = 'TestPassword123!'; // same as fixtures/auth.ts
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
 const profile = () => new URL(TEST_URLS.profileApp).origin;
 const admin = () => new URL(TEST_URLS.adminDashboard).origin;
 
@@ -37,7 +41,7 @@ async function promote(page: Page, email: string) {
 async function submitSignIn(page: Page, email: string) {
   await expectSignInPage(page);
   await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', PASSWORD);
+  await fillSecret(page.locator('input[type="password"]').first(), PASSWORD);
   await page.click('form[data-component="form"] button[data-component="button"]');
 }
 

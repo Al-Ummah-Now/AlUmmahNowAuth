@@ -11,8 +11,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, TEST_USERS } from '../../utils/test-data';
+import { fillSecret } from '../../utils/secret-input';
+import { TEST_PASSWORD } from '../../utils/test-credentials';
 
-const TEST_PASSWORD = 'TestPassword123!';
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
 // Resend refuses to deliver to the reserved example.com domain
 const UNDELIVERABLE_EMAIL = 'x@example.com';
 const SEND_FAILED_MESSAGE = "We couldn't send the code to this email";
@@ -29,8 +33,8 @@ async function openRegisterForm(page: Page) {
 async function submitRegistration(page: Page, email: string) {
   await page.fill('input[type="email"]', email);
   const passwordFields = page.locator('input[type="password"]');
-  await passwordFields.nth(0).fill(TEST_PASSWORD);
-  await passwordFields.nth(1).fill(TEST_PASSWORD);
+  await fillSecret(passwordFields.nth(0), TEST_PASSWORD);
+  await fillSecret(passwordFields.nth(1), TEST_PASSWORD);
   await page.click('button:has-text("Continue")');
 }
 

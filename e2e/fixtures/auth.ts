@@ -7,14 +7,11 @@
 import { Page, expect } from '@playwright/test';
 import { TEST_URLS } from '../utils/test-data';
 import { setupEmailInterception } from '../utils/email-interceptor';
+import { fillSecret } from '../utils/secret-input';
+import { TEST_PASSWORD } from '../utils/test-credentials';
 
 // Store registered users to avoid re-registration
 const registeredUsers = new Set<string>();
-
-// Test password for all E2E test users
-// SECURITY WARNING: This password is used ONLY for local E2E tests and should NEVER be used in production.
-// In production, always use strong, unique passwords for each user.
-const TEST_PASSWORD = 'TestPassword123!';
 
 /**
  * Register a new user
@@ -46,8 +43,8 @@ export async function register(page: Page, email: string): Promise<void> {
 
   // Fill password fields (there are typically two: password and repeat password)
   const passwordFields = page.locator('input[type="password"]');
-  await passwordFields.nth(0).fill(TEST_PASSWORD);
-  await passwordFields.nth(1).fill(TEST_PASSWORD); // Repeat password
+  await fillSecret(passwordFields.nth(0), TEST_PASSWORD);
+  await fillSecret(passwordFields.nth(1), TEST_PASSWORD); // Repeat password
 
   // Submit registration
   await page.click('button:has-text("Continue")');
@@ -66,9 +63,8 @@ export async function register(page: Page, email: string): Promise<void> {
   // Sometimes form submission fails under load - retry up to 3 times
   let codeSubmissionSuccess = false;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    // Clear any previous value and enter code
-    await page.fill('input[name="code"]', '');
-    await page.fill('input[name="code"]', verificationCode);
+    // Enter code (replaces any previous value)
+    await fillSecret(page.locator('input[name="code"]').first(), verificationCode);
 
     // Small delay to ensure the form recognizes the input
     await page.waitForTimeout(100);
@@ -159,7 +155,7 @@ export async function login(page: Page, email: string): Promise<void> {
 
   // Enter email address and password
   await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', TEST_PASSWORD);
+  await fillSecret(page.locator('input[type="password"]').first(), TEST_PASSWORD);
 
   // Click Continue to submit login
   await page.click('button:has-text("Continue")');
@@ -179,8 +175,7 @@ export async function login(page: Page, email: string): Promise<void> {
 
     // Enter verification code with retry logic
     for (let attempt = 1; attempt <= 3; attempt++) {
-      await page.fill('input[name="code"]', '');
-      await page.fill('input[name="code"]', verificationCode);
+      await fillSecret(page.locator('input[name="code"]').first(), verificationCode);
       await page.waitForTimeout(100);
 
       const continueBtn = page.locator('button:has-text("Continue")');

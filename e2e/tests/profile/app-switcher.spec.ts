@@ -14,6 +14,10 @@ import { test, expect, Page } from '@playwright/test';
 import { login, register } from '../../fixtures/auth';
 import { TEST_URLS, TEST_USERS } from '../../utils/test-data';
 
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
+
 const profileHost = new URL(TEST_URLS.profileApp).hostname;
 const ENV: 'qa' | 'production' | 'local' =
   profileHost === 'localhost' || profileHost === '127.0.0.1'

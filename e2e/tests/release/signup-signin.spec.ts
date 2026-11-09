@@ -15,6 +15,10 @@ import { register, login, logout, getCurrentUser } from '../../fixtures/auth';
 import { loginAdmin } from '../../fixtures/admin';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
+
 /** Records every main-frame navigation so a bounce through an error page is caught. */
 function recordNavigations(page: Page): string[] {
   const urls: string[] = [];

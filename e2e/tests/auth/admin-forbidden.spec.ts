@@ -14,6 +14,10 @@ import { test, expect, type Page } from '@playwright/test';
 import { register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
+
 const admin = () => new URL(TEST_URLS.adminDashboard).origin;
 
 /** Signed in on profile (shared sign-in), then opens the auth admin as that member. */
