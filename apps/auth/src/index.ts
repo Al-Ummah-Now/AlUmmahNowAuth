@@ -9,6 +9,7 @@ import { isAllowedOrigin } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
 import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
+import { withPreviewRedirects } from "./utils/preview-redirects";
 import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-handlers";
 import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
 import { PasswordUI } from "@al-ummah-now/openauth/ui/password";
@@ -281,7 +282,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       sessionSecret,
       subjects,
       rbacService,
-      clientDb: env.AUTH_DB,
+      // QA only: per-PR web previews (see preview-redirects.ts)
+      clientDb: withPreviewRedirects(env.AUTH_DB, env, request),
       // Unrecoverable sign-in state (stale tab, bookmark, cookies cleared) shows a
       // friendly en/ar "Start sign-in again" page; this is where it links when the
       // sign-in's app is unknown.

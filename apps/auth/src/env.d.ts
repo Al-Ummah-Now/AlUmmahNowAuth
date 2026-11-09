@@ -30,6 +30,8 @@ declare global {
     FRONTCHANNEL_LOGOUT_URLS?: string;
     /** "enforce" | "report": check /authorize against oauth_clients */
     CLIENT_REGISTRY_MODE?: string;
+    PREVIEW_WEB_CLIENT_ID?: string;
+    PREVIEW_WORKERS_SUBDOMAIN?: string;
     PROFILE_CLIENT_ID?: string;
     RESEND_API_KEY: SecretBinding;
     ALLOWED_ORIGINS: string;
