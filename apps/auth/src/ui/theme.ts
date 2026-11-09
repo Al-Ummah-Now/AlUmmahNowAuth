@@ -1,15 +1,11 @@
 /**
  * The sign-in pages' OpenAuth theme.
  *
- * It must not depend on the request. OpenAuth stores the theme in a global
- * (globalThis.OPENAUTH_THEME, via setTheme) that every request in the isolate
- * shares, and renders after async work. A per-request theme (locale/direction
- * from ?lang=) let a concurrent English request overwrite an Arabic one's, so
- * Arabic pages came out as <html lang="ar" dir="ltr"> under load.
- *
- * So there is no `locale` or `direction` here: OpenAuth's Layout derives the
- * direction from the request's own locale (theme.direction would override it),
- * and the Arabic title font is chosen in CSS with :lang(ar).
+ * OpenAuth passes the theme to each page render with that request's own
+ * language and direction (never a global), so each request can get its own
+ * theme. The language comes only from the link's `?lang=` (English otherwise),
+ * so the theme carries no `locale` or `direction`, and the Arabic title font is
+ * chosen in CSS with :lang(ar).
  */
 
 export const BACKGROUND_IMAGES = [
@@ -80,5 +76,7 @@ export function authTheme(backgroundImage: string) {
 	};
 }
 
-/** One theme per isolate: the background is picked once, not per request. */
-export const AUTH_THEME = authTheme(BACKGROUND_IMAGES[Math.floor(Math.random() * BACKGROUND_IMAGES.length)]);
+/** A theme for one request, with one of the background images. */
+export function requestTheme(pick: () => number = Math.random) {
+	return authTheme(BACKGROUND_IMAGES[Math.floor(pick() * BACKGROUND_IMAGES.length)]);
+}

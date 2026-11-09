@@ -32,7 +32,7 @@ import { handleTokenCron } from "./cron/token-cron";
 import { routeRequest, type RouterContext } from "./router";
 import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
-import { AUTH_THEME } from "./ui/theme";
+import { requestTheme } from "./ui/theme";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
@@ -320,8 +320,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
           },
         }),
       },
-      // Request-independent: OpenAuth keeps the theme in an isolate-wide global (ui/theme.ts)
-      theme: AUTH_THEME,
+      // Per request: OpenAuth renders each page with its own request's theme and ?lang=
+      theme: requestTheme(),
       onSuccess: createOnSuccessHandler(userService, rbacService, {
         request,
         env,
@@ -451,6 +451,6 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       ctx.waitUntil(logger.finalizeRequest());
 
       // Return user-friendly error page with original URL preserved
-      return addSecurityHeaders(renderErrorPage(error, requestId, request.url), isProduction);
+      return addSecurityHeaders(renderErrorPage(error, requestId, request.url, request), isProduction);
     }
 }

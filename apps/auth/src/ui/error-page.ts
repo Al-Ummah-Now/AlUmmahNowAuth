@@ -2,29 +2,71 @@
  * @fileoverview User-friendly error page renderer
  */
 
+type ErrorLocale = 'en' | 'ar';
+
+/** English unless the link asks for Arabic with `?lang=ar`; any other value is English. */
+export function errorPageLocale(request?: Request): ErrorLocale {
+	if (!request) return 'en';
+	try {
+		return new URL(request.url).searchParams.get('lang') === 'ar' ? 'ar' : 'en';
+	} catch {
+		return 'en';
+	}
+}
+
+const ERROR_COPY: Record<ErrorLocale, Record<string, string>> = {
+	en: {
+		unavailableTitle: 'Service Temporarily Unavailable',
+		unavailableMessage:
+			'We are experiencing database connectivity issues. Our team has been notified and is working to resolve this.',
+		errorTitle: 'Something Went Wrong',
+		errorMessage: 'An unexpected error occurred. Please try again in a few moments.',
+		tryAgain: 'Try Again',
+		goHome: 'Go Home',
+		report: 'Report this Issue',
+		reference: 'Reference ID:',
+		copy: 'Copy',
+		copied: 'Copied!',
+	},
+	ar: {
+		unavailableTitle: 'الخدمة غير متاحة مؤقتًا',
+		unavailableMessage: 'نواجه مشكلة في الاتصال بقاعدة البيانات. تم إبلاغ فريقنا ونعمل على حلها.',
+		errorTitle: 'حدث خطأ ما',
+		errorMessage: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى بعد قليل.',
+		tryAgain: 'حاول مرة أخرى',
+		goHome: 'الصفحة الرئيسية',
+		report: 'الإبلاغ عن المشكلة',
+		reference: 'رقم المرجع:',
+		copy: 'نسخ',
+		copied: 'تم النسخ!',
+	},
+};
+
 /**
  * Render a user-friendly error page for server errors
  *
  * @param error - The error that occurred
  * @param requestId - Request ID for support reference
  * @param originalUrl - The original URL that caused the error (optional)
+ * @param request - The request, for its `?lang=` (English unless it asks for Arabic)
  * @returns HTML response with error page
  */
 export function renderErrorPage(
 	error: unknown,
 	requestId: string,
-	originalUrl?: string
+	originalUrl?: string,
+	request?: Request
 ): Response {
+	const locale = errorPageLocale(request);
+	const t = ERROR_COPY[locale];
 	const isD1Error =
 		error instanceof Error &&
 		(error.message.includes('D1_ERROR') ||
 			error.message.includes('D1Database') ||
 			error.message.includes('error code: 1031'));
 
-	const title = isD1Error ? 'Service Temporarily Unavailable' : 'Something Went Wrong';
-	const message = isD1Error
-		? 'We are experiencing database connectivity issues. Our team has been notified and is working to resolve this.'
-		: 'An unexpected error occurred. Please try again in a few moments.';
+	const title = isD1Error ? t.unavailableTitle : t.errorTitle;
+	const message = isD1Error ? t.unavailableMessage : t.errorMessage;
 
 	const timestamp = new Date().toISOString();
 	const urlDisplay = originalUrl || 'Unknown';
@@ -44,7 +86,7 @@ The error occurred while accessing the URL above.
 `);
 
 	const html = `<!DOCTYPE html>
-<html lang="en">
+<html lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -164,7 +206,7 @@ The error occurred while accessing the URL above.
       padding: 4px 8px;
       font-size: 12px;
       border-radius: 4px;
-      margin-left: 8px;
+      margin-inline-start: 8px;
     }
     .copy-btn:hover {
       background: rgba(255,255,255,0.1);
@@ -185,22 +227,22 @@ The error occurred while accessing the URL above.
     <div class="actions">
       ${
 			originalUrl
-				? `<a href="${originalUrl.replace(/"/g, '&quot;')}" class="btn btn-primary">Try Again</a>`
-				: `<button class="btn btn-primary" onclick="window.location.reload()">Try Again</button>`
+				? `<a href="${originalUrl.replace(/"/g, '&quot;')}" class="btn btn-primary">${t.tryAgain}</a>`
+				: `<button class="btn btn-primary" onclick="window.location.reload()">${t.tryAgain}</button>`
 		}
-      <a href="/" class="btn btn-secondary">Go Home</a>
+      <a href="/" class="btn btn-secondary">${t.goHome}</a>
     </div>
     <a href="mailto:support@alummahnow.net?subject=${reportSubject}&body=${reportBody}" class="btn btn-report">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
         <polyline points="22,6 12,13 2,6"></polyline>
       </svg>
-      Report this Issue
+      ${t.report}
     </a>
     <div class="ref">
       <div class="ref-id">
-        Reference ID: <code id="refId">${requestId}</code>
-        <button class="copy-btn" onclick="copyRefId()">Copy</button>
+        ${t.reference} <code id="refId" dir="ltr">${requestId}</code>
+        <button class="copy-btn" onclick="copyRefId()">${t.copy}</button>
       </div>
       <div class="timestamp">${timestamp}</div>
     </div>
@@ -210,8 +252,8 @@ The error occurred while accessing the URL above.
       const refId = document.getElementById('refId').textContent;
       navigator.clipboard.writeText(refId).then(() => {
         const btn = document.querySelector('.copy-btn');
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy', 2000);
+        btn.textContent = ${JSON.stringify(t.copied)};
+        setTimeout(() => btn.textContent = ${JSON.stringify(t.copy)}, 2000);
       });
     }
   </script>
@@ -222,6 +264,7 @@ The error occurred while accessing the URL above.
 		status: isD1Error ? 503 : 500,
 		headers: {
 			'Content-Type': 'text/html; charset=utf-8',
+			'Content-Language': locale,
 			'Retry-After': '30',
 		},
 	});

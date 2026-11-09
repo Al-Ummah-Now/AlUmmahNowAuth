@@ -185,10 +185,11 @@ test.describe('Profile app switcher', () => {
     expect(box!.x + box!.width).toBeLessThanOrEqual(390);
     await shot(page, 'admin-mobile-ar-menu');
 
-    // The language choice sticks via cookie; ?lang=en switches back
+    // English unless the link asks for Arabic: no lang (or an unsupported one) is English
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-    await page.goto(`${TEST_URLS.profileApp}/?lang=en`);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
+    await page.goto(`${TEST_URLS.profileApp}/?lang=fr`);
     await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
   });
 });

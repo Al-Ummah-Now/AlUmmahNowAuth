@@ -68,6 +68,15 @@ describe("profile sign-in routing", () => {
     expect(url.searchParams.get("redirect_uri")).toBe(`${APP}/callback`);
     const state = url.searchParams.get("state")!;
     expect(cookiePair(res, LOGIN_COOKIE)).toBe(`${LOGIN_COOKIE}=${state}.${encodeURIComponent("/?lang=ar")}`);
+    // The sign-in pages follow the Arabic the profile link asked for
+    expect(url.searchParams.get("lang")).toBe("ar");
+  });
+
+  it("/login without an Arabic return path sends no lang (sign-in defaults to English)", async () => {
+    for (const ret of ["/", "/?lang=fr", "/?lang=constructor"]) {
+      const url = new URL((await get(`/login?return=${encodeURIComponent(ret)}`)).headers.get("location")!);
+      expect(url.searchParams.has("lang")).toBe(false);
+    }
   });
 
   it("/login passes prompt=none and prompt=login, never anything else", async () => {

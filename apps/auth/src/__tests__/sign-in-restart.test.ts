@@ -100,6 +100,26 @@ describe('unrecoverable sign-in state (worker)', () => {
 		await expectRestartPage(res, signInFallbackUrl(env as unknown as Env));
 	});
 
+	it('is English when no lang is given, whatever the browser prefers', async () => {
+		const html = await expectRestartPage(
+			await new Browser().signIn('/password/authorize', { 'accept-language': 'ar-SA,ar;q=0.9' }),
+			signInFallbackUrl(env as unknown as Env)
+		);
+		expect(html).toContain('lang="en"');
+		expect(html).toContain('dir="ltr"');
+		expect(html).not.toContain('ابدأ تسجيل الدخول من جديد');
+	});
+
+	it('is English for an unsupported or invalid lang', async () => {
+		for (const lang of ['fr', 'constructor', '__proto__']) {
+			const html = await expectRestartPage(
+				await new Browser().signIn(`/password/authorize?lang=${lang}`),
+				signInFallbackUrl(env as unknown as Env)
+			);
+			expect(html).toContain('dir="ltr"');
+		}
+	});
+
 	it('is Arabic for ?lang=ar', async () => {
 		const html = await expectRestartPage(await new Browser().signIn('/password/authorize?lang=ar'), signInFallbackUrl(env as unknown as Env));
 		expect(html).toContain('dir="rtl"');
