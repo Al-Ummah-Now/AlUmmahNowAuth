@@ -1,15 +1,14 @@
 # Account hub: plan
 
-Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the spec and answered its §11 questions. Migrations start at 0015 in both directories (SPEC §6.2, `migrations-qa/0014` is taken). Every step follows SPEC §0: auth and the hub never call, read or import a consuming app. Each step is one PR that leaves prod working, merges only when CI is green, and is merged with `gh pr merge --rebase --admin`. Auth PRs reach prod through `release.yml` on merge. AlUmmahNow PRs reach prod in the next `v*` tag.
+Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the spec and read its §11 owner decisions (all answered). Migrations start at 0015 in both directories (SPEC §6.2, `migrations-qa/0014` is taken). Every step follows SPEC §0: auth and the hub never call, read or import a consuming app. Each step is one PR that leaves prod working, merges only when CI is green, and is merged with `gh pr merge --rebase --admin`. Auth PRs reach prod through `release.yml` on merge. AlUmmahNow PRs reach prod in the next `v*` tag.
 
 | Step | Repo | Title | Depends on |
 |---|---|---|---|
 | 0 | auth | Spec and plan | (this PR) |
-| A1 | auth | Hosts, old-host redirect, client migration, `ACCOUNT_APP_URL`, link updates in this repo | 0 approved |
+| A1 | auth | `account.*` redirect route, client name migration, `//callback` fix, smoke | 0 approved |
 | A2 | auth | Hub sign-in hardening: state, PKCE, token refresh, `__Host-` cookie, CSRF helper, CSP | A1 |
 | A3 | auth | Hub UI rebuild on theme tokens, light/dark, Account naming, Home, Devices, Security (password link), Data (export), Your apps | A2, theme tokens available (SPEC §7) |
-| A4 | AlUmmahNow | `AUTH_ACCOUNT_URL` rename and new derivation, release E2E host, docs. #444 copy changes | A1 live on prod |
-| A5 | AlUmmahNowUI | `ACCOUNT_URL` rename and new host | A1 live on prod |
+| A4 | AlUmmahNow | #444 wording changes (SPEC §3.2). No host or variable rename | A3 |
 | B1 | auth | `GET/PATCH /account/profile`, `ACCOUNT_CLIENT_ID` audience rule, rate limits | A3 |
 | B3 | auth | `/account/activity` and migration 0016 | B1 |
 | B4 | auth | `/account/apps` list and remove | B1 |
@@ -19,28 +18,25 @@ Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the
 | C1 | auth | Account events: `account-events` queue, signed SETs to subscribed clients, retry and DLQ | B5 |
 | C2 | auth | Deletion in the hub: auth `DELETE /account` plus the `account.deleted` event | C1 (Q3 decided: apps delete everything) |
 | C3 | AlUmmahNow | Videos receiver: verify the SET, erase on `account.deleted` with its own queue. Then auth migration 0018 subscribes Videos | C1 on QA |
-| C4 | auth | Migration 0019 (drop old redirect URIs), remove `PROFILE_APP_URL` fallback | A1 plus one full release |
 | T1 | auth | QA-only migration removing the theme demo redirect URIs from #249 | Theme demos torn down (any time, independent of the hub) |
 
 ---
 
-## A1: hosts and redirect
+## A1: `account.*` redirect
 
 Scope:
-- `apps/profile/wrangler.json`: add the `account.alummahnow.net` route (top level) and `account.stage.alummahnow.net` (`env.stage`). `wrangler.qa.json`: add `account.qa.alummahnow.net`. Keep the `profile.auth.*` routes. Set `APP_URL` to the new host.
-- `apps/profile/src/index.ts`: old-host handling (SPEC §4.2): 301 to the same path on the new host, except `/logout` (handled in place) and `/callback` (to `/` on the new host). Read the old hosts from `APP_URL` and one new var, `LEGACY_HOSTS`, so nothing is inferred.
-- Migrations `0015_account_hub_client.sql` in `migrations/` and `migrations-qa/` (SPEC §6.2). Regenerate both schema snapshots.
-- `scripts/stage/seed.ts`: map `account.alummahnow.net` → `account.stage.alummahnow.net`, and test it.
-- Auth: new var `ACCOUNT_APP_URL` in all three envs. The code reads `ACCOUNT_APP_URL ?? PROFILE_APP_URL`. Fix the `//callback` join in `handleAuthorizeRedirect`. Update `FRONTCHANNEL_LOGOUT_URLS`, QA `ALLOWED_ORIGINS` and stage `SIGN_IN_FALLBACK_URL`. Add `ACCOUNT_APP_URL` to the config check's required vars.
-- `apps/admin/app/lib/forbidden.ts`: `accountAppUrl` derives `account.` from `auth.`.
-- `apps/profile/src/apps.ts`: launcher entry URLs.
-- `scripts/release/apps.ts` (both hosts in `allowedHosts`), `smoke.ts` (new host 200, old host 301, client check on the new redirect URI), `qa-e2e.yml` and `release.yml` (`E2E_ACCOUNT_URL`), E2E utils, and the docs listed in SPEC §4.4.
+- `apps/profile/wrangler.json`: add `account.alummahnow.net` (top level) and `account.stage.alummahnow.net` (`env.stage`) as `custom_domain: true` routes. `wrangler.qa.json`: add `account.qa.alummahnow.net`. Add `REDIRECT_HOSTS` with that env's `account.*` host. The `profile.auth.*` routes and `APP_URL` are unchanged.
+- `apps/profile/src/index.ts`: as the first line of `fetch`, a `Host` in `REDIRECT_HOSTS` gets `301` to `APP_URL` plus the same path and query, with `Cache-Control: max-age=3600`. Nothing else: no session, no KV, no cookie (SPEC §4.2).
+- Migration `0015_account_hub_client_name.sql` in `migrations/` and `migrations-qa/`: client display name only, `redirect_uris` untouched.
+- Auth: fix the `//callback` join in `handleAuthorizeRedirect`. No var changes: `PROFILE_APP_URL`, `ALLOWED_ORIGINS` and `FRONTCHANNEL_LOGOUT_URLS` stay as they are.
+- `scripts/release/apps.ts` (`allowedHosts` gains each env's `account.*`), `smoke.ts` (`account.*` 301 with path and query preserved, `profile.auth.*` 200), and a mention in `docs/release-pipeline.md` and `README.md`.
+- If the owner prefers a Cloudflare redirect rule (SPEC §4.2 alternative), this step adds only the smoke check, and the rule and DNS are set by hand per env.
 
 Acceptance:
-- On QA, `https://account.qa.alummahnow.net/` signs in and shows the account. `https://profile.auth.qa.alummahnow.net/x?y=1` answers 301 to `https://account.qa.alummahnow.net/x?y=1`. Signing out from Videos QA still clears the hub session.
+- Unit: every method and path on an `account.*` host returns 301 to `profile.auth.*` with the path and query preserved, sets no cookie and never reads KV. `profile.auth.*` behaves as before.
+- On QA, `https://account.qa.alummahnow.net/x/y?lang=ar` answers 301 to `https://profile.auth.qa.alummahnow.net/x/y?lang=ar`.
 - `auth.qa…/authorize` with no params lands on the hub's sign-in (the `//callback` bug is gone, proven by a unit test).
-- The config check and the migration checks pass, and the stage seed test covers the new host.
-- After release, prod smoke passes on both hosts.
+- The config check and the migration checks pass. After release, the smoke check passes on stage and prod for both hosts.
 
 ## A2: sign-in hardening
 
@@ -48,7 +44,7 @@ Scope:
 - `state` cookie (host-only, 10 minutes) and PKCE S256 on every `/authorize` the hub builds, in both the server and the inline script. The callback checks them.
 - Refresh before server-side calls (SPEC §4.3). A refused refresh clears the session.
 - Store `auth_time` from the access token in the session.
-- Cookie `__Host-account_session` (no prefix on localhost). The old `profile_session` cookie is cleared if present.
+- Cookie `__Host-account_session` (no prefix on localhost). An existing `profile_session` is carried over once, then cleared, so nobody is signed out.
 - `src/security.ts`: CSRF token in the session plus a hidden field, an `Origin` check for POSTs, the CSP nonce, `no-store` and the other SPEC §5.5 headers.
 - `/session/check` sync on page load (SPEC §4.3).
 - Remove the E2E-only `/revoke` endpoint, or keep it only where `APP_ENV` is not `production`, as the auth test routes do.
@@ -75,11 +71,11 @@ Acceptance:
 - No colour literals in `apps/profile/src`, enforced by CI.
 - Owner approves the screenshots before merge (visual change).
 
-## A4 and A5: links in other repos
+## A4: #444 wording
 
-Scope: SPEC §3.2 and the §4.4 "Other repos" table. Re-run the org code search first, and add anything new to the PR. For #444: either it takes the three changes before it merges, or A4 applies them right after #444 merges, whichever comes first.
+Scope: the three #444 changes in SPEC §3.2 (the "Overview" tab label, "Manage your Account" linking to `getAuthProfileUrl()`, and the read-only email explanation). No host or variable rename anywhere: links keep `profile.auth.*`. Either #444 takes the changes before it merges, or A4 applies them right after #444 merges, whichever comes first.
 
-Acceptance: no `profile.auth` left outside archived docs. AlUmmahNow release E2E signs in on `account.qa`. The UI repo builds with the new var.
+Acceptance: web unit tests for the new labels and links in en and ar.
 
 ## B1: profile endpoint and the audience rule
 
@@ -133,10 +129,6 @@ Scope (Q3: Videos deletes all of the user's data): an endpoint in api-videos tha
 
 Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data, a replayed `jti` is a no-op, a bad signature is refused. QA E2E across both repos: delete in the hub, and the channel is gone on Videos QA shortly after.
 
-## C4: cleanup
-
-Scope: migration `0019_drop_profile_redirect_uris.sql` in both directories, removal of the `PROFILE_APP_URL` fallback and var, and smoke updated (the old host is still a 301 if Q4 says permanent).
-
 ## T1: remove the theme demo redirect URIs
 
 Scope: `migrations-qa/NNNN_drop_theme_demo_redirect_uris.sql`, where NNNN is the next number free in both directories at that time (`migrations/` skips it). It removes from the QA videos web client exactly the `https://theme-demo-*.mahmoud-s-darwish.workers.dev/...` URIs that `0014_theme_demo_redirect_uris.sql` added, filtering the JSON array so every other URI stays. Regenerate `schema.qa.snapshot.sql` if the snapshot includes data.
@@ -147,8 +139,7 @@ Acceptance: after it runs on QA, `/authorize` with a theme demo redirect URI is 
 
 | Risk | Mitigation |
 |---|---|
-| Old-host sessions are lost at cutover | A silent `prompt=none` sign-in on the new host. Nothing for the user to do. |
-| A stale front-channel logout URL in some app | The old host still serves `/logout` (SPEC §4.2). |
+| The `account.*` redirect drifts or breaks in one env | It is a wrangler route in every env, unit-tested and checked by release smoke on stage and prod. |
 | A user loses the mailbox of an account before moving their data | No auth recovery, by design (SPEC §5.3). The app holding the data recovers it (Videos: super admin channel transfer, AlUmmahNow #460). |
 | Theme package not yet published | Vendored pinned CSS with a pin check (A3). |
 | An app misses the deletion event | Delivery retries, then the DLQ with replay. The app's tokens for the user are already refused by the revocation list, so missed clean-up never lets anyone act as the user. |
