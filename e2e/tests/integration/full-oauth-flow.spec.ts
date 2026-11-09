@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { login, logout, register } from '../../fixtures/auth';
+import { login, logout, register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 import { setupEmailInterception } from '../../utils/email-interceptor';
 
@@ -35,10 +35,8 @@ test.describe('Full OAuth Flow', () => {
 
     // Step 1: Navigate to profile app (client)
     await page.goto(TEST_URLS.profileApp);
-    await expect(page.locator('#loggedOutView')).toBeVisible();
-
-    // Step 2: Initiate OAuth flow by clicking login
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    // Step 2: No landing page: the profile app starts the OAuth flow itself
+    await expectSignInPage(page);
 
     // Step 3: Verify redirect to authorization server
     // The auth server may use different URL patterns:
@@ -96,7 +94,7 @@ test.describe('Full OAuth Flow', () => {
 
     // Step 9: Test logout (token revocation)
     await logout(page);
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await expectSignInPage(page);
   });
 
   test('should handle OAuth error responses', async ({ page }) => {
@@ -150,7 +148,7 @@ test.describe('Full OAuth Flow', () => {
     // Verify logout affects second tab (may require reload)
     await page2.reload();
     await page2.waitForLoadState('domcontentloaded');
-    await expect(page2.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page2);
 
     await page1.close();
     await page2.close();

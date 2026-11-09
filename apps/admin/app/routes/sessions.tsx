@@ -104,7 +104,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   logger.logLoader('sessions', request);
 
-  await requireAuth(request, env);
+  await requireAuth(request, env, true);
   const sessionData = await getAuthenticatedUser(request, env);
 
   if (!sessionData) {
@@ -217,7 +217,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     ADMIN_CLIENT_SECRET?: string;
   };
 
-  await requireAuth(request, env);
+  await requireAuth(request, env, true);
   const sessionData = await getAuthenticatedUser(request, env);
 
   if (!sessionData) {

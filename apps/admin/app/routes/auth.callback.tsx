@@ -4,6 +4,8 @@ import { getAppUrl, getAuthServerUrl, getOAuthClientId } from "../lib/config";
 import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 import { hasAdminRole } from "../lib/auth.server";
+import { clearLoginCookie, loginPath, readCookie, savedReturnPath } from "../lib/sign-in";
+import { revokeSession } from "../lib/session-tokens.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const requestId = crypto.randomUUID();
@@ -30,25 +32,30 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
+  // Where the user was going (saved by /login, bound to the OAuth state)
+  const returnTo = savedReturnPath(request.headers.get("Cookie"), url.searchParams.get("state"));
+  const failed = (reason: string) =>
+    redirect(`${loginPath(returnTo)}&error=${encodeURIComponent(reason)}`, {
+      headers: { "Set-Cookie": clearLoginCookie(), "Cache-Control": "no-store" },
+    });
 
   if (error) {
-    // Handle login_required from prompt=none - retry with normal auth flow
+    // Silent sign-in (prompt=none) found no signed-in account: now show the
+    // sign-in form. A plain authorize never answers login_required, so no loop.
     if (error === 'login_required') {
-      const appUrl = getAppUrl(request, env);
-      const { url: authorizeUrl } = await getOpenAuthClient(request, env).authorize(`${appUrl}/auth/callback`, "code");
-      logger.info('Retrying auth without prompt=none', { authorizeUrl });
+      logger.info('Silent sign-in needs a login; retrying without prompt');
       await logger.finalizeRequest();
-      return redirect(authorizeUrl);
+      return redirect(loginPath(returnTo));
     }
     logger.warn('OAuth error received', { error });
     await logger.finalizeRequest();
-    return redirect(`/?error=${encodeURIComponent(error)}`);
+    return failed(error);
   }
 
   if (!code) {
     logger.warn('No authorization code received');
     await logger.finalizeRequest();
-    return redirect("/?error=missing_code");
+    return failed("missing_code");
   }
 
   try {
@@ -80,7 +87,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         hint: 'Auth server may be down or timing out (Cloudflare 522)'
       });
       await logger.finalizeRequest();
-      return redirect("/login?error=auth_server_unavailable");
+      return failed("auth_server_unavailable");
     }
 
     if (result.err !== false) {
@@ -141,6 +148,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     // Store session in KV
     if (env?.AUTH_STORAGE) {
+      // A sign-in replaces this browser's previous admin session (switching
+      // account, or signing in again after an account was removed). Local
+      // only: that account may still be signed in to auth and other apps.
+      const previous = readCookie(request.headers.get("Cookie"), "auth_session");
+      if (previous) await revokeSession({ kv: env.AUTH_STORAGE, sessionToken: previous });
+
       const sessionToken = crypto.randomUUID();
       const sessionData = {
         user: {
@@ -149,8 +162,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           roles: userRoles,
         },
         tokens: {
-          access: result.tokens.access,
-          refresh: result.tokens.refresh,
+          access: (verified.tokens ?? result.tokens).access,
+          refresh: (verified.tokens ?? result.tokens).refresh,
         },
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
       };
@@ -170,12 +183,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       // Finalize request before returning
       await logger.finalizeRequest();
 
-      // Set cookie and redirect
-      return redirect("/", {
-        headers: {
-          "Set-Cookie": `auth_session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${7 * 24 * 60 * 60}`,
-        },
-      });
+      // Set cookie and go where the user was going
+      const headers = new Headers({ "Cache-Control": "no-store" });
+      headers.append("Set-Cookie", `auth_session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${7 * 24 * 60 * 60}`);
+      headers.append("Set-Cookie", clearLoginCookie());
+      return redirect(returnTo, { headers });
     }
 
     // Fallback if no KV available
@@ -189,7 +201,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       stack: error instanceof Error ? error.stack : undefined
     });
     await logger.finalizeRequest();
-    return redirect(`/login?error=${encodeURIComponent(errorMessage)}`);
+    return failed(errorMessage);
   }
 }
 

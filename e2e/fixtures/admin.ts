@@ -65,10 +65,7 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   // Set up email interception to capture verification code
   const emailInterceptor = setupEmailInterception();
 
-  // Click "Admin Sign In" or "Sign In" link to start auth flow
-  const signInLink = page.locator('a:has-text("Admin Sign In"), a:has-text("Sign In")').first();
-  await signInLink.click();
-
+  // No landing page: the dashboard itself redirected into sign-in.
   // Wait for redirect - could be auth server OR back to admin (if auto-authenticated via session)
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 

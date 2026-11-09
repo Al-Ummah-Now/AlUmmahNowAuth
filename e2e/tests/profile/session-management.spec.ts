@@ -5,7 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { login, logout } from '../../fixtures/auth';
+import { login, logout, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
 test.describe('Session Management', () => {
@@ -119,7 +119,7 @@ test.describe('Session Management', () => {
 
     // Verify session cleared
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
   });
 
   test('should not share session with incognito/different context', async ({
@@ -141,7 +141,7 @@ test.describe('Session Management', () => {
 
     // Verify not logged in second context
     await page2.waitForLoadState('domcontentloaded');
-    await expect(page2.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page2);
 
     await context1.close();
     await context2.close();
@@ -168,7 +168,7 @@ test.describe('Session Management', () => {
 
     // Verify treated as logged out
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
   });
 
   test('should handle missing session gracefully', async ({ page }) => {
@@ -177,8 +177,7 @@ test.describe('Session Management', () => {
 
     // Verify shows logged out state
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('#loggedOutView button:has-text("Sign In")')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
   });
 
   test('should create new session after logout and login', async ({

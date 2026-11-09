@@ -10,7 +10,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { login, logout } from '../../fixtures/auth';
+import { login, logout, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
 // OAuth client configuration for E2E tests
@@ -63,12 +63,12 @@ test.describe('Token Revocation', () => {
     // Logout (which should revoke tokens internally)
     await logout(page);
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
 
     // Try to access protected resource - should be redirected to login
     await page.goto(TEST_URLS.profileApp);
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
   });
 
   test('should revoke token via profile app /revoke endpoint and invalidate session', async ({
@@ -80,6 +80,11 @@ test.describe('Token Revocation', () => {
     await login(page, testUser.email);
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 15000 });
+
+    const sessionCookie = async () =>
+      (await page.context().cookies(TEST_URLS.profileApp)).find((c) => c.name === 'profile_session')?.value;
+    const before = await sessionCookie();
+    expect(before).toBeTruthy();
 
     // Step 2: Call profile app's /revoke endpoint
     // This endpoint gets the refresh token from session, calls auth server's revoke, and clears local session
@@ -93,11 +98,20 @@ test.describe('Token Revocation', () => {
     // The key behavior is that the local session is cleared
     expect([200, 401]).toContain(revokeData.authServerStatus);
 
-    // Step 3: Try to access profile app again - should be logged out
-    // This is the critical assertion - user session must be invalidated
+    // Step 3: The revoked profile session is dead
+    const oldSession = await page.request.get(`${TEST_URLS.profileApp}/api/me`, {
+      headers: { Cookie: `profile_session=${before}` },
+    });
+    expect(oldSession.status()).toBe(401);
+
+    // The browser is still signed in to Al Ummah Now (auth's session), so the
+    // profile app signs in again silently with a NEW session, no form
     await page.goto(TEST_URLS.profileApp);
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+    const after = await sessionCookie();
+    expect(after).toBeTruthy();
+    expect(after).not.toBe(before);
   });
 
   test('should return 401 when calling /revoke without session', async ({
@@ -248,7 +262,7 @@ test.describe('Token Revocation', () => {
     // Logout from session 1
     await logout(page1);
     await page1.waitForLoadState('domcontentloaded');
-    await expect(page1.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page1);
 
     // Session 2 may still work until refresh token rotation
     // Reload session 2 to trigger refresh

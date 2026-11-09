@@ -374,9 +374,12 @@ export function renderHomePage(o: HomePageOptions): string {
             if (diffMins < 1440) return T.hoursAgo.replace('{n}', Math.floor(diffMins / 60));
             return T.daysAgo.replace('{n}', Math.floor(diffMins / 1440));
         }
-        function authorizeUrl(extra) {
-            return authServerUrl + '/authorize?response_type=code&client_id=' + encodeURIComponent(clientId) +
-                '&redirect_uri=' + encodeURIComponent(appUrl + '/callback') + (extra || '');
+        // Every sign-in goes through this app's /login (it keeps the return path).
+        // No prompt = auth decides (silent for its active account, else the form);
+        // 'none' = silent only (after switching accounts); 'login' = add an account.
+        function loginUrl(prompt) {
+            var url = '/login?return=' + encodeURIComponent(window.location.pathname + window.location.search);
+            return prompt ? url + '&prompt=' + prompt : url;
         }
 
         function setAccountDropdown(open) {
@@ -394,8 +397,10 @@ export function renderHomePage(o: HomePageOptions): string {
             if (e.key === 'Escape' && dropdownOpen) { setAccountDropdown(false); document.getElementById('accountTrigger').focus(); }
         });
 
+        // The list is every account signed in to this browser, from the auth
+        // server; this app's own user is only a placeholder until it loads.
         async function loadAccounts() {
-            if (isLoggedIn && currentUser) {
+            if (isLoggedIn && currentUser && accounts.length === 0) {
                 accounts = [{ userId: currentUser.id, email: currentUser.email, isActive: true, lastUsed: new Date().toISOString() }];
                 renderAccountSwitcher();
             }
@@ -425,8 +430,10 @@ export function renderHomePage(o: HomePageOptions): string {
 
             document.getElementById('accountsList').innerHTML = accounts.map(function (account) {
                 var id = esc(account.userId);
+                // Clickable unless it is both auth's active account and the one this page shows
+                var current = account.isActive && account.userId === currentUser.id;
                 return '<div class="account-item ' + (account.isActive ? 'active' : '') + '"' +
-                    (account.isActive ? '' : ' onclick="handleSwitchAccount(this.dataset.userId)"') + ' data-user-id="' + id + '">' +
+                    (current ? '' : ' onclick="handleSwitchAccount(this.dataset.userId)"') + ' data-user-id="' + id + '" data-testid="account-item">' +
                     '<div class="avatar" style="background-color: ' + getAvatarColor(account.email) + '">' + esc(account.email.charAt(0).toUpperCase()) + '</div>' +
                     '<div class="account-details"><span class="email" dir="ltr">' + esc(account.email) + '</span>' +
                     '<span class="status">' + esc(account.isActive ? T.active : T.lastUsed + ' ' + formatRelativeTime(account.lastUsed)) + '</span></div>' +
@@ -445,7 +452,7 @@ export function renderHomePage(o: HomePageOptions): string {
                 });
                 if (response.ok) {
                     // Silent re-auth: the auth server's active account just changed.
-                    window.location.href = authorizeUrl('&prompt=none');
+                    window.location.href = loginUrl('none');
                 } else {
                     console.error('Failed to switch account:', await response.text());
                 }
@@ -455,21 +462,25 @@ export function renderHomePage(o: HomePageOptions): string {
         }
 
         async function handleSignOutAccount(userId) {
+            var others = accounts.filter(function (a) { return a.userId !== userId; });
+            // The last account: single sign-out everywhere
+            if (others.length === 0) { window.location.href = '/logout'; return; }
             try {
+                var removed = accounts.find(function (a) { return a.userId === userId; });
                 var response = await fetch(authServerUrl + '/session/accounts/' + encodeURIComponent(userId), { method: 'DELETE', credentials: 'include' });
-                var result = await response.json();
-                if (result.remainingAccounts === 0) {
-                    window.location.href = '/logout';
+                if (!response.ok) { console.error('Failed to sign out:', response.status); return; }
+                if ((currentUser && userId === currentUser.id) || (removed && removed.isActive)) {
+                    // This app was using that account: sign in silently as auth's new active account
+                    window.location.href = loginUrl('none');
                 } else {
                     await loadAccounts();
-                    if (result.wasActive) window.location.reload();
                 }
             } catch (error) {
                 console.error('Failed to sign out:', error);
             }
         }
 
-        function handleAddAccount() { window.location.href = authorizeUrl('&prompt=select_account'); }
+        function handleAddAccount() { window.location.href = loginUrl('login'); }
         function handleManageSessions() { window.location.href = authServerUrl + '/settings/sessions'; }
         async function handleSignOutAll() {
             try {
@@ -524,7 +535,7 @@ export function renderHomePage(o: HomePageOptions): string {
             }
         }
 
-        function handleLogin() { window.location.href = authorizeUrl(''); }
+        function handleLogin() { window.location.href = loginUrl(''); }
         function handleLogout() { window.location.href = '/logout'; }
 
         function checkForErrors() {

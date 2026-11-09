@@ -1,5 +1,6 @@
 // Server-side authentication utilities for admin app
 import { logger } from "./logger.server";
+import { loginPath, type LoginPrompt } from "./sign-in";
 import { getAppUrl } from "./config";
 import { getOpenAuthClient, subjects } from "./openauth.client.server";
 import {
@@ -94,10 +95,15 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
   }
 }
 
-export function redirectToLogin(request: Request) {
+/**
+ * Into sign-in, coming back to this page. No prompt for a missing session
+ * (auth signs in silently when the browser is signed in, else the form);
+ * prompt=none when the session's tokens lapsed (silent re-auth; only a
+ * login_required answer then shows the form).
+ */
+export function redirectToLogin(request: Request, prompt?: LoginPrompt) {
   const url = new URL(request.url);
-  const redirectUrl = new URL("/login", url.origin);
-  redirectUrl.searchParams.set("redirect", url.pathname);
+  const redirectUrl = new URL(loginPath(url.pathname + url.search, prompt), url.origin);
 
   return Response.redirect(redirectUrl.toString(), 302);
 }
@@ -164,7 +170,7 @@ export async function requireAuth(
           reason: fresh.reason,
           userId: sessionData.user.id
         });
-        throw redirectToLogin(request);
+        throw redirectToLogin(request, "none");
       }
 
       const verified = await client.verify(subjects, fresh.tokens.access, {
@@ -177,7 +183,7 @@ export async function requireAuth(
         const saved = await persistSessionTokens(env.AUTH_STORAGE, sessionData.sessionToken, verified.tokens);
         if (!saved) {
           logger.warn('Session logged out during verification', { userId: sessionData.user.id });
-          throw redirectToLogin(request);
+          throw redirectToLogin(request, "none");
         }
         logger.info('Persisted tokens refreshed during verification', { userId: sessionData.user.id });
       }
@@ -188,7 +194,7 @@ export async function requireAuth(
           error: verified.err,
           userId: sessionData.user.id
         });
-        throw redirectToLogin(request);
+        throw redirectToLogin(request, "none");
       }
 
       if (!verified || !verified.subject) {

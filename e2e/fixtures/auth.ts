@@ -32,11 +32,8 @@ export async function register(page: Page, email: string): Promise<void> {
   // Set up email interception to capture verification code via Resend API
   const emailInterceptor = setupEmailInterception();
 
-  // Navigate to profile app
+  // Navigate to profile app: without a session it goes straight to sign-in
   await page.goto(TEST_URLS.profileApp);
-
-  // Click Sign In to go to auth page (use specific selector to avoid multiple matches)
-  await page.locator('#loggedOutView button:has-text("Sign In")').click();
 
   // Wait for redirect to auth server
   await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
@@ -156,9 +153,7 @@ export async function login(page: Page, email: string): Promise<void> {
   // Set up email interception for verification code via Resend API
   const emailInterceptor = setupEmailInterception();
 
-  // Click login button (using more specific selector to avoid multiple matches)
-  await page.locator('#loggedOutView button:has-text("Sign In")').click();
-
+  // No landing page: the profile app already redirected into sign-in
   // Wait for redirect to auth server
   await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
@@ -232,8 +227,21 @@ export async function logout(page: Page): Promise<void> {
   await expect(logoutButton).toBeVisible({ timeout: 5000 });
   await logoutButton.click();
 
-  // Verify redirected to logged out state
-  await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 10000 });
+  // Signed out everywhere: the profile app now goes straight to the sign-in form
+  await expectSignInPage(page);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The auth server's sign-in form (where an app without a session lands now
+ * that the apps have no "Sign In" landing pages of their own).
+ */
+export async function expectSignInPage(page: Page, timeout = 15000): Promise<void> {
+  await expect(page).toHaveURL(new RegExp(`^${escapeRegExp(TEST_URLS.authServer)}/`), { timeout });
+  await expect(page.locator('input[type="email"]')).toBeVisible({ timeout });
 }
 
 /**

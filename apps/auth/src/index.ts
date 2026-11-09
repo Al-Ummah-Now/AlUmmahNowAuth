@@ -5,7 +5,7 @@ import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
 import { hexToSecret } from "./utils/crypto";
-import { matchOrigin, getAllowedOrigins } from "./utils/cors";
+import { isAllowedOrigin } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
 import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
@@ -434,9 +434,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Handle session API responses - add CORS and enrich /session/accounts with user data
     if (url.pathname.startsWith('/session/')) {
+      // Every /session/* response (GET /session/accounts, POST /session/switch,
+      // DELETE /session/accounts/:userId, ...) gets credentialed CORS for our apps.
       const origin = request.headers.get('Origin');
-      const allowedOrigins = getAllowedOrigins(env, origin);
-      const isAllowed = origin && matchOrigin(origin, [...allowedOrigins, ...(env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [])]);
+      const isAllowed = isAllowedOrigin(origin, env);
 
       let finalResponse = issuerResponse;
 
@@ -469,7 +470,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
                 ...account,
                 email: user?.email || '',
                 name: user?.name || null,
-                lastUsed: new Date(account.authenticatedAt * 1000).toISOString(),
+                // authenticatedAt is epoch milliseconds (seconds in older rows)
+                lastUsed: new Date(account.authenticatedAt < 1e12 ? account.authenticatedAt * 1000 : account.authenticatedAt).toISOString(),
               };
             });
 
@@ -485,10 +487,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         }
       }
 
-      if (isAllowed && origin) {
+      if (isAllowed) {
         const corsHeaders = new Headers(finalResponse.headers);
         corsHeaders.set('Access-Control-Allow-Origin', origin);
         corsHeaders.set('Access-Control-Allow-Credentials', 'true');
+        corsHeaders.append('Vary', 'Origin');
         const corsResponse = new Response(finalResponse.body, {
           status: finalResponse.status,
           statusText: finalResponse.statusText,

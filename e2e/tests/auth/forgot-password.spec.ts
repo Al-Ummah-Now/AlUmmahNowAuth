@@ -5,7 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { register } from '../../fixtures/auth';
+import { register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 import { setupEmailInterception, sinkHasCode } from '../../utils/email-interceptor';
 import { ResendTestClient } from '../../utils/resend-client';
@@ -27,8 +27,7 @@ test.describe('Forgot Password Flow', () => {
 
     await page.goto(TEST_URLS.profileApp);
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
+    await expectSignInPage(page);
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
     await page.click('a:has-text("Forgot password")');
@@ -75,10 +74,9 @@ test.describe('Forgot Password Flow', () => {
     await expect(signOutBtn1).toBeVisible({ timeout: 5000 });
     await signOutBtn1.click();
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
+    await expectSignInPage(page);
 
     // Step 3: Navigate to auth server login page
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
     // Step 4: Click "Forgot password" link
@@ -188,10 +186,9 @@ test.describe('Forgot Password Flow', () => {
     const signOutBtn = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn).toBeVisible({ timeout: 10000 });
     await signOutBtn.click();
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await expectSignInPage(page);
 
     // Step 12: Log in again with the NEW password to verify it works
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
     await page.fill('input[type="email"]', testUser.email);
@@ -235,10 +232,9 @@ test.describe('Forgot Password Flow', () => {
     const signOutBtn2 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn2).toBeVisible({ timeout: 5000 });
     await signOutBtn2.click();
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await expectSignInPage(page);
 
     // Step 3: Go through forgot password flow
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
     await page.click('a:has-text("Forgot password")');
 
@@ -322,10 +318,9 @@ test.describe('Forgot Password Flow', () => {
     const signOutBtn3 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn3).toBeVisible({ timeout: 5000 });
     await signOutBtn3.click();
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await expectSignInPage(page);
 
     // Step 4: Try to log in with OLD password - should fail
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
     await page.fill('input[type="email"]', testUser.email);
@@ -385,10 +380,9 @@ test.describe('Forgot Password Flow', () => {
     const signOutBtn4 = page.locator('#loggedInView button:has-text("Sign Out")').first();
     await expect(signOutBtn4).toBeVisible({ timeout: 5000 });
     await signOutBtn4.click();
-    await expect(page.locator('#loggedOutView')).toBeVisible();
+    await expectSignInPage(page);
 
     // Start forgot password flow
-    await page.locator('#loggedOutView button:has-text("Sign In")').click();
     await page.click('a:has-text("Forgot password")');
 
     await page.fill('input[type="email"]', testUser.email);

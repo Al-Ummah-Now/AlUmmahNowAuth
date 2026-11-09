@@ -11,11 +11,29 @@ interface Account {
 export interface AccountSwitcherProps {
   authServerUrl: string;
   currentUser?: { id: string; email: string } | null;
-  /** OAuth client ID for adding accounts */
-  clientId: string;
+  /** OAuth client ID (kept for compatibility; sign-in goes through the app's login route) */
+  clientId?: string;
+  /**
+   * The app's login route. It must accept `redirect` (a same-origin path to
+   * return to) and `prompt` (`none` = silent, `login` = add an account).
+   */
+  loginPath?: string;
 }
 
-export function AccountSwitcher({ authServerUrl, currentUser, clientId }: AccountSwitcherProps) {
+/** The app's login URL that returns to the current page. */
+export function appLoginUrl(loginPath: string, prompt?: "none" | "login"): string {
+  const params = new URLSearchParams({ redirect: window.location.pathname + window.location.search });
+  if (prompt) params.set("prompt", prompt);
+  return `${loginPath}?${params}`;
+}
+
+/**
+ * Every account signed in to this browser (listed by the auth server), with
+ * switch, add and sign out of one. Switching changes auth's active account
+ * and signs in to this app silently as it; signing out of the last account
+ * is single sign-out (the app's /logout).
+ */
+export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/login" }: AccountSwitcherProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -64,7 +82,6 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
 
   async function handleSwitchAccount(userId: string) {
     try {
-      console.log('[AccountSwitcher] Switching to user:', userId);
       const response = await fetch(`${authServerUrl}/session/switch`, {
         method: 'POST',
         credentials: 'include',
@@ -73,15 +90,11 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
         },
         body: JSON.stringify({ userId }),
       });
-      console.log('[AccountSwitcher] Switch response:', response.status, response.statusText);
       if (response.ok) {
-        // Redirect to authorize with prompt=none to get new tokens for the switched user
-        // Include returnTo param so callback can redirect back to current page
-        const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-        const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback?returnTo=' + returnTo);
-        const authorizeUrl = `${authServerUrl}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&prompt=none`;
-        console.log('[AccountSwitcher] Redirecting to:', authorizeUrl);
-        window.location.href = authorizeUrl;
+        // Silent sign-in as auth's new active account, back to this page.
+        // (The old code put ?returnTo= into redirect_uri, which no longer
+        // matched the registered callback, so the issuer rejected it.)
+        window.location.href = appLoginUrl(loginPath, 'none');
       } else {
         const errorText = await response.text();
         console.error('[AccountSwitcher] Switch failed:', response.status, errorText);
@@ -92,18 +105,27 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
   }
 
   async function handleSignOutAccount(userId: string) {
+    const others = accounts.filter(a => a.id !== userId);
+    // The last account: single sign-out everywhere
+    if (others.length === 0) {
+      window.location.href = '/logout';
+      return;
+    }
+    const removed = accounts.find(a => a.id === userId);
     try {
-      const response = await fetch(`${authServerUrl}/session/accounts/${userId}`, {
+      const response = await fetch(`${authServerUrl}/session/accounts/${encodeURIComponent(userId)}`, {
         method: 'DELETE',
         credentials: 'include',
       });
-      if (response.ok) {
+      if (!response.ok) {
+        console.error('Failed to sign out account:', response.status);
+        return;
+      }
+      if (userId === currentUser?.id || removed?.isActive) {
+        // This app was using that account: sign in silently as auth's new active account
+        window.location.href = appLoginUrl(loginPath, 'none');
+      } else {
         await loadAccounts();
-        // If we signed out the active account, redirect to login
-        const activeAccount = accounts.find(a => a.isActive);
-        if (activeAccount?.id === userId) {
-          window.location.href = '/login';
-        }
       }
     } catch (error) {
       console.error('Failed to sign out account:', error);
@@ -111,12 +133,11 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
   }
 
   function handleAddAccount() {
-    const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback');
-    window.location.href = `${authServerUrl}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&prompt=select_account`;
+    window.location.href = appLoginUrl(loginPath, 'login');
   }
 
   function handleSignOutAll() {
-    window.location.href = '/logout?all=true';
+    window.location.href = '/logout';
   }
 
   function getInitial(email: string) {
@@ -157,6 +178,9 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
     <div className="relative">
       <button
         type="button"
+        data-testid="account-menu"
+        aria-label="Accounts"
+        aria-expanded={isOpen}
         className="inline-flex items-center justify-center gap-2 px-2 py-2 rounded-md text-sm font-medium transition-colors hover:bg-[rgb(var(--color-muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
         onClick={() => setIsOpen(!isOpen)}
       >
@@ -186,8 +210,10 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className={`flex items-center gap-3 px-3 py-2 hover:bg-[rgb(var(--color-muted))] cursor-pointer ${account.isActive ? 'bg-[rgb(var(--color-muted))]/50' : ''}`}
-                  onClick={() => !account.isActive && handleSwitchAccount(account.id)}
+                  data-testid="account-item"
+                  data-email={account.email}
+                  className={`group flex items-center gap-3 px-3 py-2 hover:bg-[rgb(var(--color-muted))] cursor-pointer ${account.isActive ? 'bg-[rgb(var(--color-muted))]/50' : ''}`}
+                  onClick={() => !(account.isActive && account.id === currentUser.id) && handleSwitchAccount(account.id)}
                 >
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0 ${getAvatarColor(account.email)}`}>
                     {getInitial(account.email)}
@@ -204,12 +230,15 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
                     <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
                   )}
                   <button
-                    className="p-1 hover:bg-[rgb(var(--color-muted))] rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    type="button"
+                    data-testid="account-sign-out"
+                    className="p-1 hover:bg-[rgb(var(--color-muted))] rounded opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleSignOutAccount(account.id);
                     }}
                     title="Sign out"
+                    aria-label={`Sign out ${account.email}`}
                   >
                     <LogOut className="h-3 w-3 text-[rgb(var(--color-muted-foreground))]" />
                   </button>
@@ -220,6 +249,8 @@ export function AccountSwitcher({ authServerUrl, currentUser, clientId }: Accoun
             <div className="border-t border-[rgb(var(--color-border))] py-1">
               {accounts.length < 5 && (
                 <button
+                  type="button"
+                  data-testid="account-add"
                   className="flex items-center gap-3 w-full px-3 py-2 hover:bg-[rgb(var(--color-muted))] text-left"
                   onClick={handleAddAccount}
                 >

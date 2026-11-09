@@ -9,6 +9,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, TEST_USERS } from '../../utils/test-data';
 
 const TEST_PASSWORD = 'TestPassword123!';
@@ -19,8 +20,7 @@ const SEND_FAILED_MESSAGE = "We couldn't send the code to this email";
 async function openRegisterForm(page: Page) {
   await page.goto(TEST_URLS.profileApp);
   await page.waitForLoadState('domcontentloaded');
-  await expect(page.locator('#loggedOutView')).toBeVisible({ timeout: 15000 });
-  await page.locator('#loggedOutView button:has-text("Sign In")').click();
+  await expectSignInPage(page);
   await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
   await page.click('a:has-text("Register")');
   await expect(page.locator('input[type="email"]')).toBeVisible();
