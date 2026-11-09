@@ -160,6 +160,17 @@ jobs:
         # Resend key does; stage uses production's key. It runs on every PR in QA.
         run: npx playwright test e2e/tests/release e2e/tests/auth --grep-invert "code delivery failure"
 
+      # Fail-closed: deletes any test output that holds a secret (or a Playwright storage
+      # state) before the upload below, which anyone can download from this public repo.
+      # Same condition as the upload: output a passing run never uploads can't block a
+      # release (QA runs the same scan on every PR, with if: always()).
+      - name: Scan stage E2E output for secrets
+        if: failure()
+        env:
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_STAGE }}
+          TEST_PROMOTE_SECRET: ${{ secrets.TEST_PROMOTE_SECRET_STAGE }}
+        run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env TEST_PROMOTE_SECRET -- e2e-report test-results
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

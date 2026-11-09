@@ -9,6 +9,10 @@ import { test, expect } from '@playwright/test';
 import { login, isLoggedIn, getCurrentUser, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
+
 test.describe('Email-Based Login Flow', () => {
   test('should complete full login flow successfully', async ({ page }) => {
     const testUser = TEST_USERS.user();

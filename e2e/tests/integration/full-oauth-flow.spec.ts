@@ -9,9 +9,12 @@ import { test, expect } from '@playwright/test';
 import { login, logout, register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 import { setupEmailInterception } from '../../utils/email-interceptor';
+import { fillSecret } from '../../utils/secret-input';
+import { TEST_PASSWORD } from '../../utils/test-credentials';
 
-// Test password for all E2E test users
-const TEST_PASSWORD = 'TestPassword123!';
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
 
 test.describe('Full OAuth Flow', () => {
   test('should complete full OAuth authorization code flow', async ({
@@ -49,7 +52,7 @@ test.describe('Full OAuth Flow', () => {
 
     // Step 4: User authenticates (email + password)
     await page.fill('input[type="email"]', testUser.email);
-    await page.fill('input[type="password"]', TEST_PASSWORD);
+    await fillSecret(page.locator('input[type="password"]').first(), TEST_PASSWORD);
     await page.click('button:has-text("Continue")');
 
     // Step 5: Handle verification code if required
@@ -63,7 +66,7 @@ test.describe('Full OAuth Flow', () => {
       if (!verificationCode) {
         throw new Error('Failed to capture verification code from email');
       }
-      await page.fill('input[name="code"]', verificationCode);
+      await fillSecret(page.locator('input[name="code"]').first(), verificationCode);
       await page.click('button:has-text("Continue")');
     }
 

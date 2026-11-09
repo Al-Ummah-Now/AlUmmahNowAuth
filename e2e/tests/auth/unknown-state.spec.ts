@@ -12,8 +12,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { register, logout, expectSignInPage } from '../../fixtures/auth';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
+import { fillSecret } from '../../utils/secret-input';
+import { TEST_PASSWORD as PASSWORD } from '../../utils/test-credentials';
 
-const PASSWORD = 'TestPassword123!'; // same as fixtures/auth.ts
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
 const RAW_ERROR = /unknown state|invalid_state/i;
 
 /** Lands on the auth server's login page by opening the profile app (no landing page). */
@@ -26,7 +30,7 @@ async function openProfileSignIn(page: Page): Promise<string> {
 
 async function submitLogin(page: Page, email: string) {
   await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', PASSWORD);
+  await fillSecret(page.locator('input[type="password"]').first(), PASSWORD);
   // The submit button is localized ("Continue" / "متابعة")
   await page.click('form[data-component="form"] button[data-component="button"]');
 }

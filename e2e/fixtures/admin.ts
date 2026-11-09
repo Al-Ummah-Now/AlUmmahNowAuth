@@ -8,9 +8,8 @@ import { Page, expect } from '@playwright/test';
 import { TEST_URLS, TestUser } from '../utils/test-data';
 import { register } from './auth';
 import { setupEmailInterception } from '../utils/email-interceptor';
-
-// Test password for all E2E test users
-const TEST_PASSWORD = 'TestPassword123!';
+import { fillSecret } from '../utils/secret-input';
+import { TEST_PASSWORD } from '../utils/test-credentials';
 
 /**
  * Login to admin dashboard
@@ -86,7 +85,7 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
   if (needsCredentials) {
     // Enter email address and password
     await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', TEST_PASSWORD);
+    await fillSecret(page.locator('input[type="password"]').first(), TEST_PASSWORD);
 
     // Click Continue to submit login
     await page.click('button:has-text("Continue")');
@@ -106,8 +105,7 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
 
     // Enter verification code with retry logic
     for (let attempt = 1; attempt <= 3; attempt++) {
-      await page.fill('input[name="code"]', '');
-      await page.fill('input[name="code"]', verificationCode);
+      await fillSecret(page.locator('input[name="code"]').first(), verificationCode);
       await page.waitForTimeout(100);
 
       const continueBtn = page.locator('button:has-text("Continue")');

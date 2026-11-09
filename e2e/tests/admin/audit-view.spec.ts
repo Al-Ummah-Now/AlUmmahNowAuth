@@ -9,6 +9,10 @@ import { test, expect } from '@playwright/test';
 import { loginAdmin } from '../../fixtures/admin';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
+
 /**
  * Helper function to wait for audit events to be processed
  * Audit events go through a queue, so we need to wait for them to appear in the database

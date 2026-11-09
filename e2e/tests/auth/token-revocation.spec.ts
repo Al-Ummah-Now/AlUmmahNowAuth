@@ -13,6 +13,10 @@ import { test, expect } from '@playwright/test';
 import { login, logout, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
+
 // OAuth client configuration for E2E tests
 const TEST_CLIENT = {
   client_id: 'profile-app',

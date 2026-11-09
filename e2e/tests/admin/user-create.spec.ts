@@ -8,6 +8,10 @@ import { test, expect } from '@playwright/test';
 import { loginAdmin, createUser, navigateToAdmin, userExists } from '../../fixtures/admin';
 import { TEST_USERS, TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
+
 test.describe('Admin User Creation', () => {
   // beforeEach signs a brand-new admin up through the real UI on QA (register,
   // emailed code, promote, fresh OAuth): about 18 s on a busy QA, which left

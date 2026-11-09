@@ -168,6 +168,13 @@ jobs:
       - name: Run unit tests (all apps including audit-consumer)
         run: pnpm test
 
+      # Fail-closed: deletes coverage output that holds a secret before the public upload.
+      - name: Scan coverage reports for secrets
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/ci/scan-e2e-output.sh --env GITHUB_TOKEN -- apps/*/coverage
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v5
         if: always()

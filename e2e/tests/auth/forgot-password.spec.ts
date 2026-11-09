@@ -9,10 +9,12 @@ import { register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 import { setupEmailInterception, sinkHasCode } from '../../utils/email-interceptor';
 import { ResendTestClient } from '../../utils/resend-client';
+import { fillSecret } from '../../utils/secret-input';
+import { TEST_PASSWORD, NEW_TEST_PASSWORD as NEW_PASSWORD } from '../../utils/test-credentials';
 
-// Test password for all E2E test users
-const TEST_PASSWORD = 'TestPassword123!';
-const NEW_PASSWORD = 'NewTestPassword456!';
+// Signs in with the test password / one-time codes (or sends test secrets in headers):
+// traces would record them, so none for this file. See e2e/utils/secret-input.ts.
+test.use({ trace: 'off' });
 
 test.describe('Forgot Password Flow', () => {
   // Increase timeout for forgot password tests - these are complex multi-step flows
@@ -104,8 +106,7 @@ test.describe('Forgot Password Flow', () => {
 
     // Step 8: Enter verification code with retry logic
     for (let attempt = 1; attempt <= 3; attempt++) {
-      await page.fill('input[name="code"]', '');
-      await page.fill('input[name="code"]', resetCode);
+      await fillSecret(page.locator('input[name="code"]').first(), resetCode);
       await page.waitForTimeout(100);
 
       const continueBtn = page.locator('button:has-text("Continue")');
@@ -133,8 +134,8 @@ test.describe('Forgot Password Flow', () => {
     await expect(page.locator('input[type="password"]').first()).toBeVisible({ timeout: 10000 });
 
     const passwordFields = page.locator('input[type="password"]');
-    await passwordFields.nth(0).fill(NEW_PASSWORD);
-    await passwordFields.nth(1).fill(NEW_PASSWORD); // Confirm password
+    await fillSecret(passwordFields.nth(0), NEW_PASSWORD);
+    await fillSecret(passwordFields.nth(1), NEW_PASSWORD); // Confirm password
 
     await page.click('button:has-text("Continue")');
 
@@ -153,7 +154,7 @@ test.describe('Forgot Password Flow', () => {
       // We're on the login page, need to log in with new password
       await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
       await page.fill('input[type="email"]', testUser.email);
-      await page.fill('input[type="password"]', NEW_PASSWORD);
+      await fillSecret(page.locator('input[type="password"]').first(), NEW_PASSWORD);
       await page.click('button:has-text("Continue")');
 
       // Handle verification code if required
@@ -166,7 +167,7 @@ test.describe('Forgot Password Flow', () => {
           throw new Error('Failed to capture verification code during login with new password');
         }
         console.log(`Got login verification code for ${testUser.email}: ${verificationCode}`);
-        await page.fill('input[name="code"]', verificationCode);
+        await fillSecret(page.locator('input[name="code"]').first(), verificationCode);
         await page.click('button:has-text("Continue")');
       }
 
@@ -192,7 +193,7 @@ test.describe('Forgot Password Flow', () => {
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
     await page.fill('input[type="email"]', testUser.email);
-    await page.fill('input[type="password"]', NEW_PASSWORD);
+    await fillSecret(page.locator('input[type="password"]').first(), NEW_PASSWORD);
     await page.click('button:has-text("Continue")');
 
     // Handle verification code if required during login with new password
@@ -205,7 +206,7 @@ test.describe('Forgot Password Flow', () => {
         throw new Error('Failed to capture verification code during login with new password');
       }
       console.log(`Got login verification code for ${testUser.email}: ${loginVerificationCode}`);
-      await page.fill('input[name="code"]', loginVerificationCode);
+      await fillSecret(page.locator('input[name="code"]').first(), loginVerificationCode);
       await page.click('button:has-text("Continue")');
     }
 
@@ -252,8 +253,7 @@ test.describe('Forgot Password Flow', () => {
 
     // Enter verification code with retry logic
     for (let attempt = 1; attempt <= 3; attempt++) {
-      await page.fill('input[name="code"]', '');
-      await page.fill('input[name="code"]', resetCode);
+      await fillSecret(page.locator('input[name="code"]').first(), resetCode);
       await page.waitForTimeout(100);
 
       const continueBtn = page.locator('button:has-text("Continue")');
@@ -272,8 +272,8 @@ test.describe('Forgot Password Flow', () => {
 
     // Enter new password
     const passwordFields = page.locator('input[type="password"]');
-    await passwordFields.nth(0).fill(NEW_PASSWORD);
-    await passwordFields.nth(1).fill(NEW_PASSWORD);
+    await fillSecret(passwordFields.nth(0), NEW_PASSWORD);
+    await fillSecret(passwordFields.nth(1), NEW_PASSWORD);
     await page.click('button:has-text("Continue")');
 
     // Wait for redirect to complete
@@ -289,7 +289,7 @@ test.describe('Forgot Password Flow', () => {
       // We're on the login page, need to log in with new password
       await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
       await page.fill('input[type="email"]', testUser.email);
-      await page.fill('input[type="password"]', NEW_PASSWORD);
+      await fillSecret(page.locator('input[type="password"]').first(), NEW_PASSWORD);
       await page.click('button:has-text("Continue")');
 
       // Handle verification code if required
@@ -301,7 +301,7 @@ test.describe('Forgot Password Flow', () => {
         if (!verificationCode) {
           throw new Error('Failed to capture verification code during login with new password');
         }
-        await page.fill('input[name="code"]', verificationCode);
+        await fillSecret(page.locator('input[name="code"]').first(), verificationCode);
         await page.click('button:has-text("Continue")');
       }
 
@@ -324,7 +324,7 @@ test.describe('Forgot Password Flow', () => {
     await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
 
     await page.fill('input[type="email"]', testUser.email);
-    await page.fill('input[type="password"]', TEST_PASSWORD); // OLD password
+    await fillSecret(page.locator('input[type="password"]').first(), TEST_PASSWORD); // OLD password
     await page.click('button:has-text("Continue")');
 
     // Should stay on auth page with error (not redirect to profile)
@@ -343,7 +343,7 @@ test.describe('Forgot Password Flow', () => {
 
     // Verify we can log in with NEW password
     await page.fill('input[type="email"]', testUser.email);
-    await page.fill('input[type="password"]', NEW_PASSWORD); // NEW password
+    await fillSecret(page.locator('input[type="password"]').first(), NEW_PASSWORD); // NEW password
     await page.click('button:has-text("Continue")');
 
     // Handle verification code if required during login with new password
@@ -355,7 +355,7 @@ test.describe('Forgot Password Flow', () => {
       if (!newPwdVerificationCode) {
         throw new Error('Failed to capture verification code during login with new password');
       }
-      await page.fill('input[name="code"]', newPwdVerificationCode);
+      await fillSecret(page.locator('input[name="code"]').first(), newPwdVerificationCode);
       await page.click('button:has-text("Continue")');
     }
 
