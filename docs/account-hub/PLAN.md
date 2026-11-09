@@ -1,6 +1,6 @@
 # Account hub: plan
 
-Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the spec and answered its §11 questions. Every step follows SPEC §0: auth and the hub never call, read or import a consuming app. Each step is one PR that leaves prod working, merges only when CI is green, and is merged with `gh pr merge --rebase --admin`. Auth PRs reach prod through `release.yml` on merge. AlUmmahNow PRs reach prod in the next `v*` tag.
+Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the spec and answered its §11 questions. Migrations start at 0015 in both directories (SPEC §6.2, `migrations-qa/0014` is taken). Every step follows SPEC §0: auth and the hub never call, read or import a consuming app. Each step is one PR that leaves prod working, merges only when CI is green, and is merged with `gh pr merge --rebase --admin`. Auth PRs reach prod through `release.yml` on merge. AlUmmahNow PRs reach prod in the next `v*` tag.
 
 | Step | Repo | Title | Depends on |
 |---|---|---|---|
@@ -11,15 +11,16 @@ Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the
 | A4 | AlUmmahNow | `AUTH_ACCOUNT_URL` rename and new derivation, release E2E host, docs. #444 copy changes | A1 live on prod |
 | A5 | AlUmmahNowUI | `ACCOUNT_URL` rename and new host | A1 live on prod |
 | B1 | auth | `GET/PATCH /account/profile`, `ACCOUNT_CLIENT_ID` audience rule, rate limits | A3 |
-| B3 | auth | `/account/activity` and migration 0015 | B1 |
+| B3 | auth | `/account/activity` and migration 0016 | B1 |
 | B4 | auth | `/account/apps` list and remove | B1 |
-| B4b | auth | Launcher and privacy links from the client registry (`/account/launcher`, migration 0016), `apps.ts` removed | B1 |
+| B4b | auth | Launcher and privacy links from the client registry (`/account/launcher`, migration 0017), `apps.ts` removed | B1 |
 | B5 | auth | Hub pages for B1–B4b, step-up flow | B1–B4b |
 | B6 | AlUmmahNow | Privacy page link to `<account>/data`. #444 read-only email explanation and link to `<account>/personal-info#email` | B5 live on prod |
 | C1 | auth | Account events: `account-events` queue, signed SETs to subscribed clients, retry and DLQ | B5 |
 | C2 | auth | Deletion in the hub: auth `DELETE /account` plus the `account.deleted` event | C1, Q3 answered |
-| C3 | AlUmmahNow | Videos receiver: verify the SET, erase on `account.deleted` with its own queue. Then auth migration 0017 subscribes Videos | C1 on QA |
-| C4 | auth | Migration 0018 (drop old redirect URIs), remove `PROFILE_APP_URL` fallback | A1 plus one full release |
+| C3 | AlUmmahNow | Videos receiver: verify the SET, erase on `account.deleted` with its own queue. Then auth migration 0018 subscribes Videos | C1 on QA |
+| C4 | auth | Migration 0019 (drop old redirect URIs), remove `PROFILE_APP_URL` fallback | A1 plus one full release |
+| T1 | auth | QA-only migration removing the theme demo redirect URIs from #249 | Theme demos torn down (any time, independent of the hub) |
 
 ---
 
@@ -28,7 +29,7 @@ Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the
 Scope:
 - `apps/profile/wrangler.json`: add the `account.alummahnow.net` route (top level) and `account.stage.alummahnow.net` (`env.stage`). `wrangler.qa.json`: add `account.qa.alummahnow.net`. Keep the `profile.auth.*` routes. Set `APP_URL` to the new host.
 - `apps/profile/src/index.ts`: old-host handling (SPEC §4.2): 301 to the same path on the new host, except `/logout` (handled in place) and `/callback` (to `/` on the new host). Read the old hosts from `APP_URL` and one new var, `LEGACY_HOSTS`, so nothing is inferred.
-- Migrations `0014_account_hub_client.sql` in `migrations/` and `migrations-qa/` (SPEC §6.2). Regenerate both schema snapshots.
+- Migrations `0015_account_hub_client.sql` in `migrations/` and `migrations-qa/` (SPEC §6.2). Regenerate both schema snapshots.
 - `scripts/stage/seed.ts`: map `account.alummahnow.net` → `account.stage.alummahnow.net`, and test it.
 - Auth: new var `ACCOUNT_APP_URL` in all three envs. The code reads `ACCOUNT_APP_URL ?? PROFILE_APP_URL`. Fix the `//callback` join in `handleAuthorizeRedirect`. Update `FRONTCHANNEL_LOGOUT_URLS`, QA `ALLOWED_ORIGINS` and stage `SIGN_IN_FALLBACK_URL`. Add `ACCOUNT_APP_URL` to the config check's required vars.
 - `apps/admin/app/lib/forbidden.ts`: `accountAppUrl` derives `account.` from `auth.`.
@@ -92,7 +93,7 @@ Acceptance: API tests for own-data-only, a write with another client's token ref
 
 ## B3: activity
 
-Scope: migration `0015_audit_events_user_time.sql` in both directories plus the snapshots. `GET /account/activity` with a type allowlist, a 90-day window, a cursor on `(timestamp, id)`, and coarse user-agent parsing. Nothing from `metadata` is returned unless allowlisted.
+Scope: migration `0016_audit_events_user_time.sql` in both directories plus the snapshots. `GET /account/activity` with a type allowlist, a 90-day window, a cursor on `(timestamp, id)`, and coarse user-agent parsing. Nothing from `metadata` is returned unless allowlisted.
 
 Acceptance: API tests for the allowlist, the window, paging, and other users' events never returned. Query plan uses the new index (checked in the test with `EXPLAIN QUERY PLAN`).
 
@@ -104,7 +105,7 @@ Acceptance: API tests. E2E: after removing Videos QA, its next refresh fails and
 
 ## B4b: launcher and privacy links from the registry
 
-Scope: migration `0016_client_registry_metadata.sql` in both directories, setting `metadata.launcher` and `privacy_url` for the current first-party clients with per-env URLs. Stage seed rewrites the hosts. `GET /account/launcher` filters by the caller's roles with the same `normalizeRole` rule as today. The hub renders the launcher, "Your apps" and the Data page's "Manage your data in {app}" links from it. `apps.ts` and its tests are deleted, and the dependency-rule test drops its exception. Auth admin can edit these metadata fields.
+Scope: migration `0017_client_registry_metadata.sql` in both directories, setting `metadata.launcher` and `privacy_url` for the current first-party clients with per-env URLs. Stage seed rewrites the hosts. `GET /account/launcher` filters by the caller's roles with the same `normalizeRole` rule as today. The hub renders the launcher, "Your apps" and the Data page's "Manage your data in {app}" links from it. `apps.ts` and its tests are deleted, and the dependency-rule test drops its exception. Auth admin can edit these metadata fields.
 
 Acceptance: the launcher on QA matches today's per role (a test with the old catalog as the fixture). Adding a client with launcher metadata shows it with no hub change. No app hostname is left in `apps/profile/src`.
 
@@ -128,13 +129,19 @@ Acceptance: QA E2E: a throwaway account is deleted, signing in with it fails, an
 
 ## C3: Videos receiver (AlUmmahNow)
 
-Scope: an endpoint in api-videos that verifies the SET against auth's JWKS (issuer and audience = Videos' client id), is idempotent on `jti`, and enqueues erasure on Videos' own queue. A worker runs the existing resumable `eraseUserData` to completion and sends `UserDataErased`. Then auth migration `0017_client_event_subscriptions.sql` subscribes Videos per env.
+Scope: an endpoint in api-videos that verifies the SET against auth's JWKS (issuer and audience = Videos' client id), is idempotent on `jti`, and enqueues erasure on Videos' own queue. A worker runs the existing resumable `eraseUserData` to completion and sends `UserDataErased`. Then auth migration `0018_client_event_subscriptions.sql` subscribes Videos per env.
 
 Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data, a replayed `jti` is a no-op, a bad signature is refused. QA E2E across both repos: delete in the hub, and the channel is gone on Videos QA shortly after.
 
 ## C4: cleanup
 
-Scope: migration `0018_drop_profile_redirect_uris.sql` in both directories, removal of the `PROFILE_APP_URL` fallback and var, and smoke updated (the old host is still a 301 if Q4 says permanent).
+Scope: migration `0019_drop_profile_redirect_uris.sql` in both directories, removal of the `PROFILE_APP_URL` fallback and var, and smoke updated (the old host is still a 301 if Q4 says permanent).
+
+## T1: remove the theme demo redirect URIs
+
+Scope: `migrations-qa/NNNN_drop_theme_demo_redirect_uris.sql`, where NNNN is the next number free in both directories at that time (`migrations/` skips it). It removes from the QA videos web client exactly the `https://theme-demo-*.mahmoud-s-darwish.workers.dev/...` URIs that `0014_theme_demo_redirect_uris.sql` added, filtering the JSON array so every other URI stays. Regenerate `schema.qa.snapshot.sql` if the snapshot includes data.
+
+Acceptance: after it runs on QA, `/authorize` with a theme demo redirect URI is refused, and videos QA sign-in still works on all four callback variants.
 
 ## Risks
 

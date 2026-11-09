@@ -283,15 +283,18 @@ The revocation list already makes every token of the deleted user fail at the AP
 
 ### 6.2 Migrations (both `migrations/` and `migrations-qa/`, append-only)
 
+Numbering: AlUmmahNowAuth #249 already took `migrations-qa/0014_theme_demo_redirect_uris.sql`, a temporary QA-only redirect for the theme demo sites. This work therefore starts at **0015 in both directories**. `migrations/` leaves 0014 unused, so each file below has the same number in both directories, as the plan assumes. Any later QA-only or prod-only migration takes the next number free in **both** directories, and the other directory skips it.
+
 | File | Prod and stage (`migrations/`) | QA (`migrations-qa/`) |
 |---|---|---|
-| `0014_account_hub_client.sql` | `UPDATE oauth_clients SET name = 'Al Ummah Now Account', redirect_uris = '["http://localhost:3302/callback","https://account.alummahnow.net/callback","https://profile.auth.alummahnow.net/callback"]', updated_at = … WHERE id = '109a1087-…'` | Same, with `account.qa.` and `profile.auth.qa.` |
-| `0015_audit_events_user_time.sql` | the index | the index |
-| `0016_client_registry_metadata.sql` (phase B) | `metadata.launcher` and `privacy_url` for the current first-party clients, prod URLs | same, with QA URLs |
-| `0017_client_event_subscriptions.sql` (phase C, once an app has an endpoint) | `metadata.events` for subscribing clients | same |
-| `0018_drop_profile_redirect_uris.sql` (phase C, after the old host has only redirected for a full release) | old redirect URI removed | same |
+| `0015_account_hub_client.sql` | `UPDATE oauth_clients SET name = 'Al Ummah Now Account', redirect_uris = '["http://localhost:3302/callback","https://account.alummahnow.net/callback","https://profile.auth.alummahnow.net/callback"]', updated_at = … WHERE id = '109a1087-…'` | Same, with `account.qa.` and `profile.auth.qa.` |
+| `0016_audit_events_user_time.sql` | the index | the index |
+| `0017_client_registry_metadata.sql` (phase B) | `metadata.launcher` and `privacy_url` for the current first-party clients, prod URLs | same, with QA URLs |
+| `0018_client_event_subscriptions.sql` (phase C, once an app has an endpoint) | `metadata.events` for subscribing clients | same |
+| `0019_drop_profile_redirect_uris.sql` (phase C, after the old host has only redirected for a full release) | old redirect URI removed | same |
+| `NNNN_drop_theme_demo_redirect_uris.sql` (when the theme demos are torn down; next number free in both directories) | none (prod skips the number) | removes the `theme-demo-*` URIs that `0014_theme_demo_redirect_uris.sql` added to the QA web client, keeping every other URI |
 
-Stage replays `migrations/`, and `scripts/stage/seed.ts` rewrites the hosts, so it needs the new mapping. Regenerate `schema.snapshot.sql` and `schema.qa.snapshot.sql` (CI fails if stale). `CLIENT_REGISTRY_MODE` is `enforce`, so 0014 must run before the hub uses the new redirect URI. `release.yml` migrates before it deploys candidates, so shipping both in one PR is safe.
+Stage replays `migrations/`, and `scripts/stage/seed.ts` rewrites the hosts, so it needs the new mapping. Regenerate `schema.snapshot.sql` and `schema.qa.snapshot.sql` (CI fails if stale). `CLIENT_REGISTRY_MODE` is `enforce`, so 0015 must run before the hub uses the new redirect URI. `release.yml` migrates before it deploys candidates, so shipping both in one PR is safe.
 
 ## 7. Theming
 
@@ -321,7 +324,7 @@ How tokens reach this repo depends on how the theme package ships (THEMES §"Acr
 - **This repo:** every merge to `main` goes through `release.yml`: build once, stage (deploy, smoke, E2E), then production through Workers versions (0% candidate with version-override smoke, 100%, smoke, automatic rollback). There are no manual deploys. PRs are tested on QA by `qa-e2e.yml`.
 - **AlUmmahNow:** production ships only from a `v*` tag on `main` through `release.yml`. The web follow-ups (§3.2) go out in the next tag after the hub is live on prod.
 - **Order:** (1) auth and hub phase A merge, released to stage, then prod. (2) AlUmmahNow and AlUmmahNowUI rename PRs, so their links go straight to the new host instead of through the 301. (3) Later phases.
-- Rollback of phase A is safe: the old host is still a route of the same Worker, and the old redirect URI stays registered until 0018.
+- Rollback of phase A is safe: the old host is still a route of the same Worker, and the old redirect URI stays registered until 0019.
 
 ## 10. Phasing
 
@@ -329,7 +332,7 @@ How tokens reach this repo depends on how the theme package ships (THEMES §"Acr
 |---|---|---|
 | **A: move and rename** (first release) | New hosts, old-host 301, naming and copy, the client migration, state and PKCE, token refresh, the theme and light/dark rebuild of the existing pages, the initials avatar. Home (who you are, switch, add, sign out one/all), Devices (list, remove, sign out of all devices), Change password (link to the existing flow), Download account data, Your apps. Personal info read-only, with the permanent-email explanation and "Create a new account" (§5.3). All links in every repo. | None. Only config, the migration, the `ACCOUNT_APP_URL` var and the `//callback` fix. |
 | **B: manage** | Name and language editing, Recent activity, Connected apps, the launcher and privacy links from the client registry (`apps.ts` removed). #444 follow-up links. | `/account/profile`, `/account/activity`, `/account/apps`, `/account/launcher` |
-| **C: deletion and events** | Account events (`account-events` queue, SETs to subscribed clients), deletion in the hub (auth data plus an event), migrations 0017 and 0018, removal of the `PROFILE_APP_URL` fallback. In AlUmmahNow: the Videos receiver that erases on `account.deleted`. | Event delivery. No new public endpoint. |
+| **C: deletion and events** | Account events (`account-events` queue, SETs to subscribed clients), deletion in the hub (auth data plus an event), migrations 0018 and 0019, removal of the `PROFILE_APP_URL` fallback. In AlUmmahNow: the Videos receiver that erases on `account.deleted`. | Event delivery. No new public endpoint. |
 
 Phase A changes no auth behaviour, so it can ship as soon as it is reviewed. Each later phase is a separate PR series.
 
@@ -344,8 +347,9 @@ Phase A changes no auth behaviour, so it can ship as soon as it is reviewed. Eac
 
 - **New §0 rule:** auth and the hub never depend on consuming apps.
 - **Photo (Q1):** no photo in auth and no `picture` claim. The hub shows an initials avatar themed with tokens. Videos photos are unchanged. A separate profile service is noted as a possible later addition (§2.3).
-- **Deletion redesigned (§5.4):** the hub no longer calls Videos' erase API. Auth deletes its own data and publishes a signed `account.deleted` event to subscribed clients. Each app, Videos included, erases its own data. The same pipeline carries `account.email_changed`.
+- **Deletion redesigned (§5.4):** the hub no longer calls Videos' erase API. Auth deletes its own data and publishes a signed `account.deleted` event to subscribed clients. Each app, Videos included, erases its own data.
 - **Launcher and app links:** the hard-coded `apps.ts` catalog (which names Videos, www, CMS and admin URLs) is a phase A exception and is replaced in phase B by client registry metadata. The Videos-specific "data in Videos" link and delete warning became generic.
 - **Connected apps:** checked, and already compliant. It reads only auth's own refresh tokens and client registry.
-- **Migrations renumbered:** 0016 and 0017 are registry metadata and event subscriptions. The old redirect URI is now dropped in 0018.
+- **Migrations renumbered:** `migrations-qa/0014` is taken by the theme demo redirect (#249), so this work starts at 0015 in both directories: 0015 hub client, 0016 audit index, 0017 registry metadata, 0018 event subscriptions, 0019 drop the old redirect URI. A QA-only migration removes the theme demo URIs when the demos are torn down.
+- **Email events:** with email permanent, no `account.email_changed` event exists. `account.deleted` is the only event type.
 - **Email is permanent (Q2):** email change is removed everywhere: the `/account/email/*` APIs, its flow, rate limits, KV state, copy, tests and the `identifier-changed` event. Personal info shows the email read-only with "create a new account and move your channels" and the generic add-account flow. Losing the old mailbox is recovered in the app that holds the data (Videos: super admin channel transfer, AlUmmahNow #460), never by auth.
