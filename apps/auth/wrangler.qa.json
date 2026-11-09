@@ -48,7 +48,9 @@
     "AUDIT_WEBHOOK_SECRET": "",
     "SIGN_IN_FALLBACK_URL": "https://videos.qa.alummahnow.net/",
     "FRONTCHANNEL_LOGOUT_URLS": "https://profile.auth.qa.alummahnow.net/logout,https://admin.auth.qa.alummahnow.net/logout,https://videos.qa.alummahnow.net/api/auth/logout,https://admin.qa.alummahnow.net/api/auth/logout,https://www.qa.alummahnow.net/auth/logout,https://cms.qa.alummahnow.net/sso/logout",
-    "CLIENT_REGISTRY_MODE": "enforce"
+    "CLIENT_REGISTRY_MODE": "enforce",
+    "PREVIEW_WEB_CLIENT_ID": "e0de3c30-0304-4ac4-86d6-1e185dec0439",
+    "PREVIEW_WORKERS_SUBDOMAIN": "mahmoud-s-darwish"
   },
   "triggers": {
     "crons": [
