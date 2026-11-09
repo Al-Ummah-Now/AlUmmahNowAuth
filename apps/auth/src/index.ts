@@ -38,6 +38,8 @@ import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
 import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
+import { DEFAULT_SITE_THEME, fetchSiteTheme } from '../../../packages/ui/src/site-theme';
+import { applySiteTheme, withSiteTheme } from './ui/site-theme';
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -277,6 +279,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const passwordGuard = await guardPasswordRequest(request, env, url, passwordCopy);
 
     // Create enterprise issuer with multi-account session support
+    // Only pages need the theme; token and API calls skip the lookup
+    const siteTheme = (request.headers.get('Accept') ?? '').includes('text/html')
+      ? await fetchSiteTheme(env.ADMIN_API_URL)
+      : DEFAULT_SITE_THEME;
+
     const { app } = createMultiTenantIssuer({
       // Pin the issuer: used for the `iss` claim, discovery documents and token
       // verification instead of the request Host / X-Forwarded-* headers.
@@ -330,8 +337,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
           },
         }),
       },
-      // Per request: OpenAuth renders each page with its own request's theme and ?lang=
-      theme: requestTheme(),
+      // Per request: OpenAuth renders each page with its own request's theme and ?lang=,
+      // in the site-wide theme the admins chose (Fawanees by default)
+      theme: withSiteTheme(requestTheme(), siteTheme),
       onSuccess: createOnSuccessHandler(userService, rbacService, {
         request,
         env,
@@ -342,7 +350,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Call issuer to handle the request
     // OpenAuth enterprise issuer manages sessions via D1SessionAdapter and sets the __session cookie
-    let issuerResponse = await passwordGuard.finish(await app.fetch(passwordGuard.request, env, ctx));
+    let issuerResponse = applySiteTheme(await passwordGuard.finish(await app.fetch(passwordGuard.request, env, ctx)), siteTheme);
 
     // Picker "Sign out" of the last account: single sign-out (#219)
     if (request.method === 'POST' && url.pathname === ACCOUNT_PICKER_REMOVE_PATH) {

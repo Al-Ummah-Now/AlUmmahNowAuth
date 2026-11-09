@@ -44,6 +44,7 @@
   "vars": {
     "ENVIRONMENT": "qa",
     "PROFILE_APP_URL": "https://profile.auth.qa.alummahnow.net/",
+    "ADMIN_API_URL": "https://admin.api.qa.alummahnow.net",
     "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
     "ALLOWED_ORIGINS": "*.qa.alummahnow.net,https://profile.auth.qa.alummahnow.net,https://admin.auth.qa.alummahnow.net",
     "OPENAUTH_ISSUER": "https://auth.qa.alummahnow.net",
