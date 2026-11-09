@@ -265,6 +265,8 @@ async function m2mRequest<T>(
       }
     }
 
+    // 204 No Content (e.g. DELETE /admin/users/:id) has no body to parse
+    if (response.status === 204) return { success: true } as T;
     return await response.json() as T;
   } catch (error) {
     console.error('M2M request failed:', error);
