@@ -32,9 +32,15 @@ async function openAdmin(page: Page) {
   await page.goto(TEST_URLS.adminDashboard);
 }
 
-/** Clicks the web app's own Sign In (menu → Sign In), whatever its callback URL is. */
+/**
+ * Opens the web app signed out and clicks its own Sign In (menu → Sign In).
+ * The page first tries a silent sign-in of its own (AlUmmahNow#463), so wait
+ * until that has come back to the web app before using the menu.
+ */
 async function openWebSignIn(page: Page) {
   await page.goto(`${WEB_URL}/en`);
+  await page.waitForURL((u) => u.origin === WEB_URL && !u.pathname.startsWith('/api/'), { timeout: 20000 });
+  await page.waitForLoadState('load');
   await page.locator('button[aria-haspopup="menu"]').first().click();
   await page.locator('[role="menu"] form button[type="submit"]').first().click();
 }
@@ -77,9 +83,10 @@ test.describe('Single sign-on across profile, admin and web', () => {
     expect(new URL(page.url()).origin).toBe(new URL(TEST_URLS.adminDashboard).origin);
 
     if (WEB_URL) {
-      // The click starts on the web app itself, so wait for its OAuth callback
+      // Opening the web app signs it in by itself (AlUmmahNow#463): its OAuth
+      // callback comes straight back from /authorize, with no click and no form
       const callback = page.waitForResponse((r) => r.url().startsWith(`${WEB_URL}/api/callback`), { timeout: 20000 });
-      await openWebSignIn(page);
+      await page.goto(`${WEB_URL}/en`);
       await callback;
       await page.waitForLoadState('load');
       expect(page.url()).not.toContain('/auth/error');
