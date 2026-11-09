@@ -11,15 +11,14 @@ Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the
 | A4 | AlUmmahNow | `AUTH_ACCOUNT_URL` rename and new derivation, release E2E host, docs. #444 copy changes | A1 live on prod |
 | A5 | AlUmmahNowUI | `ACCOUNT_URL` rename and new host | A1 live on prod |
 | B1 | auth | `GET/PATCH /account/profile`, `ACCOUNT_CLIENT_ID` audience rule, rate limits | A3 |
-| B2 | auth | Email change endpoints | B1 |
 | B3 | auth | `/account/activity` and migration 0015 | B1 |
 | B4 | auth | `/account/apps` list and remove | B1 |
 | B4b | auth | Launcher and privacy links from the client registry (`/account/launcher`, migration 0016), `apps.ts` removed | B1 |
 | B5 | auth | Hub pages for B1–B4b, step-up flow | B1–B4b |
-| B6 | AlUmmahNow | Privacy page link to `<account>/data`. #444 email link to `<account>/personal-info#email` | B5 live on prod |
+| B6 | AlUmmahNow | Privacy page link to `<account>/data`. #444 read-only email explanation and link to `<account>/personal-info#email` | B5 live on prod |
 | C1 | auth | Account events: `account-events` queue, signed SETs to subscribed clients, retry and DLQ | B5 |
 | C2 | auth | Deletion in the hub: auth `DELETE /account` plus the `account.deleted` event | C1, Q3 answered |
-| C3 | AlUmmahNow | Videos receiver: verify the SET, erase on `account.deleted` with its own queue, refresh email on `account.email_changed`. Then auth migration 0017 subscribes Videos | C1 on QA |
+| C3 | AlUmmahNow | Videos receiver: verify the SET, erase on `account.deleted` with its own queue. Then auth migration 0017 subscribes Videos | C1 on QA |
 | C4 | auth | Migration 0018 (drop old redirect URIs), remove `PROFILE_APP_URL` fallback | A1 plus one full release |
 
 ---
@@ -91,14 +90,6 @@ Scope:
 
 Acceptance: API tests for own-data-only, a write with another client's token refused (403), validation, the rate limit, and the audit event.
 
-## B2: email change
-
-Scope: SPEC §5.3. `POST /account/email/start` and `/confirm`. KV pending state, code hashing with the existing helpers, the sender with an en/ar template, the old-address notice, moving the password credential, `revokeUser(..., 'email_changed')` (add the reason to the union), and the audit event.
-
-Acceptance:
-- API tests: step-up required, a taken address answers like success but sends no code, the code expires, the attempt cap holds, after confirm the old email cannot sign in and the new one can with the same password, and every earlier token is rejected.
-- QA E2E through the code sink.
-
 ## B3: activity
 
 Scope: migration `0015_audit_events_user_time.sql` in both directories plus the snapshots. `GET /account/activity` with a type allowlist, a 90-day window, a cursor on `(timestamp, id)`, and coarse user-agent parsing. Nothing from `metadata` is returned unless allowlisted.
@@ -119,13 +110,13 @@ Acceptance: the launcher on QA matches today's per role (a test with the old cat
 
 ## B5: hub pages for phase B
 
-Scope: editable name and language, the email change flow, Recent activity, the Connected apps page, and the "Confirm it's you" step-up page (SPEC §5.5) with return to the pending form.
+Scope: editable name and language, the read-only email with the SPEC §5.3 explanation and "Create a new account" button, Recent activity, the Connected apps page, and the "Confirm it's you" step-up page (SPEC §5.5) with return to the pending form.
 
 Acceptance: E2E for each flow in en and ar, axe, screenshots approved.
 
 ## C1: account events
 
-Scope (SPEC §5.4): an `account-events` queue (`-qa`, `-stage`) and a producer binding in auth, with the same name in every env. A consumer in auth reads `oauth_clients.metadata.events`, builds a SET (RFC 8417) signed with the active JWKS key, and POSTs it (RFC 8935) through the existing webhook sink with retry and the `webhook_dlq`. Event types: RISC `account-purged` for `account.deleted`, `identifier-changed` for `account.email_changed`. The payload carries only the subject. Email change (B2) starts publishing too. The queue is added to the config check and to `release.yml` like the audit consumer.
+Scope (SPEC §5.4): an `account-events` queue (`-qa`, `-stage`) and a producer binding in auth, with the same name in every env. A consumer in auth reads `oauth_clients.metadata.events`, builds a SET (RFC 8417) signed with the active JWKS key, and POSTs it (RFC 8935) through the existing webhook sink with retry and the `webhook_dlq`. Event types: RISC `account-purged` for `account.deleted`, no other types for now. The payload carries only the subject. The queue is added to the config check and to `release.yml` like the audit consumer.
 
 Acceptance: unit tests (signature verifies with the JWKS, no email in the payload, unsubscribed clients get nothing, a 5xx endpoint retries and then lands in the DLQ, DLQ replay works). On QA, a test receiver subscribed through a QA-only migration row gets the event.
 
@@ -137,7 +128,7 @@ Acceptance: QA E2E: a throwaway account is deleted, signing in with it fails, an
 
 ## C3: Videos receiver (AlUmmahNow)
 
-Scope: an endpoint in api-videos that verifies the SET against auth's JWKS (issuer and audience = Videos' client id), is idempotent on `jti`, and enqueues erasure on Videos' own queue. A worker runs the existing resumable `eraseUserData` to completion and sends `UserDataErased`. `identifier-changed` refreshes the profile's email copy. Then auth migration `0017_client_event_subscriptions.sql` subscribes Videos per env.
+Scope: an endpoint in api-videos that verifies the SET against auth's JWKS (issuer and audience = Videos' client id), is idempotent on `jti`, and enqueues erasure on Videos' own queue. A worker runs the existing resumable `eraseUserData` to completion and sends `UserDataErased`. Then auth migration `0017_client_event_subscriptions.sql` subscribes Videos per env.
 
 Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data, a replayed `jti` is a no-op, a bad signature is refused. QA E2E across both repos: delete in the hub, and the channel is gone on Videos QA shortly after.
 
@@ -151,7 +142,7 @@ Scope: migration `0018_drop_profile_redirect_uris.sql` in both directories, remo
 |---|---|
 | Old-host sessions are lost at cutover | A silent `prompt=none` sign-in on the new host. Nothing for the user to do. |
 | A stale front-channel logout URL in some app | The old host still serves `/logout` (SPEC §4.2). |
-| The OpenAuth subject changes with the email | Email change revokes by user id through the revocation list, which does not depend on the subject. Covered by a B2 test. |
+| A user loses the mailbox of an account before moving their data | No auth recovery, by design (SPEC §5.3). The app holding the data recovers it (Videos: super admin channel transfer, AlUmmahNow #460). |
 | Theme package not yet published | Vendored pinned CSS with a pin check (A3). |
 | An app misses the deletion event | Delivery retries, then the DLQ with replay. The app's tokens for the user are already refused by the revocation list, so missed clean-up never lets anyone act as the user. |
 | A new site needs to appear in the hub | Registry metadata only (B4b). No hub or auth code change, by design (SPEC §0). |
