@@ -1,8 +1,8 @@
-# Account hub: `account.alummahnow.net`
+# Account hub: `profile.auth.alummahnow.net`
 
 Status: spec for owner review, 2026-11-08. Nothing here is built yet. The plan is in [PLAN.md](./PLAN.md).
 
-The profile app (`apps/profile`, `profile.auth.alummahnow.net`) becomes **Al Ummah Now Account**: one place to see which account you are using and to manage it, like Google's myaccount. It stays a separate OAuth client Worker in this repo.
+The profile app (`apps/profile`, `profile.auth.alummahnow.net`) becomes **Al Ummah Now Account**: one place to see which account you are using and to manage it, like Google's myaccount. It stays a separate OAuth client Worker in this repo, on its existing host `profile.auth.alummahnow.net`. `account.alummahnow.net` is only a redirect to it (§4).
 
 Facts below were read from `origin/main` of AlUmmahNowAuth and AlUmmahNow on 2026-11-08, plus AlUmmahNow PRs #441, #444 and #455.
 
@@ -129,67 +129,63 @@ The OAuth client's display name changes from "Auth Profile" to "Al Ummah Now Acc
 
 ### 3.2 How `apps/web` links to the hub, and changes to #441 and #444
 
+`<account>` below means the hub's URL, `https://profile.auth.<env>alummahnow.net` (§4). Links keep using that host.
+
 - **#441 (channel settings, in-place editing): no change.** Channel settings are Videos-only and stay as designed.
 - **#444 (profile and account settings headers): three changes before merge.**
   1. The first settings tab is keyed `account` and links to `/settings`. Rename its label from "Account" to **"Overview"** (**نظرة عامة**), so "Account" means only the hub. The key can stay.
-  2. In the identity header, add **"Manage your Account"** next to "View profile". It links to `getAuthProfileUrl()` and opens in the same tab. That helper already returns the right host, and it follows the rename in §4.4.
+  2. In the identity header, add **"Manage your Account"** next to "View profile". It links to `getAuthProfileUrl()` and opens in the same tab. That helper already returns the right host (`profile.<auth host>`), so nothing about it changes.
   3. In Profile → Preferences, the email row stays read-only, because email is permanent (§5.3). Keep `emailCannotBeChanged` and add the same explanation as the hub ("To use a different email, create a new account and move your channels to it.") with a link to `<account>/personal-info#email`. Show the email from the auth token (`auth.user.email`), because auth is its source.
 - **Privacy page (follow-up PR after hub phase B):** the existing "manage account" link points to `<account>/data`. When the hub ships deletion (phase C), the Videos "Erase my data" section stays for Videos-only erasure, and a "Delete your whole account" link goes to `<account>/data#delete`.
 - **Client registration (phase B):** Videos fills in its registry metadata (launcher name, icon, URL, `privacy_url`), and in phase C its event subscription (§5.4). That is how Videos appears in the hub without the hub knowing about Videos.
 - **Photo:** none of this changes Videos' own profile and channel photos (§2.3).
-- **Rename in the monorepo (follow-up PR, with phase A):** `AUTH_PROFILE_URL` → `AUTH_ACCOUNT_URL`, `getAuthProfileUrl` → `getAccountUrl`, `deriveAuthProfileUrl` → `deriveAccountUrl`. The derivation changes from `profile.<auth host>` to "replace the leading `auth.` label with `account.`" (`auth.qa.alummahnow.net` → `account.qa.alummahnow.net`). Release E2E `profile-signin.spec.ts` and `targets.ts` move to the new host. `docs/compliance/GDPR.md` names the new host.
+- **No host rename in the monorepo or other repos.** `AUTH_PROFILE_URL`, `getAuthProfileUrl`, `deriveAuthProfileUrl` and AlUmmahNowUI's `PROFILE_URL` keep pointing at `profile.auth.*`, which stays the hub host (§4). Only the visible wording changes to "Account".
 
 ## 4. Hosting
 
+Owner decision (Q4, 2026-11-08): **"just a redirect".**
+
 ### 4.1 Hosts
 
-| Env | New host | Old host | Worker (unchanged) | Config |
+| Env | Hub host (unchanged) | Redirect only | Worker (unchanged) | Config |
 |---|---|---|---|---|
-| prod | `account.alummahnow.net` | `profile.auth.alummahnow.net` | `al-ummah-now-profile` | `apps/profile/wrangler.json` top level |
-| stage | `account.stage.alummahnow.net` | `profile.auth.stage.alummahnow.net` | `al-ummah-now-profile-stage` | `wrangler.json` `env.stage` |
-| QA | `account.qa.alummahnow.net` | `profile.auth.qa.alummahnow.net` | `al-ummah-now-profile-qa` | `wrangler.qa.json` |
+| prod | `profile.auth.alummahnow.net` | `account.alummahnow.net` | `al-ummah-now-profile` | `apps/profile/wrangler.json` top level |
+| stage | `profile.auth.stage.alummahnow.net` | `account.stage.alummahnow.net` | `al-ummah-now-profile-stage` | `wrangler.json` `env.stage` |
+| QA | `profile.auth.qa.alummahnow.net` | `account.qa.alummahnow.net` | `al-ummah-now-profile-qa` | `wrangler.qa.json` |
 
-Each config gets the new host as a second `custom_domain: true` route. `APP_URL` becomes the new host. Both hosts stay on the same Worker. The Worker names, the `apps/profile` directory and the release app id `profile` stay as they are: renaming a Worker creates a new script and breaks version-based rollback, and it shows no user anything. `scripts/release/apps.ts` `allowedHosts` lists both hosts.
+- **`profile.auth.*` is the hub host, unchanged.** It serves every hub page, it is the OAuth redirect URI, and links, the launcher and docs keep using it. `APP_URL`, `PROFILE_APP_URL`, CSP, `ALLOWED_ORIGINS` (the `/session/*` CORS allowlist) and `FRONTCHANNEL_LOGOUT_URLS` stay as they are.
+- **`account.*` is only a redirect:** a **301 to the same path and query on `profile.auth.*`** in the same environment, for every method and path. It serves no hub page, sets no cookie, and has no OAuth redirect URI, CSP entry or CORS entry. No canonical tag is needed, because it never serves content.
+- The Worker names, the `apps/profile` directory and the release app id `profile` stay as they are.
 
-### 4.2 Old host
+### 4.2 How the redirect is served
 
-Every request whose `Host` is a `profile.auth.*` host gets a **301 to the same path and query on the new host**, with two exceptions:
+**Recommended: a minimal custom-domain route on the hub Worker.** Each wrangler config gets `account.*` as a second `custom_domain: true` route, and a new var `REDIRECT_HOSTS` lists it. The first line of `fetch` checks whether the `Host` is in `REDIRECT_HOSTS`. If it is, the Worker returns `301 Location: <APP_URL><path><query>` with `Cache-Control: max-age=3600` and does nothing else: no session read, no KV, no cookie. Why this one: the route lives in the reviewed wrangler config, ships through `release.yml` like everything else, exists in QA, stage and prod alike, and Cloudflare creates its DNS record and certificate.
 
-- `/logout` on the old host still clears the old `profile_session` cookie and continues the single sign-out chain (`?next=`). An app with a stale `FRONTCHANNEL_LOGOUT_URLS` must not break sign-out.
-- `/callback` on the old host redirects to the new host's `/` without the code. The code is single-use and only valid with the old redirect URI. The new host then signs in silently with `prompt=none`, so an in-flight sign-in costs one extra redirect.
-
-The old cookie is host-only on the old host, so it cannot leak to the new host. Users sign in silently once on the new host.
+*Alternative:* a Cloudflare Single Redirect rule on the `alummahnow.net` zone (`account.*` → `https://profile.auth.*${uri}`, preserving the query, 301) plus a proxied DNS record per host. It needs no Worker code, but it lives outside the repo and its CI, so drift in one environment would go unnoticed. Use it only if the owner prefers to keep this out of code.
 
 ### 4.3 Cookies and session
 
-- Hub session cookie: `__Host-account_session`. Host-only, `Path=/`, `Secure`, `HttpOnly`, `SameSite=Lax`, 7 days. On localhost, `account_session` without the prefix.
+- Hub session cookie: `__Host-account_session`. Host-only on `profile.auth.*`, `Path=/`, `Secure`, `HttpOnly`, `SameSite=Lax`, 7 days. On localhost, `account_session` without the prefix. An existing `profile_session` cookie is carried over once to the new cookie and then cleared, so the rename signs nobody out.
 - KV session `session:<random>` as today, holding user id, email, roles, access token, refresh token and the access token's `auth_time`. Nothing token-like reaches the browser.
 - **Refresh:** before each server-side API call, if the access token expires within 60 s, refresh with the refresh token and store the new pair. A refused refresh (signed out everywhere, password changed, account deleted) deletes the KV session and sends the user to sign in.
 - **Following the auth account:** the account you are using is the auth browser session's active account. On every full page load, the hub's script calls `GET /session/check` on auth with credentials. If the active user differs from the hub session's user, or there is none, it re-runs `/authorize?prompt=none`. So switching account anywhere shows up in the hub on the next load.
 - **Sign-in flow:** add `state` (random, in a short-lived host-only cookie) and PKCE S256 to every `/authorize` the hub starts. The callback checks both.
 - `lang` cookie unchanged.
 
-### 4.4 Auth server and other places that name the profile host
+### 4.4 Changes in this repo and others
 
 AlUmmahNowAuth:
 
 | File | Change |
 |---|---|
-| `apps/auth/wrangler.json` (prod, stage), `wrangler.qa.json` | `PROFILE_APP_URL` → new var `ACCOUNT_APP_URL` with the new host, no trailing slash. Code reads `ACCOUNT_APP_URL ?? PROFILE_APP_URL` for one release, then the old var goes. `FRONTCHANNEL_LOGOUT_URLS`: `account.*/logout` replaces `profile.auth.*/logout`. QA `ALLOWED_ORIGINS` gains `https://account.qa.alummahnow.net` (prod `*.alummahnow.net` and stage `*.stage.alummahnow.net` already match). `SIGN_IN_FALLBACK_URL` on stage moves to the new host. |
-| `apps/auth/src/router.ts`, `utils/sign-in-restart.ts`, `handlers/logout-handler.ts`, `handlers/session-ui-handlers.ts`, `handlers/account-picker-signout.ts`, `env.d.ts` | Read the new var. Fix the `//callback` join. |
-| `apps/admin/app/lib/forbidden.ts` `profileAppUrl` | Derive `account.` from `auth.` as in §3.2. Rename to `accountAppUrl`. |
-| `apps/profile/src/apps.ts` | Entry `profile` → name and URLs of §3.1 and §4.1. The id can stay `profile`. |
-| `scripts/release/apps.ts`, `scripts/release/smoke.ts`, `scripts/stage/seed.ts` and their tests | New host, plus the old host as a 301 smoke check. Stage seed maps `account.alummahnow.net` → `account.stage.alummahnow.net`. |
-| `.github/workflows/qa-e2e.yml`, `release.yml` | `E2E_PROFILE_URL` → `E2E_ACCOUNT_URL` with the new host. Warm-up URL. |
-| `e2e/utils/test-data.ts`, `playwright.config.ts`, `README.md`, `CICD.md`, `docs/release-pipeline.md`, `API_REFERENCE.md`, `CONTRIBUTING.md`, `.env.test.example`, `apps/auth/.dev.vars.example`, `apps/auth/README.md` | Host and var names. Archived docs under `apps/auth/docs/` are left alone. |
+| `apps/profile/wrangler.json` (top level, `env.stage`), `wrangler.qa.json` | Add the `account.*` custom-domain route and `REDIRECT_HOSTS`. Everything else unchanged. |
+| `apps/auth/src/router.ts` `handleAuthorizeRedirect` | Fix the `//callback` join (`PROFILE_APP_URL` ends in `/`). No var changes. |
+| `apps/profile/src/apps.ts` | Entry `profile`: name and description from §3.1. URLs unchanged. |
+| `scripts/release/apps.ts` | `allowedHosts` adds the `account.*` host per env. |
+| `scripts/release/smoke.ts` | `account.*` answers 301 to `profile.auth.*` with the path and query preserved. `profile.auth.*` answers 200 as today. |
+| `docs/release-pipeline.md`, `README.md` | Mention the `account.*` redirect next to the profile host. |
 
-Other repos (from an org-wide code search for `profile.auth`, `PROFILE_URL`, `PROFILE_APP_URL` and `profile.${`):
-
-| Repo | Files | Change |
-|---|---|---|
-| AlUmmahNow | `apps/web/src/lib/runtime-config.ts`, `app/layout.tsx`, `PrivacySettingsView.tsx` and tests, `e2e/release/targets.ts`, `e2e/release/profile-signin.spec.ts`, `e2e/release-prod/signed-in.check.ts`, `CLAUDE.md`, `docs/compliance/GDPR.md`, `docs/release-pipeline/SPEC.md` and `PLAN.md` | §3.2 rename and new host |
-| AlUmmahNowUI | `src/lib/env.ts`, `scripts/environments.ts`, `scripts/dev-vars.ts`, `wrangler.jsonc`, `.dev.vars.example`, `README.md`, `docs/SPEC.md` | `PROFILE_URL` → `ACCOUNT_URL`, `https://account.${sub}alummahnow.net` |
-| AlUmmahNowCMS, Android, Apple, Desktop, Tools, Core, openauth | none found | Re-run the search before phase A merges, because the code search index can lag. |
+Other repos: **no change.** Every link found by the org-wide code search (`profile.auth`, `PROFILE_URL`, `PROFILE_APP_URL`, `profile.${`) already points at the hub host. Only the visible wording in Videos changes (§3.2).
 
 ## 5. Architecture
 
@@ -287,14 +283,13 @@ Numbering: AlUmmahNowAuth #249 already took `migrations-qa/0014_theme_demo_redir
 
 | File | Prod and stage (`migrations/`) | QA (`migrations-qa/`) |
 |---|---|---|
-| `0015_account_hub_client.sql` | `UPDATE oauth_clients SET name = 'Al Ummah Now Account', redirect_uris = '["http://localhost:3302/callback","https://account.alummahnow.net/callback","https://profile.auth.alummahnow.net/callback"]', updated_at = … WHERE id = '109a1087-…'` | Same, with `account.qa.` and `profile.auth.qa.` |
+| `0015_account_hub_client_name.sql` | `UPDATE oauth_clients SET name = 'Al Ummah Now Account', updated_at = … WHERE id = '109a1087-…'`. Name only: `redirect_uris` are not touched. | same |
 | `0016_audit_events_user_time.sql` | the index | the index |
 | `0017_client_registry_metadata.sql` (phase B) | `metadata.launcher` and `privacy_url` for the current first-party clients, prod URLs | same, with QA URLs |
 | `0018_client_event_subscriptions.sql` (phase C, once an app has an endpoint) | `metadata.events` for subscribing clients | same |
-| `0019_drop_profile_redirect_uris.sql` (phase C, after the old host has only redirected for a full release) | old redirect URI removed | same |
 | `NNNN_drop_theme_demo_redirect_uris.sql` (when the theme demos are torn down; next number free in both directories) | none (prod skips the number) | removes the `theme-demo-*` URIs that `0014_theme_demo_redirect_uris.sql` added to the QA web client, keeping every other URI |
 
-Stage replays `migrations/`, and `scripts/stage/seed.ts` rewrites the hosts, so it needs the new mapping. Regenerate `schema.snapshot.sql` and `schema.qa.snapshot.sql` (CI fails if stale). `CLIENT_REGISTRY_MODE` is `enforce`, so 0015 must run before the hub uses the new redirect URI. `release.yml` migrates before it deploys candidates, so shipping both in one PR is safe.
+**No migration touches hosts.** The hub client keeps its existing `profile.auth` redirect URIs, and `account.*` gets none (§4). Stage replays `migrations/`, and `scripts/stage/seed.ts` needs no new mapping. Regenerate `schema.snapshot.sql` and `schema.qa.snapshot.sql` when a migration changes the schema (CI fails if stale).
 
 ## 7. Theming
 
@@ -313,35 +308,37 @@ How tokens reach this repo depends on how the theme package ships (THEMES §"Acr
 
 | Level | What |
 |---|---|
-| Unit (`apps/profile`, vitest pool workers) | Old-host 301 rules, including the `/logout` and `/callback` exceptions. Cookie attributes. State and PKCE checks. Refresh-before-call and refused-refresh handling. CSRF token and Origin check. Step-up 401 → re-auth redirect. Launcher catalog with the new host. en/ar key parity. No colour literals. Initials: name, email fallback, Arabic and combined first grapheme. **Dependency rule:** a test fails if `apps/profile/src` or `apps/auth/src` contains an app hostname (`videos.`, `www.`, `cms.`, `admin.alummahnow`) outside wrangler config, `apps.ts` (until phase B removes it) and test fixtures. |
+| Unit (`apps/profile`, vitest pool workers) | `account.*` hosts: every method and path answers 301 to `profile.auth.*` with the path and query preserved, sets no cookie and touches no KV. `profile.auth.*` serves the hub. Cookie attributes. State and PKCE checks. Refresh-before-call and refused-refresh handling. CSRF token and Origin check. Step-up 401 → re-auth redirect. Launcher catalog with the new host. en/ar key parity. No colour literals. Initials: name, email fallback, Arabic and combined first grapheme. **Dependency rule:** a test fails if `apps/profile/src` or `apps/auth/src` contains an app hostname (`videos.`, `www.`, `cms.`, `admin.alummahnow`) outside wrangler config, `apps.ts` (until phase B removes it) and test fixtures. |
 | Unit and API (`apps/auth`) | Each new endpoint: own data only, the hub-audience rule on writes, step-up, rate limits, audit event emitted, input validation. Launcher: built from registry metadata, filtered by role. Account events: a signed SET verifiable with the JWKS, the payload carries no email, only subscribed clients receive it, a failing endpoint lands in the DLQ, and `DELETE /account` returns without waiting for delivery. No route or registry event type changes an email (a test asserts there is none). Connected apps: only the user's clients, the hub not removable, refresh tokens gone in KV and D1. Activity: type allowlist, 90-day window, cursor, no metadata leak. Fix for the `//callback` join. |
-| Migrations | The existing migration checks, snapshot regeneration, stage seed mapping test. |
-| E2E on QA (`e2e/tests/account/`, Playwright) | Old host → new host. Sign up and sign in. Two accounts: switch, sign out one, sign out all. Remove a second device (second browser context). Sign out of all devices. Password change through the `@e2e.alummahnow.net` code sink. Personal info shows the email read-only and "Create a new account" starts the add-account flow. Export download. Step-up prompt. Remove a connected app, then that app has to sign in again. Delete an account: a test receiver subscribed on QA gets a valid `account-purged` SET. Every page in en and ar, light and dark, with axe. That Videos then erases its data is tested in the AlUmmahNow repo, not here. |
-| Release | `scripts/release/smoke.ts`: new host 200, old host 301, client redirect URI registered. AlUmmahNow release E2E sign-in on the new host. |
+| Migrations | The existing migration checks and snapshot regeneration. 0015 changes the client name only (a test asserts `redirect_uris` is unchanged). |
+| E2E on QA (`e2e/tests/account/`, Playwright) | `https://account.qa.alummahnow.net/security?lang=ar` answers 301 to `https://profile.auth.qa.alummahnow.net/security?lang=ar`, and the browser lands on the hub. Sign up and sign in. Two accounts: switch, sign out one, sign out all. Remove a second device (second browser context). Sign out of all devices. Password change through the `@e2e.alummahnow.net` code sink. Personal info shows the email read-only and "Create a new account" starts the add-account flow. Export download. Step-up prompt. Remove a connected app, then that app has to sign in again. Delete an account: a test receiver subscribed on QA gets a valid `account-purged` SET. Every page in en and ar, light and dark, with axe. That Videos then erases its data is tested in the AlUmmahNow repo, not here. |
+| Release | `scripts/release/smoke.ts`: `profile.auth.*` 200 and its client redirect URI registered, `account.*` 301 to `profile.auth.*` with path and query preserved, on stage and prod. |
 
 ## 9. Release
 
 - **This repo:** every merge to `main` goes through `release.yml`: build once, stage (deploy, smoke, E2E), then production through Workers versions (0% candidate with version-override smoke, 100%, smoke, automatic rollback). There are no manual deploys. PRs are tested on QA by `qa-e2e.yml`.
 - **AlUmmahNow:** production ships only from a `v*` tag on `main` through `release.yml`. The web follow-ups (§3.2) go out in the next tag after the hub is live on prod.
-- **Order:** (1) auth and hub phase A merge, released to stage, then prod. (2) AlUmmahNow and AlUmmahNowUI rename PRs, so their links go straight to the new host instead of through the 301. (3) Later phases.
-- Rollback of phase A is safe: the old host is still a route of the same Worker, and the old redirect URI stays registered until 0019.
+- **Order:** (1) auth and hub phase A merge, released to stage, then prod. (2) The #444 wording changes in AlUmmahNow. (3) Later phases.
+- Rollback of phase A is safe: the hub host and its redirect URI never change, and the `account.*` route is only a redirect.
 
 ## 10. Phasing
 
 | Phase | Ships | New auth APIs |
 |---|---|---|
-| **A: move and rename** (first release) | New hosts, old-host 301, naming and copy, the client migration, state and PKCE, token refresh, the theme and light/dark rebuild of the existing pages, the initials avatar. Home (who you are, switch, add, sign out one/all), Devices (list, remove, sign out of all devices), Change password (link to the existing flow), Download account data, Your apps. Personal info read-only, with the permanent-email explanation and "Create a new account" (§5.3). All links in every repo. | None. Only config, the migration, the `ACCOUNT_APP_URL` var and the `//callback` fix. |
+| **A: alias and rename** (first release) | `account.*` 301 redirect to the unchanged `profile.auth.*`, naming and copy, the client name migration, state and PKCE, token refresh, the theme and light/dark rebuild of the existing pages, the initials avatar. Home (who you are, switch, add, sign out one/all), Devices (list, remove, sign out of all devices), Change password (link to the existing flow), Download account data, Your apps. Personal info read-only, with the permanent-email explanation and "Create a new account" (§5.3). | None. Only config, the name migration and the `//callback` fix. |
 | **B: manage** | Name and language editing, Recent activity, Connected apps, the launcher and privacy links from the client registry (`apps.ts` removed). #444 follow-up links. | `/account/profile`, `/account/activity`, `/account/apps`, `/account/launcher` |
-| **C: deletion and events** | Account events (`account-events` queue, SETs to subscribed clients), deletion in the hub (auth data plus an event), migrations 0018 and 0019, removal of the `PROFILE_APP_URL` fallback. In AlUmmahNow: the Videos receiver that erases on `account.deleted`. | Event delivery. No new public endpoint. |
+| **C: deletion and events** | Account events (`account-events` queue, SETs to subscribed clients), deletion in the hub (auth data plus an event), migration 0018. In AlUmmahNow: the Videos receiver that erases on `account.deleted`. | Event delivery. No new public endpoint. |
 
 Phase A changes no auth behaviour, so it can ship as soon as it is reviewed. Each later phase is a separate PR series.
 
-## 11. Open questions for the owner
+## 11. Owner decisions
+
+All four questions are answered (2026-11-08): photo A (no photo in auth), email permanent, deletion everywhere, and `account.*` as a redirect only.
 
 1. ~~**Photo.**~~ **Answered 2026-11-08: no photo in auth** (§2.3). The hub shows initials and never reads from Videos.
 2. ~~**Email change signs you out everywhere.**~~ **Answered 2026-11-08: email is permanent**, so there is no email change (§5.3).
 3. ~~**Deletion scope.**~~ **Answered 2026-11-08: yes.** When an account is deleted, every app subscribed to `account.deleted` deletes all of that user's data on its side. For Videos, that means channels, videos and everything else it holds. The event model in §5.4 is unchanged: auth deletes its own data and publishes the event, and each app does its own clean-up. Videos keeps its own "erase my Videos data" option for erasing Videos data without deleting the account.
-4. **Old host lifetime.** Keep the `profile.auth.*` 301 permanently (it costs nothing), or remove the routes after 90 days? **Recommendation: permanent.**
+4. ~~**Old host lifetime.**~~ **Answered 2026-11-08: "just a redirect".** `profile.auth.*` stays the hub host. `account.*` is only a 301 to the same path on `profile.auth.*`, with no hub pages, redirect URIs, CSP or CORS entries (§4).
 
 ## 12. Changes after owner review (2026-11-08)
 
@@ -350,7 +347,8 @@ Phase A changes no auth behaviour, so it can ship as soon as it is reviewed. Eac
 - **Deletion redesigned (§5.4):** the hub no longer calls Videos' erase API. Auth deletes its own data and publishes a signed `account.deleted` event to subscribed clients. Each app, Videos included, erases its own data.
 - **Launcher and app links:** the hard-coded `apps.ts` catalog (which names Videos, www, CMS and admin URLs) is a phase A exception and is replaced in phase B by client registry metadata. The Videos-specific "data in Videos" link and delete warning became generic.
 - **Connected apps:** checked, and already compliant. It reads only auth's own refresh tokens and client registry.
-- **Migrations renumbered:** `migrations-qa/0014` is taken by the theme demo redirect (#249), so this work starts at 0015 in both directories: 0015 hub client, 0016 audit index, 0017 registry metadata, 0018 event subscriptions, 0019 drop the old redirect URI. A QA-only migration removes the theme demo URIs when the demos are torn down.
+- **Migrations renumbered:** `migrations-qa/0014` is taken by the theme demo redirect (#249), so this work starts at 0015 in both directories: 0015 hub client, 0016 audit index, 0017 registry metadata, 0018 event subscriptions. 0015 now renames the client only, and no migration touches hosts. A QA-only migration removes the theme demo URIs when the demos are torn down.
 - **Email events:** with email permanent, no `account.email_changed` event exists. `account.deleted` is the only event type.
 - **Email is permanent (Q2):** email change is removed everywhere: the `/account/email/*` APIs, its flow, rate limits, KV state, copy, tests and the `identifier-changed` event. Personal info shows the email read-only with "create a new account and move your channels" and the generic add-account flow. Losing the old mailbox is recovered in the app that holds the data (Videos: super admin channel transfer, AlUmmahNow #460), never by auth.
 - **Deletion scope (Q3):** decided as everywhere. Every subscribed app deletes all of the user's data when it receives `account.deleted`. Subscribing to the event commits an app to that. The event model is unchanged.
+- **Hosting (Q4):** reversed from the first draft. `profile.auth.*` stays the hub host, unchanged. `account.*` is only a 301 to the same path on `profile.auth.*`, served by a minimal custom-domain route on the hub Worker (or a Cloudflare redirect rule). This drops the `ACCOUNT_APP_URL` var, the link renames in AlUmmahNow and AlUmmahNowUI, the extra redirect URIs, CORS and front-channel entries, the stage seed mapping, and the redirect-URI removal (former 0019).
