@@ -24,6 +24,7 @@ declare global {
     AUDIT_WEBHOOK_URL: string;
     AUDIT_WEBHOOK_SECRET: string;
     PROFILE_APP_URL: string;
+    ADMIN_API_URL?: string;
     /** Where the "Start sign-in again" page links when the sign-in's app is unknown. */
     SIGN_IN_FALLBACK_URL?: string;
     /** Comma-separated app logout URLs walked on single sign-out */

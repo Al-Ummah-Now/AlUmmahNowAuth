@@ -24,6 +24,7 @@ import {
   type StoredSession,
 } from "./session-store";
 import { aliasRedirect } from "./alias";
+import { fetchSiteTheme } from '../../../packages/ui/src/site-theme';
 
 const PROFILE_CLIENT_ID = "109a1087-6626-40f7-8a7f-7f42f83f4f30";
 
@@ -43,6 +44,7 @@ interface Env {
   /** "production" | "qa"; selects app launcher URLs (see apps.ts) */
   APP_ENV?: string;
   CF_WEB_ANALYTICS_TOKEN?: string;
+  ADMIN_API_URL?: string;
 }
 
 function sessionTokenOf(request: Request): string | null {
@@ -401,6 +403,7 @@ export default {
       }
 
       const html = renderHomePage({
+        siteTheme: await fetchSiteTheme(env.ADMIN_API_URL),
         locale,
         apps: appsForUser(roles, appEnv, locale),
         user: session?.user ?? null,
