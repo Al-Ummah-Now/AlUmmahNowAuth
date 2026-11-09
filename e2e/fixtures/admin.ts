@@ -335,10 +335,12 @@ export async function deleteUser(page: Page, email: string): Promise<void> {
     confirmBtn.click(),
   ]);
 
-  // Verify the response was successful (2xx status)
-  if (!response.ok()) {
-    console.error(`Delete request failed with status ${response.status()}`);
-  }
+  // The action must report success: an error (such as the empty 204 body once
+  // parsed as JSON, "Unexpected end of JSON input") fails here, not later.
+  expect(response.ok(), `delete request status ${response.status()}`).toBe(true);
+  const body = await response.text();
+  expect(body, `delete action result: ${body}`).toContain('"success",true');
+  expect(body).not.toContain('"error"');
 
   // Wait for dialog to close
   await expect(dialog).toBeHidden({ timeout: 10000 });
