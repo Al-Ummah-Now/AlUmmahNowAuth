@@ -52,7 +52,8 @@ export const APPS: AppRule[] = [
 		production: {
 			env: null,
 			vars: { AUTH_SERVER_URL: 'https://auth.alummahnow.net', APP_URL: 'https://profile.auth.alummahnow.net' },
-			allowedHosts: ['profile.auth.alummahnow.net'],
+			// account.alummahnow.net is a redirect-only alias (301 to APP_URL), see apps/profile/src/alias.ts.
+			allowedHosts: ['profile.auth.alummahnow.net', 'account.alummahnow.net'],
 			forbiddenNames: TEST_ONLY,
 		},
 		stage: {

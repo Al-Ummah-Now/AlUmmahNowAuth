@@ -105,6 +105,23 @@ describe('auth env.production', () => {
 	});
 });
 
+describe('profile production hosts', () => {
+	const profileRule = APPS.find((a) => a.app === 'profile')!;
+	const profileConfig = () => parseJsonc(readFileSync(join(ROOT, profileRule.configPath), 'utf8')) as WranglerConfig & { routes: { pattern: string }[] };
+
+	it('allows the account.alummahnow.net redirect alias', () => {
+		const config = profileConfig();
+		expect(config.routes.map((r) => r.pattern)).toContain('account.alummahnow.net');
+		expect(checkApp(profileRule, config)).toEqual([]);
+	});
+
+	it('still rejects any other host on the profile Worker', () => {
+		const config = profileConfig();
+		config.routes.push({ pattern: 'account.qa.alummahnow.net' });
+		expect(checkApp(profileRule, config).some((e) => e.includes('route account.qa.alummahnow.net is not an allowed host'))).toBe(true);
+	});
+});
+
 describe('auth env.stage parity', () => {
 	const withStage = (mutate: (stage: Record<string, unknown>) => void) => {
 		const config = authConfig();
