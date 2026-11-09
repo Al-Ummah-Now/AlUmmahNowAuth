@@ -8,6 +8,16 @@
  */
 import { logger } from './logger';
 
+export const RATE_LIMIT_BINDINGS = [
+	'PASSWORD_IP_LIMITER',
+	'PASSWORD_EMAIL_LIMITER',
+	'TOKEN_LIMITER',
+	'TOKEN_CLIENT_LIMITER',
+	'SEND_CODE_LIMITER',
+	'ADMIN_LIMITER',
+	'ADMIN_SENSITIVE_LIMITER',
+] as const;
+
 export const REQUIRED_SECRETS = ['CLIENT_SECRET_SALT', 'KEY_ENCRYPTION_MASTER_KEY', 'RESEND_API_KEY', 'SESSION_SECRET'] as const;
 
 const CHECK_TIMEOUT_MS = 3000;
@@ -72,13 +82,13 @@ export async function deepHealth(env: Env): Promise<DeepHealth> {
 			}),
 		],
 		['queue', probe('queue', async () => typeof env.AUDIT_QUEUE?.send === 'function')],
-		// Password brute-force limits (AU-2); the D1 counters work without them, but
-		// a deploy that lost the bindings must not pass the release smoke
+		// Every rate limit is a Workers Rate Limiting binding (AU-1, AU-2); a deploy
+		// that lost one must not pass the release smoke
 		[
 			'ratelimit',
 			probe(
 				'ratelimit',
-				async () => typeof env.PASSWORD_IP_LIMITER?.limit === 'function' && typeof env.PASSWORD_EMAIL_LIMITER?.limit === 'function'
+				async () => RATE_LIMIT_BINDINGS.every((name) => typeof (raw[name] as RateLimit | undefined)?.limit === 'function')
 			),
 		],
 		...REQUIRED_SECRETS.map(

@@ -22,7 +22,7 @@ const TENANT_ERROR_MESSAGES = [
 ] as const;
 
 import { AuditEventSeverity, AuditEventType } from './audit-events';
-import { checkRateLimit, getClientIP } from './rate-limit';
+import { getClientIP, withinRateLimit } from './rate-limit';
 import { TenantService } from './services/tenant.service';
 import type { TenantBranding } from './types/tenant';
 import * as v from 'valibot';
@@ -171,17 +171,10 @@ export class AdminTenantRoutes {
       // Verify admin authentication
       const authContext = await verifyAdminAuth(request, env);
 
-      // Rate limiting
+      // Rate limiting (AU-1): per acting admin
       const clientIP = getClientIP(request);
-      const rateLimitKey = `admin:tenant:create:${clientIP}`;
-      const rateLimit = await checkRateLimit(
-        env.AUTH_STORAGE,
-        rateLimitKey,
-        5, // 5 tenants per hour
-        3600
-      );
-
-      if (!rateLimit.allowed) {
+      const actor = authContext.user?.id ? `user:${authContext.user.id}` : `ip:${clientIP}`;
+      if (!(await withinRateLimit(env.ADMIN_SENSITIVE_LIMITER, `admin:tenant:create:${actor}`))) {
         return createAuthErrorResponse('Rate limit exceeded. Please try again later.', 429);
       }
 

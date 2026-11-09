@@ -15,11 +15,18 @@ export default defineWorkersConfig({
           // Each test file gets a fresh database via test-setup.ts
           d1Persist: false,
           // Many tests sign the same users in from one address; the real limits
-          // (wrangler.json) would turn them into 429s. password-bruteforce.test.ts
-          // tests the limiter behaviour with its own bindings.
+          // (wrangler.json) would turn them into 429s. password-bruteforce.test.ts and
+          // rate-limit-bindings.test.ts test the limiter behaviour with their own bindings.
           ratelimits: {
             PASSWORD_IP_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
             PASSWORD_EMAIL_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+            TOKEN_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+            TOKEN_CLIENT_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+            SEND_CODE_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+            ADMIN_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+            ADMIN_SENSITIVE_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+            // Test-only: a real (miniflare) limiter with a small limit
+            TEST_LIMITER: { simple: { limit: 10, period: 60 } },
           },
         },
         // Disable isolation to share DB across test files

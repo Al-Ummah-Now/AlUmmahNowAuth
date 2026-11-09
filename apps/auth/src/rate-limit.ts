@@ -1,138 +1,45 @@
+/**
+ * Rate limiting with the Workers Rate Limiting binding (AU-1).
+ *
+ * The old limiter kept a JSON array of timestamps per key in KV (get, filter,
+ * push, put). KV allows about one write per second per key and has no atomic
+ * update, so a busy key (every first-party /token call shared one) lost
+ * increments, returned 429 on the put, and then failed open, while a PoP whose
+ * stale copy was full locked everyone out. The binding is an atomic counter per
+ * location with no storage writes; each binding's limit and period (10 or 60 s)
+ * live in the wrangler config (`ratelimits`), per environment.
+ *
+ * Bindings (see apps/auth/wrangler*.json):
+ * - TOKEN_LIMITER: /token per user (refresh) or per client IP
+ * - TOKEN_CLIENT_LIMITER: /token per client for our own server-side apps
+ * - SEND_CODE_LIMITER: verification emails per client IP (per address for E2E)
+ * - ADMIN_LIMITER: admin API reads and actions per admin
+ * - ADMIN_SENSITIVE_LIMITER: destructive admin actions per admin
+ * - PASSWORD_IP_LIMITER / PASSWORD_EMAIL_LIMITER: password POSTs (security/password-guard.ts)
+ */
 import { logger } from './logger';
 
-/**
- * Rate limit result returned by checkRateLimit
- */
-export interface RateLimitResult {
-  /** Whether the request is allowed */
-  allowed: boolean;
-  /** Number of remaining requests in the current window */
-  remaining: number;
-  /** Unix timestamp (seconds) when the rate limit resets */
-  resetAt: number;
-}
+/** All our bindings count per 60-second period; a refused client is told to wait that long. */
+export const RATE_LIMIT_PERIOD_SECONDS = 60;
 
 /**
- * Stored rate limit data in KV
+ * Counts one request for `key`. True when it is within the limit.
+ *
+ * A missing binding (local dev, unit tests) allows; production configs are
+ * required to have every binding (scripts/release/apps.ts, /health?deep=1).
+ * A binding error also allows: the counter is a safety net, never the only
+ * defence (attempt limits that matter are in D1, see security/password-attempts.ts).
  */
-interface RateLimitData {
-  /** Array of request timestamps (Unix time in milliseconds) */
-  requests: number[];
-  /** Expiry timestamp (Unix time in seconds) */
-  expiresAt: number;
-}
-
-/**
- * Check rate limit using sliding window algorithm
- *
- * This function implements a sliding window rate limiter using Cloudflare KV.
- * It tracks request timestamps and allows a specified number of requests
- * within a rolling time window.
- *
- * @param storage - Cloudflare KV namespace for storing rate limit data
- * @param key - Unique identifier for the rate limit (e.g., IP address, user ID)
- * @param limit - Maximum number of requests allowed in the window
- * @param windowSeconds - Time window in seconds
- * @returns Rate limit result with allowed status, remaining count, and reset time
- *
- * @example
- * ```typescript
- * const result = await checkRateLimit(
- *   env.AUTH_STORAGE,
- *   `login:${clientIP}`,
- *   5,
- *   300 // 5 requests per 5 minutes
- * );
- *
- * if (!result.allowed) {
- *   return new Response('Too Many Requests', {
- *     status: 429,
- *     headers: { 'Retry-After': String(result.resetAt - Math.floor(Date.now() / 1000)) }
- *   });
- * }
- * ```
- */
-export async function checkRateLimit(
-  storage: KVNamespace,
-  key: string,
-  limit: number,
-  windowSeconds: number
-): Promise<RateLimitResult> {
-  logger.debug('Checking rate limit', { key, limit, windowSeconds });
-
-  const now = Date.now();
-  const windowStart = now - (windowSeconds * 1000);
-  const rateLimitKey = `ratelimit:${key}`;
-
-  try {
-    // Get existing rate limit data
-    const existingData = await storage.get(rateLimitKey);
-    let data: RateLimitData;
-
-    if (existingData) {
-      try {
-        data = JSON.parse(existingData) as RateLimitData;
-      } catch (parseError) {
-        logger.warn('Failed to parse rate limit data, resetting', { key, error: parseError });
-        data = { requests: [], expiresAt: Math.floor((now + windowSeconds * 1000) / 1000) };
-      }
-    } else {
-      data = { requests: [], expiresAt: Math.floor((now + windowSeconds * 1000) / 1000) };
-    }
-
-    // Filter out requests outside the sliding window
-    const recentRequests = data.requests.filter(timestamp => timestamp > windowStart);
-
-    // Check if limit is exceeded
-    const allowed = recentRequests.length < limit;
-    const remaining = Math.max(0, limit - recentRequests.length - (allowed ? 1 : 0));
-
-    // Calculate reset time (when the oldest request will fall outside the window)
-    let resetAt: number;
-    if (recentRequests.length > 0) {
-      const oldestRequest = Math.min(...recentRequests);
-      resetAt = Math.floor((oldestRequest + windowSeconds * 1000) / 1000);
-    } else {
-      resetAt = Math.floor((now + windowSeconds * 1000) / 1000);
-    }
-
-    // If allowed, add current request timestamp
-    if (allowed) {
-      recentRequests.push(now);
-
-      // Store updated data in KV with TTL
-      const updatedData: RateLimitData = {
-        requests: recentRequests,
-        expiresAt: Math.floor((now + windowSeconds * 1000) / 1000),
-      };
-
-      await storage.put(
-        rateLimitKey,
-        JSON.stringify(updatedData),
-        { expirationTtl: windowSeconds + 60 } // Add 60s buffer to TTL
-      );
-
-      logger.debug('Rate limit check passed', { key, remaining, resetAt });
-    } else {
-      logger.warn('Rate limit exceeded', { key, limit, windowSeconds, requestCount: recentRequests.length });
-    }
-
-    return {
-      allowed,
-      remaining,
-      resetAt,
-    };
-  } catch (error) {
-    logger.error('Rate limit check failed', { key, error: error instanceof Error ? error.message : String(error) });
-
-    // On error, allow the request but log the failure
-    // This ensures rate limiting failures don't block legitimate traffic
-    return {
-      allowed: true,
-      remaining: limit - 1,
-      resetAt: Math.floor((now + windowSeconds * 1000) / 1000),
-    };
-  }
+export async function withinRateLimit(limiter: RateLimit | undefined, key: string): Promise<boolean> {
+	if (!limiter) return true;
+	try {
+		const { success } = await limiter.limit({ key });
+		if (!success) logger.warn('Rate limit exceeded', { key });
+		return success;
+	} catch (error) {
+		logger.error('Rate limiter failed', { key, error: error instanceof Error ? error.message : String(error) });
+		return true;
+	}
 }
 
 /**
@@ -145,24 +52,24 @@ export async function checkRateLimit(
  * @returns Client IP address or 'unknown' if not available
  */
 export function getClientIP(request: Request): string {
-  // Cloudflare provides the real client IP in this header
-  const cfConnectingIP = request.headers.get('CF-Connecting-IP');
-  if (cfConnectingIP) {
-    return cfConnectingIP;
-  }
+	// Cloudflare provides the real client IP in this header
+	const cfConnectingIP = request.headers.get('CF-Connecting-IP');
+	if (cfConnectingIP) {
+		return cfConnectingIP;
+	}
 
-  // Fallback headers (less reliable on Cloudflare)
-  const xForwardedFor = request.headers.get('X-Forwarded-For');
-  if (xForwardedFor) {
-    // X-Forwarded-For can contain multiple IPs, take the first one
-    return xForwardedFor.split(',')[0].trim();
-  }
+	// Fallback headers (less reliable on Cloudflare)
+	const xForwardedFor = request.headers.get('X-Forwarded-For');
+	if (xForwardedFor) {
+		// X-Forwarded-For can contain multiple IPs, take the first one
+		return xForwardedFor.split(',')[0].trim();
+	}
 
-  const xRealIP = request.headers.get('X-Real-IP');
-  if (xRealIP) {
-    return xRealIP;
-  }
+	const xRealIP = request.headers.get('X-Real-IP');
+	if (xRealIP) {
+		return xRealIP;
+	}
 
-  logger.warn('Unable to determine client IP address');
-  return 'unknown';
+	logger.warn('Unable to determine client IP address');
+	return 'unknown';
 }

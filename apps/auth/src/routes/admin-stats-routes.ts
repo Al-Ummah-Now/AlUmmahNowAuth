@@ -30,7 +30,7 @@ const adminStatsRoutes = new Hono<{ Bindings: Env; Variables: AdminVariables }>(
  * Stats endpoints are read-heavy and should allow frequent access
  */
 const adminRateLimit = {
-	stats: rateLimit({ limit: 100, window: 60, keyPrefix: 'admin:stats:view' }),
+	stats: rateLimit({ keyPrefix: 'admin:stats:view' }),
 };
 
 // Apply admin role check to all routes

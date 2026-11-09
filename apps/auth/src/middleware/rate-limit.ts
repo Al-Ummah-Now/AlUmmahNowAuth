@@ -1,92 +1,45 @@
 /**
- * @fileoverview Rate limiting middleware for Hono routes
+ * @fileoverview Rate limiting middleware for the admin Hono routes (AU-1)
  *
- * Provides middleware for applying rate limits to routes using KV-based
- * sliding window algorithm. Supports both IP-based and custom key rate limiting.
+ * Counts with the Workers Rate Limiting binding (ADMIN_LIMITER, or
+ * ADMIN_SENSITIVE_LIMITER for destructive actions); limits live in the wrangler
+ * config. Admin calls come server-side from the admin Worker, which shares an
+ * egress address with every other Worker, so the bucket is the acting admin
+ * (set by requireAdmin), falling back to the client IP.
  */
 
 import type { Context, Next } from 'hono';
-import { checkRateLimit, getClientIP } from '../rate-limit';
+import { RATE_LIMIT_PERIOD_SECONDS, getClientIP, withinRateLimit } from '../rate-limit';
 
-/**
- * Rate limit configuration
- */
 export interface RateLimitConfig {
-	/** Maximum number of requests allowed in the window */
-	limit: number;
-	/** Time window in seconds */
-	window: number;
-	/** Optional custom key prefix for rate limit (default: uses IP) */
-	keyPrefix?: string;
-	/** Optional custom key generator function */
-	keyGenerator?: (c: Context<{ Bindings: Env }>) => string;
+	/** Bucket name, e.g. 'admin:sessions:view' */
+	keyPrefix: string;
+	/** Destructive action: counted on ADMIN_SENSITIVE_LIMITER */
+	sensitive?: boolean;
 }
 
-/**
- * Rate limiting middleware factory
- *
- * Creates a middleware that applies rate limiting based on IP address
- * or custom key. Returns 429 Too Many Requests when limit is exceeded.
- *
- * @param config - Rate limit configuration
- * @returns Hono middleware
- *
- * @example
- * ```typescript
- * // IP-based rate limiting
- * app.get('/api/data', rateLimit({ limit: 100, window: 60 }), handler);
- *
- * // Custom key-based rate limiting
- * app.post('/login', rateLimit({
- *   limit: 5,
- *   window: 300,
- *   keyPrefix: 'login',
- *   keyGenerator: (c) => c.req.json().email
- * }), loginHandler);
- * ```
- */
+type AdminContext = Context<{ Bindings: Env; Variables: { adminUser?: { userId?: string } } }>;
+
+/** The acting admin, or the client IP when the route has no admin context. */
+export function adminRateLimitSubject(c: AdminContext): string {
+	const userId = c.get('adminUser')?.userId;
+	return userId ? `user:${userId}` : `ip:${getClientIP(c.req.raw)}`;
+}
+
 export function rateLimit(config: RateLimitConfig) {
-	return async (c: Context<{ Bindings: Env }>, next: Next) => {
-		const { limit, window, keyPrefix, keyGenerator } = config;
-
-		// Generate rate limit key
-		let key: string;
-		if (keyGenerator) {
-			key = keyGenerator(c);
-		} else {
-			const ip = getClientIP(c.req.raw);
-			key = ip;
-		}
-
-		// Add prefix if provided
-		const rateLimitKey = keyPrefix ? `${keyPrefix}:${key}` : key;
-
-		// Check rate limit
-		const result = await checkRateLimit(c.env.AUTH_STORAGE, rateLimitKey, limit, window);
-
-		if (!result.allowed) {
-			const retryAfter = result.resetAt - Math.floor(Date.now() / 1000);
+	return async (c: AdminContext, next: Next) => {
+		const limiter = config.sensitive ? c.env.ADMIN_SENSITIVE_LIMITER : c.env.ADMIN_LIMITER;
+		if (!(await withinRateLimit(limiter, `${config.keyPrefix}:${adminRateLimitSubject(c)}`))) {
 			return c.json(
 				{
 					error: 'Too Many Requests',
-					message: `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
-					retryAfter,
+					message: `Rate limit exceeded. Try again in ${RATE_LIMIT_PERIOD_SECONDS} seconds.`,
+					retryAfter: RATE_LIMIT_PERIOD_SECONDS,
 				},
 				429,
-				{
-					'Retry-After': String(retryAfter),
-					'X-RateLimit-Limit': String(limit),
-					'X-RateLimit-Remaining': String(result.remaining),
-					'X-RateLimit-Reset': String(result.resetAt),
-				}
+				{ 'Retry-After': String(RATE_LIMIT_PERIOD_SECONDS) }
 			);
 		}
-
-		// Add rate limit headers to response
-		c.header('X-RateLimit-Limit', String(limit));
-		c.header('X-RateLimit-Remaining', String(result.remaining));
-		c.header('X-RateLimit-Reset', String(result.resetAt));
-
 		await next();
 	};
 }

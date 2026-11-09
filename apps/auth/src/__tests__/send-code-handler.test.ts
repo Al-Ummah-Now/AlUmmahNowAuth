@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import '../test-setup';
+import { fakeLimiter } from './helpers/fake-limiter';
 import { MemoryStorage } from '@al-ummah-now/openauth/storage/memory';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 
@@ -44,9 +45,9 @@ function makeHandler(
 	pathname: string,
 	userService: UserServiceLike,
 	storage?: ReturnType<typeof MemoryStorage>,
-	options: { resendApiKey?: string; ip?: string } = { resendApiKey: 'test-resend-key' }
+	options: { resendApiKey?: string; ip?: string; limiter?: RateLimit } = { resendApiKey: 'test-resend-key' }
 ) {
-	// Unique IP per handler so the KV-backed rate limit never carries over between tests
+	// Unique IP per handler, so a limiter shared between handlers never carries over
 	ipCounter += 1;
 	const url = new URL(`https://auth.example.com${pathname}`);
 	const request = new Request(url, {
@@ -61,6 +62,7 @@ function makeHandler(
 			env: {
 				AUTH_STORAGE: env.AUTH_STORAGE,
 				AUTH_DB: env.AUTH_DB,
+				SEND_CODE_LIMITER: options.limiter,
 				RESEND_API_KEY: options.resendApiKey,
 				ENVIRONMENT: 'test',
 			},
@@ -175,12 +177,14 @@ describe('createSendCodeHandler', () => {
 
 		it('returns code_send_failed once the rate limit is exceeded', async () => {
 			const ip = '198.51.100.77';
+			const limiter = fakeLimiter(5);
 			const sendCode = makeHandler('/password/register', makeUserService(), storage, {
 				resendApiKey: 'test-resend-key',
 				ip,
+				limiter: limiter as unknown as RateLimit,
 			});
 
-			// Default login limit is 5 per window
+			// SEND_CODE_LIMITER (Workers Rate Limiting), keyed by client IP
 			for (let i = 0; i < 5; i++) {
 				await expect(sendCode(`user${i}@example.com`, '123456')).resolves.toBeUndefined();
 			}
@@ -188,6 +192,7 @@ describe('createSendCodeHandler', () => {
 				type: 'code_send_failed',
 			});
 			expect(sendEmailMock).toHaveBeenCalledTimes(5);
+			expect([...limiter.counts.keys()]).toEqual([`ip:${ip}`]);
 		});
 	});
 });

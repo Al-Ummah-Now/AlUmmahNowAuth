@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import '../test-setup';
+import { fakeLimiter } from './helpers/fake-limiter';
 import { isAuthorizedTestRequest, isE2EAddress, shouldSinkCode, sinkKey, type E2ESinkEnv } from '../utils/e2e-sink';
 import { routeTestEndpoints } from '../routes/test-routes';
 
@@ -174,15 +175,16 @@ describe('send-code handler with the sink', () => {
 	});
 
 	it('limits E2E addresses per address, not per IP, on QA (one CI runner, many users)', async () => {
+		const SEND_CODE_LIMITER = fakeLimiter(5);
 		for (let i = 0; i < 8; i++) {
 			const email = `ratelimit-${i}@e2e.alummahnow.net`;
-			await expect(handler({}, '203.0.113.7')(email, '333333')).resolves.toBeUndefined();
+			await expect(handler({ SEND_CODE_LIMITER }, '203.0.113.7')(email, '333333')).resolves.toBeUndefined();
 			expect(await env.AUTH_STORAGE.get(sinkKey(email))).not.toBeNull();
 		}
 	});
 
 	it('keeps the per-IP limit for E2E addresses in production', async () => {
-		const prod = { ENVIRONMENT: 'production', OPENAUTH_ISSUER: 'https://auth.alummahnow.net' };
+		const prod = { ENVIRONMENT: 'production', OPENAUTH_ISSUER: 'https://auth.alummahnow.net', SEND_CODE_LIMITER: fakeLimiter(5) };
 		const results = [];
 		for (let i = 0; i < 8; i++) results.push(await handler(prod, '203.0.113.8')(`prod-rl-${i}@e2e.alummahnow.net`, '444444'));
 		expect(results).toContainEqual({ type: 'code_send_failed' });

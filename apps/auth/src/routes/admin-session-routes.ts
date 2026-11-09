@@ -72,9 +72,9 @@ const adminSessionRoutes = new Hono<{ Bindings: Env; Variables: AdminVariables }
  * Admin operations need protection against abuse while allowing legitimate admin activity
  */
 const adminRateLimit = {
-	view: rateLimit({ limit: 50, window: 60, keyPrefix: 'admin:sessions:view' }),
-	terminate: rateLimit({ limit: 20, window: 60, keyPrefix: 'admin:sessions:terminate' }),
-	stats: rateLimit({ limit: 30, window: 60, keyPrefix: 'admin:sessions:stats' }),
+	view: rateLimit({ keyPrefix: 'admin:sessions:view' }),
+	terminate: rateLimit({ keyPrefix: 'admin:sessions:terminate', sensitive: true }),
+	stats: rateLimit({ keyPrefix: 'admin:sessions:stats' }),
 };
 
 // Apply admin role check to all routes

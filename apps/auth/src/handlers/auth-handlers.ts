@@ -287,6 +287,8 @@ export interface SendCodeEnv {
 	AUTH_STORAGE: KVNamespace;
 	/** password_codes: attempt counter and expiry of each sent code (AU-2) */
 	AUTH_DB: D1Database;
+	/** Verification emails per client IP (AU-1); absent in local dev and unit tests */
+	SEND_CODE_LIMITER?: RateLimit;
 	RESEND_API_KEY?: string | SecretBinding;
 	ENVIRONMENT?: string;
 	OPENAUTH_ISSUER?: string;
@@ -344,10 +346,7 @@ export function createSendCodeHandler(
 	const { request, env, ctx, requestId, url } = handlerCtx;
 
 	// Import dependencies at handler creation time
-	const checkRateLimitPromise = import('../rate-limit').then((m) => m.checkRateLimit);
-	const getEndpointRateLimitPromise = import('../services/rate-limit-config').then(
-		(m) => m.getEndpointRateLimit
-	);
+	const withinRateLimitPromise = import('../rate-limit').then((m) => m.withinRateLimit);
 	const sendEmailPromise = import('../email').then((m) => m.default);
 	const emailTemplatesPromise = import('../email-templates');
 	const requireSecretPromise = import('../utils/secrets').then((m) => m.requireSecret);
@@ -365,15 +364,13 @@ export function createSendCodeHandler(
 	return async (email: string, code: string): Promise<void | PasswordSendCodeError> => {
 		// Resolve all imports
 		const [
-			checkRateLimit,
-			getEndpointRateLimit,
+			withinRateLimit,
 			SendEmail,
 			emailTemplates,
 			requireSecret,
 			createRateLimitExceededEvent,
 		] = await Promise.all([
-			checkRateLimitPromise,
-			getEndpointRateLimitPromise,
+			withinRateLimitPromise,
 			sendEmailPromise,
 			emailTemplatesPromise,
 			requireSecretPromise,
@@ -382,32 +379,18 @@ export function createSendCodeHandler(
 
 		logger.info('Sending login code', { email, codeLength: code.length });
 
-		// Rate limiting: configurable via KV, with environment-specific defaults
+		// Rate limiting (AU-1): Workers Rate Limiting, SEND_CODE_LIMITER (limit per env
+		// in wrangler config). QA/stage E2E addresses (sink active, never in prod) are
+		// limited per address instead of per IP: a CI runner signs up dozens of users
+		// from one IP, and each test uses its own address, so the per-address limit
+		// still applies.
 		const clientIP = getClientIP(request);
-		// QA/stage E2E addresses (sink active, never in prod) are limited per address
-		// instead of per IP: a CI runner signs up dozens of users from one IP, and
-		// each test uses its own address, so the per-address limit still applies.
 		const sinkThisCode = await shouldSinkCode(env, email);
-		const rateLimitKey = sinkThisCode ? `login:e2e:${email.toLowerCase()}` : `login:${clientIP}`;
-		const rateLimitConfig = await getEndpointRateLimit(
-			env.AUTH_STORAGE,
-			'login',
-			env.ENVIRONMENT
-		);
-
-		// Allow higher limits for localhost development
+		const rateLimitKey = sinkThisCode ? `e2e:${email.toLowerCase()}` : `ip:${clientIP}`;
 		const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-		const limit = isLocalhost ? 100 : rateLimitConfig.limit;
 
-		const rateLimit = await checkRateLimit(
-			env.AUTH_STORAGE,
-			rateLimitKey,
-			limit,
-			rateLimitConfig.windowSeconds
-		);
-
-		if (!rateLimit.allowed) {
-			const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+		if (!(await withinRateLimit(env.SEND_CODE_LIMITER, rateLimitKey))) {
+			const retryAfter = 60;
 			logger.warn('Rate limit exceeded for login attempt', {
 				clientIP,
 				email,
@@ -415,7 +398,7 @@ export function createSendCodeHandler(
 			});
 
 			// Emit rate limit exceeded audit event
-			const auditEvent = createRateLimitExceededEvent('/sendCode', 5, 300, retryAfter, {
+			const auditEvent = createRateLimitExceededEvent('/sendCode', 0, 60, retryAfter, {
 				ipAddress: clientIP,
 				userAgent: request.headers.get('User-Agent') ?? undefined,
 				requestId,
@@ -432,12 +415,6 @@ export function createSendCodeHandler(
 
 			return CODE_SEND_FAILED;
 		}
-
-		logger.debug('Rate limit check passed', {
-			clientIP,
-			email,
-			remaining: rateLimit.remaining,
-		});
 
 		// Registration: the account doesn't exist yet, so skip the existence check.
 		// Otherwise (password change / forgot password) only send to real accounts,

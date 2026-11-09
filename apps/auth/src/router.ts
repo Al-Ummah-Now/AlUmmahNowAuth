@@ -17,12 +17,11 @@ import {
 	handleAdminSessionsDashboard,
 } from './handlers/session-ui-handlers';
 import { handleSelectAccountGet, handleSelectAccountPost } from './routes/select-account';
-import { checkRateLimit, getClientIP } from './rate-limit';
-import { getEndpointRateLimit } from './services/rate-limit-config';
+import { RATE_LIMIT_PERIOD_SECONDS, getClientIP, withinRateLimit } from './rate-limit';
 import { getAuditEmitter } from './audit-emitter';
 import { createRateLimitExceededEvent } from './audit-events';
 import { trackEvent } from './utils/analytics';
-import { tokenRateLimitSubject } from './utils/token-rate-limit-subject';
+import { readTokenRequestFields, tokenRateLimitBuckets } from './utils/token-rate-limit-subject';
 import { handleAccountExport, handleDeleteAccount, handleSignOutAll } from './routes/account-routes';
 import { AdminEnterpriseRoutes } from './admin-enterprise-routes';
 import { AdminTenantRoutes } from './admin-tenant-routes';
@@ -464,38 +463,22 @@ async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
 
 	const clientIP = getClientIP(request);
 
-	// Get configurable rate limit based on environment
-	const rateLimitConfig = await getEndpointRateLimit(
-		env.AUTH_STORAGE,
-		'token',
-		env.ENVIRONMENT
-	);
+	// Workers Rate Limiting (AU-1): per user for refreshes, per client for our own
+	// server-side apps, per IP otherwise. No shared key, no KV writes.
+	const buckets = tokenRateLimitBuckets(request, url.pathname, clientIP, await readTokenRequestFields(request));
+	for (const bucket of buckets) {
+		const limiter = bucket.limiter === 'client' ? env.TOKEN_CLIENT_LIMITER : env.TOKEN_LIMITER;
+		if (await withinRateLimit(limiter, bucket.key)) continue;
 
-	// Allow higher limits for localhost development
-	const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-	// Server-side exchanges from our own Workers share one egress IP: bucket them per zone
-	const subject = tokenRateLimitSubject(request, url.pathname, clientIP, rateLimitConfig.limit);
-	const rateLimitKey = subject.key;
-	const limit = isLocalhost ? Math.max(100, subject.limit) : subject.limit;
-
-	const rateLimit = await checkRateLimit(
-		env.AUTH_STORAGE,
-		rateLimitKey,
-		limit,
-		rateLimitConfig.windowSeconds
-	);
-
-	if (!rateLimit.allowed) {
-		const retryAfter = rateLimit.resetAt - Math.floor(Date.now() / 1000);
+		const retryAfter = RATE_LIMIT_PERIOD_SECONDS;
 		logger.warn('Rate limit exceeded for token endpoint', {
 			clientIP,
-			firstParty: subject.firstParty,
+			bucket: bucket.limiter,
 			endpoint: url.pathname,
-			retryAfter,
 		});
 
 		// Emit rate limit exceeded audit event
-		const auditEvent = createRateLimitExceededEvent(url.pathname, limit, rateLimitConfig.windowSeconds, retryAfter, {
+		const auditEvent = createRateLimitExceededEvent(url.pathname, 0, RATE_LIMIT_PERIOD_SECONDS, retryAfter, {
 			ipAddress: clientIP,
 			userAgent: request.headers.get('User-Agent') ?? undefined,
 			requestId,
@@ -513,27 +496,18 @@ async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
 		const response = new Response(
 			JSON.stringify({
 				error: 'rate_limit_exceeded',
-				error_description: `Too many requests. Please try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+				error_description: 'Too many requests. Please try again in 1 minute(s).',
 			}),
 			{
 				status: 429,
 				headers: {
 					'Content-Type': 'application/json',
 					'Retry-After': String(retryAfter),
-					'X-RateLimit-Limit': '10',
-					'X-RateLimit-Remaining': String(rateLimit.remaining),
-					'X-RateLimit-Reset': String(rateLimit.resetAt),
 				},
 			}
 		);
 		return addSecurityHeaders(response, isProduction);
 	}
-
-	logger.debug('Rate limit check passed for token endpoint', {
-		clientIP,
-		endpoint: url.pathname,
-		remaining: rateLimit.remaining,
-	});
 
 	// Don't return a response - let the issuer handle the actual token request
 	return null;
