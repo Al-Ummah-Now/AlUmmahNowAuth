@@ -367,6 +367,10 @@ describe('revoke, restore, purge', () => {
 		expect(user!.status).toBe('deleted');
 		expect(user!.deleted_at).toBeGreaterThan(0);
 		expect((await page('GET', link)).status).toBe(410);
+		// The account is an admin soft delete like any other: Auth admin's Recently deleted lists it
+		const deletion = await DB().prepare(`SELECT * FROM admin_deletions WHERE kind = 'user' AND item_id = ?`).bind(body.userId).first<Record<string, any>>();
+		expect(deletion).toMatchObject({ label: 'revoked@example.com', deleted_by: 'usr_videosadmin', reason: 'Invite revoked: Wrong address' });
+		expect(JSON.parse(deletion!.snapshot)).toEqual({ status: 'invited', email: 'revoked@example.com' });
 		// A normal sign-up with the email is possible again
 		const users = new D1UserService({ db: DB(), adapter: {} as D1UserAdapter });
 		expect(await users.getUserByEmail('default', 'revoked@example.com')).toBeNull();
@@ -378,6 +382,7 @@ describe('revoke, restore, purge', () => {
 		const res = await call('POST', `/provisioning/invites/${body.inviteId}/restore`, {});
 		expect(res.json.invite.status).toBe('invited');
 		expect((await DB().prepare('SELECT status FROM users WHERE id = ?').bind(body.userId).first<{ status: string }>())!.status).toBe('invited');
+		expect(await DB().prepare(`SELECT 1 FROM admin_deletions WHERE kind = 'user' AND item_id = ?`).bind(body.userId).first()).toBeNull();
 
 		await call('POST', `/provisioning/invites/${body.inviteId}/revoke`, {});
 		await DB().prepare(`INSERT INTO users (id, tenant_id, email, status, created_at, updated_at) VALUES ('usr_took_email', 'default', 'restore@example.com', 'active', 1, 1)`).run();
