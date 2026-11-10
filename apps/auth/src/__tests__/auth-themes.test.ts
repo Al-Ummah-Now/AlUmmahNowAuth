@@ -180,6 +180,13 @@ describe('sanitizeSvg', () => {
 		expect(out).not.toMatch(/<!--|<script|javascript:|vbscript:|data:|expression\(/i);
 		expect(out).toContain('<rect');
 	});
+
+	it('keeps CDATA styles and drops comments, doctype and processing instructions', () => {
+		const out = sanitizeSvg(
+			'<?xml version="1.0"?><!DOCTYPE svg><svg><style><![CDATA[ .a > .b { fill: red } ]]></style><!-- <script>alert(1)</script> --><?pi x?><g class="a"><rect class="b"/></g></svg>'
+		)!;
+		expect(out).toBe('<svg><style> .a > .b { fill: red } </style><g class="a"><rect class="b"/></g></svg>');
+	});
 });
 
 describe('zip', () => {

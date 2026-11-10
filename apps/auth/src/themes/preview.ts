@@ -90,6 +90,6 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
 
 /** No scripts, no form posts: the frame shows the page only. */
 function inert(html: string): string {
-	// drop script elements, then defuse anything left that could still open one
-	return html.replace(/<script\b[\s\S]*?<\/script\s*>/gi, '').replace(/<(?=\/?script)/gi, '&lt;');
+	// every script element becomes an inert <template>: its contents are never run or shown
+	return html.replace(/<(\/?)script\b/gi, '<$1template');
 }
