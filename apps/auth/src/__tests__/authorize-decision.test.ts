@@ -14,6 +14,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import worker from '../index';
+import { generatePKCE } from '@al-ummah-now/openauth/pkce';
 import { setupDatabase } from '../test-setup';
 import { PROFILE, ADMIN, registerTestClients } from './helpers/clients';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
@@ -28,6 +29,9 @@ const ALICE = { email: 'decision-alice@example.com', password: 'Decision-Alice-1
 const BOB = { email: 'decision-bob@example.com', password: 'Decision-Bob-123!' };
 
 type Client = { id: string; redirect: string };
+
+/** PKCE verifier of the latest /authorize per state (profile and admin require PKCE at /token). */
+const verifiers = new Map<string, string>();
 
 class Browser {
 	jar = new Map<string, string>();
@@ -48,7 +52,7 @@ class Browser {
 		return res;
 	}
 	/** GET /authorize for `client`; returns the redirect target. */
-	async authorize(client: Client, prompt?: string) {
+	async authorize(client: Client, prompt?: string, withPkce = true) {
 		const params = new URLSearchParams({
 			client_id: client.id,
 			response_type: 'code',
@@ -57,6 +61,13 @@ class Browser {
 			redirect_uri: client.redirect,
 		});
 		if (prompt) params.set('prompt', prompt);
+		verifiers.delete(client.id);
+		if (withPkce) {
+			const pkce = await generatePKCE();
+			params.set('code_challenge', pkce.challenge);
+			params.set('code_challenge_method', 'S256');
+			verifiers.set(client.id, pkce.verifier);
+		}
 		const res = await this.fetch(`/authorize?${params}`);
 		expect(res.status).toBe(302);
 		return new URL(res.headers.get('location')!, ISSUER);
@@ -91,7 +102,13 @@ async function codeOwner(callback: URL, client: Client): Promise<string> {
 		new Request(`${ISSUER}/token`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/x-www-form-urlencoded', host: new URL(ISSUER).host },
-			body: new URLSearchParams({ grant_type: 'authorization_code', code: code!, redirect_uri: client.redirect, client_id: client.id }).toString(),
+			body: new URLSearchParams({
+				grant_type: 'authorization_code',
+				code: code!,
+				redirect_uri: client.redirect,
+				client_id: client.id,
+				code_verifier: verifiers.get(callback.searchParams.get('state') ?? '') ?? '',
+			}).toString(),
 		}),
 		env as unknown as Env,
 		ctx
@@ -124,6 +141,32 @@ describe('/authorize with an existing browser session (issuer as deployed)', () 
 
 	it('no session -> the sign-in form', async () => {
 		expect((await new Browser().authorize(ADMIN)).pathname).toBe('/password/authorize');
+	});
+
+	it('profile and admin codes are only redeemed with PKCE (pkce-clients.ts, OA-1)', async () => {
+		for (const client of [PROFILE, ADMIN]) {
+			const browser = new Browser();
+			await browser.submitForm(await browser.authorize(PROFILE), ALICE);
+			const callback = await browser.authorize(client, undefined, false);
+			const ctx = createExecutionContext();
+			const res = await worker.fetch(
+				new Request(`${ISSUER}/token`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/x-www-form-urlencoded', host: new URL(ISSUER).host },
+					body: new URLSearchParams({
+						grant_type: 'authorization_code',
+						code: callback.searchParams.get('code')!,
+						redirect_uri: client.redirect,
+						client_id: client.id,
+					}).toString(),
+				}),
+				env as unknown as Env,
+				ctx
+			);
+			await waitOnExecutionContext(ctx);
+			expect(res.status).toBe(400);
+			expect(((await res.json()) as { error_description: string }).error_description).toMatch(/PKCE/);
+		}
 	});
 
 	it('one account -> silent code for it in another app', async () => {
