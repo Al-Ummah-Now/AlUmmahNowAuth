@@ -15,6 +15,11 @@ import { CODE_TTL_SECONDS, recordCode } from '../security/password-attempts';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
 import { Storage, type StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import type { PasswordSendCodeError } from '@al-ummah-now/openauth/provider/password';
+import { getLocaleFromRequest } from '@al-ummah-now/openauth/ui/i18n';
+import { accountStateOf, isRefusedAccountState, readAccountState, type AccountState } from '../security/account-status';
+import { endBrowserSignIns } from '../revocation/lifecycle';
+import { renderAccountSuspendedPage } from '../ui/account-suspended-page';
+import type { Theme } from '@al-ummah-now/openauth/ui/theme';
 
 /**
  * Returned from sendCode when the code could not be delivered. The password
@@ -33,16 +38,26 @@ export interface AuthHandlerContext {
 	};
 	ctx: ExecutionContext;
 	requestId: string;
+	/**
+	 * AUTH_DB: account status (#662) is re-read here when the user service
+	 * returned no status, and a refused user's browser sign-ins are ended.
+	 */
+	db?: D1Database;
+	/** Where the "account suspended" page links back to. */
+	homeUrl?: string;
+	/** This request's sign-in theme: the "account suspended" page matches the sign-in pages. */
+	theme?: Theme;
 }
 
 /**
  * User service interface for looking up users
  */
 export interface UserServiceLike {
+	/** D1-first (D1UserService); `status`/`deleted_at` come from the D1 row. */
 	getUserByEmail(
 		tenantId: string,
 		email: string
-	): Promise<{ id: string; email: string } | null>;
+	): Promise<{ id: string; email: string; status?: string; deleted_at?: number | null } | null>;
 	createUser(
 		tenantId: string,
 		data: { email: string; name?: string | null }
@@ -102,7 +117,63 @@ export function createOnSuccessHandler(
 	rbacService: RBACServiceImpl,
 	handlerCtx: AuthHandlerContext
 ) {
-	const { request, env, ctx, requestId } = handlerCtx;
+	const { request, env, ctx, requestId, db, homeUrl, theme } = handlerCtx;
+
+	/** D1 state of an existing account: the user service's row, else a direct D1 read. */
+	async function stateOf(user: { id: string; status?: string; deleted_at?: number | null }): Promise<AccountState> {
+		if (typeof user.status === 'string') return accountStateOf({ status: user.status, deleted_at: user.deleted_at ?? null });
+		return db ? readAccountState(db, user.id) : 'missing';
+	}
+
+	/**
+	 * A suspended or deleted account gets no tokens (#662). Silent sign-on with
+	 * prompt=none answers the app with login_required (OIDC), so the app shows
+	 * its sign-in button; everything else gets the en/ar "account suspended" page.
+	 */
+	async function refuse(email: string, userId: string, state: AccountState, provider: string): Promise<Response> {
+		logger.warn('[auth] Refused sign-in of a suspended or deleted account', { userId, state, provider });
+		const clientIP = getClientIP(request);
+		ctx.waitUntil(
+			getAuditEmitter().emit(
+				createLoginFailedEvent(email, `account_${state}`, {
+					ipAddress: clientIP,
+					userAgent: request.headers.get('User-Agent') ?? undefined,
+					requestId,
+				})
+			)
+		);
+		trackEvent(env, {
+			event: 'login_failed',
+			userId,
+			email,
+			ipAddress: clientIP,
+			userAgent: request.headers.get('User-Agent') ?? undefined,
+			errorCode: `account_${state}`,
+			success: false,
+		});
+		// A browser session left over (suspended outside the admin API) must not keep trying silent sign-on
+		if (db) {
+			try {
+				await endBrowserSignIns(db, userId);
+			} catch (error) {
+				logger.error('[auth] Could not end the refused account\'s browser sign-ins', {
+					userId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+		const url = new URL(request.url);
+		const redirectUri = url.searchParams.get('redirect_uri');
+		if (provider === 'session' && url.searchParams.get('prompt') === 'none' && redirectUri) {
+			// The issuer validated this redirect_uri before running silent sign-on
+			const location = new URL(redirectUri);
+			location.searchParams.set('error', 'login_required');
+			location.searchParams.set('error_description', 'The account cannot sign in');
+			location.searchParams.set('state', url.searchParams.get('state') || '');
+			return new Response(null, { status: 302, headers: { Location: location.toString(), 'Cache-Control': 'no-store' } });
+		}
+		return renderAccountSuspendedPage(getLocaleFromRequest(request), homeUrl || '/', theme);
+	}
 
 	return async (
 		authCtx: OpenAuthContext,
@@ -126,6 +197,14 @@ export function createOnSuccessHandler(
 			// Look up user via OpenAuth's UserService
 			const tenantId = _tenant?.id || 'default';
 			let existingUser = await userService.getUserByEmail(tenantId, email);
+
+			// Silent sign-on carries the session account's id: a deleted account (hidden
+			// from the email lookup) must be refused, not re-created as a new user (#662)
+			const sessionUserId = value.provider === 'session' ? String(value.properties?.id ?? (value as { id?: unknown }).id ?? '') : '';
+			if (!existingUser && sessionUserId && db) {
+				const state = await readAccountState(db, sessionUserId);
+				if (isRefusedAccountState(state)) return await refuse(email, sessionUserId, state, 'session');
+			}
 
 			if (!existingUser) {
 				// User doesn't exist - this is a registration, create them
@@ -153,6 +232,11 @@ export function createOnSuccessHandler(
 					});
 				}
 			} else {
+				// Suspended or deleted (D1): refused before anything is issued (#662)
+				const state = await stateOf(existingUser);
+				if (isRefusedAccountState(state)) {
+					return await refuse(email, existingUser.id, state, String(value.provider ?? ''));
+				}
 				// User exists - update last login timestamp
 				await userService.updateLastLogin(tenantId, existingUser.id);
 			}

@@ -318,13 +318,15 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         })).compiled
       : compileBuiltin(BUILTIN_DEFAULT_THEME, issuerOrigin)!;
 
+    const openauthTheme = openauthThemeFor(theme);
     const { app } = createMultiTenantIssuer({
       // Pin the issuer: used for the `iss` claim, discovery documents and token
       // verification instead of the request Host / X-Forwarded-* headers.
       issuer: env.OPENAUTH_ISSUER || undefined,
       // Refresh tokens of revoked sign-ins read as missing; old sessions get
       // the current access-token lifetime on their next refresh (#437)
-      storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, accessTtl }),
+      // Codes and device grants of suspended/deleted accounts (D1) are refused (#662)
+      storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, accessTtl, db: env.AUTH_DB }),
       ...(accessTtl ? { ttl: { access: accessTtl } } : {}),
       // Codes of these clients are redeemed only with PKCE (OA-1, see pkce-clients.ts)
       pkce: { requireForCodeExchange: PKCE_REQUIRED_CLIENTS },
@@ -374,15 +376,19 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         }),
       },
       // Per request: OpenAuth renders each page with this request's theme and ?lang=
-      theme: openauthThemeFor(theme),
+      theme: openauthTheme,
       // Every refresh: a deleted or suspended user is refused; the issuer then
       // re-reads the roles from RBAC, so refreshed tokens carry current roles
       onRefresh: createRefreshCheck(userService),
+      // Suspended/deleted accounts (D1) are refused with an en/ar page (#662)
       onSuccess: createOnSuccessHandler(userService, rbacService, {
         request,
         env,
         ctx,
         requestId,
+        db: env.AUTH_DB,
+        homeUrl: signInFallbackUrl(env),
+        theme: openauthTheme,
       }),
     });
 

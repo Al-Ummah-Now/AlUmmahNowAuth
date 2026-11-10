@@ -130,6 +130,21 @@ DELETE FROM user WHERE email = 'user@example.com';
 
 **Important**: Deletion is permanent and cannot be undone. Ensure you have proper backups.
 
+### Suspending Users
+
+`POST /admin/users/:id/suspend` sets `users.status = 'suspended'` in D1, signs the user out everywhere (revocation list) and ends their browser sessions. `POST /admin/users/:id/unsuspend` reinstates them.
+
+A suspended or deleted account (D1 `users.status` is not `active`, or `deleted_at` is set) gets no tokens by any way in. D1 is read on every check, never a KV copy (`apps/auth/src/security/account-status.ts`):
+
+| Way in | Where it is refused | What the user or app sees |
+|---|---|---|
+| Password sign-in, email-code sign-in/reset, silent single sign-on, device `/activate` sign-in | the issuer's `onSuccess` (`handlers/auth-handlers.ts`) | the "This account is suspended" page (en/ar, in the sign-in theme); silent sign-on with `prompt=none` redirects to the app with `error=login_required` |
+| Authorization code redeemed at `/token` (code minted before the suspension) | issuer storage guard (`revocation/token-gate.ts`) | `invalid_grant` |
+| Refresh token grant | `onRefresh` (`handlers/refresh-check.ts`) | `invalid_grant`; the token family is revoked, so it stays refused after reinstatement |
+| Device code grant (TV polling `/token`) | issuer storage guard | `access_denied` |
+
+Reinstated users sign in again normally. Refresh tokens and codes refused while suspended don't come back.
+
 ## Authentication Flow
 
 ### OAuth 2.0 Authorization Code Flow
