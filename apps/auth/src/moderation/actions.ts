@@ -8,8 +8,9 @@
  * The admin routes sign the user out in revokeOnAdminUserAction; here the same
  * revokeUser + endBrowserSignIns pair runs directly.
  */
-import { createUserService, D1UserAdapter } from '@al-ummah-now/openauth';
+import { D1UserAdapter } from '@al-ummah-now/openauth';
 import { authStorage } from '../storage/auth-storage';
+import { D1UserService } from '../services/d1-user-service';
 import { revokeUser, type RevocationReason } from '../revocation/revocation-list';
 import { endAllSessions, endBrowserSignIns } from '../revocation/lifecycle';
 import type { ModerationAction } from './model';
@@ -40,9 +41,13 @@ function classify(action: AutomaticAction, error: unknown): ActionOutcome {
 }
 
 export function createActionRunner(env: Env): ActionRunner {
-	const userService = createUserService({
-		storage: authStorage(env),
-		d1Adapter: new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' }),
+	// The same user service as the admin routes (index.ts): D1 is the source of truth (AU-3).
+	// OpenAuth's createUserService reads users from KV only, so it missed accounts that
+	// exist only in D1 and a delete "succeeded" as already deleted.
+	const userService = new D1UserService({
+		db: env.AUTH_DB,
+		adapter: new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' }),
+		legacy: authStorage(env),
 	});
 	return async (action, userId, tenantId) => {
 		try {
