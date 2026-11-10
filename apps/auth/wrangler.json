@@ -42,7 +42,12 @@
       {
         "binding": "AUDIT_QUEUE",
         "queue": "audit-events"
-      }
+      },
+      { "binding": "MODERATION_QUEUE", "queue": "moderation-actions-dev" }
+    ],
+    "consumers": [
+      { "queue": "moderation-actions-dev", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "moderation-actions-dev-dlq" },
+      { "queue": "moderation-actions-dev-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
     ]
   },
   "vars": {
@@ -112,7 +117,12 @@
           {
             "binding": "AUDIT_QUEUE",
             "queue": "audit-events"
-          }
+          },
+          { "binding": "MODERATION_QUEUE", "queue": "moderation-actions" }
+        ],
+        "consumers": [
+          { "queue": "moderation-actions", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "moderation-actions-dlq" },
+          { "queue": "moderation-actions-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
         ]
       },
       "vars": {
@@ -204,7 +214,12 @@
           {
             "binding": "AUDIT_QUEUE",
             "queue": "audit-events-stage"
-          }
+          },
+          { "binding": "MODERATION_QUEUE", "queue": "moderation-actions-stage" }
+        ],
+        "consumers": [
+          { "queue": "moderation-actions-stage", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "moderation-actions-stage-dlq" },
+          { "queue": "moderation-actions-stage-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
         ]
       },
       "vars": {

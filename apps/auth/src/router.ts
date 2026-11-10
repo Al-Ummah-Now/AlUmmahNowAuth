@@ -34,7 +34,6 @@ import { requireAdmin } from './middleware/admin-auth';
 import { verifyAdminAuth } from './auth-middleware';
 import { routeModerationClient } from './moderation/client-routes';
 import { moderationAdminRoutes } from './moderation/admin-routes';
-import { createRouteExecutor } from './moderation/executor';
 
 const methodNotAllowed = (allow: string) =>
 	new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: { Allow: allow, 'Content-Type': 'application/json' } });
@@ -717,11 +716,9 @@ async function routeAdminPaths(rctx: RouterContext): Promise<RouteResult> {
 
 /**
  * Moderation requests queue and decisions (/admin/moderation-requests/*). An
- * approval runs the action through this same router (the existing admin user
- * routes) with the deciding admin's credentials.
+ * approval queues the action (moderation/queue.ts).
  */
 async function handleAdminModerationRoutes(rctx: RouterContext): Promise<RouteResult> {
-	const executor = createRouteExecutor(rctx.request, (inner) => routeRequest({ ...rctx, request: inner, url: new URL(inner.url) }));
-	const response = await moderationAdminRoutes(executor).fetch(rctx.request, rctx.env, rctx.ctx);
+	const response = await moderationAdminRoutes().fetch(rctx.request, rctx.env, rctx.ctx);
 	return addSecurityHeaders(response, rctx.isProduction);
 }

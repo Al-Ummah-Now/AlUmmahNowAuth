@@ -4,7 +4,7 @@
  * The videos admin's client files requests over the client API (HTTP Basic,
  * E2E_MODERATION_CLIENT_SECRET = the QA secret of client d7464de8-…); an auth
  * admin decides in the admin dashboard; the client polls the status.
- *   approve "sign out everywhere" -> actioned, the user's sign-ins end
+ *   approve "sign out everywhere" -> queued -> actioned, the user's sign-ins end
  *   reject with a note           -> rejected, the client sees the note
  * The subject user is created for the test and deleted at the end.
  */
@@ -64,7 +64,7 @@ async function decide(page: Page, requestId: string, button: string, note?: stri
 }
 
 test.describe('Moderation requests', () => {
-	test.describe.configure({ timeout: 150_000, mode: 'serial' });
+	test.describe.configure({ timeout: 210_000, mode: 'serial' });
 	test.skip(!CLIENT_SECRET, 'E2E_MODERATION_CLIENT_SECRET is not set');
 
 	test('approve: the queue shows it, approval runs the action, the client sees actioned', async ({ page, browser, request }) => {
@@ -81,7 +81,9 @@ test.describe('Moderation requests', () => {
 			await expect(row).toContainText('Sign out everywhere');
 
 			await decide(page, id, 'Approve and run', 'E2E approved');
-			await expect(page.getByTestId('moderation-status')).toHaveText('Actioned', { timeout: 20000 });
+			// The action runs from the moderation-actions queue; the page refreshes itself while it is queued
+			await expect(page.getByTestId('moderation-status')).toHaveText('Actioned', { timeout: 90000 });
+			await expect(page.getByTestId('moderation-action-failed')).toHaveCount(0);
 			await expect(page.getByTestId('moderation-history')).toContainText('actioned');
 
 			const seen = await clientStatus(request, id);

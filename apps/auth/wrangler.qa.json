@@ -43,7 +43,12 @@
       {
         "binding": "AUDIT_QUEUE",
         "queue": "audit-events-qa"
-      }
+      },
+      { "binding": "MODERATION_QUEUE", "queue": "moderation-actions-qa" }
+    ],
+    "consumers": [
+      { "queue": "moderation-actions-qa", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "moderation-actions-qa-dlq" },
+      { "queue": "moderation-actions-qa-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
     ]
   },
   "vars": {

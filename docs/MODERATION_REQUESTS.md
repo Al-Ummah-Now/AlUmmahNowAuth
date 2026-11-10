@@ -140,19 +140,19 @@ Auth admin identities are never sent to the client (`by: "auth_admin"`).
 | --- | --- | --- |
 | `pending` | waiting for an auth admin | |
 | `info_requested` | an auth admin asked for more (see `decision_note`); answer with `/info` | |
-| `approved` | approved, action not run yet: `other` (handled by hand), or the action failed and will be retried | |
+| `approved` | approved; the action is queued or retrying, failed (flagged for an auth admin), or is `other` (handled by hand) | |
 | `rejected` | rejected; `decision_note` says why | yes |
 | `actioned` | the action ran (or, for `other`, was done by hand) | yes |
 
 ```
-pending ──approve──▶ approved ──(action runs)──▶ actioned
+pending ──approve──▶ approved ──(queued action runs)──▶ actioned
    │  ▲                 │  └──mark-actioned (other / failed action)──▶ actioned
    │  └─/info── info_requested ◀──request-info── pending
    └──reject──▶ rejected ◀──reject── info_requested, approved
 ```
 
 History event types: `created`, `info_requested`, `info_provided`, `approved`,
-`rejected`, `actioned`, `action_failed`.
+`rejected`, `action_requeued`, `actioned`, `action_failed`.
 
 ## Auth admin API
 
@@ -164,36 +164,66 @@ existing **Admin** and **Super Admin** roles by migration 0022; no new roles).
 | --- | --- | --- |
 | GET | `/admin/moderation-requests` | queue; `status`, `client_id`, `action`, `subject_user_id`, `from`, `to` (YYYY-MM-DD), `limit`, `offset`; returns `requests` (with `subject`, `client_name`), `total`, `open`, `clients` |
 | GET | `/admin/moderation-requests/:id` | `request` (with full history), `subject` (auth user), `prior_requests` for the same user |
-| POST | `/admin/moderation-requests/:id/approve` | `{ note? }`; approves and runs the action |
+| POST | `/admin/moderation-requests/:id/approve` | `{ note? }`; approves and queues the action (202) |
 | POST | `/admin/moderation-requests/:id/reject` | `{ note }` required |
 | POST | `/admin/moderation-requests/:id/request-info` | `{ note }` required |
-| POST | `/admin/moderation-requests/:id/execute` | runs the action of an approved request again (after a failure) |
+| POST | `/admin/moderation-requests/:id/execute` | queues a failed action again (202); 409 while it is queued |
 | POST | `/admin/moderation-requests/:id/mark-actioned` | closes an approved `other` request, or one whose action failed, as done by hand |
+
+The queue (`GET`) also takes `needs_attention=1` and returns `needs_attention` (the count of flagged requests).
+Each request carries `execution: { status, attempts, updated_at, needs_attention }`.
 
 A decision that does not fit the current status answers 409 `invalid_state`
 (two admins cannot both decide: updates are conditional on the status).
 
-### What approval runs
+### What approval runs: the moderation-actions queue
 
-The action goes through auth's **existing** admin routes, with the deciding
-admin's own credentials (`moderation/executor.ts`), so guards, sign-out
-everywhere (#437) and audit events are the same as on the Users/Sessions pages:
+Approving (or **Run action again**) does not run the action in the request: it
+**queues** it (`moderation/queue.ts`) and answers 202 with `execution.status: "queued"`.
+The auth worker consumes the queue and runs the same account code as the
+admin's own buttons (`moderation/actions.ts`):
 
-| action | route |
+| action | runs | same as |
+| --- | --- | --- |
+| `suspend_account` | `userService.suspendUser` + sign-out everywhere | `POST /admin/users/:id/suspend` |
+| `delete_account` | `userService.deleteUser` + sign-out everywhere (an account already gone counts as done) | `DELETE /admin/users/:id` |
+| `revoke_sessions` | `endAllSessions` (tokens, revocation list, every browser sign-in) | `DELETE /admin/users/:id/sessions` |
+| `require_password_reset` | `userService.forcePasswordReset` + sign-out everywhere | `POST /admin/users/:id/force-password-reset` |
+| `other` | nothing is queued; mark actioned when done | |
+
+| Outcome | What happens |
 | --- | --- |
-| `suspend_account` | `POST /admin/users/:id/suspend` |
-| `delete_account` | `DELETE /admin/users/:id` |
-| `revoke_sessions` | `DELETE /admin/users/:id/sessions` |
-| `require_password_reset` | `POST /admin/users/:id/force-password-reset` |
-| `other` | nothing; mark actioned when done |
+| ok | `actioned`, `execution.status: "done"` |
+| transient error | `execution.status: "retrying"`, `action_error` set; retried after 30 s, 60 s, 2, 4, 8, 15 min (`max_retries` 6) |
+| permanent error (user gone, invalid) or the last retry fails | **flagged**: `execution.status: "failed"`, `needs_attention: true`, an `action_failed` event, an ERROR audit event |
+| the handler itself keeps crashing | the message lands in `moderation-actions[-env]-dlq`, whose consumer flags the request the same way |
 
-If the route fails the request stays `approved` with `action_error`, the API
-answers 502 `action_failed`, and the admin can **Run action again** or reject.
+Flagged requests show a banner and an **Action failed** badge in the queue (filter
+**Needs attention**, `?needs_attention=1`) and a "Needs attention" alert on the
+request. The admin can **Run action again** (re-queued, attempts reset), **Mark
+actioned** (done by hand) or **Reject**. A request rejected after its action was
+queued is skipped by the consumer.
+
+| Env | Queue | DLQ | Consumer |
+| --- | --- | --- | --- |
+| qa | `moderation-actions-qa` | `moderation-actions-qa-dlq` | `al-ummah-now-auth-qa` (registered by its `wrangler deploy`) |
+| stage | `moderation-actions-stage` | `moderation-actions-stage-dlq` | `al-ummah-now-auth-stage` |
+| production | `moderation-actions` | `moderation-actions-dlq` | `al-ummah-now-auth` |
+
+Stage and production are released with `wrangler versions upload`, which does not
+register queue consumers; they were registered once:
+
+```bash
+npx wrangler queues consumer add moderation-actions[-stage] al-ummah-now-auth[-stage] \
+  --batch-size 5 --batch-timeout 5 --message-retries 6 --retry-delay-secs 30 \
+  --dead-letter-queue moderation-actions[-stage]-dlq
+npx wrangler queues consumer add moderation-actions[-stage]-dlq al-ummah-now-auth[-stage] \
+  --batch-size 5 --batch-timeout 5 --message-retries 3
+```
 
 ## Audit
 
 Every step is in auth's audit log (`audit_events`, Audit Logs page):
 `moderation.request.created`, `.info_requested`, `.info_provided`, `.approved`,
-`.rejected`, `.actioned`, `.action_failed`, with the request id, target user,
-action, client and note. The executed action adds its own events
-(`user.suspended`, `admin.sessions.terminated_all`, …).
+`.rejected`, `.actioned`, `.action_failed` (ERROR, `needsAttention: true`), with
+the request id, target user, action, client and note.

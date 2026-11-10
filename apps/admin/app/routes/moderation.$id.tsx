@@ -1,5 +1,6 @@
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { Link, useFetcher, useLoaderData } from "react-router";
+import { Link, useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { useEffect } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -70,14 +71,24 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 }
 
 const CONFIRM: Partial<Record<ModerationDecision, string>> = {
-  approve: "Approve this request? Its action runs on the auth account right away.",
-  execute: "Run the action on the auth account now?",
+  approve: "Approve this request? Its action is queued and runs on the auth account within seconds.",
+  execute: "Queue the action on the auth account again?",
 };
 
 export default function ModerationRequestPage() {
   const { detail, error, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher<{ ok: boolean; error?: string; status?: string }>();
   const busy = fetcher.state !== "idle";
+  const revalidator = useRevalidator();
+  const running = detail?.request.status === "approved" && (detail.request.execution?.status === "queued" || detail.request.execution?.status === "retrying");
+  // While the action is queued, refresh every 5 s until it is done or flagged
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => {
+      if (revalidator.state === "idle") void revalidator.revalidate();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [running, revalidator]);
 
   if (!detail) {
     return (
@@ -91,8 +102,9 @@ export default function ModerationRequestPage() {
   const { request: r, subject, prior_requests } = detail;
   const open = r.status === "pending" || r.status === "info_requested";
   const automatic = r.action !== "other";
-  const canExecute = r.status === "approved" && automatic;
-  const canMarkActioned = r.status === "approved" && (!automatic || !!r.action_error);
+  const failed = r.status === "approved" && !!r.execution?.needs_attention;
+  const canExecute = failed && automatic;
+  const canMarkActioned = r.status === "approved" && (!automatic || failed);
 
   const submit = (decision: ModerationDecision) => (event: React.MouseEvent<HTMLButtonElement>) => {
     const message = CONFIRM[decision];
@@ -116,9 +128,17 @@ export default function ModerationRequestPage() {
       {fetcher.data?.error && (
         <div role="alert" className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">{fetcher.data.error}</div>
       )}
-      {r.action_error && (
-        <div role="alert" className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
-          The action did not run: {r.action_error}
+      {failed && (
+        <div role="alert" data-testid="moderation-action-failed" className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600">
+          <div className="font-medium">Needs attention: the action failed after {r.execution.attempts} attempt{r.execution.attempts === 1 ? "" : "s"}.</div>
+          {r.action_error && <div className="text-sm mt-1">{r.action_error}</div>}
+          <div className="text-sm mt-1">Run it again, close it as done by hand, or reject the request.</div>
+        </div>
+      )}
+      {running && (
+        <div role="status" data-testid="moderation-action-running" className="mb-4 p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg text-sky-700">
+          The action is {r.execution.status === "retrying" ? `being retried (attempt ${r.execution.attempts + 1})` : "queued"} and will run shortly.
+          {r.execution.status === "retrying" && r.action_error && <div className="text-sm mt-1">Last error: {r.action_error}</div>}
         </div>
       )}
 
@@ -168,7 +188,7 @@ export default function ModerationRequestPage() {
                 <CardTitle className="text-base">Decide</CardTitle>
                 <CardDescription>
                   {automatic
-                    ? "Approve runs the action through the same user actions as the Users and Sessions pages."
+                    ? "Approve queues the action; it runs with the same account code as the Users and Sessions pages and is retried on failure."
                     : "\"Other\" has no automatic action: approve, handle it, then mark it actioned."}
                 </CardDescription>
               </CardHeader>
@@ -197,7 +217,7 @@ export default function ModerationRequestPage() {
                       </>
                     )}
                     {canExecute && (
-                      <Button type="submit" name="_action" value="execute" disabled={busy} onClick={submit("execute")}>Run action again</Button>
+                      <Button type="submit" name="_action" value="execute" disabled={busy} onClick={submit("execute")} data-testid="moderation-run-again">Run action again</Button>
                     )}
                     {canMarkActioned && (
                       <Button type="submit" name="_action" value="mark-actioned" variant="outline" disabled={busy}>Mark actioned</Button>

@@ -1,26 +1,25 @@
 /**
  * Moderation requests: the auth admin API (docs/MODERATION_REQUESTS.md).
  *
- *   GET  /admin/moderation-requests                  queue (status, client_id, action, subject_user_id, from, to)
+ *   GET  /admin/moderation-requests                  queue (status, client_id, action, subject_user_id, needs_attention, from, to)
  *   GET  /admin/moderation-requests/:id              request, history, the user, prior requests for the user
- *   POST /admin/moderation-requests/:id/approve      approve and run the action (note optional)
+ *   POST /admin/moderation-requests/:id/approve      approve and queue the action (note optional)
  *   POST /admin/moderation-requests/:id/reject       reject (note required)
  *   POST /admin/moderation-requests/:id/request-info ask the client for more (note required)
- *   POST /admin/moderation-requests/:id/execute      retry a failed action of an approved request
+ *   POST /admin/moderation-requests/:id/execute      queue a failed action again
  *   POST /admin/moderation-requests/:id/mark-actioned an approved request was handled by hand
  *
  * Admin only (requireAdmin) and the moderation_requests:manage permission in
- * auth's RBAC (granted to Admin and Super Admin by migration 0022). The action
- * runs through auth's existing admin user routes with the deciding admin's own
- * credentials (ModerationExecutor), so it is the same code, guard, sign-out and
- * audit trail as the Users and Sessions pages.
+ * auth's RBAC (granted to Admin and Super Admin by migrations 0022). The action
+ * runs from the moderation-actions queue with retries (moderation/queue.ts) and
+ * the same account code as the Users and Sessions pages (moderation/actions.ts);
+ * a failure that outlives the retries flags the request ("needs attention").
  */
 import { Hono } from 'hono';
 import { requireAdmin } from '../middleware/admin-auth';
 import { rateLimit } from '../middleware/rate-limit';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
-import { logger } from '../logger';
 import {
 	DecisionSchema,
 	MODERATION_ACTIONS,
@@ -31,18 +30,9 @@ import {
 	isAutomatic,
 	validate,
 	type Decision,
-	type ModerationAction,
 } from './model';
 import { ModerationStore, adminView, type ModerationRequestRow } from './store';
-
-export interface ExecutionResult {
-	ok: boolean;
-	status: number;
-	body: unknown;
-}
-
-/** Runs an automatic action against the user; the router builds it from auth's own routes. */
-export type ModerationExecutor = (action: Exclude<ModerationAction, 'other'>, userId: string, context: { requestId: string; note: string | null }) => Promise<ExecutionResult>;
+import { enqueueExecution } from './queue';
 
 type AdminUser = { userId: string; email: string; roles: string[] };
 type Vars = { adminUser: AdminUser | null; tenantId: string; browserSession: unknown; activeAccount: unknown; scopes: string[]; token: unknown; clientId: string };
@@ -63,7 +53,7 @@ export async function hasModerationPermission(db: D1Database, userId: string): P
 	return !!row;
 }
 
-export function moderationAdminRoutes(executor: ModerationExecutor) {
+export function moderationAdminRoutes() {
 	const app = new Hono<{ Bindings: Env; Variables: Vars }>().basePath('/admin/moderation-requests');
 
 	app.use('*', requireAdmin());
@@ -95,16 +85,23 @@ export function moderationAdminRoutes(executor: ModerationExecutor) {
 			action: q.action,
 			clientId: q.client_id,
 			subjectUserId: q.subject_user_id,
+			needsAttention: q.needs_attention === '1' || q.needs_attention === 'true',
 			from: toMs(q.from),
 			to: toMs(q.to, true),
 			limit,
 			offset,
 		});
-		const [clients, users, open] = await Promise.all([clientNames(c.env.AUTH_DB, rows), userSummaries(c.env.AUTH_DB, rows.map((r) => r.subject_user_id)), store.openCount()]);
+		const [clients, users, open, needsAttention] = await Promise.all([
+			clientNames(c.env.AUTH_DB, rows),
+			userSummaries(c.env.AUTH_DB, rows.map((r) => r.subject_user_id)),
+			store.openCount(),
+			store.needsAttentionCount(),
+		]);
 		return c.json({
 			requests: rows.map((r) => ({ ...adminView(r), client_name: clients.get(r.client_id) ?? null, subject: users.get(r.subject_user_id) ?? null })),
 			total,
 			open,
+			needs_attention: needsAttention,
 			limit,
 			offset,
 			clients: await allModerationClients(c.env.AUTH_DB),
@@ -146,9 +143,12 @@ export function moderationAdminRoutes(executor: ModerationExecutor) {
 			const row = await store.get(c.req.param('id'));
 			if (!row) return c.json({ error: 'not_found' }, 404);
 			if (!canTransition(row.status, decision)) return conflict(c, row);
-			if (decision === 'mark_actioned' && isAutomatic(row.action) && !row.action_error) {
-				// Automatic actions are marked by running them (execute); only a failed one may be closed by hand
-				return c.json({ error: 'invalid_state', error_description: 'Run the action (execute) instead' }, 409);
+			if (decision === 'mark_actioned' && isAutomatic(row.action) && row.execution_status !== 'failed') {
+				// Automatic actions are marked by running them; only a failed one may be closed by hand
+				return c.json({ error: 'invalid_state', error_description: 'The action runs from the queue; only a failed one can be closed by hand' }, 409);
+			}
+			if (decision === 'execute' && (!isAutomatic(row.action) || (row.execution_status !== 'failed' && row.execution_status !== null))) {
+				return c.json({ error: 'invalid_state', error_description: `The action is ${row.execution_status ?? 'not automatic'}; only a failed one can be run again` }, 409);
 			}
 
 			const actor = { type: 'admin' as const, id: admin.userId, name: admin.email };
@@ -191,12 +191,13 @@ export function moderationAdminRoutes(executor: ModerationExecutor) {
 					action_error: null,
 				});
 				if (!updated) return conflict(c, (await store.get(row.id))!);
+				if (updated.execution_status) await store.setExecution(row.id, 'done');
 				await store.addEvent(row.id, 'actioned', actor, note, { manual: true });
 				await audit(AuditEventType.MODERATION_REQUEST_ACTIONED, true, { manual: true });
 				return respond(c, store, updated.id);
 			}
 
-			// approve, execute
+			// approve, execute: queue the action (moderation/queue.ts)
 			let current: ModerationRequestRow = row;
 			if (decision === 'approve') {
 				const approved = await store.transition(row.id, 'approve', 'approved', { decision_note: note, decided_by: admin.userId, decided: true, action_error: null });
@@ -206,26 +207,13 @@ export function moderationAdminRoutes(executor: ModerationExecutor) {
 				await audit(AuditEventType.MODERATION_REQUEST_APPROVED, true, {});
 			}
 			if (!isAutomatic(current.action)) return respond(c, store, current.id);
-
-			let result: ExecutionResult;
-			try {
-				result = await executor(current.action as Exclude<ModerationAction, 'other'>, current.subject_user_id, { requestId: current.id, note });
-			} catch (error) {
-				result = { ok: false, status: 500, body: { error: error instanceof Error ? error.message : String(error) } };
+			if (decision === 'execute') await store.addEvent(current.id, 'action_requeued', actor, note);
+			const queued = await enqueueExecution(c.env, store, current, admin.userId);
+			if (!queued) {
+				const failed = (await store.get(current.id))!;
+				return respond(c, store, current.id, 502, { error: 'action_failed', error_description: failed.action_error ?? 'Could not queue the action' });
 			}
-			if (!result.ok) {
-				const message = `${current.action} failed (${result.status}): ${describe(result.body)}`;
-				logger.warn('[moderation] action failed', { requestId: current.id, status: result.status });
-				await store.recordActionError(current.id, message);
-				await store.addEvent(current.id, 'action_failed', actor, message, { status: result.status });
-				await audit(AuditEventType.MODERATION_REQUEST_ACTION_FAILED, false, { error: message }, AuditEventSeverity.ERROR);
-				return respond(c, store, current.id, 502, { error: 'action_failed', error_description: message });
-			}
-			const done = await store.transition(current.id, 'execute', 'actioned', { actioned: true, action_result: result.body ?? null, action_error: null });
-			if (!done) return conflict(c, (await store.get(current.id))!);
-			await store.addEvent(current.id, 'actioned', actor, null, { status: result.status });
-			await audit(AuditEventType.MODERATION_REQUEST_ACTIONED, true, { result: result.body ?? null }, AuditEventSeverity.CRITICAL);
-			return respond(c, store, current.id);
+			return respond(c, store, current.id, 202);
 		});
 
 	decisionRoute('approve', 'approve');
@@ -235,14 +223,6 @@ export function moderationAdminRoutes(executor: ModerationExecutor) {
 	decisionRoute('mark-actioned', 'mark_actioned');
 
 	return app;
-}
-
-function describe(body: unknown): string {
-	if (body && typeof body === 'object') {
-		const b = body as { error?: unknown; message?: unknown; error_description?: unknown };
-		return String(b.error_description ?? b.message ?? b.error ?? JSON.stringify(body)).slice(0, 500);
-	}
-	return String(body ?? '').slice(0, 500);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

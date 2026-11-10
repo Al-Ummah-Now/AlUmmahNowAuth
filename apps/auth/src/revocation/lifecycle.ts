@@ -4,6 +4,7 @@
 import type { MiddlewareHandler } from 'hono';
 import { logger } from '../logger';
 import { revokeUser, type RevocationReason } from './revocation-list';
+import { revokeUserTokens } from '../custom/token-revocation';
 
 /**
  * Admin user API actions that must sign the user out everywhere. The router
@@ -62,4 +63,26 @@ export async function revokeOnPasswordChange(db: D1Database, kv: KVNamespace | u
 	}
 	if (!results?.length) logger.warn('[revocation] Password changed for an email with no D1 user');
 	return results?.length ?? 0;
+}
+
+/**
+ * Signs a user out everywhere: their refresh tokens, every access token issued so
+ * far (revocation list) and every browser sign-in. Used by the admin "terminate all
+ * sessions" route and by approved moderation requests (moderation/actions.ts).
+ */
+export async function endAllSessions(
+	db: D1Database,
+	kv: KVNamespace | undefined,
+	userId: string
+): Promise<{ sessionsTerminated: number; tokensRevoked: number }> {
+	const countResult = await db
+		.prepare('SELECT COUNT(*) as count FROM account_sessions WHERE user_id = ? AND is_active = 1')
+		.bind(userId)
+		.first<{ count: number }>();
+	// refresh_tokens has no session link (no session_id column): revoke by user
+	const { revoked } = await revokeUserTokens(userId, db);
+	await revokeUser(kv, userId, 'admin_sessions_revoked');
+	// Or /authorize (prompt=none) would sign the user straight back in from the SSO session
+	await endBrowserSignIns(db, userId);
+	return { sessionsTerminated: countResult?.count ?? 0, tokensRevoked: revoked };
 }
