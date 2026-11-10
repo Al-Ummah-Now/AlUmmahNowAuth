@@ -130,7 +130,15 @@ export interface InviteUser {
 /** Same rule as D1UserService and sign-in: lower case, trimmed. Gmail dots and +tags are distinct addresses. */
 export const normalizeInviteEmail = (email: string) => email.toLowerCase().trim();
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** One @, something before it, a dotted domain after it, no spaces; linear time (no backtracking regex). */
+export function isEmailAddress(value: string): boolean {
+	if (value.length > 254 || /\s/.test(value)) return false;
+	const at = value.indexOf('@');
+	if (at < 1 || at !== value.lastIndexOf('@')) return false;
+	const domain = value.slice(at + 1);
+	const dot = domain.lastIndexOf('.');
+	return dot > 0 && dot < domain.length - 1;
+}
 
 export function statusOf(row: Pick<InviteRow, 'deleted_at' | 'accepted_at' | 'expires_at'>, now: number): InviteStatus {
 	if (row.deleted_at !== null) return 'revoked';
@@ -289,7 +297,7 @@ export class InviteService {
 		actor: InviteActor
 	): Promise<{ invite: Invite; user: InviteUser; token: string | null; created: boolean }> {
 		const email = normalizeInviteEmail(String(input.email ?? ''));
-		if (!EMAIL_RE.test(email) || email.length > 254) throw new InviteError(400, 'invalid_email', 'A valid email is required');
+		if (!isEmailAddress(email)) throw new InviteError(400, 'invalid_email', 'A valid email is required');
 		if (!USER_ID_RE.test(String(input.userId ?? ''))) throw new InviteError(400, 'invalid_request', 'userId must be usr_ followed by 32 hex digits');
 		if (!INVITE_ID_RE.test(String(input.inviteId ?? ''))) throw new InviteError(400, 'invalid_request', 'inviteId must be inv_ followed by 32 hex digits');
 		const name = cleanText(input.name, 120);
