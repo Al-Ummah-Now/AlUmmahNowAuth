@@ -3,6 +3,7 @@ import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react
 import { useLoaderData, useFetcher, useSearchParams } from "react-router";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
+import { confirmCopy } from "../lib/confirm-copy";
 import { Plus, Key, Trash2, RefreshCw, Copy, Check, Globe, Lock, Settings } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -254,6 +255,7 @@ export default function ClientsPage() {
   const [searchParams] = useSearchParams();
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
+  const copy = confirmCopy(deleteLang);
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<OAuthClient | null>(null);
   const [createdClientId, setCreatedClientId] = useState<string | null>(null);
@@ -763,10 +765,12 @@ export default function ClientsPage() {
       {/* Rotating ends the old secret at once: ask first */}
       <ConfirmDialog
         open={!!rotating}
-        title="Rotate the client secret?"
-        description={rotating ? `The current secret of "${rotating.name}" (${rotating.client_id}) stops working at once. The app cannot get tokens until it is given the new secret.` : ""}
-        confirmLabel="Rotate secret"
-        cancelLabel="Cancel"
+        title={copy.rotateSecret.title}
+        description={rotating ? copy.rotateSecret.body(rotating.name, rotating.client_id) : ""}
+        confirmLabel={copy.rotateSecret.confirm}
+        cancelLabel={copy.cancel}
+        dir={dirOf(deleteLang)}
+        lang={deleteLang}
         onCancel={() => setRotating(null)}
         onConfirm={() => {
           if (rotating) handleRotateSecret(rotating);

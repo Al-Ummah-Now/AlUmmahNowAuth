@@ -1,5 +1,5 @@
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { Link, useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { Link, useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -8,6 +8,7 @@ import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import { AdminLayout } from "../components/admin-layout";
 import { ConfirmDialog } from "../components/confirm-dialog";
+import { confirmCopy, dirOf, langOf } from "../lib/confirm-copy";
 import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import {
@@ -72,18 +73,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 }
 
 /** Decisions that run the action on the auth account ask first, in the page. */
-const CONFIRM: Partial<Record<ModerationDecision, { title: string; description: string; confirmLabel: string }>> = {
-  approve: {
-    title: "Approve this request?",
-    description: "Its action is queued and runs on the auth account within seconds.",
-    confirmLabel: "Approve",
-  },
-  execute: {
-    title: "Run the action again?",
-    description: "The action is queued on the auth account again.",
-    confirmLabel: "Run action again",
-  },
-};
+const CONFIRMED: ReadonlySet<ModerationDecision> = new Set<ModerationDecision>(["approve", "execute"]);
 
 export default function ModerationRequestPage() {
   const { detail, error, user, authServerUrl } = useLoaderData<LoaderData>();
@@ -92,6 +82,9 @@ export default function ModerationRequestPage() {
   const revalidator = useRevalidator();
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, setPending] = useState<ModerationDecision | null>(null);
+  const [searchParams] = useSearchParams();
+  const lang = langOf(searchParams);
+  const copy = confirmCopy(lang);
   const running = detail?.request.status === "approved" && (detail.request.execution?.status === "queued" || detail.request.execution?.status === "retrying");
   // While the action is queued, refresh every 5 s until it is done or flagged
   useEffect(() => {
@@ -120,7 +113,7 @@ export default function ModerationRequestPage() {
 
   // Approving or re-running asks in the page dialog first; the form is sent from there
   const submit = (decision: ModerationDecision) => (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (!CONFIRM[decision]) return;
+    if (!CONFIRMED.has(decision)) return;
     event.preventDefault();
     setPending(decision);
   };
@@ -131,7 +124,7 @@ export default function ModerationRequestPage() {
     fetcher.submit(data, { method: "post" });
     setPending(null);
   };
-  const pendingCopy = pending ? CONFIRM[pending] : undefined;
+  const pendingCopy = pending === "approve" || pending === "execute" ? copy[pending] : undefined;
   // Deleting an account is high impact: the admin types the account's email (or id)
   const deletesAccount = r.action === "delete_account";
 
@@ -258,11 +251,13 @@ export default function ModerationRequestPage() {
               title={pendingCopy.title}
               description={
                 deletesAccount
-                  ? `${pendingCopy.description} This deletes the account of ${subject?.email ?? r.subject_user_id}: it is signed out everywhere and moves to Recently deleted, restorable for 30 days.`
-                  : pendingCopy.description
+                  ? `${pendingCopy.body} ${copy.deletesAccount(subject?.email ?? r.subject_user_id)}`
+                  : pendingCopy.body
               }
-              confirmLabel={pendingCopy.confirmLabel}
-              cancelLabel="Cancel"
+              confirmLabel={pendingCopy.confirm}
+              cancelLabel={copy.cancel}
+              dir={dirOf(lang)}
+              lang={lang}
               danger={deletesAccount}
               onCancel={() => setPending(null)}
               onConfirm={sendPending}

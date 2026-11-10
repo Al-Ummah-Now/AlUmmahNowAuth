@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useSearchParams } from "react-router";
 import { X, Plus, Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -18,6 +18,7 @@ import {
 import { Button } from "./ui/button";
 import { UserRoleBadge } from "./user-role-badge";
 import { ConfirmDialog } from "./confirm-dialog";
+import { confirmCopy, dirOf, langOf } from "../lib/confirm-copy";
 
 interface UserRoleManagerProps {
   userId: string;
@@ -46,6 +47,9 @@ export function UserRoleManager({
 }: UserRoleManagerProps) {
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const lang = langOf(searchParams);
+  const copy = confirmCopy(lang);
   const [roleToRemove, setRoleToRemove] = useState<{ id: string; name: string } | null>(null);
 
   const assignFetcher = useFetcher();
@@ -203,11 +207,13 @@ export function UserRoleManager({
         </div>
         <ConfirmDialog
           open={!!roleToRemove}
-          cancelLabel="Cancel"
+          cancelLabel={copy.cancel}
           onCancel={() => setRoleToRemove(null)}
-          title="Remove this role?"
-          description={roleToRemove ? `${userEmail} loses the "${roleToRemove.name}" role and every permission it grants.` : ""}
-          confirmLabel="Remove role"
+          title={copy.removeRole.title}
+          description={roleToRemove ? copy.removeRole.body(userEmail, roleToRemove.name) : ""}
+          confirmLabel={copy.removeRole.confirm}
+          dir={dirOf(lang)}
+          lang={lang}
           onConfirm={() => {
             if (roleToRemove) handleRemoveRole(roleToRemove.id);
             setRoleToRemove(null);
