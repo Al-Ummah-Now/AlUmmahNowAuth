@@ -116,6 +116,39 @@ describe('createSendCodeHandler', () => {
 			expect(sendEmailMock.mock.calls[0][0]).toMatchObject({ to: PASSWORD_ONLY_EMAIL });
 		});
 
+		it('sends a code to a user D1 has even while both KV lookups still say "no account"', async () => {
+			// Right after sign-up, KV can still answer with the "missing" result cached when
+			// the sign-up checked the email was free (up to 60s); the D1 users row is already
+			// there. CI hit this as "Failed to capture password reset verification code".
+			const email = `fresh-signup-${crypto.randomUUID().slice(0, 8)}@example.com`;
+			const ts = Date.now();
+			await env.AUTH_DB.prepare(
+				`INSERT INTO users (id, tenant_id, email, status, created_at, updated_at) VALUES (?, 'default', ?, 'active', ?, ?)`
+			)
+				.bind(`usr_${crypto.randomUUID().replace(/-/g, '')}`, email, ts, ts)
+				.run();
+			const sendCode = makeHandler('/password/change', makeUserService(), storage);
+
+			await sendCode(email.toUpperCase(), '123456');
+
+			expect(sendEmailMock).toHaveBeenCalledTimes(1);
+			expect(sendEmailMock.mock.calls[0][0]).toMatchObject({ to: email.toUpperCase() });
+		});
+
+		it('does not send to a deleted D1 user', async () => {
+			const email = `deleted-${crypto.randomUUID().slice(0, 8)}@example.com`;
+			const ts = Date.now();
+			await env.AUTH_DB.prepare(
+				`INSERT INTO users (id, tenant_id, email, status, created_at, updated_at, deleted_at) VALUES (?, 'default', ?, 'deleted', ?, ?, ?)`
+			)
+				.bind(`usr_${crypto.randomUUID().replace(/-/g, '')}`, email, ts, ts, ts)
+				.run();
+			const sendCode = makeHandler('/password/change', makeUserService(), storage);
+
+			await expect(sendCode(email, '123456')).resolves.toBeUndefined();
+			expect(sendEmailMock).not.toHaveBeenCalled();
+		});
+
 		it('still treats an unknown email as a no-op when no password storage is passed', async () => {
 			const sendCode = makeHandler('/password/change', makeUserService());
 

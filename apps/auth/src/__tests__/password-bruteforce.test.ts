@@ -128,7 +128,7 @@ describe('forgot password: email code brute force', () => {
 		const html = await right.text();
 		expect(html).not.toContain('name="repeat"');
 		expect(html).toContain('Request a new code');
-	});
+	}, 30_000); // 300 requests through the whole Worker: 2-6s locally, over the 5s default
 
 	it('an email without an account answers a guess like an account does (no enumeration)', async () => {
 		const e = testEnv();

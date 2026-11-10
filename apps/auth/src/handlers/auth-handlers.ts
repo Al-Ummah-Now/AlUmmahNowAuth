@@ -355,6 +355,16 @@ export function createSendCodeHandler(
 	);
 
 	async function hasAccount(email: string): Promise<boolean> {
+		// D1 first: it is consistent. Both KV lookups below can still answer "missing"
+		// for up to a minute after sign-up, because sign-up read those keys (to check
+		// the email was free) before writing them, and that miss is cached at the edge.
+		// A forgot-password right after signing up would then silently send nothing.
+		const d1User = await env.AUTH_DB.prepare(
+			'SELECT 1 FROM users WHERE lower(email) = lower(?) AND deleted_at IS NULL LIMIT 1'
+		)
+			.bind(email)
+			.first();
+		if (d1User) return true;
 		if (await userService.getUserByEmail('default', email)) return true;
 		if (!passwordStorage) return false;
 		const passwordRecord = await Storage.get(passwordStorage, ['email', email, 'password']);
