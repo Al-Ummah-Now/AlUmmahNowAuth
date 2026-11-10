@@ -143,6 +143,17 @@ interface UserRow {
  * ones may still be in KV under ["oauth:refresh", subject, token]. Without
  * removing them, a deleted account could keep minting access tokens.
  */
+/** Lists the account in Recently deleted so the cleanup purges it after 30 days. */
+async function recordSelfDeletion(db: D1Database, row: { id: string; tenant_id: string; email: string; status: string }): Promise<void> {
+	await db
+		.prepare(
+			`INSERT OR IGNORE INTO admin_deletions (kind, item_id, tenant_id, label, deleted_at, deleted_by, reason, snapshot)
+			 VALUES ('user', ?1, ?2, ?3, ?4, 'self', 'Deleted by the account owner', ?5)`
+		)
+		.bind(row.id, row.tenant_id, row.email, Date.now(), JSON.stringify({ status: row.status === 'suspended' ? 'suspended' : 'active', email: row.email }))
+		.run();
+}
+
 async function removeRefreshTokens(storage: StorageAdapter, subject: string | undefined): Promise<number> {
 	if (!subject) return 0;
 	return removeAllRefreshTokens(storage, subject);
@@ -179,6 +190,8 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	await new D1UserService({ db: env.AUTH_DB, adapter: userAdapter, legacy: storage }).removeLegacy(row.tenant_id, row.id, row.email.toLowerCase());
 	// D1 is the source of truth: soft delete and drop the sign-in sessions (idempotent)
 	await userAdapter.softDeleteUser(row.tenant_id, row.id, Date.now());
+	// The hourly cleanup removes the account's data 30 days from now (deletions/purge.ts)
+	await recordSelfDeletion(env.AUTH_DB, row);
 	await userAdapter.revokeAllUserSessions(row.tenant_id, row.id);
 	// The password credential: the deleted account can't be signed in to again
 	for (const email of new Set([row.email, row.email.toLowerCase()])) {

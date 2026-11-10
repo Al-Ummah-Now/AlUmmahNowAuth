@@ -35,6 +35,7 @@ import { requireAdmin } from './middleware/admin-auth';
 import { verifyAdminAuth } from './auth-middleware';
 import { routeModerationClient } from './moderation/client-routes';
 import { moderationAdminRoutes } from './moderation/admin-routes';
+import { deletionAdminRoutes } from './deletions/routes';
 
 const methodNotAllowed = (allow: string) =>
 	new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: { Allow: allow, 'Content-Type': 'application/json' } });
@@ -723,6 +724,11 @@ async function routeAdminPaths(rctx: RouterContext): Promise<RouteResult> {
 
 	if (pathname === '/admin/moderation-requests' || pathname.startsWith('/admin/moderation-requests/')) {
 		return await handleAdminModerationRoutes(rctx);
+	}
+
+	if (pathname === '/admin/deletions' || pathname.startsWith('/admin/deletions/')) {
+		const response = await deletionAdminRoutes.fetch(rctx.request, rctx.env, rctx.ctx);
+		return addSecurityHeaders(response, rctx.isProduction);
 	}
 
 	if (pathname === '/admin/themes' || pathname.startsWith('/admin/themes/')) {

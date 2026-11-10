@@ -7,6 +7,10 @@
 import { BUILTIN_IDS, blobBytes, builtinBlob, builtinPackage } from '../../../../packages/ui/src/auth-theme/builtin.ts';
 import { sha256Hex } from '../../../../packages/ui/src/auth-theme/package.ts';
 import type { StoredPackage } from '../../../../packages/ui/src/auth-theme/types.ts';
+import { deletedClause } from '../deletions/store';
+
+/** Themes an admin deleted (admin_deletions) are left out everywhere until restored. */
+const LIVE = `NOT EXISTS (${deletedClause('theme', 'auth_themes.id')})`;
 
 export interface ThemeRow {
 	id: string;
@@ -51,11 +55,17 @@ export class ThemeStore {
 	}
 
 	async listRows(): Promise<ThemeRow[]> {
-		const { results } = await this.db.prepare('SELECT * FROM auth_themes ORDER BY created_at').all<ThemeRow>();
+		const { results } = await this.db.prepare(`SELECT * FROM auth_themes WHERE ${LIVE} ORDER BY created_at`).all<ThemeRow>();
 		return results ?? [];
 	}
 
+	/** A theme that is not deleted. */
 	async getRow(id: string): Promise<ThemeRow | null> {
+		return this.db.prepare(`SELECT * FROM auth_themes WHERE id = ? AND ${LIVE}`).bind(id).first<ThemeRow>();
+	}
+
+	/** The row whether or not it is deleted (its id stays taken until the cleanup removes it). */
+	async rawRow(id: string): Promise<ThemeRow | null> {
 		return this.db.prepare('SELECT * FROM auth_themes WHERE id = ?').bind(id).first<ThemeRow>();
 	}
 
@@ -63,7 +73,7 @@ export class ThemeStore {
 		const [def, clients, published] = await this.db.batch([
 			this.db.prepare('SELECT value FROM auth_theme_settings WHERE key = ?').bind(DEFAULT_THEME_KEY),
 			this.db.prepare('SELECT client_id, theme_id FROM auth_theme_client_defaults'),
-			this.db.prepare('SELECT id, published_key FROM auth_themes WHERE published_key IS NOT NULL'),
+			this.db.prepare(`SELECT id, published_key FROM auth_themes WHERE published_key IS NOT NULL AND ${LIVE}`),
 		]);
 		return {
 			authDefault: (def.results?.[0] as { value?: string } | undefined)?.value ?? null,
@@ -131,8 +141,43 @@ export class ThemeStore {
 			.run();
 	}
 
-	async deleteRow(id: string): Promise<void> {
+	/**
+	 * Removes a deleted theme for good (only the cleanup calls this): the row,
+	 * then its packages and asset files that no other theme's current packages
+	 * use (keys are content hashes, so themes can share them).
+	 */
+	async purgeRow(id: string): Promise<{ packages: number; assets: number } | null> {
+		const row = await this.rawRow(id);
+		if (!row) return null;
+		const keys = [...new Set([row.draft_key, row.published_key].filter((k): k is string => !!k))];
+		const packages = this.kv ? (await Promise.all(keys.map((k) => this.getPackage(k)))).filter((p): p is StoredPackage => !!p) : [];
 		await this.db.prepare('DELETE FROM auth_themes WHERE id = ?').bind(id).run();
+		if (!this.kv) return { packages: 0, assets: 0 };
+
+		const { results: others } = await this.db
+			.prepare('SELECT draft_key, published_key FROM auth_themes WHERE id != ?')
+			.bind(id)
+			.all<Pick<ThemeRow, 'draft_key' | 'published_key'>>();
+		const otherKeys = new Set((others ?? []).flatMap((r) => [r.draft_key, r.published_key]).filter((k): k is string => !!k));
+		const otherHashes = new Set<string>();
+		for (const key of otherKeys) {
+			const pkg = await this.getPackage(key);
+			for (const a of Object.values(pkg?.assets ?? {})) otherHashes.add(a.hash);
+		}
+		let removedPackages = 0;
+		let removedAssets = 0;
+		for (const key of keys) {
+			if (otherKeys.has(key)) continue;
+			await this.kv.delete(key);
+			removedPackages++;
+		}
+		const hashes = new Set(packages.flatMap((p) => Object.values(p.assets).map((a) => a.hash)));
+		for (const hash of hashes) {
+			if (otherHashes.has(hash) || builtinBlob(hash)) continue;
+			await this.kv.delete(`asset:${hash}`);
+			removedAssets++;
+		}
+		return { packages: removedPackages, assets: removedAssets };
 	}
 
 	async setAuthDefault(themeId: string, by: string): Promise<void> {
@@ -158,7 +203,7 @@ export class ThemeStore {
 	}
 
 	async clientExists(clientId: string): Promise<boolean> {
-		return !!(await this.db.prepare('SELECT 1 FROM oauth_clients WHERE id = ?').bind(clientId).first());
+		return !!(await this.db.prepare(`SELECT 1 FROM oauth_clients WHERE id = ? AND NOT EXISTS (${deletedClause('client', 'oauth_clients.id')})`).bind(clientId).first());
 	}
 
 	/** A built-in package in the stored shape. */

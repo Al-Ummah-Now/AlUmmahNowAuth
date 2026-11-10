@@ -10,6 +10,7 @@ export default [
   route("audit", "routes/audit.tsx"),
   route("moderation", "routes/moderation._index.tsx"),
   route("moderation/:id", "routes/moderation.$id.tsx"),
+  route("deleted", "routes/deleted.tsx"),
   route("themes", "routes/themes._index.tsx"),
   route("themes/:id", "routes/themes.$id.tsx"),
   route("themes/:id/preview", "routes/themes.$id.preview.ts"),

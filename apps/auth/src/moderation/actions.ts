@@ -2,7 +2,7 @@
  * The account actions an approved moderation request runs (from the queue,
  * moderation/queue.ts). Each is the same code as the admin's own action:
  *   suspend_account         userService.suspendUser + sign-out everywhere   (POST /admin/users/:id/suspend)
- *   delete_account          userService.deleteUser + sign-out everywhere    (DELETE /admin/users/:id)
+ *   delete_account          soft delete (deletions/) + sign-out everywhere  (DELETE /admin/users/:id)
  *   require_password_reset  userService.forcePasswordReset + sign-out       (POST /admin/users/:id/force-password-reset)
  *   revoke_sessions         endAllSessions                                  (DELETE /admin/users/:id/sessions)
  * The admin routes sign the user out in revokeOnAdminUserAction; here the same
@@ -13,6 +13,7 @@ import { authStorage } from '../storage/auth-storage';
 import { D1UserService } from '../services/d1-user-service';
 import { revokeUser, type RevocationReason } from '../revocation/revocation-list';
 import { endAllSessions, endBrowserSignIns } from '../revocation/lifecycle';
+import { DeletionError, softDelete } from '../deletions/service';
 import type { ModerationAction } from './model';
 
 export type AutomaticAction = Exclude<ModerationAction, 'other'>;
@@ -54,7 +55,16 @@ export function createActionRunner(env: Env): ActionRunner {
 			if (action === 'revoke_sessions') return { ok: true, result: await endAllSessions(env.AUTH_DB, env.TOKEN_REVOCATIONS, userId) };
 			let result: unknown;
 			if (action === 'suspend_account') result = await userService.suspendUser(tenantId, userId);
-			else if (action === 'delete_account') result = (await userService.deleteUser(tenantId, userId), { deleted: true });
+			else if (action === 'delete_account') {
+				// Restorable for 30 days from Recently deleted, like an admin's own delete
+				try {
+					await softDelete(env, 'user', userId, { userId: 'moderation' }, { tenantId, reason: 'Approved moderation request' });
+				} catch (error) {
+					if (error instanceof DeletionError && error.status === 404) return { ok: true, result: { alreadyDeleted: true } };
+					throw error;
+				}
+				result = { deleted: true };
+			}
 			else result = { passwordResetRequired: !!(await userService.forcePasswordReset(tenantId, userId)) };
 			await revokeUser({ kv: env.TOKEN_REVOCATIONS, db: env.AUTH_DB }, userId, REASON[action]);
 			await endBrowserSignIns(env.AUTH_DB, userId);

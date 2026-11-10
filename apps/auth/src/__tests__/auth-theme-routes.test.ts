@@ -229,13 +229,22 @@ describe('a custom theme from duplicate to delete', () => {
 		expect((await handleThemeAsset(ENV, 'nope')).status).toBe(404);
 	});
 
-	it('cannot be deleted while in use, then is deleted', async () => {
+	it('cannot be deleted while in use, then is soft-deleted: hidden everywhere, id still taken', async () => {
 		expect((await call('DELETE', `/${ID}`)).status).toBe(409);
 		await call('PUT', `/clients/${PROFILE.id}`, { body: { themeId: null } });
 		await call('POST', '/default', { body: { themeId: 'fawanees' } });
-		expect((await call('DELETE', `/${ID}`)).status).toBe(200);
+		expect((await call('DELETE', `/${ID}`, { body: { reason: 'Replaced' } })).status).toBe(200);
 		expect((await call('GET', `/${ID}`)).status).toBe(404);
-		expect(audit).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'theme.deleted' }));
+		const list = await (await call('GET', '')).json<{ themes: { id: string }[] }>();
+		expect(list.themes.map((t) => t.id)).not.toContain(ID);
+		invalidateThemeSettings();
+		const pub = await (await handlePublicThemeList(ENV)).json<{ themes: { id: string }[] }>();
+		expect(pub.themes.map((t) => t.id)).not.toContain(ID);
+		// Nothing removed yet: the row stays until the cleanup, so the id can't be reused
+		expect(await new ThemeStore(ENV.AUTH_DB, ENV.AUTH_THEMES).rawRow(ID)).not.toBeNull();
+		expect((await call('POST', `/${'fawanees'}/duplicate`, { body: { id: ID, name: { en: 'X', ar: 'س' } } })).status).toBe(409);
+		expect(audit).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'admin.item.deleted' }));
+		expect((await call('DELETE', `/${ID}`)).status).toBe(404);
 	});
 });
 

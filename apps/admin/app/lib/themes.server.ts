@@ -84,8 +84,9 @@ export function themesApi(env: ThemeEnv, actor: ActingUser, request: Request) {
     saveDraft: async (id: string, theme: unknown) =>
       (await (await c(`/${encodeURIComponent(id)}/draft`, { method: 'PUT', ...json({ theme }) })).json()) as ThemeSummary & { contrast: Issue[] },
     publish: async (id: string) => (await (await c(`/${encodeURIComponent(id)}/publish`, { method: 'POST' })).json()) as ThemeSummary,
-    remove: async (id: string) => {
-      await c(`/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    /** Soft delete: restorable from Recently deleted for 30 days. */
+    remove: async (id: string, reason?: string) => {
+      await c(`/${encodeURIComponent(id)}`, { method: 'DELETE', ...json({ reason: reason || undefined }) });
     },
     setAuthDefault: async (themeId: string) => {
       await c('/default', { method: 'POST', ...json({ themeId }) });

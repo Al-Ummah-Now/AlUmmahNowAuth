@@ -33,6 +33,7 @@ import { userListRoutes } from "./custom/user-list-routes";
 import { adminContextMiddleware, methodCompatMiddleware, clientResponseCompatMiddleware } from "./custom/admin-context-middleware";
 import { requireAdmin } from "./middleware/admin-auth";
 import { handleTokenCron } from "./cron/token-cron";
+import { hideDeleted, refuseDeletedRoleAssignment, softDeleteRoute } from "./deletions/routes";
 import { routeRequest, type RouterContext } from "./router";
 import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
@@ -217,6 +218,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminUserApp.use('*', methodCompatMiddleware);
     // Suspend/delete/session wipe/forced reset sign the user out everywhere (#437)
     adminUserApp.use('*', revokeOnAdminUserAction(env.TOKEN_REVOCATIONS, env.AUTH_DB));
+    // A deleted role can't be assigned; DELETE /:id is a soft delete (deletions/), ahead of OpenAuth's
+    adminUserApp.use('*', refuseDeletedRoleAssignment());
+    adminUserApp.delete('/:id', softDeleteRoute('user', 'id'));
     // Mount custom user listing route FIRST - provides users with RBAC roles
     adminUserApp.route('/', userListRoutes(env.AUTH_DB));
     // Then OpenAuth's user CRUD routes (GET /:id, POST /, PATCH /:id, DELETE /:id, etc.)
@@ -229,6 +233,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminRbacApp.use('*', requireAdmin());  // M2M auth required
     adminRbacApp.use('*', adminContextMiddleware);
     adminRbacApp.use('*', methodCompatMiddleware);
+    // Deleted roles: hidden from OpenAuth's role routes, not assignable; DELETE is a soft delete
+    adminRbacApp.use('*', hideDeleted('role', { prefix: 'roles', listKey: 'roles' }));
+    adminRbacApp.use('*', refuseDeletedRoleAssignment());
+    adminRbacApp.delete('/roles/:roleId', softDeleteRoute('role', 'roleId'));
     adminRbacApp.route('/', rbacAdminEndpoints(rbacService));
 
     // Create public RBAC app (Phase 3: OpenAuth migration)
@@ -247,6 +255,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminClientApp.use('*', clientResponseCompatMiddleware); // Response transform (runs last in response phase)
     adminClientApp.use('*', adminContextMiddleware);
     adminClientApp.use('*', methodCompatMiddleware);
+    // Deleted clients: hidden from OpenAuth's client routes; DELETE is a soft delete
+    adminClientApp.use('*', hideDeleted('client', { prefix: 'clients', listKey: 'clients' }));
+    adminClientApp.delete('/clients/:clientId', softDeleteRoute('client', 'clientId'));
     adminClientApp.route('/', clientAdminRoutes(env.AUTH_DB));
 
     // Route request through extracted router

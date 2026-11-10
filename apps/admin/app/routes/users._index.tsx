@@ -17,6 +17,8 @@ import {
   DialogTrigger,
 } from "../components/ui/dialog";
 import { UserRoleBadge } from "../components/user-role-badge";
+import { ConfirmDialog } from "../components/confirm-dialog";
+import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { UserRoleManager } from "../components/user-role-manager";
 import { AdminLayout } from "../components/admin-layout";
 import { requireAuth } from "../lib/auth.server";
@@ -317,8 +319,9 @@ export async function action({ request, context }: LoaderFunctionArgs) {
         return { error: "Missing userId" };
       }
 
-      // Delete user via M2M API
-      const result = await deleteUser(env, actingUser, userId);
+      // Soft delete via M2M API: restorable from Recently deleted for 30 days
+      const reason = String(formData.get("reason") ?? "").trim() || undefined;
+      const result = await deleteUser(env, actingUser, userId, reason);
 
       if (isErrorResponse(result)) {
         return { error: result.error };
@@ -349,6 +352,8 @@ export default function Users() {
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const deleteLang = langOf(searchParams);
+  const deleteCopy = deletionCopy(deleteLang);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -508,11 +513,11 @@ export default function Users() {
     // Dialog stays open - will be closed by useEffect on success
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = ({ reason }: { reason: string }) => {
     if (!deletingUserId) return;
 
     fetcher.submit(
-      { intent: "deleteUser", userId: deletingUserId },
+      { intent: "deleteUser", userId: deletingUserId, reason },
       { method: "POST" }
     );
     setDeleteDialogOpen(false);
@@ -818,25 +823,22 @@ export default function Users() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this user? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleConfirmDelete}>
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Delete confirmation: soft delete, restorable from Recently deleted */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title={deleteCopy.deleteTitle("user")}
+        description={deleteCopy.deleteBody("user", users.find((u) => u.id === deletingUserId)?.email ?? "")}
+        confirmLabel={deleteCopy.deleteConfirm}
+        cancelLabel={deleteCopy.cancel}
+        reason={{ label: deleteCopy.reasonLabel, placeholder: deleteCopy.reasonPlaceholder }}
+        dir={dirOf(deleteLang)}
+        lang={deleteLang}
+        onCancel={() => {
+          setDeleteDialogOpen(false);
+          setDeletingUserId(null);
+        }}
+        onConfirm={handleConfirmDelete}
+      />
     </AdminLayout>
   );
 }

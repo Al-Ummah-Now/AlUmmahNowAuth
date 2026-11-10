@@ -1,5 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
-import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
+import { Form, Link, redirect, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "react-router";
+import { ConfirmDialog } from "../components/confirm-dialog";
+import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { useState } from "react";
 import { Copy, Download, Palette, Star, Trash2, Upload } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
@@ -78,8 +80,9 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
         return { ok: "App default saved.", intent };
       }
       case "delete":
-        await api.remove(String(form.get("themeId")));
-        return { ok: "Theme deleted.", intent };
+        // Soft delete: restorable from Recently deleted for 30 days
+        await api.remove(String(form.get("themeId")), String(form.get("reason") ?? "").trim() || undefined);
+        return { ok: "Theme moved to Recently deleted.", intent };
       case "import": {
         const file = form.get("file");
         if (!(file instanceof File) || file.size === 0) return { error: "Choose a theme .zip to import.", intent };
@@ -123,6 +126,11 @@ export default function ThemesPage() {
   const busy = useNavigation().state !== "idle";
   const [duplicateFrom, setDuplicateFrom] = useState<ThemeSummary | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [deleting, setDeleting] = useState<ThemeSummary | null>(null);
+  const submit = useSubmit();
+  const [searchParams] = useSearchParams();
+  const deleteLang = langOf(searchParams);
+  const deleteCopy = deletionCopy(deleteLang);
   const published = themes.filter((t) => t.kind === "builtin" || t.status !== "draft");
 
   return (
@@ -204,25 +212,17 @@ export default function ThemesPage() {
                   </a>
                 </Button>
                 {t.kind === "custom" && (
-                  <Form
-                    method="post"
-                    onSubmit={(e) => {
-                      if (!confirm(`Delete the theme "${t.name.en}"? This cannot be undone.`)) e.preventDefault();
-                    }}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    disabled={busy || inUse}
+                    onClick={() => setDeleting(t)}
+                    title={inUse ? "In use: change the Auth default and app defaults first" : "Delete this theme"}
+                    className="text-red-500"
                   >
-                    <input type="hidden" name="intent" value="delete" />
-                    <input type="hidden" name="themeId" value={t.id} />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      type="submit"
-                      disabled={busy || inUse}
-                      title={inUse ? "In use: change the Auth default and app defaults first" : "Delete this theme"}
-                      className="text-red-500"
-                    >
-                      <Trash2 /> Delete
-                    </Button>
-                  </Form>
+                    <Trash2 /> Delete
+                  </Button>
                 )}
               </CardContent>
             </Card>
@@ -305,6 +305,25 @@ export default function ThemesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation: soft delete, restorable from Recently deleted */}
+      <ConfirmDialog
+        open={deleting !== null}
+        title={deleteCopy.deleteTitle("theme")}
+        description={deleteCopy.deleteBody("theme", deleting ? deleting.name[deleteLang] || deleting.name.en : "")}
+        confirmLabel={deleteCopy.deleteConfirm}
+        cancelLabel={deleteCopy.cancel}
+        reason={{ label: deleteCopy.reasonLabel, placeholder: deleteCopy.reasonPlaceholder }}
+        busy={busy}
+        dir={dirOf(deleteLang)}
+        lang={deleteLang}
+        onCancel={() => setDeleting(null)}
+        onConfirm={({ reason }) => {
+          if (!deleting) return;
+          submit({ intent: "delete", themeId: deleting.id, reason }, { method: "post" });
+          setDeleting(null);
+        }}
+      />
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent>

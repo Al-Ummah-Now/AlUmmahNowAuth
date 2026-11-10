@@ -157,7 +157,7 @@ export class ThemeService {
 
 	private async assertNewId(id: string) {
 		if (!ID.test(id)) throw new ThemeError(400, 'invalid_id', 'Theme ids are 2–40 lowercase letters, digits and dashes, starting with a letter');
-		if (this.store.isBuiltin(id) || (await this.store.getRow(id))) throw new ThemeError(409, 'id_taken', `A theme with id "${id}" already exists`);
+		if (this.store.isBuiltin(id) || (await this.store.rawRow(id))) throw new ThemeError(409, 'id_taken', `A theme with id "${id}" already exists (or is in Recently deleted)`);
 	}
 
 	async duplicate(actor: Actor, sourceId: string, newId: string, name: Localized): Promise<ThemeSummary> {
@@ -264,15 +264,17 @@ export class ThemeService {
 		await audit(actor, AuditEventType.THEME_CLIENT_DEFAULT_SET, { client_id: clientId, theme_id: id, previous }, AuditEventSeverity.WARNING);
 	}
 
-	async remove(actor: Actor, id: string): Promise<void> {
-		await this.customRow(id);
+	/**
+	 * Checks a theme may be deleted (deletions/kinds.ts records the deletion; the
+	 * cleanup removes it later). Returns its row.
+	 */
+	async assertRemovable(id: string): Promise<ThemeRow> {
+		const row = await this.customRow(id);
 		const settings = await this.store.settings();
 		if ((settings.authDefault ?? BUILTIN_DEFAULT_THEME) === id) throw new ThemeError(409, 'in_use', 'This theme is the Auth default; choose another default first');
 		const clients = Object.entries(settings.clientDefaults).filter(([, t]) => t === id).map(([c]) => c);
 		if (clients.length) throw new ThemeError(409, 'in_use', `This theme is the default for ${clients.length} app(s); change those first`);
-		await this.store.deleteRow(id);
-		invalidateThemeSettings();
-		await audit(actor, AuditEventType.THEME_DELETED, { theme_id: id }, AuditEventSeverity.WARNING);
+		return row;
 	}
 
 	async exportZip(id: string, source: 'draft' | 'published' = 'draft'): Promise<{ filename: string; data: Uint8Array }> {
@@ -298,6 +300,9 @@ export class ThemeService {
 		const raw = files.theme as AuthThemeJson;
 		const id = opts.id ?? raw.id;
 		if (typeof id !== 'string' || !ID.test(id)) throw new ThemeError(400, 'invalid_id', 'Theme ids are 2–40 lowercase letters, digits and dashes, starting with a letter');
+		if (!(await this.store.getRow(id)) && (await this.store.rawRow(id))) {
+			throw new ThemeError(409, 'id_taken', `A theme with id "${id}" is in Recently deleted; restore it or import under another id`);
+		}
 		const existing = await this.store.getRow(id);
 		if (this.store.isBuiltin(id) || (existing && !opts.replace)) {
 			throw new ThemeError(409, 'id_taken', `A theme with id "${id}" already exists; import it under another id or replace it`);

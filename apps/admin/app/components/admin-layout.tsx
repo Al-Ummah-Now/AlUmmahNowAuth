@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   Palette,
+  Trash2,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { AccountSwitcher } from "@al-ummah-now/ui";
@@ -32,6 +33,7 @@ const navItems: NavItem[] = [
   { label: "Audit Logs", href: "/audit", icon: <FileText className="h-5 w-5" /> },
   { label: "Moderation", href: "/moderation", icon: <Flag className="h-5 w-5" /> },
   { label: "Sign-in themes", href: "/themes", icon: <Palette className="h-5 w-5" /> },
+  { label: "Recently deleted", href: "/deleted", icon: <Trash2 className="h-5 w-5" /> },
 ];
 
 interface AdminLayoutProps {
