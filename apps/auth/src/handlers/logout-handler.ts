@@ -13,6 +13,11 @@
  *                   clears its session and follows `next` back here)
  *                -> finally redirects to `return` when its origin is one of
  *                   our apps, otherwise to SIGN_IN_FALLBACK_URL.
+ *
+ * Logout CSRF: a request that did not come from one of our apps (another
+ * site's link, image, script or frame: Sec-Fetch-Site cross-site, or a
+ * Sec-Fetch-Dest other than document) gets the "Sign out?" page instead, and
+ * only that page's same-origin POST signs out.
  */
 
 import { logger } from '../logger';
@@ -27,6 +32,8 @@ import { signInFallbackUrl } from '../utils/sign-in-restart';
 import { D1SessionAdapter } from '../adapters/session-adapter';
 import { parseCookie, decryptSessionCookie } from '@al-ummah-now/openauth/session/cookie';
 import { clearSessionCookieHeader } from '@al-ummah-now/openauth/session/middleware';
+import { getLocaleFromRequest } from '@al-ummah-now/openauth/ui/i18n';
+import { renderSignOutConfirmPage } from '../ui/sign-out-confirm-page';
 
 const SESSION_COOKIE = '__session';
 const MAX_STEPS = 10;
@@ -77,6 +84,17 @@ export function logoutReturnUrl(env: LogoutEnv, requested: string | null, authOr
 	return allowed.has(target.origin) ? target.toString() : fallback;
 }
 
+/**
+ * Whether a GET /logout must be confirmed on the page first: it was not a
+ * top-level navigation started from our own sites. Browsers without
+ * Fetch Metadata (no headers) are let through, as before.
+ */
+export function needsSignOutConfirmation(request: Request): boolean {
+	const dest = request.headers.get('Sec-Fetch-Dest');
+	if (dest && dest !== 'document') return true;
+	return request.headers.get('Sec-Fetch-Site') === 'cross-site';
+}
+
 /** The shared browser session (`__session`) this request carries, if any. */
 export async function browserSessionRef(
 	request: Request,
@@ -104,8 +122,31 @@ export async function handleLogout(
 	isProduction: boolean
 ): Promise<Response> {
 	const url = new URL(request.url);
-	const step = Math.min(Math.max(parseInt(url.searchParams.get('step') ?? '0', 10) || 0, 0), MAX_STEPS);
-	const returnTo = logoutReturnUrl(env, url.searchParams.get('return'), url.origin);
+	let step = Math.min(Math.max(parseInt(url.searchParams.get('step') ?? '0', 10) || 0, 0), MAX_STEPS);
+	let requestedReturn = url.searchParams.get('return');
+
+	if (request.method === 'POST') {
+		// Only the confirmation page's own form (same origin) may sign out with a POST
+		if (request.headers.get('Origin') !== url.origin) {
+			ctx.waitUntil(logger.finalizeRequest());
+			return addSecurityHeaders(new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store' } }), isProduction);
+		}
+		const form = await request.formData().catch(() => null);
+		requestedReturn = form?.get('return')?.toString() ?? null;
+		step = 0;
+	} else if (request.method !== 'GET' && request.method !== 'HEAD') {
+		ctx.waitUntil(logger.finalizeRequest());
+		return addSecurityHeaders(new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET, POST' } }), isProduction);
+	} else if (needsSignOutConfirmation(request)) {
+		logger.info('Sign-out not started by our apps: asking on the page', {
+			site: request.headers.get('Sec-Fetch-Site'),
+			dest: request.headers.get('Sec-Fetch-Dest'),
+		});
+		ctx.waitUntil(logger.finalizeRequest());
+		const page = await renderSignOutConfirmPage(getLocaleFromRequest(request), logoutReturnUrl(env, requestedReturn, url.origin));
+		return addSecurityHeaders(page, isProduction);
+	}
+	const returnTo = logoutReturnUrl(env, requestedReturn, url.origin);
 
 	const headers = new Headers();
 	if (step === 0) {

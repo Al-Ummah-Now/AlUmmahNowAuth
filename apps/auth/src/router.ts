@@ -433,17 +433,18 @@ function handleAuthorizeRedirect(rctx: RouterContext): RouteResult {
 	const redirectUri = url.searchParams.get('redirect_uri');
 	const clientId = url.searchParams.get('client_id');
 
-	// If no redirect_uri or client_id, redirect through profile app's OAuth flow
+	// If no redirect_uri or client_id, sign in through the profile app: its
+	// /login starts a real sign-in (state + PKCE). A code sent straight to its
+	// callback without them could only end on its error page.
 	if (!redirectUri || !clientId) {
-		logger.debug('Direct auth access without OAuth params, redirecting to profile OAuth flow');
+		logger.debug('Direct auth access without OAuth params, redirecting to the profile sign-in');
 
-		const profileUrl = env.PROFILE_APP_URL || 'http://localhost:3302';
-		const profileCallback = `${profileUrl}/callback`;
-		const profileClientId = env.PROFILE_CLIENT_ID || '109a1087-6626-40f7-8a7f-7f42f83f4f30';
-		const oauthUrl = `${url.origin}/authorize?response_type=code&client_id=${profileClientId}&redirect_uri=${encodeURIComponent(profileCallback)}`;
+		const profileLogin = new URL('/login', env.PROFILE_APP_URL || 'http://localhost:3302');
+		const lang = url.searchParams.get('lang');
+		if (lang === 'ar') profileLogin.searchParams.set('lang', lang);
 
 		ctx.waitUntil(logger.finalizeRequest());
-		return Response.redirect(oauthUrl, 302);
+		return Response.redirect(profileLogin.toString(), 302);
 	}
 
 	// Let enterprise issuer handle valid authorize requests
