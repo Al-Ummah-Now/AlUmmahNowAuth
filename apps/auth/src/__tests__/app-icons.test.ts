@@ -9,7 +9,10 @@ describe('app icons', () => {
 		const svg = serve('/favicon.svg')!;
 		expect(svg.headers.get('Content-Type')).toBe('image/svg+xml');
 		expect(svg.headers.get('Cache-Control')).toBe('public, max-age=86400, stale-while-revalidate=604800');
-		expect(await svg.text()).toContain('prefers-color-scheme:dark');
+		// the owner's art as is: a PNG in SVG, no overlay on production
+		const body = await svg.text();
+		expect(body).toContain('data:image/png;base64,');
+		expect(body).not.toContain('<circle');
 		expect(serve('/favicon.ico', 'HEAD')!.status).toBe(200);
 		expect(serve('/favicon.ico', 'POST')).toBeUndefined();
 		expect(serve('/authorize')).toBeUndefined();
