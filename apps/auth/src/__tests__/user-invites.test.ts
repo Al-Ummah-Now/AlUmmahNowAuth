@@ -6,7 +6,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env, createExecutionContext } from 'cloudflare:test';
 import { hashClientSecret } from '@al-ummah-now/openauth';
-import migration0028 from '../../migrations/0030_user_invites.sql?raw';
+import migration0030 from '../../migrations/0030_user_invites.sql?raw';
 import { setupDatabase } from '../test-setup';
 import { hashToken } from '../utils/crypto';
 import { createOnSuccessHandler } from '../handlers/auth-handlers';
@@ -97,8 +97,8 @@ beforeAll(async () => {
 			.run();
 	}
 	// The migration under test: the table, and the scope for the videos admin's client only
-	for (const stmt of sqlStatements(migration0028)) await db.prepare(stmt).run();
-	for (const stmt of sqlStatements(migration0028)) await db.prepare(stmt).run(); // idempotent
+	for (const stmt of sqlStatements(migration0030)) await db.prepare(stmt).run();
+	for (const stmt of sqlStatements(migration0030)) await db.prepare(stmt).run(); // idempotent
 });
 
 beforeEach(() => {
