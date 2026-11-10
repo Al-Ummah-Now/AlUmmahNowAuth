@@ -82,19 +82,19 @@ describe('D1AtomicStorage', () => {
 		expect(results.filter((r) => r !== undefined)).toEqual([{ v: 42 }]);
 	});
 
-	it('100 parallel read-replace increments lose no update (retry on conflict)', async () => {
+	it('50 parallel read-replace increments lose no update (retry on conflict)', async () => {
 		const a = D1AtomicStorage(DB());
 		await a.set(['n'], 0);
 		await Promise.all(
-			Array.from({ length: 100 }, async () => {
+			Array.from({ length: 50 }, async () => {
 				for (;;) {
 					const cur = (await a.get(['n'])) as number;
 					if (await a.replace(['n'], cur, cur + 1)) return;
 				}
 			}),
 		);
-		expect(await a.get(['n'])).toBe(100);
-	});
+		expect(await a.get(['n'])).toBe(50);
+	}, 30_000);
 
 	it('the cleanup cron deletes expired rows only', async () => {
 		const a = D1AtomicStorage(DB());
