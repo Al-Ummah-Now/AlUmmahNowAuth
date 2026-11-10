@@ -1,5 +1,6 @@
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useSearchParams } from "react-router";
+import { UserAutocomplete } from "../components/autocomplete";
 import * as v from "valibot";
 import {
   Users,
@@ -15,7 +16,6 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import {
   Table,
   TableBody,
@@ -272,7 +272,8 @@ export default function SessionsPage() {
   const { sessions, stats, suspicious, total, error, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
   const [terminating, setTerminating] = useState<{ id: string; userId: string; email: string } | null>(null);
-  const [searchUserId, setSearchUserId] = useState('');
+  const [searchParams] = useSearchParams();
+  const currentUserId = searchParams.get('user_id') ?? '';
 
   const suspiciousCount =
     (suspicious?.multipleIPsInShortTime?.length || 0) +
@@ -403,13 +404,16 @@ export default function SessionsPage() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <form method="get" className="flex items-center gap-2">
-                  <Input
+                <form method="get" className="flex items-end gap-2">
+                  <UserAutocomplete
+                    key={currentUserId}
+                    mode="pick"
                     name="user_id"
-                    placeholder="Filter by User ID..."
-                    value={searchUserId}
-                    onChange={(e) => setSearchUserId(e.target.value)}
-                    className="w-64"
+                    label="User"
+                    defaultValue={currentUserId}
+                    submitOnChange
+                    className="w-72"
+                    testId="sessions-user"
                   />
                   <Button type="submit" variant="outline" size="icon">
                     <Search className="h-4 w-4" />
