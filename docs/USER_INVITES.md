@@ -32,7 +32,12 @@ videos admin-api ── queue ──▶ POST /provisioning/invites (client crede
 - **Claim.** The issuer's `onSuccess` (`handlers/auth-handlers.ts`) looks the
   user up by email, as for every sign-in. If the account is `invited`, it claims
   it: status becomes `active`, `metadata.email_verified` becomes true, and the
-  invite becomes accepted (audit `user.invite.accepted`). Every way in proves
+  invite becomes accepted (audit `user.invite.accepted`).
+- **Roles.** Member always. The app may add roles from the allow-list
+  `INVITE_GRANTABLE_ROLES` by name (today only `Scholar` → `role_scholar`),
+  sent as `roles: ["Scholar"]`. Privileged roles (Admin, Super Admin,
+  Moderator) are refused (`403 role_not_grantable`); a role that does not exist
+  yet answers `400 unknown_role`. Every way in proves
   the address: register and forgot-password both send an emailed code, and a
   password can only be set through one of them. So the claim works for whichever
   method the person picks. No second account is ever created for the email:
@@ -92,7 +97,7 @@ are limited by `ADMIN_SENSITIVE_LIMITER` per client, reads by `ADMIN_LIMITER`.
 
 | Call | Body | Answer |
 | --- | --- | --- |
-| `POST /provisioning/invites` | `inviteId, userId, email, name?, locale (en/ar), note?, expiresInDays?, continueUrl?, details?, sendEmail?, actor{id,email}` | `201 {invite, user, created, emailSent}`; `200` on replay; `409 user_exists {user}` or `already_invited {user, invite}` |
+| `POST /provisioning/invites` | `inviteId, userId, email, name?, locale (en/ar), note?, expiresInDays?, continueUrl?, details?, roles? (allow-list), sendEmail?, actor{id,email}` | `201 {invite, user, created, emailSent}`; `200` on replay; `409 user_exists {user}` or `already_invited {user, invite}` |
 | `GET /provisioning/invites?ids=a,b` | | `{invites}` (status `invited` / `active` / `expired` / `revoked`) |
 | `POST …/:id/resend` | `locale?, actor` | `{invite, emailSent}` |
 | `POST …/:id/link` | `tokenHash` (hex SHA-256) | `{invite}` |

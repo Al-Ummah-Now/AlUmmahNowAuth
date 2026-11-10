@@ -186,6 +186,19 @@ describe('POST /provisioning/invites', () => {
 		expect(count!.n).toBe(1);
 	});
 
+	it('gives only allow-listed roles (Scholar), never privileged ones', async () => {
+		await DB().prepare(`INSERT OR IGNORE INTO rbac_roles (id, name, tenant_id) VALUES ('role_scholar', 'Scholar', 'default')`).run();
+		const { res, body } = await invite({ roles: ['Scholar'] });
+		expect(res.status).toBe(201);
+		const roles = await DB().prepare('SELECT role_id FROM rbac_user_roles WHERE user_id = ? ORDER BY role_id').bind(body.userId).all<{ role_id: string }>();
+		expect(roles.results.map((r) => r.role_id)).toEqual(['role_member', 'role_scholar']);
+		for (const role of ['Admin', 'Super Admin', 'Moderator', 'constructor']) {
+			const refused = (await invite({ roles: [role] })).res;
+			expect(refused.status).toBe(403);
+			expect(refused.json.error).toBe('role_not_grantable');
+		}
+	});
+
 	it('validates the ids, the email and the expiry', async () => {
 		expect((await invite({ userId: 'usr_1' })).res.json.error).toBe('invalid_request');
 		expect((await invite({ inviteId: 'nope' })).res.json.error).toBe('invalid_request');
