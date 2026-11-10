@@ -346,7 +346,8 @@ test.describe('Admin Audit View', () => {
     // Verify filter panel is visible
     await expect(page.locator('label:has-text("Event Type")')).toBeVisible();
     await expect(page.locator('label:has-text("Severity")')).toBeVisible();
-    await expect(page.locator('label:has-text("Search")')).toBeVisible();
+    // The user filter is a picker labelled "User"
+    await expect(page.getByTestId('audit-user-input')).toBeVisible();
 
     // Verify button text changed to "Hide Filters"
     await expect(page.locator('button:has-text("Hide Filters")')).toBeVisible();
