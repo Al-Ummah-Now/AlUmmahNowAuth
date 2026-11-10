@@ -13,6 +13,7 @@ import { withPreviewRedirects } from "./utils/preview-redirects";
 import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-handlers";
 import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
 import { PasswordUI } from "@al-ummah-now/openauth/ui/password";
+import { getLocaleFromRequest } from "@al-ummah-now/openauth/ui/i18n";
 import { createSubjects } from "@al-ummah-now/openauth/subject";
 import * as v from 'valibot';
 import { logger } from "./logger";
@@ -40,6 +41,12 @@ import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/li
 import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
 import { DEFAULT_SITE_THEME, fetchSiteTheme } from '../../../packages/ui/src/site-theme';
 import { applySiteTheme, withSiteTheme } from './ui/site-theme';
+
+/** The email-code field's label: points the user to their inbox. */
+const CODE_INPUT_LABEL = {
+  en: "Code (check your inbox)",
+  ar: "الرمز (تحقّق من بريدك الوارد)",
+} as const;
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -275,7 +282,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // Attempt limits for the password provider's POSTs and email codes (AU-2).
     // PasswordUI reads this copy object on every render, so the guard can swap in
     // a "too many attempts" message for this request.
-    const passwordCopy: PasswordCopy = { input_code: "Code (check your inbox)" };
+    // In the page's own language: copy overrides openauth's translation in every locale.
+    const passwordCopy: PasswordCopy = { input_code: CODE_INPUT_LABEL[getLocaleFromRequest(request)] };
     const passwordGuard = await guardPasswordRequest(request, env, url, passwordCopy);
 
     // Create enterprise issuer with multi-account session support
