@@ -5,12 +5,14 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeKV, NOW_MS, NOW_S, jwt, storedSession } from "../lib/test-helpers";
-import { LOGIN_COOKIE } from "../lib/sign-in";
+import { LOGIN_COOKIE, PKCE_COOKIE } from "../lib/sign-in";
 
 const client = {
-  authorize: vi.fn(async (redirectUri: string) => ({
-    url: `https://auth.example/authorize?client_id=c&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=st-1`,
-    challenge: { state: "st-1" },
+  authorize: vi.fn(async (redirectUri: string, _type: string, opts?: { pkce?: boolean }) => ({
+    url:
+      `https://auth.example/authorize?client_id=c&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=st-1` +
+      (opts?.pkce ? "&code_challenge=ch-1&code_challenge_method=S256" : ""),
+    challenge: { state: "st-1", ...(opts?.pkce ? { verifier: "ver-1" } : {}) },
   })),
   exchange: vi.fn(),
   verify: vi.fn(),
@@ -75,6 +77,25 @@ describe("auth admin sign-in routes", () => {
     expect(url.origin + url.pathname).toBe("https://auth.example/authorize");
     expect(url.searchParams.get("prompt")).toBeNull();
     expect(setCookies(res)[0].split(";")[0]).toBe(`${LOGIN_COOKIE}=st-1.${encodeURIComponent("/users")}`);
+  });
+
+  it("/login uses PKCE (S256) and keeps the verifier bound to the state", async () => {
+    const res = await settle(login.loader(args("/login")));
+    const url = new URL(res.headers.get("Location")!);
+    expect(client.authorize).toHaveBeenLastCalledWith(`${APP}/auth/callback`, "code", { pkce: true });
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(setCookies(res).some((c) => c.startsWith(`${PKCE_COOKIE}=st-1.ver-1;`))).toBe(true);
+  });
+
+  it("callback exchanges the code with the verifier of its own state only", async () => {
+    client.exchange.mockResolvedValue({ err: false, tokens: { access: jwt(NOW_S + 900), refresh: "r0" } });
+    client.verify.mockResolvedValue({ subject: { type: "user", properties: ADMIN } });
+    const login = `${LOGIN_COOKIE}=st-1.%2F`;
+    const ok = await settle(callback.loader(args("/auth/callback?code=c&state=st-1", `${login}; ${PKCE_COOKIE}=st-1.ver-1`)));
+    expect(client.exchange).toHaveBeenLastCalledWith("c", `${APP}/auth/callback`, "ver-1");
+    expect(setCookies(ok).some((c) => c.startsWith(`${PKCE_COOKIE}=;`))).toBe(true);
+    await settle(callback.loader(args("/auth/callback?code=c&state=st-1", `${login}; ${PKCE_COOKIE}=other.ver-x`)));
+    expect(client.exchange).toHaveBeenLastCalledWith("c", `${APP}/auth/callback`, undefined);
   });
 
   it("/login passes prompt=none and prompt=login only", async () => {

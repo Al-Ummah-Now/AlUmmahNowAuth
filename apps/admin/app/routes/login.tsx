@@ -3,7 +3,7 @@ import { redirect, useLoaderData } from "react-router";
 import { getAppUrl } from "../lib/config";
 import { getOpenAuthClient } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
-import { loginCookie, loginPath, parsePrompt, safeReturnPath, withPrompt } from "../lib/sign-in";
+import { loginCookie, loginPath, parsePrompt, safeReturnPath, withPrompt, pkceCookie } from "../lib/sign-in";
 
 /**
  * Straight to the auth server, no page of our own. No prompt by default: a
@@ -37,16 +37,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const appUrl = getAppUrl(request, env);
   const client = getOpenAuthClient(request, env);
-  const { url: baseAuthorizeUrl, challenge } = await client.authorize(`${appUrl}/auth/callback`, "code");
+  const { url: baseAuthorizeUrl, challenge } = await client.authorize(`${appUrl}/auth/callback`, "code", { pkce: true });
   const authorizeUrl = withPrompt(baseAuthorizeUrl, parsePrompt(url.searchParams.get("prompt")));
   logger.info('Redirecting to auth server', { authorizeUrl });
 
-  return redirect(authorizeUrl, {
-    headers: {
-      "Set-Cookie": loginCookie(challenge.state, returnTo),
-      "Cache-Control": "no-store",
-    },
-  });
+  const headers = new Headers({ "Cache-Control": "no-store" });
+  headers.append("Set-Cookie", loginCookie(challenge.state, returnTo));
+  if (challenge.verifier) headers.append("Set-Cookie", pkceCookie(challenge.state, challenge.verifier));
+  return redirect(authorizeUrl, { headers });
 }
 
 export default function Login() {

@@ -4,7 +4,7 @@ import { getAppUrl, getAuthServerUrl, getOAuthClientId } from "../lib/config";
 import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 import { hasAdminRole } from "../lib/auth.server";
-import { clearLoginCookie, loginPath, readCookie, savedReturnPath, stateMatches } from "../lib/sign-in";
+import { clearLoginCookie, clearPkceCookie, loginPath, readCookie, savedPkceVerifier, savedReturnPath, stateMatches } from "../lib/sign-in";
 import { revokeSession } from "../lib/session-tokens.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -89,7 +89,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
     let result;
     try {
-      result = await client.exchange(code, `${appUrl}/auth/callback`);
+      const verifier = savedPkceVerifier(request.headers.get("Cookie"), url.searchParams.get("state"));
+      result = await client.exchange(code, `${appUrl}/auth/callback`, verifier);
     } catch (exchangeError) {
       logger.error('Token exchange request failed', {
         error: exchangeError instanceof Error ? exchangeError.message : String(exchangeError),
@@ -199,6 +200,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       const headers = new Headers({ "Cache-Control": "no-store" });
       headers.append("Set-Cookie", `auth_session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${7 * 24 * 60 * 60}`);
       headers.append("Set-Cookie", clearLoginCookie());
+      headers.append("Set-Cookie", clearPkceCookie());
       return redirect(returnTo, { headers });
     }
 

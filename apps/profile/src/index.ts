@@ -1,5 +1,6 @@
 import { createClient } from "@al-ummah-now/openauth/client";
 import { createSubjects } from "@al-ummah-now/openauth/subject";
+import { generatePKCE } from "@al-ummah-now/openauth/pkce";
 import * as v from "valibot";
 import { appsForUser, resolveAppEnv } from "./apps";
 import { localeOf, pickLocale } from "./i18n";
@@ -7,6 +8,9 @@ import { renderHomePage } from "./page";
 import {
   buildAuthorizeUrl,
   clearLoginCookie,
+  clearPkceCookie,
+  pkceCookie,
+  savedPkceVerifier,
   loginCookie,
   loginPath,
   parsePrompt,
@@ -272,7 +276,9 @@ export default {
     if (url.pathname === '/login') {
       const returnTo = safeReturnPath(url.searchParams.get('return'));
       const state = crypto.randomUUID();
+      const pkce = await generatePKCE();
       const authorizeUrl = buildAuthorizeUrl({
+        codeChallenge: pkce.challenge,
         authServerUrl,
         clientId: PROFILE_CLIENT_ID,
         redirectUri: `${getAppUrl(request, env)}/callback`,
@@ -281,14 +287,10 @@ export default {
         // The sign-in pages follow the language the profile link asked for
         lang: localeOf(new URL(returnTo, 'https://profile.invalid').searchParams.get('lang')) === 'ar' ? 'ar' : undefined,
       });
-      return new Response(null, {
-        status: 302,
-        headers: {
-          "Location": authorizeUrl,
-          "Set-Cookie": loginCookie(state, returnTo, isLocalhost),
-          "Cache-Control": "no-store",
-        },
-      });
+      const headers = new Headers({ "Location": authorizeUrl, "Cache-Control": "no-store" });
+      headers.append("Set-Cookie", loginCookie(state, returnTo, isLocalhost));
+      headers.append("Set-Cookie", pkceCookie(state, pkce.verifier, isLocalhost));
+      return new Response(null, { status: 302, headers });
     }
 
     // Handle OAuth callback
@@ -299,6 +301,7 @@ export default {
       const redirectWith = (location: string, ...cookies: string[]) => {
         const headers = new Headers({ "Location": location, "Cache-Control": "no-store" });
         headers.append("Set-Cookie", clearLoginCookie(isLocalhost));
+        headers.append("Set-Cookie", clearPkceCookie(isLocalhost));
         for (const c of cookies) headers.append("Set-Cookie", c);
         return new Response(null, { status: 302, headers });
       };
@@ -314,6 +317,7 @@ export default {
           "Cache-Control": "no-store",
         });
         headers.append("Set-Cookie", clearLoginCookie(isLocalhost));
+        headers.append("Set-Cookie", clearPkceCookie(isLocalhost));
         return new Response(INVALID_STATE_PAGE, { status: 400, headers });
       }
 
@@ -337,7 +341,8 @@ export default {
         const redirectUri = `${appUrl}/callback`;
 
         console.info('Exchanging code for tokens', { authServerUrl, appUrl, redirectUri });
-        const result = await client.exchange(code, redirectUri);
+        const verifier = savedPkceVerifier(request.headers.get("Cookie"), url.searchParams.get('state'));
+        const result = await client.exchange(code, redirectUri, verifier);
 
         if (result.err !== false) {
           throw new Error(`Token exchange failed: ${result.err}`);
