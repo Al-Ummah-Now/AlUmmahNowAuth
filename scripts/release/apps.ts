@@ -11,6 +11,8 @@ const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
 	// Revocation list (#437): without it sign-out-all and deletion can't revoke sessions
 	{ kind: 'kv_namespaces', name: 'TOKEN_REVOCATIONS' },
+	// Auth's theme packages and files (theme admin, sign-in pages)
+	{ kind: 'kv_namespaces', name: 'AUTH_THEMES' },
 	{ kind: 'queue_producer', name: 'AUDIT_QUEUE' },
 	{ kind: 'secrets_store_secrets', name: 'CLIENT_SECRET_SALT' },
 	{ kind: 'secrets_store_secrets', name: 'KEY_ENCRYPTION_MASTER_KEY' },

@@ -17,6 +17,10 @@
       "binding": "TOKEN_REVOCATIONS",
       "id": "2afbb5f5d5414c9ea1a7d54013cfe724",
       "preview_id": "e6e662fc9cd9420797ddfa8060eb6956"
+    },
+    {
+      "binding": "AUTH_THEMES",
+      "id": "1614e15f6cf74b49aac98419a672cb2e"
     }
   ],
   "d1_databases": [
@@ -53,7 +57,6 @@
   "vars": {
     "ENVIRONMENT": "development",
     "PROFILE_APP_URL": "http://localhost:3302/",
-    "ADMIN_API_URL": "https://admin.api.alummahnow.net",
     "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
     "ALLOWED_ORIGINS": "localhost,127.0.0.1",
     "OPENAUTH_ISSUER": "http://localhost:3301",
@@ -93,6 +96,10 @@
         {
           "binding": "TOKEN_REVOCATIONS",
           "id": "2afbb5f5d5414c9ea1a7d54013cfe724"
+        },
+        {
+          "binding": "AUTH_THEMES",
+          "id": "1614e15f6cf74b49aac98419a672cb2e"
         }
       ],
       "d1_databases": [
@@ -128,7 +135,6 @@
       "vars": {
         "ENVIRONMENT": "production",
         "PROFILE_APP_URL": "https://profile.auth.alummahnow.net/",
-        "ADMIN_API_URL": "https://admin.api.alummahnow.net",
         "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
         "ALLOWED_ORIGINS": "*.alummahnow.net,https://alummahnow.net,https://www.alummahnow.net",
         "OPENAUTH_ISSUER": "https://auth.alummahnow.net",
@@ -190,6 +196,10 @@
         {
           "binding": "TOKEN_REVOCATIONS",
           "id": "0831520b71144a6e848ed62918602c13"
+        },
+        {
+          "binding": "AUTH_THEMES",
+          "id": "de629f7fc51e44f5b8368fd0b8fb964b"
         }
       ],
       "d1_databases": [
@@ -225,7 +235,6 @@
       "vars": {
         "ENVIRONMENT": "stage",
         "PROFILE_APP_URL": "https://profile.auth.stage.alummahnow.net/",
-        "ADMIN_API_URL": "https://admin.api.stage.alummahnow.net",
         "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
         "ALLOWED_ORIGINS": "*.stage.alummahnow.net",
         "OPENAUTH_ISSUER": "https://auth.stage.alummahnow.net",

@@ -144,6 +144,9 @@ jobs:
       - name: D1 schema snapshot is current
         run: pnpm check:schema
 
+      - name: Built-in theme packages are valid and bundled
+        run: pnpm themes:check
+
   unit-tests:
     runs-on: ubuntu-latest
     name: Unit Tests

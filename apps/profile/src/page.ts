@@ -1,7 +1,8 @@
 import type { Locale, VisibleApp } from "./apps";
 import { dirFor, MESSAGES } from "./i18n";
 import { escapeHtml, LAUNCHER_SCRIPT, renderAppCards, renderLauncher } from "./launcher";
-import { DEFAULT_SITE_THEME, themeCss, type SiteTheme } from '../../../packages/ui/src/site-theme';
+import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
+import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 
 export interface HomePageOptions {
   locale: Locale;
@@ -11,7 +12,8 @@ export interface HomePageOptions {
   appUrl: string;
   clientId: string;
   analyticsToken?: string;
-  siteTheme?: SiteTheme;
+  /** The Auth theme for this page (from Auth's /themes/resolve); the built-in default when missing. */
+  theme?: { id: string; css: string };
 }
 
 /** JSON for embedding inside <script>: escapes "<" so "</script>" in data can't end the block. */
@@ -29,7 +31,7 @@ const STYLES = `
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, var(--fanous-color-background) 0%, var(--fanous-color-surface-raised) 100%);
+            background: var(--auth-profile-page-background, linear-gradient(135deg, var(--fanous-color-background) 0%, var(--fanous-color-surface-raised) 100%));
             color: var(--fanous-color-text-primary);
             min-height: 100vh;
             display: flex;
@@ -40,7 +42,7 @@ const STYLES = `
         :focus-visible { outline: 2px solid var(--fanous-color-primary); outline-offset: 2px; }
 
         .navbar {
-            background: linear-gradient(135deg, var(--fanous-color-surface) 0%, var(--fanous-color-surface-raised) 100%);
+            background: var(--auth-profile-nav-background, linear-gradient(135deg, var(--fanous-color-surface) 0%, var(--fanous-color-surface-raised) 100%));
             padding: 0.75rem 2rem;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
             border-bottom: 1px solid rgba(15, 77, 102, 0.2);
@@ -129,7 +131,7 @@ const STYLES = `
 
         /* Your apps */
         .apps-section { max-width: 600px; margin: 0 auto 2rem; }
-        .apps-section h2 { font-size: 1.25rem; color: var(--fanous-color-text-primary); }
+        .apps-section h2 { font-size: 1.25rem; color: var(--auth-profile-heading-text, var(--fanous-color-text-primary)); }
         .apps-section-sub { color: var(--fanous-color-text-secondary); font-size: 0.95rem; margin: 0.25rem 0 1rem; }
         .apps-cards-subheading {
             font-size: 0.8rem; color: var(--fanous-color-text-secondary); text-transform: uppercase; letter-spacing: 0.06em;
@@ -139,8 +141,8 @@ const STYLES = `
         .apps-cards { list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .app-card {
             display: flex; align-items: center; gap: 12px; padding: 14px;
-            background: linear-gradient(135deg, var(--fanous-color-surface-raised) 0%, var(--fanous-color-surface) 100%);
-            border: 1px solid color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent); border-radius: 12px;
+            background: var(--auth-profile-card-background, linear-gradient(135deg, var(--fanous-color-surface-raised) 0%, var(--fanous-color-surface) 100%));
+            border: 1px solid var(--auth-profile-card-border, color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent)); border-radius: var(--auth-profile-card-radius, 12px);
             color: var(--fanous-color-text-primary); text-decoration: none; height: 100%;
             transition: border-color 0.2s ease, transform 0.2s ease;
         }
@@ -204,7 +206,7 @@ const STYLES = `
             padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;
             cursor: pointer; border: none; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; font-family: inherit;
         }
-        .btn-primary { background: linear-gradient(135deg, var(--fanous-color-primary) 0%, var(--fanous-color-primary-hover) 100%); color: white; box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3); }
+        .btn-primary { background: var(--auth-profile-button-background, linear-gradient(135deg, var(--fanous-color-primary) 0%, var(--fanous-color-primary-hover) 100%)); color: var(--auth-profile-button-text, white); box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3); }
         .btn-primary:hover { background: linear-gradient(135deg, var(--fanous-color-primary-hover) 0%, var(--fanous-color-primary-pressed) 100%); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(14, 165, 233, 0.4); }
         .btn-secondary { background: rgba(255, 255, 255, 0.1); color: var(--fanous-color-text-primary); border: 1px solid rgba(255, 255, 255, 0.2); }
         .btn-secondary:hover { background: rgba(255, 255, 255, 0.2); color: white; }
@@ -218,10 +220,10 @@ const STYLES = `
         }
         .hero p { font-size: 1.25rem; color: #cbd5e1; max-width: 600px; margin: 0 auto; line-height: 1.6; }
         .profile-card {
-            background: linear-gradient(135deg, var(--fanous-color-surface-raised) 0%, var(--fanous-color-surface) 100%); padding: 2rem; border-radius: 12px;
-            border: 1px solid color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); max-width: 600px; margin: 0 auto;
+            background: var(--auth-profile-card-background, linear-gradient(135deg, var(--fanous-color-surface-raised) 0%, var(--fanous-color-surface) 100%)); padding: 2rem; border-radius: var(--auth-profile-card-radius, 12px);
+            border: 1px solid var(--auth-profile-card-border, color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent)); box-shadow: var(--auth-profile-card-shadow, 0 4px 20px rgba(0, 0, 0, 0.4)); max-width: 600px; margin: 0 auto;
         }
-        .profile-card h2 { color: var(--fanous-color-primary); margin-bottom: 1.5rem; font-size: 1.75rem; }
+        .profile-card h2 { color: var(--auth-profile-heading-text, var(--fanous-color-primary)); margin-bottom: 1.5rem; font-size: 1.75rem; }
         .profile-field { margin-bottom: 1rem; padding: 1rem; background: rgba(15, 23, 42, 0.6); border-radius: 8px; }
         .profile-field label {
             display: block; color: var(--fanous-color-text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
@@ -265,19 +267,19 @@ const ICON_SESSIONS = '<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
 const ICON_SIGNOUT = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2.75A.75.75 0 012.75 2h10.5a.75.75 0 010 1.5H2.75A.75.75 0 012 2.75zm0 10.5a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2.75 7a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5z"/></svg>';
 
 export function renderHomePage(o: HomePageOptions): string {
-  const siteTheme = o.siteTheme ?? DEFAULT_SITE_THEME;
+  const theme = o.theme ?? { id: BUILTIN_DEFAULT_THEME, css: compileBuiltin(BUILTIN_DEFAULT_THEME, o.authServerUrl)!.tokensCss };
   const t = MESSAGES[o.locale];
   const e = escapeHtml;
   const other: Locale = o.locale === "ar" ? "en" : "ar";
   const isLoggedIn = o.user !== null;
 
   return `<!DOCTYPE html>
-<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${siteTheme}">
+<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${e(t.pageTitle)}</title>
-    <style>${themeCss(siteTheme)}${STYLES}</style>
+    <style>${theme.css}${STYLES}</style>
 </head>
 <body>
     <header class="navbar">

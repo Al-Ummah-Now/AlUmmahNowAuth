@@ -2,6 +2,7 @@
 import { env } from "cloudflare:test";
 import passwordAttemptsSql from "../migrations/0020_password_attempts.sql?raw";
 import atomicMigration from "../migrations/0021_openauth_atomic.sql?raw";
+import themesMigration from "../migrations/0024_auth_themes.sql?raw";
 
 /** Statements of a migration file (comments stripped). */
 function sqlStatements(sql: string): string[] {
@@ -228,6 +229,11 @@ export async function setupDatabase() {
 
   // The issuer's atomic store (migrations/0021_openauth_atomic.sql), from the migration itself
   for (const stmt of sqlStatements(atomicMigration)) {
+    await env.AUTH_DB.prepare(stmt).run();
+  }
+
+  // Auth themes (migrations/0024_auth_themes.sql), from the migration itself
+  for (const stmt of sqlStatements(themesMigration)) {
     await env.AUTH_DB.prepare(stmt).run();
   }
 

@@ -1,0 +1,622 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Auth's extension of a theme package (x-auth)",
+  "description": "Sign-in page details beyond the platform format. Other apps ignore it.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "$ref": "#/$defs/localized"
+    },
+    "radius": {
+      "enum": [
+        "none",
+        "sm",
+        "md",
+        "lg",
+        "full"
+      ]
+    },
+    "fontImports": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "maxLength": 500,
+        "pattern": "^https://fonts\\.googleapis\\.com/css2?\\?[A-Za-z0-9=:;,@&+%._-]+$"
+      },
+      "description": "Google Fonts stylesheets."
+    },
+    "photos": {
+      "type": "object",
+      "properties": {
+        "light": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/imageAsset"
+              },
+              {
+                "type": "string",
+                "pattern": "^https://[A-Za-z0-9.-]+(?::[0-9]+)?/[A-Za-z0-9._~/%+=&?-]*$",
+                "maxLength": 500
+              }
+            ]
+          }
+        },
+        "dark": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/imageAsset"
+              },
+              {
+                "type": "string",
+                "pattern": "^https://[A-Za-z0-9.-]+(?::[0-9]+)?/[A-Za-z0-9._~/%+=&?-]*$",
+                "maxLength": 500
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "light"
+      ],
+      "description": "Photos behind the sign-in card; one is picked per page."
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "object",
+          "description": "Every sign-in page",
+          "propertyNames": {
+            "enum": [
+              "page.backgroundImage",
+              "page.text",
+              "card.width",
+              "card.padding",
+              "card.border",
+              "card.text",
+              "card.blur",
+              "card.contentPadding",
+              "graphic.display",
+              "logo.display",
+              "logo.filter",
+              "title.text",
+              "title.font",
+              "title.fontAr",
+              "heading.text",
+              "heading.font",
+              "heading.fontAr",
+              "label.text",
+              "input.background",
+              "input.text",
+              "input.border",
+              "input.radius",
+              "button.background",
+              "button.text",
+              "button.radius",
+              "button.shadow",
+              "button.hover",
+              "link.text",
+              "alert.background",
+              "alert.text"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        },
+        "signIn": {
+          "type": "object",
+          "description": "Sign-in",
+          "propertyNames": {
+            "enum": [
+              "page.background",
+              "page.backgroundImage",
+              "page.text",
+              "card.width",
+              "card.padding",
+              "card.radius",
+              "card.background",
+              "card.border",
+              "card.text",
+              "card.shadow",
+              "card.blur",
+              "card.contentPadding",
+              "graphic.display",
+              "logo.display",
+              "logo.filter",
+              "title.text",
+              "title.font",
+              "title.fontAr",
+              "heading.text",
+              "heading.font",
+              "heading.fontAr",
+              "label.text",
+              "input.background",
+              "input.text",
+              "input.border",
+              "input.radius",
+              "button.background",
+              "button.text",
+              "button.radius",
+              "button.shadow",
+              "button.hover",
+              "link.text",
+              "alert.background",
+              "alert.text"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        },
+        "register": {
+          "type": "object",
+          "description": "Register",
+          "propertyNames": {
+            "enum": [
+              "page.background",
+              "page.backgroundImage",
+              "page.text",
+              "card.width",
+              "card.padding",
+              "card.radius",
+              "card.background",
+              "card.border",
+              "card.text",
+              "card.shadow",
+              "card.blur",
+              "card.contentPadding",
+              "graphic.display",
+              "logo.display",
+              "logo.filter",
+              "title.text",
+              "title.font",
+              "title.fontAr",
+              "heading.text",
+              "heading.font",
+              "heading.fontAr",
+              "label.text",
+              "input.background",
+              "input.text",
+              "input.border",
+              "input.radius",
+              "button.background",
+              "button.text",
+              "button.radius",
+              "button.shadow",
+              "button.hover",
+              "link.text",
+              "alert.background",
+              "alert.text"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        },
+        "code": {
+          "type": "object",
+          "description": "Code entry",
+          "propertyNames": {
+            "enum": [
+              "page.background",
+              "page.backgroundImage",
+              "page.text",
+              "card.width",
+              "card.padding",
+              "card.radius",
+              "card.background",
+              "card.border",
+              "card.text",
+              "card.shadow",
+              "card.blur",
+              "card.contentPadding",
+              "graphic.display",
+              "logo.display",
+              "logo.filter",
+              "title.text",
+              "title.font",
+              "title.fontAr",
+              "heading.text",
+              "heading.font",
+              "heading.fontAr",
+              "label.text",
+              "input.background",
+              "input.text",
+              "input.border",
+              "input.radius",
+              "button.background",
+              "button.text",
+              "button.radius",
+              "button.shadow",
+              "button.hover",
+              "link.text",
+              "alert.background",
+              "alert.text"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        },
+        "reset": {
+          "type": "object",
+          "description": "Forgot / reset password",
+          "propertyNames": {
+            "enum": [
+              "page.background",
+              "page.backgroundImage",
+              "page.text",
+              "card.width",
+              "card.padding",
+              "card.radius",
+              "card.background",
+              "card.border",
+              "card.text",
+              "card.shadow",
+              "card.blur",
+              "card.contentPadding",
+              "graphic.display",
+              "logo.display",
+              "logo.filter",
+              "title.text",
+              "title.font",
+              "title.fontAr",
+              "heading.text",
+              "heading.font",
+              "heading.fontAr",
+              "label.text",
+              "input.background",
+              "input.text",
+              "input.border",
+              "input.radius",
+              "button.background",
+              "button.text",
+              "button.radius",
+              "button.shadow",
+              "button.hover",
+              "link.text",
+              "alert.background",
+              "alert.text"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        },
+        "consent": {
+          "type": "object",
+          "description": "Device sign-in approval",
+          "propertyNames": {
+            "enum": [
+              "page.background",
+              "page.backgroundImage",
+              "page.text",
+              "card.width",
+              "card.padding",
+              "card.radius",
+              "card.background",
+              "card.border",
+              "card.text",
+              "card.shadow",
+              "card.blur",
+              "card.contentPadding",
+              "graphic.display",
+              "logo.display",
+              "logo.filter",
+              "title.text",
+              "title.font",
+              "title.fontAr",
+              "heading.text",
+              "heading.font",
+              "heading.fontAr",
+              "label.text",
+              "input.background",
+              "input.text",
+              "input.border",
+              "input.radius",
+              "button.background",
+              "button.text",
+              "button.radius",
+              "button.shadow",
+              "button.hover",
+              "link.text",
+              "alert.background",
+              "alert.text"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        },
+        "accountSwitcher": {
+          "type": "object",
+          "description": "Account switcher",
+          "propertyNames": {
+            "enum": [
+              "page.background",
+              "page.text",
+              "card.background",
+              "card.padding",
+              "card.radius",
+              "card.shadow",
+              "item.background",
+              "item.border",
+              "item.text",
+              "item.radius",
+              "avatar.background",
+              "avatar.text",
+              "add.background",
+              "add.text"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        },
+        "profile": {
+          "type": "object",
+          "description": "Profile pages",
+          "propertyNames": {
+            "enum": [
+              "page.background",
+              "nav.background",
+              "card.background",
+              "card.border",
+              "card.radius",
+              "card.shadow",
+              "heading.text",
+              "button.background",
+              "button.text"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        },
+        "adminShell": {
+          "type": "object",
+          "description": "Admin shell",
+          "propertyNames": {
+            "enum": [
+              "sidebar.background",
+              "sidebar.text",
+              "sidebar.active",
+              "sidebar.activeText",
+              "header.background",
+              "header.text",
+              "page.background",
+              "accent"
+            ]
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/cssValue"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "light": {
+                    "$ref": "#/$defs/cssValue"
+                  },
+                  "dark": {
+                    "$ref": "#/$defs/cssValue"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "light",
+                  "dark"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "properties": {
+        "en": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "ar": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "en",
+        "ar"
+      ]
+    },
+    "cssValue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "pattern": "^(?![\\s\\S]*(?:url\\(|expression\\(|javascript:|var\\(--(?:fanous|m|r)-))(?:[^;{}<>\\\\@]|\\{(?:(?:color|brand|component|material|radius|spacing)\\.[a-zA-Z0-9.]+|asset:assets/[A-Za-z0-9._/-]+)\\})*$",
+      "description": "One CSS value. No ; { } < > \\ @ or url(). Tokens are {color.x}, {brand.x}, {component.part.name}, {material.x}, {radius.x}, {spacing.x}; images are {asset:assets/file.svg}. var() is only for layout variables a component sets (for example var(--from))."
+    },
+    "imageAsset": {
+      "type": "string",
+      "pattern": "^assets/(?![\\s\\S]*\\.\\.)[A-Za-z0-9_-][A-Za-z0-9._/-]*\\.(?:svg|png|jpg|jpeg|webp)$"
+    }
+  }
+}

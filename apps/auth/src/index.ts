@@ -34,21 +34,19 @@ import { handleTokenCron } from "./cron/token-cron";
 import { routeRequest, type RouterContext } from "./router";
 import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
-import { requestTheme } from "./ui/theme";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
 import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
-import { DEFAULT_SITE_THEME, fetchSiteTheme } from '../../../packages/ui/src/site-theme';
-import { applySiteTheme, withSiteTheme } from './ui/site-theme';
 import { handleModerationBatch, type ModerationQueueMessage } from './moderation/queue';
 import { createActionRunner } from './moderation/actions';
-
-/** The email-code field's label: points the user to their inbox. */
-const CODE_INPUT_LABEL = {
-  en: "Code (check your inbox)",
-  ar: "الرمز (تحقّق من بريدك الوارد)",
-} as const;
+import { openauthThemeFor } from '../../../packages/ui/src/auth-theme/compile.ts';
+import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
+import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
+import { CODE_INPUT_LABEL } from "./ui/copy";
+import { ThemeStore } from "./themes/store";
+import { assetBaseOf, resolveRequestTheme } from "./themes/runtime";
+import { finishThemedResponse, requestedTheme, wantsPage } from "./themes/pages";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -305,11 +303,18 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const passwordCopy: PasswordCopy = { input_code: CODE_INPUT_LABEL[getLocaleFromRequest(request)] };
     const passwordGuard = await guardPasswordRequest(request, env, url, passwordCopy);
 
-    // Create enterprise issuer with multi-account session support
-    // Only pages need the theme; token and API calls skip the lookup
-    const siteTheme = (request.headers.get('Accept') ?? '').includes('text/html')
-      ? await fetchSiteTheme(env.ADMIN_API_URL)
-      : DEFAULT_SITE_THEME;
+    // The page's theme, from Auth's own themes (Auth admin): the per-call ?theme=
+    // if it is published, else the client's default (known at /authorize), else
+    // Auth's default. Token and API calls skip the lookup.
+    const issuerOrigin = assetBaseOf(env, url);
+    const isPage = wantsPage(request);
+    const theme = isPage
+      ? (await resolveRequestTheme(new ThemeStore(env.AUTH_DB, env.AUTH_THEMES), {
+          requested: requestedTheme(url),
+          clientId: url.pathname === '/authorize' ? url.searchParams.get('client_id') : null,
+          assetBase: issuerOrigin,
+        })).compiled
+      : compileBuiltin(BUILTIN_DEFAULT_THEME, issuerOrigin)!;
 
     const { app } = createMultiTenantIssuer({
       // Pin the issuer: used for the `iss` claim, discovery documents and token
@@ -351,7 +356,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
           ...PasswordUI({
             sendCode: createSendCodeHandler(
               userService,
-              { request, env, ctx, requestId, url },
+              { request, env, ctx, requestId, url, emailTheme: theme.email },
               storage,
             ),
             copy: passwordCopy,
@@ -364,9 +369,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
           },
         }),
       },
-      // Per request: OpenAuth renders each page with its own request's theme and ?lang=,
-      // in the site-wide theme the admins chose (Fawanees by default)
-      theme: withSiteTheme(requestTheme(), siteTheme),
+      // Per request: OpenAuth renders each page with this request's theme and ?lang=
+      theme: openauthThemeFor(theme),
       onSuccess: createOnSuccessHandler(userService, rbacService, {
         request,
         env,
@@ -377,7 +381,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Call issuer to handle the request
     // OpenAuth enterprise issuer manages sessions via D1SessionAdapter and sets the __session cookie
-    let issuerResponse = applySiteTheme(await passwordGuard.finish(await app.fetch(passwordGuard.request, env, ctx)), siteTheme);
+    let issuerResponse = await passwordGuard.finish(await app.fetch(passwordGuard.request, env, ctx));
+    // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
+    if (isPage) issuerResponse = await finishThemedResponse(issuerResponse, theme, url, issuerOrigin);
 
     // Picker "Sign out" of the last account: single sign-out (#219)
     if (request.method === 'POST' && url.pathname === ACCOUNT_PICKER_REMOVE_PATH) {

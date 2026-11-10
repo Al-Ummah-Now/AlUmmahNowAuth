@@ -17,6 +17,9 @@ interface AnalyticsEngineDataset {
 }
 
 declare global {
+  // The theme package zip reader names the DOM's BlobPart, which the Workers types don't declare
+  type BlobPart = ArrayBuffer | ArrayBufferView | Blob | string;
+
   interface Env {
     AUTH_STORAGE: KVNamespace;
     /** Token revocation list shared with the resource servers (u:<usr_id>). */
@@ -24,7 +27,8 @@ declare global {
     AUDIT_WEBHOOK_URL: string;
     AUDIT_WEBHOOK_SECRET: string;
     PROFILE_APP_URL: string;
-    ADMIN_API_URL?: string;
+    /** Auth theme packages and their files, by content hash (themes/store.ts) */
+    AUTH_THEMES?: KVNamespace;
     /** Where the "Start sign-in again" page links when the sign-in's app is unknown. */
     SIGN_IN_FALLBACK_URL?: string;
     /** Comma-separated app logout URLs walked on single sign-out */
