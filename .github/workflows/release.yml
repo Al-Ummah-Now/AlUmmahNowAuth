@@ -138,6 +138,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types --no-warnings scripts/release/promote.ts --env stage --message "release ${GITHUB_SHA::7}"
 
+      # versions upload does not register queue consumers (moderation-actions-stage)
+      - name: Queue consumers (stage)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types --no-warnings scripts/release/queue-consumers.ts --config apps/auth/wrangler.json --env stage
+
       - name: Audit pipeline check (stage)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -274,6 +281,14 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --experimental-strip-types --no-warnings scripts/release/promote.ts --env production --message "release ${GITHUB_SHA::7}"
+
+      # versions upload does not register queue consumers (moderation-actions)
+      - name: Queue consumers (production)
+        if: steps.head.outputs.current == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types --no-warnings scripts/release/queue-consumers.ts --config apps/auth/wrangler.json --env production
 
       # Fails the release visibly but does not roll auth back: serving auth is healthy
       # when this fails, and its events wait in the queue or DLQ.
