@@ -5,8 +5,8 @@ import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
 
-/** The account tile's teal (manifest theme_color), for the browser chrome. */
-const PROFILE_THEME_COLOR = '#2a6975';
+/** The logo's night sky (the manifest's theme_color), for the browser chrome. */
+const PROFILE_THEME_COLOR = '#09273a';
 
 export interface HomePageOptions {
   locale: Locale;
