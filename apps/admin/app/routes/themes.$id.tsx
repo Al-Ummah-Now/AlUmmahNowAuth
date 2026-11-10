@@ -1,9 +1,10 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
-import { Link, useFetcher, useLoaderData } from "react-router";
+import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, Download, Monitor, Moon, Smartphone, Star, Sun, Upload } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
 import { ConfirmDialog } from "../components/confirm-dialog";
+import { confirmCopy, dirOf, langOf } from "../lib/confirm-copy";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -365,6 +366,9 @@ export default function ThemeBuilderPage() {
   const uploader = useFetcher<ActionData>();
   const remover = useFetcher<ActionData>();
   const [removing, setRemoving] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const adminLang = langOf(searchParams);
+  const copy = confirmCopy(adminLang);
   const frameBox = useRef<HTMLDivElement>(null);
   const [boxWidth, setBoxWidth] = useState(320);
 
@@ -866,11 +870,13 @@ export default function ThemeBuilderPage() {
       </div>
       <ConfirmDialog
         open={!!removing}
-        cancelLabel="Cancel"
+        cancelLabel={copy.cancel}
         onCancel={() => setRemoving(null)}
-        title="Remove this file?"
-        description={removing ? `${removing.replace(/^assets\//, "")} is removed from the theme. Anything that uses it stops showing it.` : ""}
-        confirmLabel="Remove file"
+        title={copy.removeFile.title}
+        description={removing ? copy.removeFile.body(removing.replace(/^assets\//, "")) : ""}
+        confirmLabel={copy.removeFile.confirm}
+        dir={dirOf(adminLang)}
+        lang={adminLang}
         onConfirm={() => {
           if (removing) remover.submit({ intent: "remove-asset", path: removing }, { method: "post" });
           setRemoving(null);

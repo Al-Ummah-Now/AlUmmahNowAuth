@@ -27,6 +27,7 @@ import {
 import { Badge } from "../components/ui/badge";
 import { AdminLayout } from "../components/admin-layout";
 import { ConfirmDialog } from "../components/confirm-dialog";
+import { confirmCopy, dirOf, langOf } from "../lib/confirm-copy";
 import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
@@ -271,8 +272,10 @@ function formatDate(dateValue: string | number) {
 export default function SessionsPage() {
   const { sessions, stats, suspicious, total, error, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
-  const [terminating, setTerminating] = useState<{ id: string; userId: string; email: string } | null>(null);
   const [searchParams] = useSearchParams();
+  const lang = langOf(searchParams);
+  const copy = confirmCopy(lang);
+  const [terminating, setTerminating] = useState<{ id: string; userId: string; email: string } | null>(null);
   const currentUserId = searchParams.get('user_id') ?? '';
 
   const suspiciousCount =
@@ -489,8 +492,8 @@ export default function SessionsPage() {
                           size="sm"
                           className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
                           disabled={fetcher.state !== 'idle'}
-                          title="End this session"
-                          aria-label={`End session of ${session.email}`}
+                          title={copy.endSessionButton}
+                          aria-label={copy.endSessionAria(session.email)}
                           onClick={() => setTerminating({ id: session.id, userId: session.userId, email: session.email })}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -505,11 +508,13 @@ export default function SessionsPage() {
         </Card>
       <ConfirmDialog
         open={!!terminating}
-        cancelLabel="Cancel"
+        cancelLabel={copy.cancel}
         onCancel={() => setTerminating(null)}
-        title="End this session?"
-        description={terminating ? `${terminating.email} is signed out on that device and has to sign in again there.` : ""}
-        confirmLabel="End session"
+        title={copy.endSession.title}
+        description={terminating ? copy.endSession.body(terminating.email) : ""}
+        confirmLabel={copy.endSession.confirm}
+        dir={dirOf(lang)}
+        lang={lang}
         onConfirm={() => {
           if (terminating) {
             fetcher.submit({ _action: "terminate", userId: terminating.userId, sessionId: terminating.id }, { method: "post" });
