@@ -42,8 +42,8 @@ export const APP_CATALOG: readonly AppEntry[] = [
     category: "app",
     name: { en: "Al Ummah Now (www)", ar: "الأمة الآن (الموقع)" },
     description: {
-      en: "News, pages and what we do",
-      ar: "الأخبار والصفحات وما نقوم به",
+      en: "Articles, pages and what we do",
+      ar: "المقالات والصفحات وما نقوم به",
     },
     icon: "globe",
     urls: {
@@ -111,8 +111,8 @@ export const APP_CATALOG: readonly AppEntry[] = [
     category: "admin",
     name: { en: "CMS", ar: "إدارة المحتوى" },
     description: {
-      en: "Edit the website: pages, news and featured videos",
-      ar: "تحرير الموقع: الصفحات والأخبار والفيديوهات المختارة",
+      en: "Edit the website: pages, articles and featured videos",
+      ar: "تحرير الموقع: الصفحات والمقالات والفيديوهات المختارة",
     },
     icon: "pencil",
     urls: {
