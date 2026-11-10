@@ -45,6 +45,7 @@ import { createActionRunner } from './moderation/actions';
 import { openauthThemeFor } from '../../../packages/ui/src/auth-theme/compile.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
+import { serveIcon, signInFavicon } from './themes/favicon';
 import { CODE_INPUT_LABEL } from "./ui/copy";
 import { ThemeStore } from "./themes/store";
 import { assetBaseOf, resolveRequestTheme } from "./themes/runtime";
@@ -112,6 +113,10 @@ export default {
       }
       return withRequestId(healthResponse(request.method), requestId);
     }
+
+    // Tab and app icons: public, before any issuer work
+    const icon = serveIcon(pathname, request.method);
+    if (icon) return withRequestId(icon, requestId);
 
     setupAuditEmitter(env, ctx);
     try {
@@ -318,7 +323,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         })).compiled
       : compileBuiltin(BUILTIN_DEFAULT_THEME, issuerOrigin)!;
 
-    const openauthTheme = openauthThemeFor(theme);
+    const openauthTheme = { ...openauthThemeFor(theme), favicon: signInFavicon(theme, env.ENVIRONMENT) };
     const { app } = createMultiTenantIssuer({
       // Pin the issuer: used for the `iss` claim, discovery documents and token
       // verification instead of the request Host / X-Forwarded-* headers.

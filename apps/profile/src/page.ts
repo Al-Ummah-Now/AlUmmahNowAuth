@@ -3,6 +3,10 @@ import { dirFor, MESSAGES } from "./i18n";
 import { escapeHtml, LAUNCHER_SCRIPT, renderAppCards, renderLauncher } from "./launcher";
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
+import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
+
+/** The account tile's teal (manifest theme_color), for the browser chrome. */
+const PROFILE_THEME_COLOR = '#2a6975';
 
 export interface HomePageOptions {
   locale: Locale;
@@ -14,6 +18,8 @@ export interface HomePageOptions {
   analyticsToken?: string;
   /** The Auth theme for this page (from Auth's /themes/resolve); the built-in default when missing. */
   theme?: { id: string; css: string };
+  /** APP_ENV: picks the tab icon (QA and stage get a corner dot). */
+  environment?: string;
 }
 
 /** JSON for embedding inside <script>: escapes "<" so "</script>" in data can't end the block. */
@@ -279,6 +285,7 @@ export function renderHomePage(o: HomePageOptions): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${e(t.pageTitle)}</title>
+    ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
     <style>${theme.css}${STYLES}</style>
 </head>
 <body>
