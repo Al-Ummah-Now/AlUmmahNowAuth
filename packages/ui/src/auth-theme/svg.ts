@@ -39,20 +39,26 @@ function safeAttr(name: string, value: string): string | null {
 const esc = (v: string) => v.replace(/&(?!(?:[a-z]+|#\d+|#x[0-9a-f]+);)/gi, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 /** Sanitized SVG markup, or null when there is no <svg> root. */
-export function sanitizeSvg(input: string): string | null {
-	const src = input.replace(/<\?xml[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<!/g, '&lt;!');
+export function sanitizeSvg(src: string): string | null {
 	const start = src.search(/<svg[\s>]/i);
 	if (start < 0) return null;
 	let out = '';
 	let skipDepth = 0;
 	let inStyle = false;
-	const re = /<(\/?)([a-zA-Z][\w:.-]*)((?:\s+[^\s=/>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*(\/?)>|([^<]+)|(<)/g;
+	let style = ''; // a <style>'s text, sanitized whole when it closes (pieces could join up)
+	// comments, doctype and processing instructions are one token each and dropped;
+	// CDATA (design tools wrap <style> in it) keeps its text
+	const re = /<!\[CDATA\[(?<cdata>[\s\S]*?)(?:\]\]>|$)|<!--[\s\S]*?(?:-->|$)|<![\s\S]*?(?:>|$)|<\?[\s\S]*?(?:\?>|$)|<(?<closing>\/?)(?<rawName>[a-zA-Z][\w:.-]*)(?<attrs>(?:\s+[^\s=/>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*(?<selfClose>\/?)>|(?<text>[^<]+)|(?<stray><)/g;
 	re.lastIndex = start;
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(src))) {
-		const [, closing, rawName, attrs, selfClose, text, stray] = m;
+		const { cdata, closing, rawName, attrs = '', selfClose, stray } = m.groups ?? {};
+		const text = m.groups?.text ?? cdata;
+		if (rawName === undefined && text === undefined && stray === undefined) continue;
 		if (text !== undefined || stray !== undefined) {
-			if (skipDepth === 0) out += inStyle ? safeCss(text ?? '') : esc(text ?? '&lt;');
+			if (skipDepth > 0) continue;
+			if (inStyle) style += text ?? '';
+			else out += esc(text ?? '&lt;');
 			continue;
 		}
 		const name = rawName.toLowerCase();
@@ -63,7 +69,11 @@ export function sanitizeSvg(input: string): string | null {
 				continue;
 			}
 			if (!allowed) continue;
-			if (name === 'style') inStyle = false;
+			if (name === 'style' && inStyle) {
+				out += safeCss(style);
+				style = '';
+				inStyle = false;
+			}
 			out += `</${rawName}>`;
 			continue;
 		}
