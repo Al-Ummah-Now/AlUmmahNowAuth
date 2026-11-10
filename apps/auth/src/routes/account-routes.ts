@@ -18,7 +18,9 @@ import { createLocalJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import { createUserService, D1UserAdapter } from '@al-ummah-now/openauth';
 import { getJWKS } from '../utils/jwks-cache';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
-import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
+import { authStorage } from '../storage/auth-storage';
+import { removeAllRefreshTokens } from '@al-ummah-now/openauth/refresh-token';
+import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import { getAuditEmitter } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType, createAuditEvent } from '../audit-events';
 import { logger } from '../logger';
@@ -119,15 +121,13 @@ interface UserRow {
 }
 
 /**
- * OpenAuth keeps refresh tokens in KV under ["oauth:refresh", subject, token]
- * (the D1 refresh_tokens table only mirrors some flows). Without removing
- * them, a deleted account could keep minting access tokens by refreshing.
+ * Refresh tokens live in D1 (openauth_atomic) since openauth's OA-2, and older
+ * ones may still be in KV under ["oauth:refresh", subject, token]. Without
+ * removing them, a deleted account could keep minting access tokens.
  */
-async function removeKvRefreshTokens(storage: ReturnType<typeof CloudflarePatchedStorage>, subject: string | undefined): Promise<number> {
+async function removeRefreshTokens(storage: StorageAdapter, subject: string | undefined): Promise<number> {
 	if (!subject) return 0;
-	const keys = await Array.fromAsync(Storage.scan(storage, ['oauth:refresh', subject]));
-	for (const [key] of keys) await Storage.remove(storage, key);
-	return keys.length;
+	return removeAllRefreshTokens(storage, subject);
 }
 
 async function findUser(db: D1Database, userId: string): Promise<UserRow | null> {
@@ -147,10 +147,10 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 
 	const row = await findUser(env.AUTH_DB, user.userId);
 	if (!row) return json({ error: 'not_found', error_description: 'Account not found' }, 404);
-	const storage = CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE });
+	const storage = authStorage(env);
 	if (row.status === 'deleted') {
 		// Idempotent retry; also cleans refresh tokens of accounts deleted before this was fixed
-		const removed = await removeKvRefreshTokens(storage, user.subject);
+		const removed = await removeRefreshTokens(storage, user.subject);
 		await revokeUser(env.TOKEN_REVOCATIONS, row.id, 'account_deleted');
 		if (removed > 0) logger.info('[account] Removed refresh tokens of a deleted account', { userId: row.id, removed });
 		return json({ deleted: true, userId: row.id, deletedAt: row.deleted_at });
@@ -172,7 +172,7 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	}
 
 	// No refresh token of this user can mint access tokens any more: KV (OpenAuth) and D1
-	const kvRefreshTokensRemoved = await removeKvRefreshTokens(storage, user.subject);
+	const kvRefreshTokensRemoved = await removeRefreshTokens(storage, user.subject);
 	// Every other sign-in (other subjects, access tokens already out): the revocation list
 	await revokeUser(env.TOKEN_REVOCATIONS, row.id, 'account_deleted');
 	const nowUnix = Math.floor(Date.now() / 1000);
@@ -216,7 +216,7 @@ export async function handleSignOutAll(request: Request, env: Env, ctx: Executio
 	if (user instanceof Response) return user;
 	const entry = await revokeUser(env.TOKEN_REVOCATIONS, user.userId, 'sign_out_all');
 	if (!entry) return json({ error: 'temporarily_unavailable', error_description: 'Sign-out of all devices is not available' }, 503);
-	const kvRefreshTokensRemoved = await removeKvRefreshTokens(CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE }), user.subject);
+	const kvRefreshTokensRemoved = await removeRefreshTokens(authStorage(env), user.subject);
 	ctx.waitUntil(
 		getAuditEmitter().emit(
 			createAuditEvent(AuditEventType.LOGOUT, {

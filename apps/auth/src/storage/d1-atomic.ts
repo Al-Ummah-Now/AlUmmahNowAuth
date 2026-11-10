@@ -10,6 +10,8 @@
  * - add:     INSERT … ON CONFLICT DO UPDATE … WHERE <existing row expired>
  * - replace: UPDATE … WHERE key = ? AND value = <expected JSON> AND live
  * - take:    DELETE … WHERE key = ? AND live RETURNING value
+ * - increment: INSERT … ON CONFLICT DO UPDATE SET value = value + ? RETURNING value
+ * - removePrefix: DELETE … WHERE key in [prefix, prefix + U+FFFF)
  *
  * Table: openauth_atomic (migrations/0021_openauth_atomic.sql). Expired rows
  * are invisible to every operation and deleted by the token-cleanup cron.
@@ -72,6 +74,34 @@ export function D1AtomicStorage(db: D1Database): AtomicStorageAdapter {
 
 		async remove(key) {
 			await db.prepare(`DELETE FROM ${TABLE} WHERE key = ?`).bind(joinKey(key)).run();
+		},
+
+		async removePrefix(prefix) {
+			// Keys under the prefix sort between it and it + U+FFFF (range scan on the primary key)
+			const from = joinKey([...prefix, '']);
+			const result = await db
+				.prepare(`DELETE FROM ${TABLE} WHERE key >= ? AND key < ?`)
+				.bind(from, `${from}\uffff`)
+				.run();
+			return result.meta?.changes ?? 0;
+		},
+
+		async increment(key, by, expiry) {
+			// An expired row restarts from `by` with the new expiry
+			const now = Date.now();
+			const row = await db
+				.prepare(
+					`INSERT INTO ${TABLE} (key, value, expires_at) VALUES (?, ?, ?)
+					 ON CONFLICT(key) DO UPDATE SET
+					   value = CASE WHEN ${TABLE}.expires_at IS NOT NULL AND ${TABLE}.expires_at <= ? THEN excluded.value
+					                ELSE CAST(CAST(${TABLE}.value AS INTEGER) + ? AS TEXT) END,
+					   expires_at = CASE WHEN ${TABLE}.expires_at IS NOT NULL AND ${TABLE}.expires_at <= ? THEN excluded.expires_at
+					                     ELSE ${TABLE}.expires_at END
+					 RETURNING value`,
+				)
+				.bind(joinKey(key), JSON.stringify(by), ms(expiry), now, by, now)
+				.first<{ value: string }>();
+			return Number(row?.value ?? by);
 		},
 	};
 }
