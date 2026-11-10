@@ -30,7 +30,9 @@ import {
 } from "./session-store";
 import { aliasRedirect } from "./alias";
 import { fetchAuthTheme } from './theme';
-import { iconServer, PROFILE_ICONS } from '../../../packages/ui/src/app-icons/index.ts';
+// only this app's set, so the sign-in icons are not bundled into the profile Worker
+import { APP_ICONS as PROFILE_ICONS } from '../../../packages/ui/src/app-icons/profile.generated.ts';
+import { iconServer } from '../../../packages/ui/src/app-icons/serve.ts';
 
 /** Account's tab and app icons (the owner's account lantern, cropped and downscaled by AlUmmahNow packages/app-icons). */
 const serveIcon = iconServer(PROFILE_ICONS);
