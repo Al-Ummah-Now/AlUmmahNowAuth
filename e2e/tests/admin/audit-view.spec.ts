@@ -209,8 +209,14 @@ test.describe('Admin Audit View', () => {
     // Show filters
     await page.click('button:has-text("Show Filters")');
 
-    // Enter search query
-    await page.fill('input[id="search"]', trimmedUserId);
+    // The user filter is a picker: paste the id, then pick the matching option
+    // (the user's suggestion, or the "use this id" option for a pasted id)
+    const userInput = page.getByTestId('audit-user-input');
+    await userInput.fill(trimmedUserId);
+    const option = page.getByTestId('audit-user-list').getByRole('option').first();
+    await expect(option).toBeVisible();
+    await option.click();
+    await expect(page.getByTestId('audit-user-chip')).toHaveAttribute('data-id', trimmedUserId);
 
     // Apply filters
     await page.click('button:has-text("Apply Filters")');
