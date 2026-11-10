@@ -1,11 +1,14 @@
-import type { LinksFunction } from "react-router";
+import type { LinksFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
 import {
   Links,
   Meta,
   Outlet,
   Scripts,
   ScrollRestoration,
+  useRouteLoaderData,
 } from "react-router";
+import { getAuthServerUrl, getOAuthClientId } from "./lib/config";
+import { fetchShellTheme } from "./lib/shell-theme";
 
 import "./tailwind.css";
 
@@ -22,7 +25,18 @@ export const links: LinksFunction = () => [
   },
 ];
 
+/** The admin shell's look from Auth's theme for this app (empty keeps the admin's own). */
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const env = context?.cloudflare?.env as { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_ID?: string } | undefined;
+  return { shellCss: await fetchShellTheme(getAuthServerUrl(request, env), getOAuthClientId(env)) };
+}
+
+// The theme changes rarely: fetch it on full loads and after admin actions, not on every navigation
+export const shouldRevalidate: ShouldRevalidateFunction = ({ formMethod, defaultShouldRevalidate }) =>
+  !!formMethod && formMethod !== "GET" && defaultShouldRevalidate;
+
 export function Layout({ children }: { children: React.ReactNode }) {
+  const shellCss = useRouteLoaderData<typeof loader>("root")?.shellCss;
   return (
     <html lang="en">
       <head>
@@ -30,6 +44,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        {shellCss ? <style data-shell-theme dangerouslySetInnerHTML={{ __html: shellCss }} /> : null}
       </head>
       <body>
         {children}

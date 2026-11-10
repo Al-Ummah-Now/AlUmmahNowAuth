@@ -1046,3 +1046,34 @@ export async function decideModerationRequest(
     body: JSON.stringify(note ? { note } : {}),
   });
 }
+
+// ============================================================================
+// Raw M2M requests (theme files, zips, preview HTML)
+// ============================================================================
+
+/**
+ * An M2M request to the auth server that returns the raw Response: for bodies
+ * that aren't JSON (file uploads, zip import/export, preview HTML). The body's
+ * Content-Type is the caller's.
+ */
+export async function m2mFetch(
+  env: ApiEnv,
+  endpoint: string,
+  actingUser: ActingUser,
+  init: RequestInit = {},
+  request?: Request
+): Promise<Response> {
+  const accessToken = await getAccessToken(env, request);
+  const authServerUrl = getAuthServerUrl(request, env);
+  const authUrl = new URL(authServerUrl);
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${accessToken}`);
+  headers.set('X-Forwarded-Host', authUrl.host);
+  headers.set('X-Forwarded-Proto', authUrl.protocol.replace(':', ''));
+  headers.set('X-Acting-User-Id', actingUser.id);
+  headers.set('X-Acting-User-Email', actingUser.email);
+  headers.set('X-Acting-User-Roles', actingUser.roles.join(','));
+  const response = await fetch(`${authServerUrl}${endpoint}`, { ...init, headers });
+  if (response.status === 401) clearTokenCache();
+  return response;
+}

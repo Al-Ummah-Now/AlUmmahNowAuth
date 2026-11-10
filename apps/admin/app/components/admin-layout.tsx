@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   Menu,
   X,
+  Palette,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { AccountSwitcher } from "@al-ummah-now/ui";
@@ -30,6 +31,7 @@ const navItems: NavItem[] = [
   { label: "OAuth Clients", href: "/clients", icon: <Key className="h-5 w-5" /> },
   { label: "Audit Logs", href: "/audit", icon: <FileText className="h-5 w-5" /> },
   { label: "Moderation", href: "/moderation", icon: <Flag className="h-5 w-5" /> },
+  { label: "Sign-in themes", href: "/themes", icon: <Palette className="h-5 w-5" /> },
 ];
 
 interface AdminLayoutProps {
@@ -70,9 +72,9 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
   };
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))]">
+    <div data-shell="page" className="min-h-screen bg-[rgb(var(--color-background))]">
       {/* Top Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
+      <nav data-shell="header" className="fixed top-0 left-0 right-0 z-50 border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -130,6 +132,7 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
 
       {/* Left Sidebar */}
       <aside
+        data-shell="sidebar"
         className={cn(
           "fixed left-0 top-[57px] bottom-0 z-40 border-r border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] transition-all duration-300",
           // Desktop: show based on collapsed state
@@ -147,6 +150,7 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
                 key={item.href}
                 to={item.href}
                 onClick={closeMobileMenu}
+                aria-current={isActive(item.href) ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                   isActive(item.href)

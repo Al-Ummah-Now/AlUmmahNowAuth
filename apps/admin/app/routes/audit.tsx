@@ -158,6 +158,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 }
 
+/** Sign-in theme changes, offered as event filters. */
+const THEME_EVENTS = [
+  "theme.created",
+  "theme.draft_saved",
+  "theme.asset_uploaded",
+  "theme.asset_removed",
+  "theme.published",
+  "theme.default_set",
+  "theme.client_default_set",
+  "theme.deleted",
+  "theme.imported",
+];
+
 export default function AuditLogs() {
   const { events, pagination, filters, user, authServerUrl } = useLoaderData<LoaderData>();
   const navigate = useNavigate();
@@ -256,9 +269,13 @@ export default function AuditLogs() {
                     <Input
                       id="event_type"
                       placeholder="e.g., auth.login.success"
+                      list="event-type-suggestions"
                       value={eventTypeFilter}
                       onChange={(e) => setEventTypeFilter(e.target.value)}
                     />
+                    <datalist id="event-type-suggestions">
+                      {THEME_EVENTS.map((t) => <option key={t} value={t} />)}
+                    </datalist>
                   </div>
 
                   <div className="grid gap-2">
