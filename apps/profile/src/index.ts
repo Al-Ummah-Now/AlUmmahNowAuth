@@ -25,6 +25,7 @@ import {
   endSession,
   ensureFreshTokens,
   getSession as getStoredSession,
+  type SessionStores,
   type StoredSession,
 } from "./session-store";
 import { aliasRedirect } from "./alias";
@@ -42,7 +43,10 @@ const subjects = createSubjects({
 });
 
 interface Env {
+  /** Sessions from before PF-1 (read once, then copied to D1) */
   AUTH_STORAGE: KVNamespace;
+  /** The auth D1 database: sessions (`app_sessions`) */
+  AUTH_DB: D1Database;
   AUTH_SERVER_URL?: string;
   APP_URL?: string;
   /** "production" | "qa"; selects app launcher URLs (see apps.ts) */
@@ -54,8 +58,10 @@ function sessionTokenOf(request: Request): string | null {
   return readCookie(request.headers.get("Cookie"), SESSION_COOKIE);
 }
 
-async function getSession(request: Request, storage: KVNamespace) {
-  return getStoredSession(storage, sessionTokenOf(request));
+const storesOf = (env: Env): SessionStores => ({ db: env.AUTH_DB, kv: env.AUTH_STORAGE });
+
+async function getSession(request: Request, env: Env) {
+  return getStoredSession(storesOf(env), sessionTokenOf(request));
 }
 
 /**
@@ -69,17 +75,17 @@ async function getFreshSession(
   authServerUrl: string,
 ): Promise<{ session: StoredSession | null; lapsed: boolean }> {
   const token = sessionTokenOf(request);
-  const session = await getStoredSession(env.AUTH_STORAGE, token);
+  const session = await getStoredSession(storesOf(env), token);
   if (!session || !token) return { session: null, lapsed: false };
   const fresh = await ensureFreshTokens({
-    kv: env.AUTH_STORAGE,
+    stores: storesOf(env),
     token,
     tokens: session.tokens,
     client: getAuthClient(authServerUrl),
   });
   if (fresh.ok) return { session: { ...session, tokens: fresh.tokens }, lapsed: false };
   console.info("Profile session tokens could not be refreshed; re-authorizing silently", fresh.reason);
-  await endSession(env.AUTH_STORAGE, token);
+  await endSession(storesOf(env), token);
   return { session: null, lapsed: true };
 }
 
@@ -180,7 +186,7 @@ export default {
       const sessionToken = sessionTokenOf(request);
       if (sessionToken) {
         // Tombstone + delete, so a racing token refresh cannot bring it back
-        await endSession(env.AUTH_STORAGE, sessionToken);
+        await endSession(storesOf(env), sessionToken);
       }
 
       // Single sign-out: the auth server ends the shared sign-in and asks every
@@ -198,7 +204,7 @@ export default {
     // Handle token revocation (E2E testing endpoint)
     // Gets refresh token from session and calls auth server's revoke endpoint
     if (url.pathname === '/revoke' && request.method === 'POST') {
-      const session = await getSession(request, env.AUTH_STORAGE);
+      const session = await getSession(request, env);
 
       if (!session || !session.tokens?.refresh) {
         return new Response(JSON.stringify({ error: 'No session or refresh token found' }), {
@@ -224,7 +230,7 @@ export default {
         // Clear the local session after revocation
         const sessionToken = sessionTokenOf(request);
         if (sessionToken) {
-          await endSession(env.AUTH_STORAGE, sessionToken);
+          await endSession(storesOf(env), sessionToken);
         }
 
         return new Response(JSON.stringify({
@@ -366,9 +372,9 @@ export default {
         // A sign-in replaces any previous profile session in this browser
         // (switching account, or signing in again after an account was removed)
         const previous = sessionTokenOf(request);
-        if (previous) await endSession(env.AUTH_STORAGE, previous);
+        if (previous) await endSession(storesOf(env), previous);
 
-        const sessionToken = await createStoredSession(env.AUTH_STORAGE, {
+        const sessionToken = await createStoredSession(storesOf(env), {
           user: {
             id: userInfo.properties.id,
             email: userInfo.properties.email,

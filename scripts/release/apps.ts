@@ -65,12 +65,20 @@ export const APPS: AppRule[] = [
 			vars: { AUTH_SERVER_URL: 'https://auth.alummahnow.net', APP_URL: 'https://profile.auth.alummahnow.net' },
 			// account.alummahnow.net is a redirect-only alias (301 to APP_URL), see apps/profile/src/alias.ts.
 			allowedHosts: ['profile.auth.alummahnow.net', 'account.alummahnow.net'],
+			// Sessions live in the auth D1 (PF-1); KV holds sessions from before it
+			requiredBindings: [
+				{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
+				{ kind: 'd1_databases', name: 'AUTH_DB' },
+			],
 			forbiddenNames: TEST_ONLY,
 		},
 		stage: {
 			env: 'stage',
 			vars: { AUTH_SERVER_URL: 'https://auth.stage.alummahnow.net', APP_URL: 'https://profile.auth.stage.alummahnow.net' },
-			requiredBindings: [{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' }],
+			requiredBindings: [
+				{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
+				{ kind: 'd1_databases', name: 'AUTH_DB' },
+			],
 			allowedHosts: ['*.stage.alummahnow.net'],
 		},
 	},
