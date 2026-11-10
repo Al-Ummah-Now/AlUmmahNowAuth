@@ -26,6 +26,7 @@ import {
 } from "../components/ui/table";
 import { Badge } from "../components/ui/badge";
 import { AdminLayout } from "../components/admin-layout";
+import { ConfirmDialog } from "../components/confirm-dialog";
 import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
@@ -270,6 +271,7 @@ function formatDate(dateValue: string | number) {
 export default function SessionsPage() {
   const { sessions, stats, suspicious, total, error, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
+  const [terminating, setTerminating] = useState<{ id: string; userId: string; email: string } | null>(null);
   const [searchUserId, setSearchUserId] = useState('');
 
   const suspiciousCount =
@@ -477,20 +479,18 @@ export default function SessionsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <fetcher.Form method="post">
-                          <input type="hidden" name="_action" value="terminate" />
-                          <input type="hidden" name="userId" value={session.userId} />
-                          <input type="hidden" name="sessionId" value={session.id} />
-                          <Button
-                            type="submit"
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                            disabled={fetcher.state !== 'idle'}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </fetcher.Form>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                          disabled={fetcher.state !== 'idle'}
+                          title="End this session"
+                          aria-label={`End session of ${session.email}`}
+                          onClick={() => setTerminating({ id: session.id, userId: session.userId, email: session.email })}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -499,6 +499,20 @@ export default function SessionsPage() {
             )}
           </CardContent>
         </Card>
+      <ConfirmDialog
+        open={!!terminating}
+        cancelLabel="Cancel"
+        onCancel={() => setTerminating(null)}
+        title="End this session?"
+        description={terminating ? `${terminating.email} is signed out on that device and has to sign in again there.` : ""}
+        confirmLabel="End session"
+        onConfirm={() => {
+          if (terminating) {
+            fetcher.submit({ _action: "terminate", userId: terminating.userId, sessionId: terminating.id }, { method: "post" });
+          }
+          setTerminating(null);
+        }}
+      />
     </AdminLayout>
   );
 }

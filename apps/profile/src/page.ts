@@ -266,6 +266,21 @@ const STYLES = `
             .apps-cards { grid-template-columns: 1fr; }
             .profile-card { padding: 1.25rem; }
         }
+
+        /* Confirmation dialog (never a browser prompt) */
+        .confirm-dialog {
+            padding: 0; border: 1px solid color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent); border-radius: 12px;
+            max-inline-size: min(28rem, calc(100vw - 2rem)); inline-size: 100%; margin: auto;
+            background: var(--fanous-color-surface-raised); color: var(--fanous-color-text-primary); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+        .confirm-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+        .confirm-dialog form { padding: 1.5rem; }
+        .confirm-dialog h2 { font-size: 1.125rem; margin-block-end: 0.5rem; text-align: start; }
+        .confirm-dialog p { color: var(--fanous-color-text-secondary); font-size: 0.9rem; line-height: 1.5; margin-block-end: 1.5rem; text-align: start; overflow-wrap: anywhere; }
+        .confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
+        .confirm-actions .btn { padding: 0.6rem 1.1rem; font-size: 0.9rem; }
+        .btn-danger { background: #dc2626; color: #fff; border: 1px solid #b91c1c; }
+        .btn-danger:hover { background: #b91c1c; }
 `;
 
 const ICON_PLUS = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>';
@@ -313,7 +328,7 @@ export function renderHomePage(o: HomePageOptions): string {
                         <div class="dropdown-divider"></div>
                         <button type="button" class="dropdown-action" id="addAccountBtn" onclick="handleAddAccount()">${ICON_PLUS}${e(t.addAccount)}</button>
                         <button type="button" class="dropdown-action" onclick="handleManageSessions()">${ICON_SESSIONS}${e(t.manageSessions)}</button>
-                        <button type="button" class="dropdown-action danger" onclick="handleSignOutAll()">${ICON_SIGNOUT}${e(t.signOutAll)}</button>
+                        <button type="button" class="dropdown-action danger" onclick="requestSignOutAll()">${ICON_SIGNOUT}${e(t.signOutAll)}</button>
                     </div>
                 </div>
             </nav>
@@ -358,6 +373,17 @@ export function renderHomePage(o: HomePageOptions): string {
     <footer class="footer">
         <p>${e(t.footer)}</p>
     </footer>
+
+    <dialog class="confirm-dialog" id="confirmDialog" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+        <form method="dialog">
+            <h2 id="confirmTitle"></h2>
+            <p id="confirmMessage"></p>
+            <div class="confirm-actions">
+                <button type="submit" value="cancel" class="btn btn-secondary" id="confirmCancel" autofocus>${e(t.confirmCancel)}</button>
+                <button type="submit" value="confirm" class="btn btn-danger" id="confirmAction" data-testid="confirm-action"></button>
+            </div>
+        </form>
+    </dialog>
 
     <script>${LAUNCHER_SCRIPT}</script>
     <script>
@@ -450,7 +476,7 @@ export function renderHomePage(o: HomePageOptions): string {
                     '<div class="account-details"><span class="email" dir="ltr">' + esc(account.email) + '</span>' +
                     '<span class="status">' + esc(account.isActive ? T.active : T.lastUsed + ' ' + formatRelativeTime(account.lastUsed)) + '</span></div>' +
                     (account.isActive ? '<span class="active-check" aria-hidden="true">✓</span>' : '') +
-                    '<button type="button" class="sign-out-btn" data-user-id="' + id + '" onclick="event.stopPropagation(); handleSignOutAccount(this.dataset.userId)" title="' + esc(T.signOutAccount) + '" aria-label="' + esc(T.signOutAccount + ' ' + account.email) + '">×</button>' +
+                    '<button type="button" class="sign-out-btn" data-user-id="' + id + '" onclick="event.stopPropagation(); requestSignOutAccount(this.dataset.userId)" title="' + esc(T.signOutAccount) + '" aria-label="' + esc(T.signOutAccount + ' ' + account.email) + '">×</button>' +
                     '</div>';
             }).join('');
             document.getElementById('addAccountBtn').style.display = accounts.length < MAX_ACCOUNTS ? 'flex' : 'none';
@@ -471,6 +497,41 @@ export function renderHomePage(o: HomePageOptions): string {
             } catch (error) {
                 console.error('Failed to switch account:', error);
             }
+        }
+
+        // In-page confirmation: Cancel, Esc and a click on the backdrop do nothing
+        var confirmPending = null;
+        function askToConfirm(title, message, action, onConfirm) {
+            var dlg = document.getElementById('confirmDialog');
+            if (!dlg || typeof dlg.showModal !== 'function' || dlg.open) return;
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            document.getElementById('confirmAction').textContent = action;
+            confirmPending = onConfirm;
+            dlg.returnValue = '';
+            setAccountDropdown(false);
+            dlg.showModal();
+            document.getElementById('confirmCancel').focus();
+        }
+        (function () {
+            var dlg = document.getElementById('confirmDialog');
+            dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close('cancel'); });
+            dlg.addEventListener('close', function () {
+                var run = confirmPending;
+                confirmPending = null;
+                if (run && dlg.returnValue === 'confirm') run();
+                else document.getElementById('accountTrigger').focus();
+            });
+        })();
+        function requestSignOutAll() {
+            askToConfirm(T.signOutAllTitle, T.signOutAllMessage, T.signOutAllAction, handleSignOutAll);
+        }
+        function requestSignOutAccount(userId) {
+            var account = accounts.find(function (a) { return a.userId === userId; });
+            var email = account ? account.email : '';
+            askToConfirm(T.signOutAccountTitle, T.signOutAccountMessage.replace('{email}', function () { return email; }), T.signOutAccount, function () {
+                handleSignOutAccount(userId);
+            });
         }
 
         async function handleSignOutAccount(userId) {

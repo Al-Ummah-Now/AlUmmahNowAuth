@@ -250,6 +250,7 @@ export default function ClientsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [rotating, setRotating] = useState<OAuthClient | null>(null);
   const [searchParams] = useSearchParams();
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
@@ -553,7 +554,7 @@ export default function ClientsPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleRotateSecret(client)}
+                            onClick={() => setRotating(client)}
                             title="Rotate Secret"
                           >
                             <RefreshCw className="h-4 w-4" />
@@ -757,6 +758,20 @@ export default function ClientsPage() {
         lang={deleteLang}
         onCancel={() => setDeleteDialogOpen(false)}
         onConfirm={handleDelete}
+      />
+
+      {/* Rotating ends the old secret at once: ask first */}
+      <ConfirmDialog
+        open={!!rotating}
+        title="Rotate the client secret?"
+        description={rotating ? `The current secret of "${rotating.name}" (${rotating.client_id}) stops working at once. The app cannot get tokens until it is given the new secret.` : ""}
+        confirmLabel="Rotate secret"
+        cancelLabel="Cancel"
+        onCancel={() => setRotating(null)}
+        onConfirm={() => {
+          if (rotating) handleRotateSecret(rotating);
+          setRotating(null);
+        }}
       />
 
       {/* Credentials Display Dialog (shown after client creation or secret rotation) */}

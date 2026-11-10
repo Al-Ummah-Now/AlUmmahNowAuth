@@ -1,12 +1,13 @@
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { Link, useFetcher, useLoaderData, useRevalidator } from "react-router";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import { AdminLayout } from "../components/admin-layout";
+import { ConfirmDialog } from "../components/confirm-dialog";
 import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import {
@@ -70,9 +71,18 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   return { ok: true, status: result.request.status };
 }
 
-const CONFIRM: Partial<Record<ModerationDecision, string>> = {
-  approve: "Approve this request? Its action is queued and runs on the auth account within seconds.",
-  execute: "Queue the action on the auth account again?",
+/** Decisions that run the action on the auth account ask first, in the page. */
+const CONFIRM: Partial<Record<ModerationDecision, { title: string; description: string; confirmLabel: string }>> = {
+  approve: {
+    title: "Approve this request?",
+    description: "Its action is queued and runs on the auth account within seconds.",
+    confirmLabel: "Approve",
+  },
+  execute: {
+    title: "Run the action again?",
+    description: "The action is queued on the auth account again.",
+    confirmLabel: "Run action again",
+  },
 };
 
 export default function ModerationRequestPage() {
@@ -80,6 +90,8 @@ export default function ModerationRequestPage() {
   const fetcher = useFetcher<{ ok: boolean; error?: string; status?: string }>();
   const busy = fetcher.state !== "idle";
   const revalidator = useRevalidator();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [pending, setPending] = useState<ModerationDecision | null>(null);
   const running = detail?.request.status === "approved" && (detail.request.execution?.status === "queued" || detail.request.execution?.status === "retrying");
   // While the action is queued, refresh every 5 s until it is done or flagged
   useEffect(() => {
@@ -106,13 +118,22 @@ export default function ModerationRequestPage() {
   const canExecute = failed && automatic;
   const canMarkActioned = r.status === "approved" && (!automatic || failed);
 
+  // Approving or re-running asks in the page dialog first; the form is sent from there
   const submit = (decision: ModerationDecision) => (event: React.MouseEvent<HTMLButtonElement>) => {
-    const message = CONFIRM[decision];
-    if (message && !window.confirm(message)) {
-      event.preventDefault();
-      return;
-    }
+    if (!CONFIRM[decision]) return;
+    event.preventDefault();
+    setPending(decision);
   };
+  const sendPending = () => {
+    if (!pending || !formRef.current) return;
+    const data = new FormData(formRef.current);
+    data.set("_action", pending);
+    fetcher.submit(data, { method: "post" });
+    setPending(null);
+  };
+  const pendingCopy = pending ? CONFIRM[pending] : undefined;
+  // Deleting an account is high impact: the admin types the account's email (or id)
+  const deletesAccount = r.action === "delete_account";
 
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
@@ -193,7 +214,7 @@ export default function ModerationRequestPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <fetcher.Form method="post" className="space-y-3" data-testid="moderation-decide">
+                <fetcher.Form ref={formRef} method="post" className="space-y-3" data-testid="moderation-decide">
                   <div className="space-y-1">
                     <Label htmlFor="note">Note for the requesting app (required to reject or ask for more information)</Label>
                     <textarea
@@ -229,6 +250,23 @@ export default function ModerationRequestPage() {
                 </fetcher.Form>
               </CardContent>
             </Card>
+          )}
+
+          {pendingCopy && (
+            <ConfirmDialog
+              open
+              title={pendingCopy.title}
+              description={
+                deletesAccount
+                  ? `${pendingCopy.description} This deletes the account of ${subject?.email ?? r.subject_user_id}: it is signed out everywhere and moves to Recently deleted, restorable for 30 days.`
+                  : pendingCopy.description
+              }
+              confirmLabel={pendingCopy.confirmLabel}
+              cancelLabel="Cancel"
+              danger={deletesAccount}
+              onCancel={() => setPending(null)}
+              onConfirm={sendPending}
+            />
           )}
 
           <Card>

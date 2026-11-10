@@ -52,6 +52,19 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error', 'info', 'debug'] }],
       'prefer-const': 'error',
       'no-var': 'error',
+
+      // Never a browser prompt: confirmations are in-page dialogs, notices are
+      // in-page messages, and nothing asks before the tab closes.
+      'no-alert': 'error',
+      'no-restricted-globals': ['error',
+        { name: 'confirm', message: 'Use an in-page confirmation dialog, never a browser prompt.' },
+        { name: 'alert', message: 'Show the message in the page (role="alert"), never a browser prompt.' },
+        { name: 'prompt', message: 'Use an in-page dialog with an input, never a browser prompt.' },
+      ],
+      'no-restricted-syntax': ['error',
+        { selector: "Literal[value='beforeunload']", message: 'No beforeunload: guard in-app navigation with a dialog; flush on pagehide.' },
+        { selector: "TemplateElement[value.raw=/beforeunload/]", message: 'No beforeunload: guard in-app navigation with a dialog; flush on pagehide.' },
+      ],
     },
   },
 

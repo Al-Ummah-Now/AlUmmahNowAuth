@@ -57,6 +57,7 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
 			clientName: 'Al Ummah Now',
 			redirectUri: `${opts.profileUrl}/callback`,
 			allowAddAccount: true,
+			locale: lang,
 		});
 		return inert(decorateHtml(html, compiled, { page: 'account-switcher', forceScheme: scheme }));
 	}
