@@ -8,6 +8,8 @@ export default [
   route("clients", "routes/clients.tsx"),
   route("sessions", "routes/sessions.tsx"),
   route("audit", "routes/audit.tsx"),
+  route("moderation", "routes/moderation._index.tsx"),
+  route("moderation/:id", "routes/moderation.$id.tsx"),
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
   route("auth/callback", "routes/auth.callback.tsx"),

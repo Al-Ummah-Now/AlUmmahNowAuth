@@ -453,4 +453,5 @@ See [TESTING.md](./TESTING.md) for comprehensive testing documentation.
 - [AUTHENTICATION_FLOWS.md](./AUTHENTICATION_FLOWS.md) - Detailed flow diagrams
 - [SDK_USAGE.md](./SDK_USAGE.md) - Client SDK examples
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
+- [docs/MODERATION_REQUESTS.md](./docs/MODERATION_REQUESTS.md) - Moderation requests from client apps (`/moderation/requests`, `/admin/moderation-requests`)
 - [OpenAuth.js Documentation](https://github.com/openauthjs/openauth)

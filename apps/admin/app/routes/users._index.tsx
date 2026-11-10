@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useFetcher, useRevalidator } from "react-router";
+import { useLoaderData, useFetcher, useRevalidator, useSearchParams } from "react-router";
 import { Plus, Settings, Trash2, Mail, User, Pencil } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -101,7 +101,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   try {
     // Fetch users via M2M API
-    const usersResponse = await listUsers(env, actingUser, undefined, request);
+    // ?q= (e.g. from a moderation request): load the users whose email matches
+    const q = new URL(request.url).searchParams.get("q")?.trim();
+    const usersResponse = await listUsers(env, actingUser, q ? { email: q } : undefined, request);
 
     if (isErrorResponse(usersResponse)) {
       console.error("Error fetching users:", usersResponse.error);
@@ -336,7 +338,8 @@ export default function Users() {
   const { users, allRoles, user, authServerUrl, loadError } = useLoaderData<LoaderData>();
   const revalidator = useRevalidator();
   const fetcher = useFetcher();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);

@@ -376,7 +376,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run Admin User tests (shard ${{ matrix.shard }}/2)
-        run: pnpm exec playwright test e2e/tests/admin/user-create.spec.ts e2e/tests/admin/user-edit.spec.ts e2e/tests/admin/user-delete.spec.ts --shard=${{ matrix.shard }}/2
+        run: pnpm exec playwright test e2e/tests/admin/user-create.spec.ts e2e/tests/admin/user-edit.spec.ts e2e/tests/admin/user-delete.spec.ts e2e/tests/admin/moderation-requests.spec.ts --shard=${{ matrix.shard }}/2
         env:
           CI: true
           SKIP_WEB_SERVER: true
@@ -389,6 +389,8 @@ jobs:
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
           E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
+          # QA secret of the videos admin's moderation client (docs/MODERATION_REQUESTS.md)
+          E2E_MODERATION_CLIENT_SECRET: ${{ secrets.E2E_MODERATION_CLIENT_SECRET }}
 
       # Fail-closed: deletes any test output that holds a secret (or a Playwright storage
       # state) before the upload below, which anyone can download from this public repo.
@@ -400,7 +402,8 @@ jobs:
           E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
-        run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET -- e2e-report test-results
+          E2E_MODERATION_CLIENT_SECRET: ${{ secrets.E2E_MODERATION_CLIENT_SECRET }}
+        run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET --env E2E_MODERATION_CLIENT_SECRET -- e2e-report test-results
 
       - name: Upload test results
         uses: actions/upload-artifact@v5

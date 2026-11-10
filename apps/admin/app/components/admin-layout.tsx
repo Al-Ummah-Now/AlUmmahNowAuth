@@ -6,6 +6,7 @@ import {
   Key,
   Monitor,
   FileText,
+  Flag,
   ChevronLeft,
   Menu,
   X,
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { label: "Sessions", href: "/sessions", icon: <Monitor className="h-5 w-5" /> },
   { label: "OAuth Clients", href: "/clients", icon: <Key className="h-5 w-5" /> },
   { label: "Audit Logs", href: "/audit", icon: <FileText className="h-5 w-5" /> },
+  { label: "Moderation", href: "/moderation", icon: <Flag className="h-5 w-5" /> },
 ];
 
 interface AdminLayoutProps {

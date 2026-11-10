@@ -291,7 +291,7 @@ export function isErrorResponse(response: unknown): response is ErrorResponse {
 export async function listUsers(
   env: ApiEnv,
   actingUser: ActingUser,
-  params?: { cursor?: string; limit?: number; search?: string; role?: string },
+  params?: { cursor?: string; limit?: number; search?: string; role?: string; email?: string },
   request?: Request
 ): Promise<PaginatedUsers | ErrorResponse> {
   const searchParams = new URLSearchParams();
@@ -299,6 +299,7 @@ export async function listUsers(
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.search) searchParams.set('search', params.search);
   if (params?.role) searchParams.set('role', params.role);
+  if (params?.email) searchParams.set('email', params.email);
 
   const query = searchParams.toString();
   const endpoint = `/admin/users${query ? `?${query}` : ''}`;
@@ -944,3 +945,101 @@ export const adminApi = {
   // Utilities
   isErrorResponse,
 };
+
+// ============================================================================
+// Moderation requests from client apps (docs/MODERATION_REQUESTS.md)
+// ============================================================================
+
+export type ModerationStatus = 'pending' | 'info_requested' | 'approved' | 'rejected' | 'actioned';
+export type ModerationActionName = 'suspend_account' | 'delete_account' | 'revoke_sessions' | 'require_password_reset' | 'other';
+
+export interface ModerationHistoryItem {
+  id: string;
+  type: string;
+  actor_type: 'client' | 'admin' | 'system';
+  actor_id: string;
+  actor_name: string | null;
+  note: string | null;
+  metadata: unknown;
+  at: string;
+}
+
+export interface ModerationSubject {
+  id: string;
+  email: string;
+  name: string | null;
+  status: string;
+  password_reset_required: boolean;
+  created_at: number;
+}
+
+export interface ModerationRequest {
+  id: string;
+  status: ModerationStatus;
+  subject_user_id: string;
+  action: ModerationActionName;
+  reason_category: string;
+  reason: string;
+  evidence: Array<{ url: string; label?: string }>;
+  requested_by: { id: string; display_name: string };
+  decision_note: string | null;
+  decided_at: string | null;
+  actioned_at: string | null;
+  created_at: string;
+  updated_at: string;
+  client_id: string;
+  client_name: string | null;
+  decided_by: string | null;
+  action_result: unknown;
+  action_error: string | null;
+  history: ModerationHistoryItem[];
+  subject?: ModerationSubject | null;
+}
+
+export interface ModerationQueue {
+  requests: ModerationRequest[];
+  total: number;
+  open: number;
+  limit: number;
+  offset: number;
+  clients: Array<{ id: string; name: string }>;
+}
+
+export interface ModerationRequestDetail {
+  request: ModerationRequest;
+  subject: ModerationSubject | null;
+  prior_requests: ModerationRequest[];
+}
+
+/** GET /admin/moderation-requests - the queue, with filters */
+export async function listModerationRequests(
+  env: ApiEnv,
+  actingUser: ActingUser,
+  params: { status?: string; client_id?: string; action?: string; from?: string; to?: string; limit?: number; offset?: number }
+): Promise<ModerationQueue | ErrorResponse> {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));
+  const query = q.toString();
+  return m2mRequest<ModerationQueue>(env, `/admin/moderation-requests${query ? `?${query}` : ''}`, actingUser, { method: 'GET' });
+}
+
+/** GET /admin/moderation-requests/:id - request, history, user, prior requests */
+export async function getModerationRequest(env: ApiEnv, actingUser: ActingUser, id: string): Promise<ModerationRequestDetail | ErrorResponse> {
+  return m2mRequest<ModerationRequestDetail>(env, `/admin/moderation-requests/${encodeURIComponent(id)}`, actingUser, { method: 'GET' });
+}
+
+export type ModerationDecision = 'approve' | 'reject' | 'request-info' | 'execute' | 'mark-actioned';
+
+/** POST /admin/moderation-requests/:id/<decision> */
+export async function decideModerationRequest(
+  env: ApiEnv,
+  actingUser: ActingUser,
+  id: string,
+  decision: ModerationDecision,
+  note?: string
+): Promise<{ request: ModerationRequest } | ErrorResponse> {
+  return m2mRequest<{ request: ModerationRequest }>(env, `/admin/moderation-requests/${encodeURIComponent(id)}/${decision}`, actingUser, {
+    method: 'POST',
+    body: JSON.stringify(note ? { note } : {}),
+  });
+}
