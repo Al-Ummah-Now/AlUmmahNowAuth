@@ -4,7 +4,7 @@
  * Tests the password reset/change flow in OpenAuth PasswordUI
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { register, expectSignInPage } from '../../fixtures/auth';
 import { TEST_USERS, TEST_URLS } from '../../utils/test-data';
 import { setupEmailInterception, sinkHasCode } from '../../utils/email-interceptor';
@@ -404,5 +404,87 @@ test.describe('Forgot Password Flow', () => {
                      await page.locator('[class*="error"]').isVisible();
 
     expect(stillOnCodePage || hasError).toBe(true);
+  });
+
+  /** From a signed-in profile page: sign out, ask for a reset code, and return it (code screen shown). */
+  async function requestResetCode(page: Page, email: string): Promise<string> {
+    await page.goto(TEST_URLS.profileApp);
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+    await page.locator('#loggedInView button:has-text("Sign Out")').first().click();
+    await expectSignInPage(page);
+    return requestResetCodeFromSignIn(page, email);
+  }
+
+  /** From the sign-in form: ask for a reset code and return it (code screen shown). */
+  async function requestResetCodeFromSignIn(page: Page, email: string): Promise<string> {
+    await page.click('a:has-text("Forgot password")');
+    await page.fill('input[type="email"]', email);
+    await page.click('button:has-text("Continue")');
+    await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+    const code = await setupEmailInterception().getLastLoginCode(email);
+    if (!code) throw new Error(`No reset code reached the sink for ${email}`);
+    return code;
+  }
+
+  async function submitCode(page: Page, code: string) {
+    await fillSecret(page.locator('input[name="code"]').first(), code);
+    await page.click('button:has-text("Continue")');
+    await page.waitForLoadState('domcontentloaded');
+  }
+
+  test('after 5 wrong codes even the right code is refused (AU-2)', async ({ page }) => {
+    const testUser = TEST_USERS.user();
+    await register(page, testUser.email);
+    const code = await requestResetCode(page, testUser.email);
+    const wrong = code === '000000' ? '000001' : '000000';
+
+    for (let i = 1; i <= 5; i++) {
+      await submitCode(page, wrong);
+      await expect(page.locator('input[name="code"]'), `wrong code ${i} keeps the code screen`).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('input[name="repeat"]')).toHaveCount(0);
+    }
+
+    // The code is used up: the right one no longer opens the new-password step
+    await submitCode(page, code);
+    await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('input[name="repeat"]')).toHaveCount(0);
+    await expect(page.locator('body')).toContainText('Request a new code');
+  });
+
+  test('a reset in another browser ends this browser\'s sign-in (#265)', async ({ page, browser }) => {
+    const testUser = TEST_USERS.user();
+    await register(page, testUser.email);
+    await page.goto(TEST_URLS.profileApp);
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+
+    // Baseline: without its own session, the profile app is signed in again silently
+    // by this browser's Al Ummah Now sign-in (no form)
+    await page.context().clearCookies({ name: 'profile_session' });
+    await page.goto(TEST_URLS.profileApp);
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+
+    // Another browser resets the password
+    const other = await browser.newContext();
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(TEST_URLS.profileApp);
+      await expectSignInPage(otherPage);
+      const code = await requestResetCodeFromSignIn(otherPage, testUser.email);
+      await submitCode(otherPage, code);
+      const passwordFields = otherPage.locator('input[type="password"]');
+      await expect(passwordFields.nth(1)).toBeVisible({ timeout: 10000 });
+      await fillSecret(passwordFields.nth(0), NEW_PASSWORD);
+      await fillSecret(passwordFields.nth(1), NEW_PASSWORD);
+      await otherPage.click('button:has-text("Continue")');
+      await expect(otherPage.locator('input[name="repeat"]')).toHaveCount(0, { timeout: 15000 });
+    } finally {
+      await other.close();
+    }
+
+    // This browser's Al Ummah Now sign-in is gone: the profile app needs the form now
+    await page.context().clearCookies({ name: 'profile_session' });
+    await page.goto(TEST_URLS.profileApp);
+    await expectSignInPage(page);
+    await expect(page.locator('#loggedInView')).toHaveCount(0);
   });
 });
