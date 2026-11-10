@@ -8,6 +8,11 @@
  *   reads as missing and is deleted: the issuer answers invalid_grant. This
  *   works whatever the subject hash is, so every sign-out path only has to
  *   write the revocation entry.
+ * - a code or approved device grant of a suspended or deleted account (D1
+ *   `users`, #662) reads as missing (the device grant as denied): a code minted
+ *   just before the suspension would otherwise still be redeemed. Refresh tokens
+ *   are checked by onRefresh (handlers/refresh-check.ts), which also revokes
+ *   the token family and answers a retryable 503 when D1 can't be read.
  * - refresh tokens and codes minted before the access-token TTL was cut carry
  *   their old `ttl.access` (the issuer copies it into every rotated token);
  *   it's capped here, so existing sessions get short tokens on their next
@@ -22,6 +27,7 @@ import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import { loadRefreshToken, refreshKey, removeRefreshToken } from '@al-ummah-now/openauth/refresh-token';
 import { logger } from '../logger';
 import { isRevoked, readRevocation } from './revocation-list';
+import { isRefusedAccountState, readAccountState } from '../security/account-status';
 
 interface TokenRecord {
 	properties?: { id?: string };
@@ -32,11 +38,20 @@ interface TokenRecord {
 	[key: string]: unknown;
 }
 
+/** An `oauth:device` record (openauth device.ts): `grant` is set once approved. */
+interface DeviceRecord {
+	status?: string;
+	grant?: TokenRecord;
+	[key: string]: unknown;
+}
+
 export interface IssuerStorageGuard {
 	/** TOKEN_REVOCATIONS; without it refresh tokens are not checked. */
 	revocations?: KVNamespace;
 	/** Access-token lifetime cap in seconds (ACCESS_TOKEN_TTL). */
 	accessTtl?: number;
+	/** AUTH_DB: codes and device grants of suspended/deleted accounts are refused (#662). */
+	db?: D1Database;
 }
 
 const GUARDED = new Set(['oauth:refresh', 'oauth:code']);
@@ -57,7 +72,13 @@ function capAccessTtl<T extends TokenRecord | undefined>(value: T, accessTtl: nu
 }
 
 export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorageGuard): StorageAdapter {
-	if (!guard.revocations && !guard.accessTtl) return storage;
+	if (!guard.revocations && !guard.accessTtl && !guard.db) return storage;
+
+	/** The account is suspended or deleted in D1. A failed D1 read throws: nothing is issued on an error. */
+	async function accountRefused(userId: string | undefined): Promise<boolean> {
+		if (!guard.db || !userId) return false;
+		return isRefusedAccountState(await readAccountState(guard.db, userId));
+	}
 
 	/** Refused (revoked sign-in) -> undefined; else the value with the TTL cap. */
 	async function check(key: string[], value: TokenRecord | undefined, remove: () => Promise<void>) {
@@ -71,6 +92,11 @@ export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorage
 				logger.info('[revocation] Refused a refresh token of a revoked sign-in', { userId, reason: entry.reason });
 				return undefined;
 			}
+		}
+		if (key[0] === 'oauth:code' && (await accountRefused(value.properties?.id))) {
+			await remove();
+			logger.info('[revocation] Refused a code of a suspended or deleted account', { userId: value.properties?.id });
+			return undefined;
 		}
 		return capAccessTtl(value, guard.accessTtl);
 	}
@@ -86,6 +112,18 @@ export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorage
 						async get(key: string[]) {
 							const value = (await atomic.get(key)) as TokenRecord | undefined;
 							return check(key, value, () => atomic.remove(key));
+						},
+						// The device_code grant takes the approved record once, then mints tokens
+						// from its grant: a suspended account's approval answers access_denied
+						async take(key: string[]) {
+							const value = (await atomic.take(key)) as DeviceRecord | undefined;
+							if (key[0] !== 'oauth:device' || value?.status !== 'approved') return value;
+							if (!(await accountRefused(value.grant?.properties?.id))) return value;
+							logger.info('[revocation] Refused a device grant of a suspended or deleted account', {
+								userId: value.grant?.properties?.id,
+							});
+							const { grant: _grant, ...rest } = value;
+							return { ...rest, status: 'denied' };
 						},
 						// The issuer compares against what it read, which may carry the
 						// TTL cap: compare against the stored value that caps to it
