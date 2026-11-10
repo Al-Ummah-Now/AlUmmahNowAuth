@@ -5,7 +5,8 @@ import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 import { hasAdminRole } from "../lib/auth.server";
 import { clearLoginCookie, clearPkceCookie, loginPath, readCookie, savedPkceVerifier, savedReturnPath, stateMatches } from "../lib/sign-in";
-import { revokeSession } from "../lib/session-tokens.server";
+import { createSession, revokeSession } from "../lib/session-tokens.server";
+import { sessionStores } from "../lib/auth.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const requestId = crypto.randomUUID();
@@ -13,6 +14,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Initialize logger
   const env = context?.cloudflare?.env as {
     AUTH_STORAGE?: KVNamespace;
+    AUTH_DB?: D1Database;
     AUTH_SERVER_URL?: string;
     APP_URL?: string;
     ADMIN_CLIENT_ID?: string;
@@ -159,16 +161,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       });
     }
 
-    // Store session in KV
-    if (env?.AUTH_STORAGE) {
+    // Store the session in D1 (AD-1)
+    const stores = sessionStores(env);
+    if (stores) {
       // A sign-in replaces this browser's previous admin session (switching
       // account, or signing in again after an account was removed). Local
       // only: that account may still be signed in to auth and other apps.
       const previous = readCookie(request.headers.get("Cookie"), "auth_session");
-      if (previous) await revokeSession({ kv: env.AUTH_STORAGE, sessionToken: previous });
+      if (previous) await revokeSession({ stores, sessionToken: previous });
 
-      const sessionToken = crypto.randomUUID();
-      const sessionData = {
+      const sessionToken = await createSession(stores, {
         user: {
           id: userInfo.properties.id,
           email: userInfo.properties.email,
@@ -178,15 +180,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           access: (verified.tokens ?? result.tokens).access,
           refresh: (verified.tokens ?? result.tokens).refresh,
         },
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-      };
-
-      logger.debug('Storing session in KV', { sessionToken });
-      await env.AUTH_STORAGE.put(
-        `session:${sessionToken}`,
-        JSON.stringify(sessionData),
-        { expirationTtl: 7 * 24 * 60 * 60 } // 7 days
-      );
+      });
 
       logger.logAuth('User session created', {
         userId: userInfo.properties.id,

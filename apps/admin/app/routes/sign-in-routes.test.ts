@@ -4,7 +4,8 @@
  * and lapsed tokens re-authorize silently.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FakeKV, NOW_MS, NOW_S, jwt, storedSession } from "../lib/test-helpers";
+import { FakeKV, NOW_MS, NOW_S, fakeD1, jwt, storedSession } from "../lib/test-helpers";
+import { getSession } from "../lib/session-tokens.server";
 import { LOGIN_COOKIE, PKCE_COOKIE } from "../lib/sign-in";
 
 const client = {
@@ -27,13 +28,14 @@ const index = await import("./_index");
 const APP = "https://admin.auth.example";
 const ADMIN = { id: "u1", email: "admin@example.com", roles: ["Admin"] };
 let kv: FakeKV;
+let db: Awaited<ReturnType<typeof fakeD1>>;
 
 function args(path: string, cookie = "") {
   const request = new Request(new URL(path, APP), { headers: cookie ? { Cookie: cookie } : {} });
   return {
     request,
     params: {},
-    context: { cloudflare: { env: { AUTH_STORAGE: kv.asKV(), AUTH_SERVER_URL: "https://auth.example", APP_URL: APP }, ctx: undefined } },
+    context: { cloudflare: { env: { AUTH_STORAGE: kv.asKV(), AUTH_DB: db, AUTH_SERVER_URL: "https://auth.example", APP_URL: APP }, ctx: undefined } },
   } as never;
 }
 
@@ -52,10 +54,12 @@ function setCookies(res: Response): string[] {
 }
 
 describe("auth admin sign-in routes", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
+  beforeEach(async () => {
+    // Only the clock: the D1 stand-in yields with real timers
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW_MS);
     kv = new FakeKV();
+    db = await fakeD1();
     client.exchange.mockReset();
     client.verify.mockReset();
     client.refresh.mockReset();
@@ -123,8 +127,10 @@ describe("auth admin sign-in routes", () => {
     expect(res.headers.get("Location")).toBe("/users");
     const cookies = setCookies(res);
     const sid = cookies.find((c) => c.startsWith("auth_session="))!.split(";")[0].split("=")[1];
-    expect(kv.session(sid).user).toEqual(ADMIN);
+    expect((await getSession({ db, kv: kv.asKV() }, sid))?.user).toEqual(ADMIN);
     expect(cookies.some((c) => c.startsWith(`${LOGIN_COOKIE}=;`))).toBe(true);
+    // The previous (KV-era) session is ended in D1 and tombstoned in KV
+    expect(await getSession({ db, kv: kv.asKV() }, "old")).toBeNull();
     expect(kv.store.has("session:old")).toBe(false);
     expect(kv.store.has("revoked:old")).toBe(true);
   });

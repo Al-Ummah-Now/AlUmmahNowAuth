@@ -96,6 +96,11 @@ export const APPS: AppRule[] = [
 				ADMIN_CLIENT_ID: '1448ed27-39a6-417d-b4c8-07f881e81269',
 			},
 			allowedHosts: ['admin.auth.alummahnow.net'],
+			// Sessions live in the auth D1 (AD-1); KV holds sessions from before it
+			requiredBindings: [
+				{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
+				{ kind: 'd1_databases', name: 'AUTH_DB' },
+			],
 			forbiddenNames: TEST_ONLY,
 		},
 		stage: {
@@ -106,7 +111,10 @@ export const APPS: AppRule[] = [
 				// prod's "Auth Admin" client; prod itself still points at a missing client (#190)
 				ADMIN_CLIENT_ID: '1448ed27-39a6-417d-b4c8-07f881e81269',
 			},
-			requiredBindings: [{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' }],
+			requiredBindings: [
+				{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
+				{ kind: 'd1_databases', name: 'AUTH_DB' },
+			],
 			allowedHosts: ['*.stage.alummahnow.net'],
 		},
 	},

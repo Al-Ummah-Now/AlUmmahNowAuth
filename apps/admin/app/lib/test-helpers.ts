@@ -50,3 +50,38 @@ export function storedSession(access: string, refresh: string, expiresInMs = 3 *
     expiresAt: new Date(NOW_MS + expiresInMs).toISOString(),
   };
 }
+
+/**
+ * D1 on SQLite (node:sqlite) with the real auth migration for app_sessions, so
+ * the session SQL (conditional UPDATE ... RETURNING, ON CONFLICT) runs on real
+ * SQLite semantics. Every statement is atomic, like D1's single writer, and
+ * each call yields to the event loop first, so concurrent requests interleave.
+ */
+export async function fakeD1(): Promise<D1Database & { rows(): Record<string, unknown>[] }> {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const db = new DatabaseSync(":memory:");
+  db.exec(readFileSync(fileURLToPath(new URL("../../../auth/migrations/0025_app_sessions.sql", import.meta.url).href), "utf8"));
+  const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+  const statement = (sql: string, params: unknown[] = []) => ({
+    bind: (...values: unknown[]) => statement(sql, values),
+    async first<T>() {
+      await tick();
+      return (db.prepare(sql).get(...(params as never[])) as T | undefined) ?? null;
+    },
+    async all<T>() {
+      await tick();
+      return { results: db.prepare(sql).all(...(params as never[])) as T[], success: true };
+    },
+    async run() {
+      await tick();
+      const r = db.prepare(sql).run(...(params as never[]));
+      return { success: true, meta: { changes: Number(r.changes) } };
+    },
+  });
+  return {
+    prepare: (sql: string) => statement(sql),
+    rows: () => db.prepare("SELECT * FROM app_sessions").all() as Record<string, unknown>[],
+  } as unknown as D1Database & { rows(): Record<string, unknown>[] };
+}
