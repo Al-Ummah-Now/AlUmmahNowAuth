@@ -353,6 +353,21 @@ export async function deleteUser(page: Page, email: string): Promise<void> {
 }
 
 /**
+ * Rows on a freshly loaded users page whose search box holds `email`.
+ *
+ * Counts only this test's own user, so parallel runs creating or deleting
+ * other users on shared QA can't change the result (the dashboard's global
+ * "Total Users" can).
+ */
+export async function userRowsMatching(page: Page, email: string): Promise<number> {
+  await page.goto(`${TEST_URLS.adminDashboard}/users`);
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await expect(page.locator('button:has-text("Create User")').first()).toBeVisible({ timeout: 10000 });
+  await page.fill('input[placeholder*="Search"]', email);
+  return page.locator(`tbody tr:has-text("${email}")`).count();
+}
+
+/**
  * Search for users
  *
  * @param page - Playwright page object

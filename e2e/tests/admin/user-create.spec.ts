@@ -5,7 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { loginAdmin, createUser, navigateToAdmin, userExists } from '../../fixtures/admin';
+import { loginAdmin, createUser, userExists, userRowsMatching } from '../../fixtures/admin';
 import { TEST_USERS, TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 // Signs in with the test password / one-time codes (or sends test secrets in headers):
@@ -164,46 +164,11 @@ test.describe('Admin User Creation', () => {
     await expect(page.locator('[role="dialog"]')).not.toBeVisible();
   });
 
-  test('should update user count after creating user', async ({ page }) => {
-    await navigateToAdmin(page);
-
-    // Wait for dashboard stats to load
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-
-    // Get user count from dashboard card
-    // The card structure is: Card > CardHeader (Total Users) + CardContent (number div)
-    const getUserCount = async (): Promise<number> => {
-      // Wait for the stats to be visible first
-      await expect(page.locator('text=Total Users')).toBeVisible({ timeout: 5000 });
-
-      // Find the Total Users card and extract the count
-      const countText = await page.locator('text=Total Users')
-        .locator('xpath=ancestor::*[contains(@class, "rounded")][1]')
-        .locator('div.text-2xl')
-        .first()
-        .textContent({ timeout: 5000 });
-      return parseInt(countText?.trim() || '0', 10);
-    };
-
-    const initialCount = await getUserCount();
-    expect(initialCount).toBeGreaterThanOrEqual(0);
-
-    // Create new user
-    const newUser = {
-      email: generateTestEmail('count-test'),
-      role: 'member' as const,  // OpenAuth uses 'member' as default role
-    };
-    await createUser(page, newUser);
-
-    // Navigate back to dashboard - use goto for full page reload to get fresh data
-    await page.goto(TEST_URLS.adminDashboard);
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-
-    // Use polling to wait for the count to update (handles any race conditions)
-    // Use >= instead of exact match to handle parallel test interference
-    await expect(async () => {
-      const updatedCount = await getUserCount();
-      expect(updatedCount).toBeGreaterThanOrEqual(initialCount + 1);
-    }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
+  test('lists exactly the created user (search by its email)', async ({ page }) => {
+    // Checks only this test's own user: the dashboard's global "Total Users"
+    // moves with every parallel run on shared QA (deletions too), so it can't show a creation.
+    const email = generateTestEmail('count-test');
+    await createUser(page, { email, role: 'member' }); // OpenAuth uses 'member' as default role
+    await expect.poll(() => userRowsMatching(page, email), { timeout: 20000, intervals: [1000, 2000, 3000, 5000] }).toBe(1);
   });
 });
