@@ -207,6 +207,20 @@ describe('a custom theme from duplicate to delete', () => {
 		expect((await call('DELETE', `/${ID}-copy`)).status).toBe(200);
 	});
 
+	it('previews a real page with no scripts, for a stored or an edited theme', async () => {
+		for (const lang of ['en', 'ar']) {
+			const res = await call('POST', '/preview', { body: { themeId: 'nahas', page: 'sign-in', lang, scheme: 'dark' } });
+			expect(res.status).toBe(200);
+			const html = await res.text();
+			expect(html).toContain('<form');
+			expect(html).not.toMatch(/<script/i);
+		}
+		const { theme } = await (await call('GET', `/${ID}`)).json<{ theme: Record<string, unknown> }>();
+		const edited = await call('POST', '/preview', { body: { theme, themeId: ID, page: 'register', lang: 'en', scheme: 'light' } });
+		expect(edited.status).toBe(200);
+		expect(await edited.text()).not.toMatch(/<script/i);
+	});
+
 	it('serves theme files by hash, immutable and sandboxed', async () => {
 		const { assets } = await (await call('GET', `/${ID}`)).json<{ assets: Record<string, { hash: string }> }>();
 		const res = await handleThemeAsset(ENV, assets['assets/header.svg'].hash);

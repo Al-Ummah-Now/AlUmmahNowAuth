@@ -172,6 +172,14 @@ describe('sanitizeSvg', () => {
 		expect(out).not.toMatch(/onload|<script|evil\.example|<image/i);
 		expect(out).toContain('<use href="#x"');
 	});
+
+	it('leaves no comment openers or script schemes after nested tricks', () => {
+		const out = sanitizeSvg(
+			'<svg><!<!-- x -->-- <script>alert(1)</script --><style>a{b:java<!-- -->script:x;c:vbscript:y;d:data:z;e:expres<!-- -->sion(1)}</style><rect/></svg>'
+		)!;
+		expect(out).not.toMatch(/<!--|<script|javascript:|vbscript:|data:|expression\(/i);
+		expect(out).toContain('<rect');
+	});
 });
 
 describe('zip', () => {

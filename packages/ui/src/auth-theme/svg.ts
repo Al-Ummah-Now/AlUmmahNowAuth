@@ -20,8 +20,8 @@ function safeCss(css: string): string {
 		.replace(/<!\[CDATA\[|\]\]>/g, '')
 		.replace(/<\/?[a-z]/gi, '')
 		.replace(/@import[^;]*;?/gi, '')
-		.replace(/expression\s*\(/gi, '')
-		.replace(/javascript:/gi, '')
+		.replace(/expression\s*\(/gi, 'none(')
+		.replace(/(javascript|vbscript|data)\s*:/gi, '$1-')
 		.replace(/url\(\s*(['"]?)(?!#)[^)]*\)/gi, 'none')
 		.replace(/\\/g, '');
 }
@@ -40,7 +40,7 @@ const esc = (v: string) => v.replace(/&(?!(?:[a-z]+|#\d+|#x[0-9a-f]+);)/gi, '&am
 
 /** Sanitized SVG markup, or null when there is no <svg> root. */
 export function sanitizeSvg(input: string): string | null {
-	const src = input.replace(/<\?xml[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, '').replace(/<!--[\s\S]*?-->/g, '');
+	const src = input.replace(/<\?xml[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<!/g, '&lt;!');
 	const start = src.search(/<svg[\s>]/i);
 	if (start < 0) return null;
 	let out = '';
