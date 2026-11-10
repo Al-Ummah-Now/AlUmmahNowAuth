@@ -26,6 +26,10 @@ export default defineConfig({
   testDir: './e2e',
   testMatch: ['**/*.spec.ts'],
 
+  // CI: per-run accounts (e2e/utils/test-data.ts generateTestEmail) are deleted after the run
+  globalSetup: './e2e/run-users-setup.ts',
+  globalTeardown: './e2e/run-users-teardown.ts',
+
   // Test execution settings
   timeout: 30 * 1000, // 30 seconds per test
   expect: {
