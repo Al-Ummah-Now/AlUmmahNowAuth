@@ -26,7 +26,7 @@
 import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import { loadRefreshToken, refreshKey, removeRefreshToken } from '@al-ummah-now/openauth/refresh-token';
 import { logger } from '../logger';
-import { isRevoked, readRevocation } from './revocation-list';
+import { isRevoked, readRevocationForRefresh } from './revocation-list';
 import { isRefusedAccountState, readAccountState } from '../security/account-status';
 
 interface TokenRecord {
@@ -46,8 +46,10 @@ interface DeviceRecord {
 }
 
 export interface IssuerStorageGuard {
-	/** TOKEN_REVOCATIONS; without it refresh tokens are not checked. */
+	/** TOKEN_REVOCATIONS; read for entries written before D1 held them. */
 	revocations?: KVNamespace;
+	/** AUTH_DB (`user_revocations`): the current revocation, in every location (AU-4). */
+	revocationsDb?: D1Database;
 	/** Access-token lifetime cap in seconds (ACCESS_TOKEN_TTL). */
 	accessTtl?: number;
 	/** AUTH_DB: codes and device grants of suspended/deleted accounts are refused (#662). */
@@ -72,7 +74,7 @@ function capAccessTtl<T extends TokenRecord | undefined>(value: T, accessTtl: nu
 }
 
 export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorageGuard): StorageAdapter {
-	if (!guard.revocations && !guard.accessTtl && !guard.db) return storage;
+	if (!guard.revocations && !guard.revocationsDb && !guard.accessTtl && !guard.db) return storage;
 
 	/** The account is suspended or deleted in D1. A failed D1 read throws: nothing is issued on an error. */
 	async function accountRefused(userId: string | undefined): Promise<boolean> {
@@ -83,9 +85,11 @@ export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorage
 	/** Refused (revoked sign-in) -> undefined; else the value with the TTL cap. */
 	async function check(key: string[], value: TokenRecord | undefined, remove: () => Promise<void>) {
 		if (!value || !GUARDED.has(key[0] ?? '')) return value;
-		if (key[0] === 'oauth:refresh' && guard.revocations) {
+		if (key[0] === 'oauth:refresh' && (guard.revocations || guard.revocationsDb)) {
 			const userId = value.properties?.id;
-			const entry = userId ? await readRevocation(guard.revocations, userId) : null;
+			const entry = userId
+				? await readRevocationForRefresh({ kv: guard.revocations, db: guard.revocationsDb }, userId)
+				: null;
 			const authTime = typeof value.authTime === 'number' ? Math.floor(value.authTime / 1000) : undefined;
 			if (entry && isRevoked(entry, { authTime })) {
 				await remove();

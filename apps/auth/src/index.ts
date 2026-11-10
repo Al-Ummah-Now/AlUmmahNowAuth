@@ -326,7 +326,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // Refresh tokens of revoked sign-ins read as missing; old sessions get
       // the current access-token lifetime on their next refresh (#437)
       // Codes and device grants of suspended/deleted accounts (D1) are refused (#662)
-      storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, accessTtl, db: env.AUTH_DB }),
+      storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, revocationsDb: env.AUTH_DB, accessTtl, db: env.AUTH_DB }),
       ...(accessTtl ? { ttl: { access: accessTtl } } : {}),
       // Codes of these clients are redeemed only with PKCE (OA-1, see pkce-clients.ts)
       pkce: { requireForCodeExchange: PKCE_REQUIRED_CLIENTS },
