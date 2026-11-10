@@ -181,7 +181,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminUserApp.use('*', adminContextMiddleware);
     adminUserApp.use('*', methodCompatMiddleware);
     // Suspend/delete/session wipe/forced reset sign the user out everywhere (#437)
-    adminUserApp.use('*', revokeOnAdminUserAction(env.TOKEN_REVOCATIONS));
+    adminUserApp.use('*', revokeOnAdminUserAction(env.TOKEN_REVOCATIONS, env.AUTH_DB));
     // Mount custom user listing route FIRST - provides users with RBAC roles
     adminUserApp.route('/', userListRoutes(env.AUTH_DB));
     // Then OpenAuth's user CRUD routes (GET /:id, POST /, PATCH /:id, DELETE /:id, etc.)

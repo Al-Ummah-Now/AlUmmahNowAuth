@@ -20,12 +20,31 @@ import {
 	type RevocationEntry,
 } from '../revocation/revocation-list';
 import { guardIssuerStorage, parseAccessTtl } from '../revocation/token-gate';
-import { adminUserActionReason, revokeOnAdminUserAction, revokeOnPasswordChange } from '../revocation/lifecycle';
+import { adminUserActionReason, endBrowserSignIns, revokeOnAdminUserAction, revokeOnPasswordChange } from '../revocation/lifecycle';
 
 const ISSUER = 'http://localhost:3301';
 const E = env as unknown as Env;
 const KV = () => E.TOKEN_REVOCATIONS!;
 const nowS = () => Math.floor(Date.now() / 1000);
+
+/** One browser signed in to `userId` (browser_sessions + an active account_sessions row). */
+async function signInBrowser(browserId: string, userId: string) {
+	const ts = Date.now();
+	await E.AUTH_DB.prepare(
+		`INSERT OR REPLACE INTO browser_sessions (id, tenant_id, created_at, last_activity, active_user_id) VALUES (?, 'default', ?, ?, ?)`,
+	)
+		.bind(browserId, ts, ts, userId)
+		.run();
+	await E.AUTH_DB.prepare(
+		`INSERT OR REPLACE INTO account_sessions (id, browser_session_id, user_id, is_active, authenticated_at, expires_at, subject_type, refresh_token, client_id) VALUES (?, ?, ?, 1, ?, ?, 'user', 'rt', 'web')`,
+	)
+		.bind(`as_${browserId}`, browserId, userId, ts, ts + 86_400_000)
+		.run();
+}
+const accountSessions = async (userId: string) =>
+	(await E.AUTH_DB.prepare('SELECT COUNT(*) AS n FROM account_sessions WHERE user_id = ?').bind(userId).first<{ n: number }>())!.n;
+const activeUser = async (browserId: string) =>
+	(await E.AUTH_DB.prepare('SELECT active_user_id AS u FROM browser_sessions WHERE id = ?').bind(browserId).first<{ u: string | null }>())?.u ?? null;
 
 /** In-memory KV that records put options. */
 function memoryKv() {
@@ -254,8 +273,28 @@ describe('revocation through the worker', () => {
 		)
 			.bind(ts, ts)
 			.run();
+		await signInBrowser('bs_rev', 'usr_rev');
+		await signInBrowser('bs_other', 'usr_keep');
 		expect(await revokeOnPasswordChange(E.AUTH_DB, KV(), 'rev@example.com')).toBe(1);
 		expect((await readRevocation(KV(), 'usr_rev'))!.reason).toBe('password_changed');
+		// No browser can sign the account in again silently; other users keep theirs
+		expect(await accountSessions('usr_rev')).toBe(0);
+		expect(await activeUser('bs_rev')).toBeNull();
+		expect(await accountSessions('usr_keep')).toBe(1);
+		expect(await activeUser('bs_other')).toBe('usr_keep');
 		expect(await revokeOnPasswordChange(E.AUTH_DB, KV(), 'nobody@example.com')).toBe(0);
+	});
+
+	it('an admin suspend, delete or forced reset also ends the browser sign-ins', async () => {
+		await signInBrowser('bs_adm', 'usr_adm');
+		const { kv, data } = memoryKv();
+		const app = new Hono();
+		app.use('*', revokeOnAdminUserAction(kv, E.AUTH_DB));
+		app.post('/:id/force-password-reset', (c) => c.json({ ok: true }));
+		expect((await app.request('http://auth/usr_adm/force-password-reset', { method: 'POST' })).status).toBe(200);
+		expect(JSON.parse(data.get('u:usr_adm')!).reason).toBe('admin_password_reset');
+		expect(await accountSessions('usr_adm')).toBe(0);
+		expect(await activeUser('bs_adm')).toBeNull();
+		expect(await endBrowserSignIns(undefined, 'usr_adm')).toBe(0);
 	});
 });
