@@ -60,7 +60,7 @@ async function expectSignInThemed(page: Page, clientId: string, lang: 'en' | 'ar
 test.describe('Admin sign-in themes', () => {
   test.setTimeout(300000);
 
-  test('duplicate, edit, publish, use as an app default, then clean up', async ({ page }) => {
+  test('duplicate, edit, publish, use as an app default, then clean up', async ({ page, browser }) => {
     page.on('dialog', (d) => d.accept());
     await loginAdmin(page, TEST_USERS.admin().email);
 
@@ -134,15 +134,22 @@ test.describe('Admin sign-in themes', () => {
       await row.getByRole('button', { name: 'Save' }).click();
       await expectStatus(page, /App default saved/);
 
-      // ---- the app's sign-in pages wear it, in English and Arabic
-      await expectSignInThemed(page, clientId, 'en');
-      await expectSignInThemed(page, clientId, 'ar');
+      // ---- the app's sign-in pages wear it, in English and Arabic, for a visitor
+      // who isn't signed in (the admin's own session would sign straight in)
+      const visitor = await browser.newContext();
+      try {
+        const vpage = await visitor.newPage();
+        await expectSignInThemed(vpage, clientId, 'en');
+        await expectSignInThemed(vpage, clientId, 'ar');
 
-      // ---- a per-call theme wins over the app default; an unknown one falls back to it
-      await page.goto(authorizeUrl(clientId, { theme: 'zujaj' }));
-      await expect(page.locator('html')).toHaveAttribute('data-theme', 'zujaj');
-      await page.goto(authorizeUrl(clientId, { theme: 'no-such-theme' }));
-      await expect(page.locator('html')).toHaveAttribute('data-theme', THEME_ID);
+        // ---- a per-call theme wins over the app default; an unknown one falls back to it
+        await vpage.goto(authorizeUrl(clientId, { theme: 'zujaj' }));
+        await expect(vpage.locator('html')).toHaveAttribute('data-theme', 'zujaj');
+        await vpage.goto(authorizeUrl(clientId, { theme: 'no-such-theme' }));
+        await expect(vpage.locator('html')).toHaveAttribute('data-theme', THEME_ID);
+      } finally {
+        await visitor.close();
+      }
 
       // ---- a theme in use cannot be deleted
       await page.goto(admin('/themes'));
