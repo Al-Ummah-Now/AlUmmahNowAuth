@@ -11,6 +11,12 @@ permissions:
   contents: read
   packages: read
 
+# A newer push to a PR cancels that PR's older run (its QA lock is still
+# released, see qa-unlock); main pushes and other PRs never cancel each other.
+concurrency:
+  group: test-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint-and-type-check:
     runs-on: ubuntu-latest
@@ -192,14 +198,61 @@ jobs:
             apps/*/coverage/
           retention-days: 30
 
-  # QA deploy + E2E (reusable workflow). Serialized across all runs: GitHub keeps
-  # at most one run in progress and one pending per group; with
-  # cancel-in-progress: false a running deploy/E2E is never cancelled.
+  # QA deploy + E2E (reusable workflow), one run at a time: every run shares the
+  # single QA environment. Serialised by the auth-qa lock (scripts/ci/qa-lock.ts,
+  # a git ref changed by compare-and-swap; same as AlUmmahNow's E2E lock), not a
+  # concurrency group: GitHub keeps one pending run per group, so every newly
+  # queued run cancelled the waiting one, and from 2026-11-10 18:55 no main push
+  # got its QA deploy at all. Waiting runs now take their turn; none is dropped.
+  qa-lock:
+    name: QA lock
+    needs: [lint-and-type-check, unit-tests, release-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    permissions:
+      contents: write  # the lock is a git ref
+      actions: read  # is the holder run still going?
+    outputs:
+      holder: ${{ steps.lock.outputs.holder }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Acquire the auth-qa lock
+        id: lock
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types --no-warnings scripts/ci/qa-lock.ts acquire auth-qa --ttl-min 120 --max-wait-min 290
+
   qa-e2e:
     name: QA
-    needs: [lint-and-type-check, unit-tests, release-checks]
-    concurrency:
-      group: auth-qa-deploy
-      cancel-in-progress: false
+    needs: [qa-lock]
     uses: ./.github/workflows/qa-e2e.yml
     secrets: inherit
+
+  # Pass, fail or cancelled: hand the lock to the next run
+  qa-unlock:
+    name: QA unlock
+    needs: [qa-lock, qa-e2e]
+    if: always() && needs.qa-lock.outputs.holder != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Release the auth-qa lock
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types --no-warnings scripts/ci/qa-lock.ts release auth-qa --holder "${{ needs.qa-lock.outputs.holder }}"
