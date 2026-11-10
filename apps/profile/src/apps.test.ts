@@ -33,7 +33,11 @@ describe("role filtering", () => {
 
   it("a member never sees the CMS; every allowed role does", () => {
     expect(ids(["Member"])).not.toContain("cms");
-    for (const role of ["Super Admin", "Admin", "Moderator"]) expect(ids([role])).toContain("cms");
+    for (const role of ["Super Admin", "Admin", "Moderator", "Scholar"]) expect(ids([role])).toContain("cms");
+  });
+
+  it("a Scholar sees the CMS (to write articles) but neither admin app", () => {
+    expect(ids(["Scholar", "Member"])).toEqual(["www", "videos", "profile", "cms"]);
   });
 
   it("does not emit disabled admin entries for users without access", () => {

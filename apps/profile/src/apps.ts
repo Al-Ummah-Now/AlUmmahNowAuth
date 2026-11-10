@@ -121,8 +121,8 @@ export const APP_CATALOG: readonly AppEntry[] = [
       stage: "https://cms.stage.alummahnow.net",
       local: "http://localhost:8585",
     },
-    // AlUmmahNowCMS docs/SPEC.md §3 (allowed roles)
-    requiredRoles: ["super_admin", "admin", "moderator"],
+    // AlUmmahNowCMS docs/SPEC.md §3 (allowed roles; Scholar = CMS "writer", own articles only)
+    requiredRoles: ["super_admin", "admin", "moderator", "scholar"],
   },
   {
     id: "auth-admin",
