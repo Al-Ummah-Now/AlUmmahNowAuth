@@ -4,10 +4,10 @@
  * tokens refreshed, and silent re-auth when they lapse.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FakeKV, NOW_MS, NOW_S, jwt } from "./test-helpers";
+import { FakeKV, NOW_MS, NOW_S, fakeD1, jwt } from "./test-helpers";
 import { LOGIN_COOKIE, PKCE_COOKIE } from "./sign-in";
 import { validatePKCE } from "@al-ummah-now/openauth/pkce";
-import { revokedKey, sessionKey } from "./session-store";
+import { getSession, sessionId } from "./session-store";
 
 const client = { exchange: vi.fn(), verify: vi.fn(), refresh: vi.fn() };
 vi.mock("@al-ummah-now/openauth/client", () => ({ createClient: () => client }));
@@ -19,7 +19,9 @@ const AUTH = "https://auth.qa.alummahnow.net";
 const USER = { id: "u1", email: "a@example.com", roles: ["Member"] };
 
 let kv: FakeKV;
-const env = () => ({ AUTH_STORAGE: kv.asKV(), AUTH_SERVER_URL: AUTH, APP_URL: APP, APP_ENV: "qa" });
+let db: Awaited<ReturnType<typeof fakeD1>>;
+const env = () => ({ AUTH_STORAGE: kv.asKV(), AUTH_DB: db, AUTH_SERVER_URL: AUTH, APP_URL: APP, APP_ENV: "qa" });
+const stored = (token: string) => getSession({ db, kv: kv.asKV() }, token, NOW_MS);
 
 async function get(path: string, cookie = "") {
   const req = new Request(new URL(path, APP), { headers: cookie ? { Cookie: cookie } : {}, redirect: "manual" });
@@ -36,19 +38,24 @@ function cookiePair(res: Response, name: string): string | null {
   return c ? c.split(";")[0] : null;
 }
 
-function seedSession(access: string, refresh = "r0", token = "sid-1") {
-  kv.store.set(
-    sessionKey(token),
-    JSON.stringify({ user: USER, tokens: { access, refresh }, expiresAt: new Date(NOW_MS + 86400_000).toISOString() }),
-  );
+async function seedSession(access: string, refresh = "r0", token = "sid-1") {
+  await db
+    .prepare(
+      `INSERT INTO app_sessions (id, app, user_json, access_token, refresh_token, expires_at, created_at, updated_at)
+       VALUES (?1, 'profile', ?2, ?3, ?4, ?5, ?6, ?6)`,
+    )
+    .bind(await sessionId(token), JSON.stringify(USER), access, refresh, NOW_MS + 86400_000, NOW_MS)
+    .run();
   return `profile_session=${token}`;
 }
 
 describe("profile sign-in routing", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
+  beforeEach(async () => {
+    // Only the clock: the D1 stand-in yields with real timers
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW_MS);
     kv = new FakeKV();
+    db = await fakeD1();
     client.exchange.mockReset();
     client.verify.mockReset();
     client.refresh.mockReset();
@@ -120,16 +127,15 @@ describe("profile sign-in routing", () => {
     const state = new URL(login.headers.get("location")!).searchParams.get("state")!;
     client.exchange.mockResolvedValue({ err: false, tokens: { access: jwt(NOW_S + 900), refresh: "r0" } });
     client.verify.mockResolvedValue({ subject: { type: "user", properties: USER } });
-    const old = seedSession(jwt(NOW_S + 900), "r-old", "old-sid");
+    const old = await seedSession(jwt(NOW_S + 900), "r-old", "old-sid");
 
     const res = await get(`/callback?code=c1&state=${state}`, `${cookiePair(login, LOGIN_COOKIE)}; ${old}`);
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("/?lang=ar");
     const sid = cookiePair(res, "profile_session")!.split("=")[1];
-    expect(kv.session(sid).user).toEqual(USER);
+    expect((await stored(sid))?.user).toEqual(USER);
     expect(setCookies(res).some((c) => c.startsWith(`${LOGIN_COOKIE}=;`))).toBe(true);
-    expect(kv.store.has(sessionKey("old-sid"))).toBe(false);
-    expect(kv.store.has(revokedKey("old-sid"))).toBe(true);
+    expect(await stored("old-sid")).toBeNull();
   });
 
   describe("callback state check (login CSRF)", () => {
@@ -140,15 +146,14 @@ describe("profile sign-in routing", () => {
     ];
     for (const [name, path, loginCookieHeader] of cases) {
       it(`${name} -> rejected: no token exchange, the old session is not ended`, async () => {
-        const old = seedSession(jwt(NOW_S + 900), "r-old", "old-sid");
+        const old = await seedSession(jwt(NOW_S + 900), "r-old", "old-sid");
         const res = await get(path, [loginCookieHeader, old].filter(Boolean).join("; "));
         expect(res.status).toBe(400);
         const html = await res.text();
         expect(html).toContain('href="/login"');
         expect(html).not.toMatch(/invalid_state/i);
         expect(client.exchange).not.toHaveBeenCalled();
-        expect(kv.store.has(sessionKey("old-sid"))).toBe(true);
-        expect(kv.store.has(revokedKey("old-sid"))).toBe(false);
+        expect(await stored("old-sid")).not.toBeNull();
         expect(cookiePair(res, "profile_session")).toBeNull();
         expect(setCookies(res).some((c) => c.startsWith(`${LOGIN_COOKIE}=;`))).toBe(true);
       });
@@ -174,7 +179,7 @@ describe("profile sign-in routing", () => {
   });
 
   it("signed in -> the page, no prompt", async () => {
-    const res = await get("/", seedSession(jwt(NOW_S + 900)));
+    const res = await get("/", await seedSession(jwt(NOW_S + 900)));
     expect(res.status).toBe(200);
     expect(client.refresh).not.toHaveBeenCalled();
   });
@@ -182,31 +187,30 @@ describe("profile sign-in routing", () => {
   it("refreshes the access token before it expires and keeps the session", async () => {
     const next = jwt(NOW_S + 900, "new");
     client.refresh.mockResolvedValue({ err: false, tokens: { access: next, refresh: "r1" } });
-    const res = await get("/", seedSession(jwt(NOW_S + 30)));
+    const res = await get("/", await seedSession(jwt(NOW_S + 30)));
     expect(res.status).toBe(200);
-    expect(kv.session("sid-1").tokens).toEqual({ access: next, refresh: "r1" });
+    expect((await stored("sid-1"))?.tokens).toEqual({ access: next, refresh: "r1" });
   });
 
   it("refresh failure after expiry -> silent re-auth (prompt=none), session ended", async () => {
     client.refresh.mockResolvedValue({ err: new Error("invalid_grant") });
-    const res = await get("/", seedSession(jwt(NOW_S - 30)));
+    const res = await get("/", await seedSession(jwt(NOW_S - 30)));
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("/login?return=%2F&prompt=none");
-    expect(kv.store.has(sessionKey("sid-1"))).toBe(false);
+    expect(await stored("sid-1")).toBeNull();
   });
 
   it("/api/me refreshes too and answers 401 once the session lapsed", async () => {
     client.refresh.mockResolvedValue({ err: new Error("invalid_grant") });
-    expect((await get("/api/me", seedSession(jwt(NOW_S - 30)))).status).toBe(401);
-    expect((await get("/api/me", seedSession(jwt(NOW_S + 900), "r0", "sid-2"))).status).toBe(200);
+    expect((await get("/api/me", await seedSession(jwt(NOW_S - 30)))).status).toBe(401);
+    expect((await get("/api/me", await seedSession(jwt(NOW_S + 900), "r0", "sid-2"))).status).toBe(200);
   });
 
   it("/logout (single sign-out) ends the session for good and continues auth's chain", async () => {
     const next = `${AUTH}/logout?step=1`;
-    const res = await get(`/logout?next=${encodeURIComponent(next)}`, seedSession(jwt(NOW_S + 900)));
+    const res = await get(`/logout?next=${encodeURIComponent(next)}`, await seedSession(jwt(NOW_S + 900)));
     expect(res.headers.get("location")).toBe(next);
-    expect(kv.store.has(sessionKey("sid-1"))).toBe(false);
-    expect(kv.store.has(revokedKey("sid-1"))).toBe(true);
+    expect(await stored("sid-1")).toBeNull();
     expect((await get("/", "profile_session=sid-1")).headers.get("location")).toBe("/login?return=%2F");
   });
 });

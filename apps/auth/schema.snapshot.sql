@@ -17,9 +17,11 @@
 --   migrations/0022_moderation_requests.sql
 --   migrations/0023_moderation_execution_queue.sql
 --   migrations/0024_auth_themes.sql
+--   migrations/0025_app_sessions.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
+CREATE TABLE app_sessions (id TEXT PRIMARY KEY, app TEXT NOT NULL, user_json TEXT NOT NULL, access_token TEXT NOT NULL, refresh_token TEXT, expires_at INTEGER NOT NULL, revoked_at INTEGER, refresh_lock TEXT, refresh_lock_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE audit_events (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), timestamp TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info', user_id TEXT, ip_address TEXT, user_agent TEXT, request_id TEXT, metadata TEXT, success INTEGER NOT NULL DEFAULT 1, error_message TEXT, tenant_id TEXT NOT NULL DEFAULT 'default', FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE auth_theme_client_defaults (client_id TEXT PRIMARY KEY, theme_id TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by TEXT);
 CREATE TABLE auth_theme_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by TEXT);
@@ -55,6 +57,7 @@ CREATE INDEX idx_account_sessions_client ON account_sessions(client_id);
 CREATE INDEX idx_account_sessions_expires ON account_sessions(expires_at);
 CREATE UNIQUE INDEX idx_account_sessions_unique_user ON account_sessions(browser_session_id, user_id);
 CREATE INDEX idx_account_sessions_user ON account_sessions(user_id);
+CREATE INDEX idx_app_sessions_expires ON app_sessions(expires_at);
 CREATE INDEX idx_audit_events_event_type ON audit_events(event_type);
 CREATE INDEX idx_audit_events_severity ON audit_events(severity);
 CREATE INDEX idx_audit_events_tenant_id ON audit_events(tenant_id);

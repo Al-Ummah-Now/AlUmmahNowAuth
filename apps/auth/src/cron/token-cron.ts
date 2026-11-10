@@ -11,6 +11,7 @@
 import { TokenCleanupService } from '../services/token-cleanup';
 import { logger } from '../logger';
 import { purgeExpiredAttempts } from '../security/password-attempts';
+import { purgeExpiredAppSessions } from '../services/app-sessions-cleanup';
 
 export type CronJobName = 'token-cleanup';
 
@@ -60,6 +61,8 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 				logger.info('Token cleanup completed', { ...result });
 				// Password attempt rows that no longer limit anything (AU-2)
 				await purgeExpiredAttempts(env.AUTH_DB);
+				// Expired profile/admin sessions (PF-1)
+				await purgeExpiredAppSessions(env.AUTH_DB);
 				break;
 			}
 		}
