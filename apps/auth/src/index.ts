@@ -13,6 +13,7 @@ import { renderErrorPage } from "./ui/error-page";
 import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
 import { withPreviewRedirects } from "./utils/preview-redirects";
 import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-handlers";
+import { createRefreshCheck } from "./handlers/refresh-check";
 import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
 import { PasswordUI } from "@al-ummah-now/openauth/ui/password";
 import { getLocaleFromRequest } from "@al-ummah-now/openauth/ui/i18n";
@@ -374,6 +375,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       },
       // Per request: OpenAuth renders each page with this request's theme and ?lang=
       theme: openauthThemeFor(theme),
+      // Every refresh: a deleted or suspended user is refused; the issuer then
+      // re-reads the roles from RBAC, so refreshed tokens carry current roles
+      onRefresh: createRefreshCheck(userService),
       onSuccess: createOnSuccessHandler(userService, rbacService, {
         request,
         env,

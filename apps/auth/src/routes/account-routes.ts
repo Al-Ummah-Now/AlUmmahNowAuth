@@ -26,6 +26,7 @@ import { getAuditEmitter } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType, createAuditEvent } from '../audit-events';
 import { logger } from '../logger';
 import { revokeUser } from '../revocation/revocation-list';
+import { parseAccessTtl } from '../revocation/token-gate';
 
 export const REAUTH_MAX_AGE_SECONDS = 600;
 const AUDIT_EXPORT_LIMIT = 1000;
@@ -83,6 +84,12 @@ export async function verifyUserToken(token: string, env: Env): Promise<Verified
 	if (claims.mode !== 'access' || claims.type !== 'user' || claims.client_id || !claims.properties?.id) {
 		return unauthorized('A user access token is required');
 	}
+	// Tokens issued for longer than ACCESS_TOKEN_TTL (the 30-day tokens from
+	// before #437) are not accepted: the client refreshes and gets a short token
+	// with the current roles
+	if (exceedsAccessTtl(claims, parseAccessTtl(env.ACCESS_TOKEN_TTL))) {
+		return unauthorized('The access token is invalid or expired');
+	}
 	return {
 		userId: claims.properties.id,
 		subject: typeof claims.sub === 'string' ? claims.sub : undefined,
@@ -91,6 +98,16 @@ export async function verifyUserToken(token: string, env: Env): Promise<Verified
 		jti: typeof claims.jti === 'string' ? claims.jti : undefined,
 		exp: typeof claims.exp === 'number' ? claims.exp : undefined,
 	};
+}
+
+/** Clock slack between `iat` and `exp`, in seconds. */
+const LIFETIME_SLACK_SECONDS = 60;
+
+/** True when the token was issued for longer than `accessTtl` seconds. */
+export function exceedsAccessTtl(claims: { iat?: unknown; exp?: unknown }, accessTtl: number | undefined): boolean {
+	if (!accessTtl) return false;
+	if (typeof claims.iat !== 'number' || typeof claims.exp !== 'number') return true;
+	return claims.exp - claims.iat > accessTtl + LIFETIME_SLACK_SECONDS;
 }
 
 /** Null when the sign-in is recent enough; otherwise the step-up challenge (RFC 9470). */
