@@ -7,12 +7,14 @@
  * - /test/email/:email - Retrieve verification code sent to email
  * - /test/promote/:email - Promote user to admin role
  * - /test/tokens/:email - Get token info for a user
+ * - /test/run-users/delete/:email, /test/run-users/stale - E2E run accounts (test-run-users.ts)
  */
 
 import { logger } from '../logger';
 import { isAuthorizedTestRequest, sinkKey } from '../utils/e2e-sink';
+import { routeRunUsers, type RunUserRoutesEnv } from './test-run-users';
 
-interface TestRoutesEnv {
+interface TestRoutesEnv extends Partial<Omit<RunUserRoutesEnv, 'AUTH_DB' | 'AUTH_STORAGE' | 'TEST_PROMOTE_SECRET' | 'ENVIRONMENT' | 'OPENAUTH_ISSUER' | 'E2E_CODE_SINK_SECRET'>> {
 	AUTH_STORAGE: KVNamespace;
 	AUTH_DB: D1Database;
 	TEST_PROMOTE_SECRET?: string;
@@ -522,6 +524,13 @@ export async function routeTestEndpoints(
 	if (url.pathname.startsWith('/test/tokens/') && request.method === 'POST') {
 		const email = decodeURIComponent(url.pathname.split('/test/tokens/')[1]);
 		return handleTestTokensPost(email, request, env, ctx);
+	}
+
+	// POST /test/run-users/delete/:email, GET /test/run-users/stale (only with run-account support)
+	const runUsers = await routeRunUsers(url, request, env as RunUserRoutesEnv);
+	if (runUsers) {
+		ctx.waitUntil(logger.finalizeRequest());
+		return runUsers;
 	}
 
 	// GET /test/debug/roles - Debug endpoint for roles

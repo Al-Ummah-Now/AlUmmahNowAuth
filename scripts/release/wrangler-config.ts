@@ -210,8 +210,8 @@ export function checkParity(app: string, prod: ResolvedEnv, stage: ResolvedEnv, 
 	const errors: string[] = [];
 	for (const k of p) if (!s.has(k)) errors.push(`${app}: binding ${k} is in production but not in stage`);
 	for (const k of s) if (!p.has(k)) errors.push(`${app}: binding ${k} is in stage but not in production`);
-	const pv = Object.keys(prod.vars).sort().join(',');
-	const sv = Object.keys(stage.vars).sort().join(',');
+	const pv = Object.keys(prod.vars).filter((k) => !testOnly.includes(k)).sort().join(',');
+	const sv = Object.keys(stage.vars).filter((k) => !testOnly.includes(k)).sort().join(',');
 	if (pv !== sv) errors.push(`${app}: stage and production define different vars ([${sv}] vs [${pv}])`);
 	return errors;
 }

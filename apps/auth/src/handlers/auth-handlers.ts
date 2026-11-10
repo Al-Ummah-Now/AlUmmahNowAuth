@@ -10,7 +10,7 @@ import { getClientIP } from '../rate-limit';
 import { getAuditEmitter } from '../audit-emitter';
 import { createLoginSuccessEvent, createLoginFailedEvent } from '../audit-events';
 import { trackEvent } from '../utils/analytics';
-import { shouldSinkCode, sinkKey, storeSinkCode } from '../utils/e2e-sink';
+import { shouldSinkCode, sinkKey, storeSinkCode, markRunUser, type RunUsersEnv } from '../utils/e2e-sink';
 import { CODE_TTL_SECONDS, recordCode } from '../security/password-attempts';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
 import { Storage, type StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
@@ -33,7 +33,7 @@ const CODE_SEND_FAILED: PasswordSendCodeError = { type: 'code_send_failed' };
  */
 export interface AuthHandlerContext {
 	request: Request;
-	env: {
+	env: Partial<RunUsersEnv> & {
 		AUTH_ANALYTICS?: AnalyticsEngineDataset;
 	};
 	ctx: ExecutionContext;
@@ -211,6 +211,8 @@ export function createOnSuccessHandler(
 				logger.info('Creating new user during registration', { email, tenantId });
 				existingUser = await userService.createUser(tenantId, { email });
 				logger.info('User created successfully', { userId: existingUser.id, email });
+				// E2E run accounts (QA/stage only): the marker the run teardown requires
+				await markRunUser(env as unknown as RunUsersEnv, db, existingUser);
 
 				// Assign default "member" role to new users
 				try {

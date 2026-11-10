@@ -98,6 +98,13 @@ describe('auth env.production', () => {
 		expect(checkApp(authRule, config)).toContain('auth (env.production): test-only binding E2E_CODE_SINK_SECRET must not be deployed here');
 	});
 
+	it('fails when the E2E run-account flag is set in production', () => {
+		const config = authConfig();
+		const prod = config.env!.production as { vars: Record<string, string> };
+		prod.vars.E2E_RUN_USERS = 'enabled';
+		expect(checkApp(authRule, config)).toContain('auth (env.production): test-only var E2E_RUN_USERS must not be deployed here');
+	});
+
 	it('fails on a non-prod route', () => {
 		const config = authConfig();
 		(config.env!.production as { routes: object[] }).routes.push({ pattern: 'auth.qa.alummahnow.net', custom_domain: true });

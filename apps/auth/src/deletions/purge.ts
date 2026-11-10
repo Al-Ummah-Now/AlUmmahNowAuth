@@ -20,6 +20,35 @@ export interface PurgeResult {
 
 const zero = (): Record<DeletionKind, number> => ({ user: 0, client: 0, role: 0, theme: 0 });
 
+/**
+ * Hard-deletes one soft-deleted item now and drops it from the list. False when
+ * it is not in the list (restored meanwhile). Throws when the kind's purge
+ * fails; the caller records the failure. Audit-logged like every purge.
+ */
+export async function purgeItem(env: DeletionEnv, kind: DeletionKind, itemId: string): Promise<boolean> {
+	const store = new DeletionStore(env.AUTH_DB);
+	// Restored meanwhile: the row is gone, so there is nothing to purge
+	const current = await store.get(kind, itemId);
+	if (!current) return false;
+	await HANDLERS[kind].purge(env, current);
+	await store.removeStatement(kind, itemId).run();
+	await auditDeletion(
+		AuditEventType.ADMIN_ITEM_PURGED,
+		null,
+		{
+			kind,
+			item_id: itemId,
+			label: current.label,
+			deleted_by: current.deleted_by,
+			deleted_at: current.deleted_at,
+			requested_by: current.purge_requested_by,
+			trigger: current.purge_requested_at !== null ? 'requested' : 'retention',
+		},
+		AuditEventSeverity.CRITICAL
+	);
+	return true;
+}
+
 export async function purgeDeleted(env: DeletionEnv, opts: { now?: number; limit?: number } = {}): Promise<PurgeResult> {
 	const now = opts.now ?? Date.now();
 	const store = new DeletionStore(env.AUTH_DB);
@@ -27,26 +56,7 @@ export async function purgeDeleted(env: DeletionEnv, opts: { now?: number; limit
 	const due = await store.due(now, opts.limit ?? PURGE_BATCH);
 	for (const row of due) {
 		try {
-			// Restored meanwhile: the row is gone, so there is nothing to purge
-			const current = await store.get(row.kind, row.item_id);
-			if (!current) continue;
-			await HANDLERS[row.kind].purge(env, current);
-			await store.removeStatement(row.kind, row.item_id).run();
-			result.purged[row.kind]++;
-			await auditDeletion(
-				AuditEventType.ADMIN_ITEM_PURGED,
-				null,
-				{
-					kind: row.kind,
-					item_id: row.item_id,
-					label: row.label,
-					deleted_by: row.deleted_by,
-					deleted_at: row.deleted_at,
-					requested_by: row.purge_requested_by,
-					trigger: row.purge_requested_at !== null ? 'requested' : 'retention',
-				},
-				AuditEventSeverity.CRITICAL
-			);
+			if (await purgeItem(env, row.kind, row.item_id)) result.purged[row.kind]++;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			result.failed[row.kind]++;

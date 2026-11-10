@@ -32,7 +32,7 @@ export interface WorkerSecrets {
 	fixedClientIds?: string[];
 }
 
-const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET'];
+const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET', 'E2E_RUN_USERS'];
 
 const AUTH_SECRETS: RequiredSecret[] = [
 	{ name: 'CLIENT_SECRET_SALT', purpose: 'Secrets Store; legacy, required by deep health but read by no code (client secrets use per-secret PBKDF2 salts)' },
