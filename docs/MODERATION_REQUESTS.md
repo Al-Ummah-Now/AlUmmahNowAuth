@@ -211,15 +211,9 @@ queued is skipped by the consumer.
 | production | `moderation-actions` | `moderation-actions-dlq` | `al-ummah-now-auth` |
 
 Stage and production are released with `wrangler versions upload`, which does not
-register queue consumers; they were registered once:
-
-```bash
-npx wrangler queues consumer add moderation-actions[-stage] al-ummah-now-auth[-stage] \
-  --batch-size 5 --batch-timeout 5 --message-retries 6 --retry-delay-secs 30 \
-  --dead-letter-queue moderation-actions[-stage]-dlq
-npx wrangler queues consumer add moderation-actions[-stage]-dlq al-ummah-now-auth[-stage] \
-  --batch-size 5 --batch-timeout 5 --message-retries 3
-```
+register queue consumers: the release runs `scripts/release/queue-consumers.ts`
+after each promote, which registers any consumer the wrangler config declares and
+Cloudflare lacks (idempotent; it needs the code with the queue handler deployed).
 
 ## Audit
 
