@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import * as v from 'valibot';
 import { revokeSessionTokens, revokeUserTokens } from '../custom/token-revocation';
 import { revokeUser } from '../revocation/revocation-list';
+import { endBrowserSignIns } from '../revocation/lifecycle';
 import { requireAdmin, requirePermission } from '../middleware/admin-auth';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventType, AuditEventSeverity } from '../audit-events';
@@ -256,29 +257,14 @@ adminSessionRoutes.delete(
 
 		const sessionCount = countResult?.count || 0;
 
-		// Get all session IDs for token revocation
-		const sessions = await c.env.AUTH_DB.prepare(`
-			SELECT id FROM account_sessions
-			WHERE user_id = ? AND is_active = 1
-		`)
-			.bind(userId)
-			.all<{ id: string }>();
-
-		// Revoke all tokens for all sessions
-		let totalTokensRevoked = 0;
-		for (const session of sessions.results || []) {
-			const result = await revokeSessionTokens(session.id, c.env.AUTH_DB);
-			totalTokensRevoked += result.revoked;
-		}
+		// refresh_tokens has no session link (no session_id column), so the user's
+		// tokens are revoked by user: this used to 500 for any user with a session.
+		const { revoked: totalTokensRevoked } = await revokeUserTokens(userId, c.env.AUTH_DB);
 		// OpenAuth refresh tokens and access tokens already out (#437)
 		await revokeUser(c.env.TOKEN_REVOCATIONS, userId, 'admin_sessions_revoked');
-
-		// Revoke all account sessions
-		await c.env.AUTH_DB.prepare(`
-			UPDATE account_sessions SET is_active = 0 WHERE user_id = ?
-		`)
-			.bind(userId)
-			.run();
+		// End the sign-in in every browser too, or /authorize (prompt=none) would sign
+		// the user straight back in from the SSO session (revocation/lifecycle.ts)
+		await endBrowserSignIns(c.env.AUTH_DB, userId);
 
 		// Emit audit event
 		await emitAuditEvent({
