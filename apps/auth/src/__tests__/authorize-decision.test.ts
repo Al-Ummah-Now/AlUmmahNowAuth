@@ -213,7 +213,8 @@ describe('/authorize with an existing browser session (issuer as deployed)', () 
 		expect(browser.jar.has('__session')).toBe(false);
 		expect((await browser.authorize(ADMIN)).pathname).toBe('/password/authorize');
 		expect((await browser.authorize(PROFILE, 'none')).searchParams.get('error')).toBe('login_required');
-		expect((await browser.accounts()).status).toBe(401);
+		// Signed out: the accounts probe answers 200 with an empty list, never an error
+		expect(await browser.accounts()).toEqual({ status: 200, accounts: [] });
 	});
 });
 
@@ -274,10 +275,35 @@ describe('accounts API CORS (credentialed, per env allowlist)', () => {
 		expectCors(res, VIDEOS);
 	});
 
-	it('a 401 (no browser session) still carries CORS so the app can read it', async () => {
+	it('no browser session: 200 with an empty list (no console error for anonymous visitors), with CORS, never cached', async () => {
 		const res = await new Browser().fetch('/session/accounts', { headers: { Origin: VIDEOS } }, qaEnv());
-		expect(res.status).toBe(401);
+		expect(res.status).toBe(200);
 		expectCors(res, VIDEOS);
+		expect(res.headers.get('Content-Type')).toContain('application/json');
+		expect(res.headers.get('Cache-Control')).toBe('no-store');
+		// Nothing but an empty list: no error text, no other browser's sessions
+		expect(await res.json()).toEqual({ accounts: [] });
+	});
+
+	it('a stale or forged __session cookie is also just an empty list', async () => {
+		const browser = new Browser();
+		browser.jar.set('__session', 'not-a-real-session');
+		const res = await browser.fetch('/session/accounts', { headers: { Origin: VIDEOS } }, qaEnv());
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ accounts: [] });
+	});
+
+	it('the other session APIs still refuse an anonymous browser (401)', async () => {
+		const browser = new Browser();
+		const sw = await browser.fetch(
+			'/session/switch',
+			{ method: 'POST', headers: { Origin: VIDEOS, 'content-type': 'application/json' }, body: JSON.stringify({ userId: 'someone' }) },
+			qaEnv()
+		);
+		expect(sw.status).toBe(401);
+		expectCors(sw, VIDEOS);
+		const del = await browser.fetch('/session/accounts/someone', { method: 'DELETE', headers: { Origin: VIDEOS } }, qaEnv());
+		expect(del.status).toBe(401);
 	});
 
 	it('a foreign origin gets no CORS grant', async () => {

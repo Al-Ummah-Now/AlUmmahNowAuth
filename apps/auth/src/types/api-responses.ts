@@ -20,7 +20,9 @@ export interface AccountInfo {
 
 /**
  * Response from GET /session/accounts
- * Lists all logged-in accounts in the current browser session
+ * Lists all logged-in accounts in the current browser session.
+ * A browser with no session gets 200 `{ "accounts": [] }` (not 401), so the
+ * apps' anonymous sign-in probe never logs a failed request.
  */
 export interface SessionAccountsResponse {
 	accounts: AccountInfo[];

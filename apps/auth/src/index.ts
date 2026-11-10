@@ -399,6 +399,21 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
       let finalResponse = issuerResponse;
 
+      // Anonymous probe: every app asks GET /session/accounts on page load to
+      // see whether this browser is signed in. "Not signed in" is a normal
+      // answer, not an error: 200 with an empty list instead of the issuer's
+      // 401, so signed-out visitors get no failed request in the console.
+      // It says nothing a 401 did not (and nothing about other sessions);
+      // switch/remove (POST/DELETE) still answer 401 without a session.
+      if (request.method === 'GET' && url.pathname === '/session/accounts' && issuerResponse.status === 401) {
+        // The issuer's headers, so any cookie it cleared (stale __session) is kept
+        const headers = new Headers(issuerResponse.headers);
+        headers.delete('Content-Length');
+        headers.set('Content-Type', 'application/json');
+        headers.set('Cache-Control', 'no-store');
+        finalResponse = new Response(JSON.stringify({ accounts: [] }), { status: 200, headers });
+      }
+
       // Enrich /session/accounts response with user profile data (email, name, avatar)
       // OpenAuth only returns session data, but profile app needs user info
       if (url.pathname === '/session/accounts' && issuerResponse.ok) {
