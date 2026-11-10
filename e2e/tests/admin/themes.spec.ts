@@ -91,7 +91,7 @@ test.describe('Admin sign-in themes', () => {
       await page.locator('[role="dialog"]').getByRole('button', { name: 'Duplicate' }).click();
       await expect(page).toHaveURL(admin(`/themes/${THEME_ID}`), { timeout: 20000 });
       themeCreated = true;
-      await expect(page.getByText('Not published yet')).toBeVisible();
+      await expect(page.getByText('Not published yet', { exact: true })).toBeVisible();
 
       // ---- the live preview shows the real sign-in page
       const frame = page.frameLocator('[data-testid="theme-preview"]');
@@ -114,7 +114,7 @@ test.describe('Admin sign-in themes', () => {
         await field.fill(PAGE_BG);
         await field.press('Tab');
       }
-      await expect(page.getByText('Unsaved')).toBeVisible();
+      await expect(page.getByText('Unsaved', { exact: true })).toBeVisible();
       await expect(frame.locator(`[id="${MARK}"]`)).toHaveCount(1, { timeout: 30000 });
       await shot(page, 'builder-pages');
       await page.getByRole('button', { name: 'عربي' }).click();
