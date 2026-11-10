@@ -102,7 +102,7 @@ test.describe('Admin sign-in themes', () => {
       await page.getByRole('tab', { name: 'Images' }).click();
       await page.setInputFiles('#asset-file', { name: 'e2e-header.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(HEADER_SVG) });
       await page.selectOption('#asset-target', 'headerGraphic');
-      await page.getByRole('button', { name: 'Upload' }).click();
+      await page.getByRole('button', { name: 'Upload', exact: true }).click();
       await expectStatus(page, /Uploaded assets\/e2e-header\.svg/);
       await expect(page.getByLabel('Card header art')).toHaveValue('assets/e2e-header.svg');
       await shot(page, 'builder-images');
@@ -118,13 +118,13 @@ test.describe('Admin sign-in themes', () => {
       await expect(frame.locator(`[id="${MARK}"]`)).toHaveCount(1, { timeout: 30000 });
       await shot(page, 'builder-pages');
       await page.getByRole('button', { name: 'عربي' }).click();
-      await page.getByRole('button', { name: 'Dark' }).click();
-      await page.getByRole('button', { name: 'Phone' }).click();
+      await page.getByRole('button', { name: 'Dark', exact: true }).click();
+      await page.getByRole('button', { name: 'Phone', exact: true }).click();
       await expect(frame.locator('html')).toHaveAttribute('dir', 'rtl', { timeout: 30000 });
       await shot(page, 'builder-preview-ar-dark-phone');
 
       // ---- publish
-      await page.getByRole('button', { name: 'Publish' }).click();
+      await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expectStatus(page, /Published version/);
 
       // ---- the test app's default
