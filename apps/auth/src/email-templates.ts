@@ -1,3 +1,4 @@
+import type { EmailTheme } from '../../../packages/ui/src/auth-theme/types.ts';
 /**
  * Email Templates for Al Ummah Now Authentication
  *
@@ -10,12 +11,40 @@ export interface VerificationEmailData {
   expiryMinutes?: number;
 }
 
+/** An Auth theme's `email` section (theme package format v1); unset keys keep the template's own look. */
+export type { EmailTheme };
+
+const SAFE = /^(?:#[0-9a-fA-F]{3,8}|\d{1,3}(?:\.\d+)?(?:px|rem|em|%)|0)$/;
+
+/** CSS overrides for the theme's email colours (only validated values). */
+export function emailThemeCss(theme: EmailTheme | undefined): string {
+  if (!theme) return '';
+  const v = (k: keyof EmailTheme) => (theme[k] && SAFE.test(theme[k]!) ? theme[k] : undefined);
+  const rules: string[] = [];
+  if (v('background')) rules.push(`body { background-color: ${v('background')}; }`);
+  if (v('text')) rules.push(`.email-body, .email-body p { color: ${v('text')}; }`);
+  const accent = v('buttonBackground');
+  if (accent) rules.push(`.email-header { background: ${accent}; } .brand-name, .email-footer a, .code-expiry { color: ${accent}; } .code-container { border-color: ${accent}; }`);
+  if (v('buttonText')) rules.push(`.email-header h1 { color: ${v('buttonText')}; }`);
+  if (v('buttonRadius')) rules.push(`.code-container { border-radius: ${v('buttonRadius')}; }`);
+  return rules.join('\n');
+}
+
 /**
  * Generate HTML for verification code email
  */
-export function getVerificationCodeTemplate(data: VerificationEmailData): string {
+export function getVerificationCodeTemplate(data: VerificationEmailData, theme?: EmailTheme): string {
   const { code, expiryMinutes = 10 } = data;
+  const html = renderVerificationCodeTemplate(code, expiryMinutes);
+  if (!theme || Object.keys(theme).length === 0) return html;
+  let out = html.replace('</head>', `<style>${emailThemeCss(theme)}</style>\n</head>`);
+  if (theme.headerImage && /^https:\/\/[^\s"'<>]+$/.test(theme.headerImage)) {
+    out = out.replace(/(<img src=")[^"]*(" alt="Al Ummah Now" class="logo">)/, `$1${theme.headerImage}$2`);
+  }
+  return out;
+}
 
+function renderVerificationCodeTemplate(code: string, expiryMinutes: number): string {
   return `
 <!DOCTYPE html>
 <html lang="en">

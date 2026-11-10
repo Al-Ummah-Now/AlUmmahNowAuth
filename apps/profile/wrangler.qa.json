@@ -21,7 +21,6 @@
     "AUTH_SERVER_URL": "https://auth.qa.alummahnow.net",
     "APP_URL": "https://profile.auth.qa.alummahnow.net",
     "APP_ENV": "qa",
-    "ADMIN_API_URL": "https://admin.api.qa.alummahnow.net",
     "CF_WEB_ANALYTICS_TOKEN": ""
   },
   "observability": {

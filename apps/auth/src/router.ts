@@ -5,6 +5,7 @@
  */
 
 import { Hono } from 'hono';
+import { adminThemeRoutes, handlePublicThemeList, handleThemeAsset, handleThemeResolve } from './themes/routes';
 import { logger } from './logger';
 import { isAllowedOrigin } from './utils/cors';
 import { addSecurityHeaders } from './utils/security-headers';
@@ -605,6 +606,15 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 		case '/authorize':
 			return handleAuthorizeRedirect(rctx);
 
+		// Auth's published themes (public, read-only): ids/names apps may pass as ?theme=
+		case '/themes':
+			if (request.method !== 'GET') return methodNotAllowed('GET');
+			return handlePublicThemeList(rctx.env);
+
+		case '/themes/resolve':
+			if (request.method !== 'GET') return methodNotAllowed('GET');
+			return handleThemeResolve(rctx.env, url);
+
 		// Self-service account deletion and export (Epic 9.7): the user's own token
 		case '/account':
 			if (request.method !== 'DELETE') return methodNotAllowed('DELETE');
@@ -623,6 +633,10 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	// Handle prefix-based routes
 	if (pathname.startsWith('/admin/')) {
 		return await routeAdminPaths(rctx);
+	}
+
+	if (pathname.startsWith('/themes/assets/') && request.method === 'GET') {
+		return handleThemeAsset(rctx.env, pathname.slice('/themes/assets/'.length));
 	}
 
 	if (pathname.startsWith('/session/')) {
@@ -709,6 +723,11 @@ async function routeAdminPaths(rctx: RouterContext): Promise<RouteResult> {
 
 	if (pathname === '/admin/moderation-requests' || pathname.startsWith('/admin/moderation-requests/')) {
 		return await handleAdminModerationRoutes(rctx);
+	}
+
+	if (pathname === '/admin/themes' || pathname.startsWith('/admin/themes/')) {
+		const response = await adminThemeRoutes.fetch(rctx.request, rctx.env, rctx.ctx);
+		return addSecurityHeaders(response, rctx.isProduction);
 	}
 
 	return null;

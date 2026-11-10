@@ -309,6 +309,8 @@ export interface SendCodeContext {
 	ctx: ExecutionContext;
 	requestId: string;
 	url: URL;
+	/** The sign-in's theme `email` section (colours, header image) */
+	emailTheme?: import('../email-templates').EmailTheme;
 }
 
 /**
@@ -476,7 +478,7 @@ export function createSendCodeHandler(
 				email,
 				expiryMinutes: CODE_TTL_SECONDS / 60, // enforced by recordCode/checkCode
 			};
-			const htmlContent = emailTemplates.getVerificationCodeTemplate(emailData);
+			const htmlContent = emailTemplates.getVerificationCodeTemplate(emailData, handlerCtx.emailTheme);
 			const textContent = emailTemplates.getVerificationCodePlainText(emailData);
 			const subject = emailTemplates.getVerificationCodeSubject();
 

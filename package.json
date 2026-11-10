@@ -63,6 +63,8 @@
     "check:migrations": "node --experimental-strip-types --no-warnings scripts/release/migration-guard.ts",
     "schema:snapshot": "node --experimental-strip-types --no-warnings scripts/release/schema-snapshot.ts --write",
     "check:schema": "node --experimental-strip-types --no-warnings scripts/release/schema-snapshot.ts --check",
+    "themes:build": "node --experimental-strip-types --no-warnings scripts/themes/build.ts",
+    "themes:check": "node --experimental-strip-types --no-warnings scripts/themes/build.ts --check",
     "check:secrets": "node --experimental-strip-types --no-warnings scripts/release/check-secrets.ts",
     "secrets:rotate-client": "node --experimental-strip-types --no-warnings scripts/release/rotate-client-secret.ts",
     "secrets:seed": "node --experimental-strip-types --no-warnings scripts/release/seed-worker-secret.ts",

@@ -92,6 +92,17 @@ export enum AuditEventType {
   MODERATION_REQUEST_REJECTED = 'moderation.request.rejected',
   MODERATION_REQUEST_ACTIONED = 'moderation.request.actioned',
   MODERATION_REQUEST_ACTION_FAILED = 'moderation.request.action_failed',
+
+  // Auth theme management (Auth admin)
+  THEME_CREATED = 'theme.created',
+  THEME_DRAFT_SAVED = 'theme.draft_saved',
+  THEME_ASSET_UPLOADED = 'theme.asset_uploaded',
+  THEME_ASSET_REMOVED = 'theme.asset_removed',
+  THEME_PUBLISHED = 'theme.published',
+  THEME_DEFAULT_SET = 'theme.default_set',
+  THEME_CLIENT_DEFAULT_SET = 'theme.client_default_set',
+  THEME_DELETED = 'theme.deleted',
+  THEME_IMPORTED = 'theme.imported',
 }
 
 /**
