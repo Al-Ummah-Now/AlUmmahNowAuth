@@ -318,6 +318,8 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
 
       # Fail-closed: deletes any test output that holds a secret (or a Playwright storage
       # state) before the upload below, which anyone can download from this public repo.
@@ -325,6 +327,8 @@ jobs:
         if: always()
         env:
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET -- e2e-report test-results
@@ -383,6 +387,8 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
 
       # Fail-closed: deletes any test output that holds a secret (or a Playwright storage
       # state) before the upload below, which anyone can download from this public repo.
@@ -390,6 +396,8 @@ jobs:
         if: always()
         env:
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET -- e2e-report test-results
@@ -448,6 +456,8 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
 
       # Fail-closed: deletes any test output that holds a secret (or a Playwright storage
       # state) before the upload below, which anyone can download from this public repo.
@@ -455,6 +465,8 @@ jobs:
         if: always()
         env:
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET -- e2e-report test-results
@@ -509,6 +521,8 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
 
       # Fail-closed: deletes any test output that holds a secret (or a Playwright storage
       # state) before the upload below, which anyone can download from this public repo.
@@ -516,6 +530,8 @@ jobs:
         if: always()
         env:
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           TEST_PROMOTE_SECRET: test-secret-for-e2e
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET -- e2e-report test-results

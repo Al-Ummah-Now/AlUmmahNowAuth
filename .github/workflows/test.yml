@@ -173,6 +173,8 @@ jobs:
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
         run: bash scripts/ci/scan-e2e-output.sh --env GITHUB_TOKEN -- apps/*/coverage
 
       - name: Upload coverage reports

@@ -4,7 +4,7 @@
 #
 #   scripts/ci/scan-e2e-output.sh --env NAME [--env NAME ...] -- PATH...
 #
-# Always also scans for the passwords the E2E suite types (e2e/utils/test-credentials.ts).
+# Always also scans for the E2E test passwords (E2E_TEST_PASSWORD, E2E_NEW_TEST_PASSWORD) when set.
 # If the scan cannot run at all, every PATH is deleted: nothing unscanned is uploaded.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,26 +32,18 @@ fail_closed() {
 }
 trap fail_closed EXIT
 
-read_credential() {
-  node --experimental-strip-types --no-warnings --input-type=module \
-    -e 'const m = await import(process.argv[1]); process.stdout.write(m[process.argv[2]] ?? "")' \
-    "$repo/e2e/utils/test-credentials.ts" "$1"
-}
-E2E_TEST_PASSWORD="$(read_credential TEST_PASSWORD)"
-E2E_NEW_TEST_PASSWORD="$(read_credential NEW_TEST_PASSWORD)"
-if [ -z "$E2E_TEST_PASSWORD" ] || [ -z "$E2E_NEW_TEST_PASSWORD" ]; then
-  echo "::error::could not read the E2E test passwords from e2e/utils/test-credentials.ts"
-  exit 1
-fi
-export E2E_TEST_PASSWORD E2E_NEW_TEST_PASSWORD
-
-args=(--env E2E_TEST_PASSWORD --env E2E_NEW_TEST_PASSWORD)
+# The passwords the E2E suite types come from the E2E_TEST_PASSWORD / E2E_NEW_TEST_PASSWORD
+# secrets (e2e/utils/test-credentials.ts). Unset means the run typed random local values.
+args=()
+for n in E2E_TEST_PASSWORD E2E_NEW_TEST_PASSWORD; do
+  if [ -n "${!n:-}" ]; then args+=(--env "$n"); fi
+done
 for n in ${names[@]+"${names[@]}"}; do
   [ -n "${!n:-}" ] || echo "::warning::$n is empty; not scanning for it"
   args+=(--env "$n")
 done
 
-out="$(python3 "$repo/scripts/ci/scan-artifacts-for-secrets.py" "${args[@]}" --remove "${paths[@]}")" || status=$?
+out="$(python3 "$repo/scripts/ci/scan-artifacts-for-secrets.py" ${args[@]+"${args[@]}"} --remove "${paths[@]}")" || status=$?
 printf '%s\n' "$out"
 # Keep a path only if the scanner reported it clean; anything else (a crash part-way,
 # an unexpected exit) is removed rather than uploaded unscanned.
