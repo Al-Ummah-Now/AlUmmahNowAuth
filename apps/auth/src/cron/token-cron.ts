@@ -12,6 +12,7 @@ import { TokenCleanupService } from '../services/token-cleanup';
 import { logger } from '../logger';
 import { purgeExpiredAttempts } from '../security/password-attempts';
 import { purgeExpiredAppSessions } from '../services/app-sessions-cleanup';
+import { purgeDeleted } from '../deletions/purge';
 
 export type CronJobName = 'token-cleanup';
 
@@ -63,6 +64,12 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 				await purgeExpiredAttempts(env.AUTH_DB);
 				// Expired profile/admin sessions (PF-1)
 				await purgeExpiredAppSessions(env.AUTH_DB);
+				// Admin-deleted items due for permanent deletion (30 days, or asked for); never fails the job
+				try {
+					await purgeDeleted(env);
+				} catch (error) {
+					logger.error('Deleted-items cleanup failed', { error: error instanceof Error ? error.message : String(error) });
+				}
 				break;
 			}
 		}

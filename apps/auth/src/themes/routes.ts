@@ -16,6 +16,7 @@ import { PREVIEW_PAGES, renderPreview, type PreviewPage } from './preview';
 import { assetBaseOf, compileStored, resolveRequestTheme, themeSettings } from './runtime';
 import { ThemeError, ThemeService, type Actor } from './service';
 import { ThemeStore, ThemeStoreUnavailable } from './store';
+import { softDeleteRoute } from '../deletions/routes';
 
 type Vars = { adminUser: { userId: string; email: string; roles: string[] } | null; tenantId: string };
 type AdminContext = Context<{ Bindings: Env; Variables: Vars }>;
@@ -162,13 +163,8 @@ adminThemeRoutes.delete(
 
 adminThemeRoutes.post('/:id/publish', handle(async (c) => c.json(await serviceOf(c.env).publish(actorOf(c), c.req.param('id')))));
 
-adminThemeRoutes.delete(
-	'/:id',
-	handle(async (c) => {
-		await serviceOf(c.env).remove(actorOf(c), c.req.param('id'));
-		return c.json({ ok: true });
-	})
-);
+// Soft delete (deletions/): restorable from Recently deleted, removed by the cleanup
+adminThemeRoutes.delete('/:id', softDeleteRoute('theme', 'id'));
 
 adminThemeRoutes.get(
 	'/:id/export',

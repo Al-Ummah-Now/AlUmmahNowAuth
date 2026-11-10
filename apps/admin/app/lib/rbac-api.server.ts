@@ -226,12 +226,13 @@ export async function updateRole(
 }
 
 /**
- * DELETE /admin/rbac/roles/:id - Delete a role
+ * DELETE /admin/roles/:id - Soft delete (restorable from Recently deleted for 30 days)
  */
 export async function deleteRole(
   request: Request,
   env: { AUTH_SERVER_URL?: string },
-  roleId: string
+  roleId: string,
+  reason?: string
 ): Promise<SuccessResponse | ErrorResponse> {
   return authRequest<SuccessResponse>(
     request,
@@ -239,6 +240,7 @@ export async function deleteRole(
     `/admin/roles/${encodeURIComponent(roleId)}`,
     {
       method: 'DELETE',
+      body: JSON.stringify({ reason: reason || undefined }),
     }
   );
 }

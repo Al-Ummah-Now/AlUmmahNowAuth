@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
-import { Link, useLoaderData, useFetcher } from "react-router";
+import { Link, useLoaderData, useFetcher, useSearchParams } from "react-router";
+import { ConfirmDialog } from "../components/confirm-dialog";
+import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { LoadErrorBanner } from "../components/load-error-banner";
 import { Plus, Pencil, Trash2, Shield, Users } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -18,16 +20,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../components/ui/alert-dialog";
 import { AdminLayout } from "../components/admin-layout";
 import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
@@ -191,7 +183,9 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       }
 
       // The API endpoint will check if it's a system role
-      const result = await deleteRole(request, env, roleId);
+      // Soft delete: restorable from Recently deleted for 30 days
+      const reason = String(formData.get("reason") ?? "").trim() || undefined;
+      const result = await deleteRole(request, env, roleId, reason);
 
       if (isRbacError(result)) {
         return { error: result.error };
@@ -215,6 +209,9 @@ export default function Roles() {
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleDescription, setNewRoleDescription] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const deleteLang = langOf(searchParams);
+  const deleteCopy = deletionCopy(deleteLang);
   const [roleToDelete, setRoleToDelete] = useState<RoleWithUserCount | null>(null);
 
   const handleCreateRole = () => {
@@ -236,11 +233,11 @@ export default function Roles() {
     setNewRoleDescription("");
   };
 
-  const handleDeleteRole = () => {
+  const handleDeleteRole = ({ reason }: { reason: string }) => {
     if (!roleToDelete) return;
 
     fetcher.submit(
-      { intent: "deleteRole", roleId: roleToDelete.id },
+      { intent: "deleteRole", roleId: roleToDelete.id, reason },
       { method: "POST" }
     );
 
@@ -427,34 +424,25 @@ export default function Roles() {
           </CardContent>
         </Card>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Role</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete the role "{roleToDelete?.name}"?
-              {roleToDelete && roleToDelete.user_count > 0 && (
-                <span className="block mt-2 font-semibold text-[rgb(var(--color-destructive))]">
-                  Warning: This role is currently assigned to {roleToDelete.user_count} user(s).
-                </span>
-              )}
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setRoleToDelete(null)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteRole}
-              className="bg-[rgb(var(--color-destructive))] text-[rgb(var(--color-destructive-foreground))] hover:bg-[rgb(var(--color-destructive))]/90"
-            >
-              Delete Role
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete confirmation: soft delete, restorable from Recently deleted */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title={deleteCopy.deleteTitle("role")}
+        description={
+          deleteCopy.deleteBody("role", roleToDelete?.name ?? "") +
+          (roleToDelete && roleToDelete.user_count > 0 ? deleteCopy.roleHolders(roleToDelete.user_count) : "")
+        }
+        confirmLabel={deleteCopy.deleteConfirm}
+        cancelLabel={deleteCopy.cancel}
+        reason={{ label: deleteCopy.reasonLabel, placeholder: deleteCopy.reasonPlaceholder }}
+        dir={dirOf(deleteLang)}
+        lang={deleteLang}
+        onCancel={() => {
+          setDeleteDialogOpen(false);
+          setRoleToDelete(null);
+        }}
+        onConfirm={handleDeleteRole}
+      />
     </AdminLayout>
   );
 }

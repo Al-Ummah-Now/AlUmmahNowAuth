@@ -359,18 +359,19 @@ export async function updateUser(
 }
 
 /**
- * DELETE /admin/users/:id - Delete user
+ * DELETE /admin/users/:id - Soft delete: restorable from Recently deleted for 30 days
  */
 export async function deleteUser(
   env: ApiEnv,
   actingUser: ActingUser,
-  userId: string
+  userId: string,
+  reason?: string
 ): Promise<SuccessResponse | ErrorResponse> {
   return m2mRequest<SuccessResponse>(
     env,
     `/admin/users/${encodeURIComponent(userId)}`,
     actingUser,
-    { method: 'DELETE' }
+    { method: 'DELETE', body: JSON.stringify({ reason: reason || undefined }) }
   );
 }
 
@@ -564,18 +565,19 @@ export async function updateClient(
 }
 
 /**
- * DELETE /admin/clients/:clientId - Delete OAuth client
+ * DELETE /admin/clients/:clientId - Soft delete (disabled at once, restorable for 30 days)
  */
 export async function deleteClient(
   env: ApiEnv,
   actingUser: ActingUser,
-  clientId: string
+  clientId: string,
+  reason?: string
 ): Promise<SuccessResponse | ErrorResponse> {
   return m2mRequest<SuccessResponse>(
     env,
     `/admin/clients/${encodeURIComponent(clientId)}`,
     actingUser,
-    { method: 'DELETE' }
+    { method: 'DELETE', body: JSON.stringify({ reason: reason || undefined }) }
   );
 }
 
@@ -898,6 +900,51 @@ export async function getAuditLogs(
   const endpoint = `/admin/audit-logs${query ? `?${query}` : ''}`;
 
   return m2mRequest<AuditLogsResponse>(env, endpoint, actingUser, { method: 'GET' });
+}
+
+// ============================================================================
+// Recently deleted (admin soft delete; the auth worker's hourly cleanup purges)
+// ============================================================================
+
+export type DeletionKind = 'user' | 'client' | 'role' | 'theme';
+
+export interface DeletedItem {
+  kind: DeletionKind;
+  id: string;
+  label: string | null;
+  deletedAt: number;
+  deletedBy: string;
+  deletedByEmail: string | null;
+  reason: string | null;
+  purgeRequestedAt: number | null;
+  purgeRequestedBy: string | null;
+  purgeAt: number;
+  lastError: string | null;
+}
+
+export interface DeletedList {
+  items: DeletedItem[];
+  retentionDays: number;
+  now: number;
+}
+
+/** GET /admin/deletions?kind= */
+export async function listDeleted(env: ApiEnv, actingUser: ActingUser, kind?: DeletionKind, request?: Request) {
+  const q = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+  return m2mRequest<DeletedList>(env, `/admin/deletions${q}`, actingUser, { method: 'GET' }, request);
+}
+
+/** POST /admin/deletions/:kind/:id/restore */
+export async function restoreDeleted(env: ApiEnv, actingUser: ActingUser, kind: DeletionKind, id: string) {
+  return m2mRequest<SuccessResponse>(env, `/admin/deletions/${kind}/${encodeURIComponent(id)}/restore`, actingUser, { method: 'POST' });
+}
+
+/** POST /admin/deletions/:kind/:id/purge: the next cleanup run deletes it permanently */
+export async function requestPermanentDeletion(env: ApiEnv, actingUser: ActingUser, kind: DeletionKind, id: string, confirm: string) {
+  return m2mRequest<SuccessResponse>(env, `/admin/deletions/${kind}/${encodeURIComponent(id)}/purge`, actingUser, {
+    method: 'POST',
+    body: JSON.stringify({ confirm }),
+  });
 }
 
 // ============================================================================

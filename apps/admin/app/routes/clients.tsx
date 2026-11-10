@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useSearchParams } from "react-router";
+import { ConfirmDialog } from "../components/confirm-dialog";
+import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { Plus, Key, Trash2, RefreshCw, Copy, Check, Globe, Lock, Settings } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -177,7 +179,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (intent === "delete") {
     const clientId = formData.get("client_id") as string;
 
-    const result = await deleteOAuthClient(env, actingUser, clientId);
+    // Soft delete: disabled at once, restorable from Recently deleted for 30 days
+    const reason = String(formData.get("reason") ?? "").trim() || undefined;
+    const result = await deleteOAuthClient(env, actingUser, clientId, reason);
 
     if (isErrorResponse(result)) {
       return { error: result.error };
@@ -246,6 +250,9 @@ export default function ClientsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const deleteLang = langOf(searchParams);
+  const deleteCopy = deletionCopy(deleteLang);
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<OAuthClient | null>(null);
   const [createdClientId, setCreatedClientId] = useState<string | null>(null);
@@ -351,13 +358,14 @@ export default function ClientsPage() {
     fetcher.submit(formData, { method: "POST" });
   };
 
-  const handleDelete = () => {
+  const handleDelete = ({ reason }: { reason: string }) => {
     if (!selectedClient) return;
     setError(null);
 
     const formData = new FormData();
     formData.append("intent", "delete");
     formData.append("client_id", selectedClient.client_id);
+    if (reason) formData.append("reason", reason);
 
     fetcher.submit(formData, { method: "POST" });
   };
@@ -735,26 +743,21 @@ export default function ClientsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Client</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete the client "{selectedClient?.name}" ({selectedClient?.client_id})?
-              This action cannot be undone and will invalidate all tokens issued to this client.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isLoading}>
-              {isLoading ? "Deleting..." : "Delete Client"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Delete confirmation: soft delete, restorable from Recently deleted */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title={deleteCopy.deleteTitle("client")}
+        description={deleteCopy.deleteBody("client", selectedClient?.name ?? "")}
+        confirmLabel={deleteCopy.deleteConfirm}
+        cancelLabel={deleteCopy.cancel}
+        reason={{ label: deleteCopy.reasonLabel, placeholder: deleteCopy.reasonPlaceholder }}
+        busy={isLoading}
+        error={deleteDialogOpen ? error : null}
+        dir={dirOf(deleteLang)}
+        lang={deleteLang}
+        onCancel={() => setDeleteDialogOpen(false)}
+        onConfirm={handleDelete}
+      />
 
       {/* Credentials Display Dialog (shown after client creation or secret rotation) */}
       <Dialog open={secretDialogOpen} onOpenChange={(open) => {

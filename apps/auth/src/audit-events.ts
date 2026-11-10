@@ -103,6 +103,12 @@ export enum AuditEventType {
   THEME_CLIENT_DEFAULT_SET = 'theme.client_default_set',
   THEME_DELETED = 'theme.deleted',
   THEME_IMPORTED = 'theme.imported',
+
+  // Admin soft delete (deletions/): delete, restore, permanent deletion asked for, removed by the cleanup
+  ADMIN_ITEM_DELETED = 'admin.item.deleted',
+  ADMIN_ITEM_RESTORED = 'admin.item.restored',
+  ADMIN_ITEM_PURGE_REQUESTED = 'admin.item.purge_requested',
+  ADMIN_ITEM_PURGED = 'admin.item.purged',
 }
 
 /**
