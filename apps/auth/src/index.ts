@@ -3,6 +3,7 @@ import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from "@al-ummah-now/openauth/rbac/index";
 import { authStorage } from "./storage/auth-storage";
 import { D1UserService } from "./services/d1-user-service";
+import { PKCE_REQUIRED_CLIENTS } from "./pkce-clients";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
 import { hexToSecret } from "./utils/crypto";
@@ -324,6 +325,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // the current access-token lifetime on their next refresh (#437)
       storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, accessTtl }),
       ...(accessTtl ? { ttl: { access: accessTtl } } : {}),
+      // Codes of these clients are redeemed only with PKCE (OA-1, see pkce-clients.ts)
+      pkce: { requireForCodeExchange: PKCE_REQUIRED_CLIENTS },
       sessionService,
       tenantService,
       sessionSecret,
