@@ -127,6 +127,28 @@ describe('/token through the Worker', () => {
 	});
 });
 
+describe('AD-2: cold admin isolates fetching their M2M token', () => {
+	it('200 client_credentials calls from the admin Worker count on its own client bucket, not per IP or a shared key', async () => {
+		const TOKEN_LIMITER = fakeLimiter(1);
+		const TOKEN_CLIENT_LIMITER = fakeLimiter(3000);
+		const e = testEnv({ TOKEN_LIMITER, TOKEN_CLIENT_LIMITER });
+		const statuses = await Promise.all(
+			Array.from({ length: 200 }, () =>
+				worker
+					.fetch(
+						tokenRequest({ grant_type: 'client_credentials', client_id: 'admin-m2m', client_secret: 'x' }, { ip: WORKER_IP, worker: 'alummahnow.net' }),
+						e,
+						ctx()
+					)
+					.then((r) => r.status)
+			)
+		);
+		expect(statuses.filter((s) => s === 429)).toHaveLength(0);
+		expect([...TOKEN_CLIENT_LIMITER.counts.entries()]).toEqual([['/token:client:admin-m2m', 200]]);
+		expect(TOKEN_LIMITER.counts.size).toBe(0);
+	});
+});
+
 describe('admin rate limit middleware', () => {
 	function app() {
 		const a = new Hono<{ Bindings: Env; Variables: { adminUser?: { userId: string } } }>();

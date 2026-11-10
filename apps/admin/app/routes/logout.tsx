@@ -3,12 +3,14 @@ import { redirect } from "react-router";
 import { logger } from "../lib/logger.server";
 import { getAuthServerUrl, getOAuthClientId } from "../lib/config";
 import { revokeSession } from "../lib/session-tokens.server";
+import { sessionStores } from "../lib/auth.server";
 import { singleSignOutNext } from "../lib/single-sign-out";
 
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
     AUTH_STORAGE?: KVNamespace;
+    AUTH_DB?: D1Database;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
     OAUTH_CLIENT_ID?: string;
@@ -33,12 +35,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     const sessionToken = cookies["auth_session"];
 
-    // Tombstone + delete the KV session (so a racing token refresh cannot
-    // bring it back) and revoke its refresh token at the issuer.
-    if (sessionToken && env?.AUTH_STORAGE) {
+    // End the session in D1 (every location sees it at once; a racing token
+    // refresh cannot bring it back) and revoke its refresh token at the issuer.
+    const stores = sessionStores(env);
+    if (sessionToken && stores) {
       try {
         await revokeSession({
-          kv: env.AUTH_STORAGE,
+          stores,
           sessionToken,
           issuer: getAuthServerUrl(request, env),
           clientId: getOAuthClientId(env),

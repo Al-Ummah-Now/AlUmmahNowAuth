@@ -3,13 +3,17 @@ import { logger } from "./logger.server";
 import { loginPath, type LoginPrompt } from "./sign-in";
 import { getAppUrl } from "./config";
 import { getOpenAuthClient, subjects } from "./openauth.client.server";
-import {
-  ensureFreshTokens,
-  isSessionRevoked,
-  persistSessionTokens,
-  sessionKey,
-  type StoredSession,
-} from "./session-tokens.server";
+import { ensureFreshTokens, getSession, type SessionStores } from "./session-tokens.server";
+
+/** The bindings sessions need: the auth D1, and KV for sessions from before AD-1. */
+export interface SessionEnv {
+  AUTH_DB?: D1Database;
+  AUTH_STORAGE?: KVNamespace;
+}
+
+export function sessionStores(env: SessionEnv | undefined): SessionStores | null {
+  return env?.AUTH_DB && env.AUTH_STORAGE ? { db: env.AUTH_DB, kv: env.AUTH_STORAGE } : null;
+}
 
 /**
  * Check if user has admin access based on their roles
@@ -21,12 +25,12 @@ export function hasAdminRole(roles: string[]): boolean {
   );
 }
 
-// Session data structure stored in KV
-type SessionData = StoredSession;
-
-export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE: KVNamespace }) {
+export async function getAuthenticatedUser(request: Request, env: SessionEnv) {
   const url = new URL(request.url);
   logger.debug('getAuthenticatedUser called', { path: url.pathname });
+
+  const stores = sessionStores(env);
+  if (!stores) return null;
 
   // Get session cookie
   const cookieHeader = request.headers.get("Cookie");
@@ -47,43 +51,13 @@ export async function getAuthenticatedUser(request: Request, env: { AUTH_STORAGE
     return null;
   }
 
-  // Verify session token with AUTH_STORAGE KV
+  // D1 is read current everywhere: a logout anywhere is seen here at once
   try {
-    const [sessionData, revoked] = await Promise.all([
-      env.AUTH_STORAGE.get(sessionKey(sessionToken)),
-      isSessionRevoked(env.AUTH_STORAGE, sessionToken),
-    ]);
-    if (revoked) {
-      // Logged out; a racing token refresh may have written the session back.
-      logger.info('Session was logged out');
-      if (sessionData) await env.AUTH_STORAGE.delete(sessionKey(sessionToken));
+    const session = await getSession(stores, sessionToken);
+    if (!session) {
+      logger.info('No live session for this cookie');
       return null;
     }
-    if (!sessionData) {
-      logger.warn('Session not found in KV storage');
-      return null;
-    }
-
-    // Parse session data with error handling
-    let session: SessionData;
-    try {
-      session = JSON.parse(sessionData);
-    } catch (parseError) {
-      logger.error('Failed to parse session data, deleting corrupted session', {
-        error: parseError instanceof Error ? parseError.message : String(parseError)
-      });
-      await env.AUTH_STORAGE.delete(sessionKey(sessionToken));
-      return null;
-    }
-
-    // Check if session is expired
-    if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
-      logger.info('Session expired', { userId: session.user?.id, email: session.user?.email });
-      await env.AUTH_STORAGE.delete(sessionKey(sessionToken));
-      return null;
-    }
-
-    // Return both user data and tokens for verification
     return {
       sessionToken,
       user: session.user,
@@ -129,18 +103,19 @@ export async function redirectToAuthWithSelect(request: Request, env: { AUTH_SER
 
 export async function requireAuth(
   request: Request,
-  env: { AUTH_STORAGE?: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string; ADMIN_CLIENT_ID?: string },
+  env: SessionEnv & { AUTH_SERVER_URL?: string; APP_URL?: string; ADMIN_CLIENT_ID?: string },
   requireAdmin: boolean = false
 ) {
   const url = new URL(request.url);
 
   // If no storage available, always redirect to login
-  if (!env?.AUTH_STORAGE) {
-    logger.error('AUTH_STORAGE not available', { path: url.pathname });
+  const stores = sessionStores(env);
+  if (!stores) {
+    logger.error('AUTH_DB / AUTH_STORAGE not available', { path: url.pathname });
     throw redirectToLogin(request);
   }
 
-  const sessionData = await getAuthenticatedUser(request, env as { AUTH_STORAGE: KVNamespace });
+  const sessionData = await getAuthenticatedUser(request, env);
 
   if (!sessionData) {
     logger.info('Unauthenticated access attempt', { path: url.pathname });
@@ -157,10 +132,10 @@ export async function requireAuth(
         email: sessionData.user.email
       });
 
-      // Refresh ahead of expiry and persist the rotated pair: the issuer
-      // only honours the previous refresh token for 60 s after rotation.
+      // Refresh ahead of expiry, one refresh per session at a time (AD-1): the
+      // issuer only honours the previous refresh token for 60 s after rotation.
       const fresh = await ensureFreshTokens({
-        kv: env.AUTH_STORAGE,
+        stores,
         sessionToken: sessionData.sessionToken,
         tokens: sessionData.tokens,
         client,
@@ -173,20 +148,10 @@ export async function requireAuth(
         throw redirectToLogin(request, "none");
       }
 
-      const verified = await client.verify(subjects, fresh.tokens.access, {
-        refresh: fresh.tokens.refresh,
-      });
-
-      // verify() refreshes an already expired token itself; the rotated
-      // pair must be saved or the next request re-sends a dead refresh token.
-      if (!verified?.err && verified?.tokens) {
-        const saved = await persistSessionTokens(env.AUTH_STORAGE, sessionData.sessionToken, verified.tokens);
-        if (!saved) {
-          logger.warn('Session logged out during verification', { userId: sessionData.user.id });
-          throw redirectToLogin(request, "none");
-        }
-        logger.info('Persisted tokens refreshed during verification', { userId: sessionData.user.id });
-      }
+      // No refresh token here: verify() would refresh an expired token itself,
+      // outside the per-session lock. An access token that lapsed in between
+      // fails verification and the admin re-authorizes silently.
+      const verified = await client.verify(subjects, fresh.tokens.access);
 
       // Check if verification returned an error
       if (verified?.err) {
