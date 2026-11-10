@@ -72,7 +72,7 @@ export async function storeSinkCode(env: E2ESinkEnv, email: string, code: string
 	});
 }
 
-function constantTimeEqual(a: string, b: string): boolean {
+export function constantTimeEqual(a: string, b: string): boolean {
 	const enc = new TextEncoder();
 	const x = enc.encode(a);
 	const y = enc.encode(b);
@@ -91,4 +91,58 @@ export async function isAuthorizedTestRequest(env: E2ESinkEnv, request: Request)
 	if (!expected) return false;
 	const provided = request.headers.get(E2E_SECRET_HEADER) ?? '';
 	return constantTimeEqual(provided, expected);
+}
+
+// ------------------------------------------------------------ E2E run accounts
+
+/**
+ * Accounts an E2E CI run registers for itself and deletes when it ends:
+ * e2e+<run id>-<attempt>-<name>@e2e.alummahnow.net (AlUmmahNow apps/web/e2e,
+ * apps/admin-web/e2e, the release suite). routes/test-run-users.ts deletes them.
+ */
+export const RUN_USER_EMAIL = /^e2e\+\d{1,20}-\d{1,3}-[a-z0-9][a-z0-9-]{0,62}@e2e\.alummahnow\.net$/;
+
+export function isRunUserEmail(email: string): boolean {
+	return RUN_USER_EMAIL.test(email);
+}
+
+/** The flag value that turns the run-account support on (wrangler vars, QA and stage only). */
+export const RUN_USERS_FLAG = 'enabled';
+
+export interface RunUsersEnv extends E2ESinkEnv {
+	/** "enabled" on QA and stage (wrangler vars); never set in production (release check + test). */
+	E2E_RUN_USERS?: string;
+	TEST_PROMOTE_SECRET?: string;
+}
+
+/**
+ * Run-account support (the provisioning marker and the /test/run-users routes)
+ * needs ALL of: the E2E_RUN_USERS flag, a non-production environment and issuer,
+ * the E2E_CODE_SINK_SECRET binding and the TEST_PROMOTE_SECRET secret.
+ */
+export async function runUsersEnabled(env: RunUsersEnv): Promise<boolean> {
+	if (env.E2E_RUN_USERS !== RUN_USERS_FLAG) return false;
+	if (typeof env.TEST_PROMOTE_SECRET !== 'string' || env.TEST_PROMOTE_SECRET.length < 16) return false;
+	return (await testSecret(env)) !== '';
+}
+
+/** users.metadata key the provisioning path sets; only accounts carrying it can be deleted by the run routes. */
+export const RUN_USER_MARKER = 'e2eRun';
+
+/**
+ * Called right after a registration creates an account: a run address on a
+ * deployment with run-account support gets the marker. Never throws.
+ */
+export async function markRunUser(env: RunUsersEnv, db: D1Database | undefined, user: { id: string; email: string }): Promise<boolean> {
+	try {
+		if (!db || !isRunUserEmail(user.email.toLowerCase()) || !(await runUsersEnabled(env))) return false;
+		const marker = JSON.stringify({ via: 'e2e-sink-registration', at: Date.now() });
+		await db
+			.prepare(`UPDATE users SET metadata = json_set(coalesce(metadata, '{}'), '$.${RUN_USER_MARKER}', json(?)) WHERE id = ?`)
+			.bind(marker, user.id)
+			.run();
+		return true;
+	} catch {
+		return false;
+	}
 }

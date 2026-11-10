@@ -4,7 +4,8 @@
  */
 import type { AppRule, Binding } from './wrangler-config.ts';
 
-const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET'];
+// E2E_RUN_USERS: the flag that enables the E2E run-account routes (QA/stage only)
+const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET', 'E2E_RUN_USERS'];
 
 const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'd1_databases', name: 'AUTH_DB' },
