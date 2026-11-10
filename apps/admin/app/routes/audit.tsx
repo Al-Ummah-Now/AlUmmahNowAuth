@@ -172,6 +172,19 @@ const THEME_EVENTS = [
   "theme.imported",
 ];
 
+/** Admin invites (docs/USER_INVITES.md), offered as event filters. */
+const INVITE_EVENTS = [
+  "user.invited",
+  "user.invite.resent",
+  "user.invite.link_created",
+  "user.invite.opened",
+  "user.invite.accepted",
+  "user.invite.revoked",
+  "user.invite.restored",
+  "user.invite.purge_requested",
+  "user.invite.purged",
+];
+
 export default function AuditLogs() {
   const { events, pagination, filters, user, authServerUrl } = useLoaderData<LoaderData>();
   const navigate = useNavigate();
@@ -276,6 +289,7 @@ export default function AuditLogs() {
                     />
                     <datalist id="event-type-suggestions">
                       {THEME_EVENTS.map((t) => <option key={t} value={t} />)}
+                      {INVITE_EVENTS.map((t) => <option key={t} value={t} />)}
                     </datalist>
                   </div>
 

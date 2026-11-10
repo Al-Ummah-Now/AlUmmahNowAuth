@@ -21,6 +21,7 @@
 --   migrations/0026_user_revocations.sql
 --   migrations/0027_admin_deletions.sql
 --   migrations/0029_scholar_role.sql
+--   migrations/0030_user_invites.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
@@ -51,6 +52,7 @@ CREATE TABLE tenant_invitations (id TEXT PRIMARY KEY DEFAULT (lower(hex(randombl
 CREATE TABLE tenants (id TEXT PRIMARY KEY, domain TEXT UNIQUE, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'pending', 'deleted')), branding TEXT, settings TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE token_usage (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', client_id TEXT NOT NULL, user_id TEXT, token_type TEXT NOT NULL, ip_address TEXT, user_agent TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE user_identities (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, provider TEXT NOT NULL, provider_user_id TEXT NOT NULL, provider_data TEXT, created_at INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE TABLE user_invites (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'default', user_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT, locale TEXT NOT NULL DEFAULT 'en', note TEXT, client_id TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}', continue_url TEXT, token_hash TEXT, token_used_at INTEGER, invited_by TEXT NOT NULL, invited_by_email TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, last_sent_at INTEGER, send_count INTEGER NOT NULL DEFAULT 0, accepted_at INTEGER, deleted_at INTEGER, deleted_by TEXT, deleted_by_email TEXT, deleted_reason TEXT, purge_requested_at INTEGER, purge_requested_by TEXT);
 CREATE TABLE user_revocations (user_id TEXT PRIMARY KEY, revoked_before INTEGER NOT NULL, reason TEXT, updated_at INTEGER NOT NULL);
 CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT, metadata TEXT, status TEXT NOT NULL DEFAULT 'active', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, last_login_at INTEGER, deleted_at INTEGER, password_reset_required INTEGER DEFAULT 0, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE webhook_dlq (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', webhook_url TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, error_message TEXT, retry_count INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, next_retry_at INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
@@ -131,6 +133,11 @@ CREATE INDEX idx_token_usage_user_id ON token_usage(user_id);
 CREATE UNIQUE INDEX idx_identities_provider ON user_identities(tenant_id, provider, provider_user_id);
 CREATE INDEX idx_identities_tenant_provider ON user_identities(tenant_id, provider);
 CREATE INDEX idx_identities_user ON user_identities(user_id);
+CREATE INDEX idx_user_invites_created ON user_invites(tenant_id, created_at);
+CREATE INDEX idx_user_invites_deleted ON user_invites(deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX idx_user_invites_email ON user_invites(tenant_id, email);
+CREATE UNIQUE INDEX idx_user_invites_token ON user_invites(token_hash) WHERE token_hash IS NOT NULL;
+CREATE INDEX idx_user_invites_user ON user_invites(user_id);
 CREATE INDEX idx_users_created ON users(tenant_id, created_at);
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_password_reset ON users(tenant_id, password_reset_required) WHERE password_reset_required = 1;
