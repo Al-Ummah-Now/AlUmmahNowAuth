@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 import { loginAdmin } from '../../fixtures/admin';
 import { createUser, editUser } from '../../fixtures/admin';
-import { TEST_USERS, generateTestEmail } from '../../utils/test-data';
+import { TEST_USERS, generateAdminCreatedEmail } from '../../utils/test-data';
 
 // Signs in with the test password / one-time codes (or sends test secrets in headers):
 // traces would record them, so none for this file. See e2e/utils/secret-input.ts.
@@ -26,11 +26,11 @@ test.describe('Admin User Editing', () => {
 
   test('should edit user email address', async ({ page }) => {
     // Create a test user
-    const originalEmail = generateTestEmail('original');
+    const originalEmail = generateAdminCreatedEmail('original');
     await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit user email
-    const newEmail = generateTestEmail('updated');
+    const newEmail = generateAdminCreatedEmail('updated');
     await editUser(page, originalEmail, { email: newEmail });
 
     // Verify updated email appears in list
@@ -45,7 +45,7 @@ test.describe('Admin User Editing', () => {
 
   test('should edit user role from user to admin', async ({ page }) => {
     // Create a test user
-    const userEmail = generateTestEmail('role-change');
+    const userEmail = generateAdminCreatedEmail('role-change');
     await createUser(page, { email: userEmail, role: 'member' });
 
     // Edit user role
@@ -59,7 +59,7 @@ test.describe('Admin User Editing', () => {
 
   test('should edit user role from admin to member', async ({ page }) => {
     // Create a test admin - use prefix that doesn't conflict with role names
-    const adminEmail = generateTestEmail('role-change-admin');
+    const adminEmail = generateAdminCreatedEmail('role-change-admin');
     await createUser(page, { email: adminEmail, role: 'admin' });
 
     // Edit user role to member (the basic user role in the system)
@@ -74,11 +74,11 @@ test.describe('Admin User Editing', () => {
 
   test('should edit both email and role simultaneously', async ({ page }) => {
     // Create a test user
-    const originalEmail = generateTestEmail('both-change');
+    const originalEmail = generateAdminCreatedEmail('both-change');
     await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit both fields
-    const newEmail = generateTestEmail('both-updated');
+    const newEmail = generateAdminCreatedEmail('both-updated');
     await editUser(page, originalEmail, { email: newEmail, role: 'admin' });
 
     // Verify both updated
@@ -92,7 +92,7 @@ test.describe('Admin User Editing', () => {
     page,
   }) => {
     // Create a test user
-    const userEmail = generateTestEmail('validation-test');
+    const userEmail = generateAdminCreatedEmail('validation-test');
     await createUser(page, { email: userEmail, role: 'member' });
 
     // Try to edit with invalid email
@@ -111,7 +111,7 @@ test.describe('Admin User Editing', () => {
 
   test('should cancel edit without saving changes', async ({ page }) => {
     // Create a test user
-    const userEmail = generateTestEmail('cancel-test');
+    const userEmail = generateAdminCreatedEmail('cancel-test');
     await createUser(page, { email: userEmail, role: 'member' });
 
     // Open edit dialog
@@ -122,7 +122,7 @@ test.describe('Admin User Editing', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
     // Make changes but don't save
-    await page.fill('input[id="email"]', generateTestEmail('cancelled'));
+    await page.fill('input[id="email"]', generateAdminCreatedEmail('cancelled'));
 
     // Click cancel
     await page.click('button:has-text("Cancel")');
@@ -136,11 +136,11 @@ test.describe('Admin User Editing', () => {
 
   test('should persist changes after page reload', async ({ page }) => {
     // Create a test user
-    const originalEmail = generateTestEmail('persist-test');
+    const originalEmail = generateAdminCreatedEmail('persist-test');
     await createUser(page, { email: originalEmail, role: 'member' });
 
     // Edit user
-    const newEmail = generateTestEmail('persisted');
+    const newEmail = generateAdminCreatedEmail('persisted');
     await editUser(page, originalEmail, { email: newEmail });
 
     // Reload page
@@ -152,8 +152,8 @@ test.describe('Admin User Editing', () => {
 
   test('should not allow editing to duplicate email', async ({ page }) => {
     // Create two test users
-    const user1Email = generateTestEmail('user1');
-    const user2Email = generateTestEmail('user2');
+    const user1Email = generateAdminCreatedEmail('user1');
+    const user2Email = generateAdminCreatedEmail('user2');
     await createUser(page, { email: user1Email, role: 'member' });
     await createUser(page, { email: user2Email, role: 'member' });
 

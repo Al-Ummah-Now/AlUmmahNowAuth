@@ -6,7 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAdmin, createUser, userExists, userRowsMatching } from '../../fixtures/admin';
-import { TEST_USERS, TEST_URLS, generateTestEmail } from '../../utils/test-data';
+import { TEST_USERS, TEST_URLS, generateAdminCreatedEmail } from '../../utils/test-data';
 
 // Signs in with the test password / one-time codes (or sends test secrets in headers):
 // traces would record them, so none for this file. See e2e/utils/secret-input.ts.
@@ -25,7 +25,7 @@ test.describe('Admin User Creation', () => {
 
   test('should create a new user with role "member"', async ({ page }) => {
     const newUser = {
-      email: generateTestEmail('new-user'),
+      email: generateAdminCreatedEmail('new-user'),
       role: 'member' as const,  // OpenAuth uses 'member' as default role
     };
 
@@ -40,7 +40,7 @@ test.describe('Admin User Creation', () => {
   test('should create a new user with role "admin"', async ({ page }) => {
     // Use prefix that doesn't contain "admin" to avoid matching email AND role badge
     const newAdmin = {
-      email: generateTestEmail('admin-role-user'),
+      email: generateAdminCreatedEmail('admin-role-user'),
       role: 'admin' as const,
     };
 
@@ -102,7 +102,7 @@ test.describe('Admin User Creation', () => {
   });
 
   test('should show error when creating duplicate user', async ({ page }) => {
-    const duplicateEmail = generateTestEmail('duplicate');
+    const duplicateEmail = generateAdminCreatedEmail('duplicate');
 
     // Create first user
     await createUser(page, { email: duplicateEmail, role: 'member' });
@@ -133,7 +133,7 @@ test.describe('Admin User Creation', () => {
     page,
   }) => {
     const newUser = {
-      email: generateTestEmail('reset-test'),
+      email: generateAdminCreatedEmail('reset-test'),
       role: 'member' as const,  // OpenAuth uses 'member' as default role
     };
 
@@ -167,7 +167,7 @@ test.describe('Admin User Creation', () => {
   test('lists exactly the created user (search by its email)', async ({ page }) => {
     // Checks only this test's own user: the dashboard's global "Total Users"
     // moves with every parallel run on shared QA (deletions too), so it can't show a creation.
-    const email = generateTestEmail('count-test');
+    const email = generateAdminCreatedEmail('count-test');
     await createUser(page, { email, role: 'member' }); // OpenAuth uses 'member' as default role
     await expect.poll(() => userRowsMatching(page, email), { timeout: 20000, intervals: [1000, 2000, 3000, 5000] }).toBe(1);
   });

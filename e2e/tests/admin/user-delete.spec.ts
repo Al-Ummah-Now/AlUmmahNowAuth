@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 import { loginAdmin } from '../../fixtures/admin';
 import { createUser, deleteUser, userRowsMatching } from '../../fixtures/admin';
-import { TEST_USERS, TEST_URLS, generateTestEmail } from '../../utils/test-data';
+import { TEST_USERS, TEST_URLS, generateAdminCreatedEmail } from '../../utils/test-data';
 
 // Signs in with the test password / one-time codes (or sends test secrets in headers):
 // traces would record them, so none for this file. See e2e/utils/secret-input.ts.
@@ -26,7 +26,7 @@ test.describe('Admin User Deletion', () => {
 
   test('should delete a user successfully', async ({ page }) => {
     // Create a test user
-    const userEmail = generateTestEmail('delete-test');
+    const userEmail = generateAdminCreatedEmail('delete-test');
     await createUser(page, { email: userEmail, role: 'member' });
 
     // Delete user
@@ -40,7 +40,7 @@ test.describe('Admin User Deletion', () => {
 
   test('should show confirmation dialog before deleting', async ({ page }) => {
     // Create a test user
-    const userEmail = generateTestEmail('confirm-test');
+    const userEmail = generateAdminCreatedEmail('confirm-test');
     await createUser(page, { email: userEmail, role: 'member' });
 
     // Wait for user row to be visible and click delete button
@@ -58,7 +58,7 @@ test.describe('Admin User Deletion', () => {
 
   test('should cancel deletion when clicking cancel', async ({ page }) => {
     // Create a test user
-    const userEmail = generateTestEmail('cancel-delete');
+    const userEmail = generateAdminCreatedEmail('cancel-delete');
     await createUser(page, { email: userEmail, role: 'member' });
 
     // Wait for user row to be visible and click delete button
@@ -83,7 +83,7 @@ test.describe('Admin User Deletion', () => {
   test('removes exactly the deleted user (search by its email)', async ({ page }) => {
     // Checks only this test's own user: the dashboard's global "Total Users"
     // moves with every parallel run on shared QA, so it can't show a deletion.
-    const userEmail = generateTestEmail('count-delete');
+    const userEmail = generateAdminCreatedEmail('count-delete');
     await createUser(page, { email: userEmail, role: 'member' });
     await expect.poll(() => userRowsMatching(page, userEmail), { timeout: 20000 }).toBe(1);
 
@@ -95,7 +95,7 @@ test.describe('Admin User Deletion', () => {
 
   test('should delete admin user successfully', async ({ page }) => {
     // Create a test admin
-    const adminEmail = generateTestEmail('delete-admin');
+    const adminEmail = generateAdminCreatedEmail('delete-admin');
     await createUser(page, { email: adminEmail, role: 'admin' });
 
     // Delete admin user
@@ -124,7 +124,7 @@ test.describe('Admin User Deletion', () => {
 
   test('should persist deletion after page reload', async ({ page }) => {
     // Create a test user
-    const userEmail = generateTestEmail('persist-delete');
+    const userEmail = generateAdminCreatedEmail('persist-delete');
     await createUser(page, { email: userEmail, role: 'member' });
 
     // Delete user
@@ -145,9 +145,9 @@ test.describe('Admin User Deletion', () => {
     test.setTimeout(90000); // 90 seconds
 
     // Create multiple test users
-    const user1Email = generateTestEmail('multi-1');
-    const user2Email = generateTestEmail('multi-2');
-    const user3Email = generateTestEmail('multi-3');
+    const user1Email = generateAdminCreatedEmail('multi-1');
+    const user2Email = generateAdminCreatedEmail('multi-2');
+    const user3Email = generateAdminCreatedEmail('multi-3');
 
     await createUser(page, { email: user1Email, role: 'member' });
     await createUser(page, { email: user2Email, role: 'member' });

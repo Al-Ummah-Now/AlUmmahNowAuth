@@ -191,6 +191,7 @@ apps/admin/.react-router/
 
 # Playwright E2E test artifacts
 /test-results/
+/.e2e-run-accounts.txt
 /playwright-report/
 /e2e-report/
 /e2e-results.json
