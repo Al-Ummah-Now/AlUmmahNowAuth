@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* global console, process */
 // Fails if committed files could leak secrets. Never prints a value: findings show
 // the file, line, key and a fingerprint (first 12 hex chars of sha256).
 //
