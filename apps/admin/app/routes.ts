@@ -3,6 +3,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 export default [
   index("routes/_index.tsx"),
   route("users", "routes/users._index.tsx"),
+  route("api/suggest/users", "routes/api.suggest.users.ts"),
+  route("api/suggest/users/:id", "routes/api.suggest.users.$id.ts"),
   route("roles", "routes/roles._index.tsx"),
   route("roles/:id", "routes/roles.$id.tsx"),
   route("clients", "routes/clients.tsx"),

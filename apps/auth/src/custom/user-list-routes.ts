@@ -76,6 +76,15 @@ export function userListRoutes(db: D1Database) {
         bindings.push(`%${email.toLowerCase()}%`);
       }
 
+      // search: the admin's autocomplete (name, email or an exact id), wildcards in the text escaped
+      const search = url.searchParams.get('search')?.trim().slice(0, 100);
+      const searchLike = search ? `%${search.toLowerCase().replace(/[\\%_]/g, (ch) => `\\${ch}`)}%` : '';
+      const SEARCH_SQL = "(lower(email) LIKE ? ESCAPE '\\' OR lower(COALESCE(name, '')) LIKE ? ESCAPE '\\' OR id = ?)";
+      if (search) {
+        conditions.push(SEARCH_SQL);
+        bindings.push(searchLike, searchLike, search);
+      }
+
       // Handle cursor-based pagination
       const validSortColumns = ['created_at', 'updated_at', 'email', 'name'];
       const sortColumn = validSortColumns.includes(sortBy) ? sortBy : 'created_at';
@@ -119,10 +128,12 @@ export function userListRoutes(db: D1Database) {
         WHERE tenant_id = ? AND deleted_at IS NULL
         ${status ? 'AND status = ?' : ''}
         ${email ? 'AND email LIKE ?' : ''}
+        ${search ? `AND ${SEARCH_SQL}` : ''}
       `;
       const countBindingsSimple: (string | number)[] = [tenantId];
       if (status) countBindingsSimple.push(status);
       if (email) countBindingsSimple.push(`%${email.toLowerCase()}%`);
+      if (search) countBindingsSimple.push(searchLike, searchLike, search);
 
       const countResult = await db.prepare(countQuery).bind(...countBindingsSimple).first<{ count: number }>();
       const totalCount = countResult?.count || 0;

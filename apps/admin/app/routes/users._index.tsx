@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useFetcher, useRevalidator, useSearchParams } from "react-router";
+import { useLoaderData, useFetcher, useNavigate, useRevalidator, useSearchParams } from "react-router";
 import { Plus, Settings, Trash2, Mail, User, Pencil } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -21,6 +21,7 @@ import { ConfirmDialog } from "../components/confirm-dialog";
 import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { UserRoleManager } from "../components/user-role-manager";
 import { AdminLayout } from "../components/admin-layout";
+import { UserAutocomplete } from "../components/autocomplete";
 import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { LoadErrorBanner } from "../components/load-error-banner";
@@ -343,6 +344,7 @@ export default function Users() {
   const fetcher = useFetcher();
   const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
+  const navigate = useNavigate();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -655,11 +657,19 @@ export default function Users() {
           </CardHeader>
           <CardContent>
             <div className="mb-4">
-              <Input
+              <UserAutocomplete
+                mode="search"
+                name="q"
+                label="Search users"
                 placeholder="Search users by name or email..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                defaultValue={searchQuery}
+                onQueryChange={setSearchQuery}
+                // Enter: the server-side search (every user, not only the loaded page)
+                onSearch={(q) => navigate(q ? `/users?q=${encodeURIComponent(q)}` : "/users")}
+                // A suggestion: the list narrowed to that user
+                hrefFor={(s) => `/users?q=${encodeURIComponent(s.secondary ?? s.label)}`}
                 className="max-w-sm"
+                testId="users-search"
               />
             </div>
 

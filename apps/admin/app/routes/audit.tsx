@@ -3,6 +3,7 @@ import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useSearchParams, useNavigate } from "react-router";
 import { FileText, Calendar, Filter, X, Search } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
+import { UserAutocomplete } from "../components/autocomplete";
 import { getAuthServerUrl } from "../lib/config";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -295,15 +296,15 @@ export default function AuditLogs() {
                     </Select>
                   </div>
 
-                  <div className="grid gap-2">
-                    <Label htmlFor="search">Search</Label>
-                    <Input
-                      id="search"
-                      placeholder="User ID, Client ID, or IP"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
+                  {/* The loader filters this by user_id: a user picker, by name or email */}
+                  <UserAutocomplete
+                    key={filters.search ?? ""}
+                    mode="pick"
+                    label="User"
+                    defaultValue={filters.search ?? ""}
+                    onChange={(id) => setSearchQuery(id)}
+                    testId="audit-user"
+                  />
 
                   <div className="grid gap-2">
                     <Label htmlFor="start_date">Start Date</Label>
@@ -357,7 +358,7 @@ export default function AuditLogs() {
                 )}
                 {searchQuery && (
                   <Badge variant="outline">
-                    Search: {searchQuery}
+                    User: {searchQuery}
                   </Badge>
                 )}
                 {startDate && (
