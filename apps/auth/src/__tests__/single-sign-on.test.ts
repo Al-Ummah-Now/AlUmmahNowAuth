@@ -177,6 +177,76 @@ describe('single sign-on (worker)', () => {
 		expect(browser.jar.has('__session')).toBe(true);
 	});
 
+	it('logout CSRF: another site cannot sign the browser out; it gets the "Sign out?" page', async () => {
+		const browser = new Browser();
+		await browser.signIn(PROFILE);
+		const back = encodeURIComponent('http://localhost:5175/');
+		for (const headers of [
+			{ 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate' },
+			{ 'Sec-Fetch-Site': 'same-site', 'Sec-Fetch-Dest': 'image', 'Sec-Fetch-Mode': 'no-cors' },
+			{ 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate' },
+		]) {
+			const res = await browser.fetch(`/logout?return=${back}`, { headers });
+			expect(res.status).toBe(200);
+			expect(res.headers.getSetCookie()).toEqual([]);
+			const page = await res.text();
+			expect(page).toContain('data-page="sign-out-confirm"');
+			expect(page).toContain('method="post"');
+			expect(page).toContain('value="http://localhost:5175/"');
+			expect(browser.jar.has('__session')).toBe(true);
+		}
+		// Still signed in: the next app gets a code silently
+		expect(await browser.authorize(ADMIN)).not.toContain('/password/authorize');
+
+		// A cross-origin POST is refused
+		const forged = await browser.fetch('/logout', {
+			method: 'POST',
+			headers: { origin: 'https://evil.example', 'content-type': 'application/x-www-form-urlencoded' },
+			body: 'return=https%3A%2F%2Fevil.example%2F',
+		});
+		expect(forged.status).toBe(403);
+		expect(browser.jar.has('__session')).toBe(true);
+
+		// The page's own (same-origin) form signs out and walks the apps as before
+		const confirmed = await browser.fetch('/logout', {
+			method: 'POST',
+			headers: { origin: ISSUER, 'content-type': 'application/x-www-form-urlencoded', 'Sec-Fetch-Site': 'same-origin' },
+			body: new URLSearchParams({ return: 'http://localhost:5175/' }).toString(),
+		});
+		expect(confirmed.status).toBe(302);
+		expect(browser.jar.has('__session')).toBe(false);
+		expect(new URL(confirmed.headers.get('location')!).pathname).toBe('/logout');
+		expect(await browser.authorize(ADMIN)).toContain('/password/authorize');
+	});
+
+	it('the "Sign out?" page follows ?lang= (Arabic) and never trusts a foreign return', async () => {
+		const res = await new Browser().fetch(`/logout?lang=ar&return=${encodeURIComponent('https://evil.example/')}`, {
+			headers: { 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Dest': 'document' },
+		});
+		const page = await res.text();
+		expect(page).toContain('dir="rtl"');
+		expect(page).toContain('تسجيل الخروج');
+		expect(page).not.toContain('evil.example');
+	});
+
+	it('our own apps (same-site navigations) and browsers without Fetch Metadata sign out directly', async () => {
+		const browser = new Browser();
+		await browser.signIn(PROFILE);
+		const res = await browser.fetch(`/logout?return=${encodeURIComponent('http://localhost:5175/')}`, {
+			headers: { 'Sec-Fetch-Site': 'same-site', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate' },
+		});
+		expect(res.status).toBe(302);
+		expect(browser.jar.has('__session')).toBe(false);
+	});
+
+	it('/authorize without client parameters starts a real sign-in through the profile app', async () => {
+		const res = await new Browser().fetch('/authorize');
+		expect(res.status).toBe(302);
+		expect(res.headers.get('location')).toBe('http://localhost:3302/login');
+		const ar = await new Browser().fetch('/authorize?lang=ar');
+		expect(ar.headers.get('location')).toBe('http://localhost:3302/login?lang=ar');
+	});
+
 	it('logout never redirects to a foreign site', async () => {
 		const res = await new Browser().fetch(`/logout?step=99&return=${encodeURIComponent('https://evil.example/')}`);
 		expect(res.headers.get('location')).toBe(logoutReturnUrl(env as unknown as Env, null, ISSUER));
