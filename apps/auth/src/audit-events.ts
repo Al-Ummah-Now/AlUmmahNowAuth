@@ -109,6 +109,16 @@ export enum AuditEventType {
   ADMIN_ITEM_RESTORED = 'admin.item.restored',
   ADMIN_ITEM_PURGE_REQUESTED = 'admin.item.purge_requested',
   ADMIN_ITEM_PURGED = 'admin.item.purged',
+  // Admin invites (docs/USER_INVITES.md)
+  USER_INVITED = 'user.invited',
+  USER_INVITE_RESENT = 'user.invite.resent',
+  USER_INVITE_LINK_CREATED = 'user.invite.link_created',
+  USER_INVITE_OPENED = 'user.invite.opened',
+  USER_INVITE_ACCEPTED = 'user.invite.accepted',
+  USER_INVITE_REVOKED = 'user.invite.revoked',
+  USER_INVITE_RESTORED = 'user.invite.restored',
+  USER_INVITE_PURGE_REQUESTED = 'user.invite.purge_requested',
+  USER_INVITE_PURGED = 'user.invite.purged',
 }
 
 /**

@@ -20,6 +20,8 @@ import { accountStateOf, isRefusedAccountState, readAccountState, type AccountSt
 import { endBrowserSignIns } from '../revocation/lifecycle';
 import { renderAccountSuspendedPage } from '../ui/account-suspended-page';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
+import { claimInvitedAccount } from '../invites/service';
+import { AuditEventSeverity, AuditEventType } from '../audit-events';
 
 /**
  * Returned from sendCode when the code could not be delivered. The password
@@ -234,6 +236,32 @@ export function createOnSuccessHandler(
 					});
 				}
 			} else {
+				// An invited account (docs/USER_INVITES.md): this sign-in proved the address
+				// (every way in is an emailed code or a password set with one), so it claims
+				// the pre-provisioned account: same id, roles, plan and channels; now active
+				// with the email verified. Never a second account for the same email.
+				if (existingUser.status === 'invited' && db) {
+					const claimed = await claimInvitedAccount(db, tenantId, existingUser.id);
+					if (claimed) {
+						logger.info('[auth] Invited account claimed at first sign-in', { userId: existingUser.id, provider: value.provider });
+						ctx.waitUntil(
+							getAuditEmitter().emit({
+								timestamp: new Date().toISOString(),
+								eventType: AuditEventType.USER_INVITE_ACCEPTED,
+								severity: AuditEventSeverity.INFO,
+								userId: existingUser.id,
+								ipAddress: getClientIP(request),
+								userAgent: request.headers.get('User-Agent') ?? null,
+								requestId,
+								success: true,
+								errorMessage: null,
+								metadata: { provider: value.provider },
+							})
+						);
+					}
+					// Re-read: a concurrent sign-in may have claimed it, or an admin revoked it
+					existingUser = { ...existingUser, status: undefined };
+				}
 				// Suspended or deleted (D1): refused before anything is issued (#662)
 				const state = await stateOf(existingUser);
 				if (isRefusedAccountState(state)) {

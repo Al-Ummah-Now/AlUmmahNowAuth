@@ -13,6 +13,7 @@ import { logger } from '../logger';
 import { purgeExpiredAttempts } from '../security/password-attempts';
 import { purgeExpiredAppSessions } from '../services/app-sessions-cleanup';
 import { purgeDeleted } from '../deletions/purge';
+import { purgeRevokedInvites } from '../invites/service';
 
 export type CronJobName = 'token-cleanup';
 
@@ -69,6 +70,13 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 					await purgeDeleted(env);
 				} catch (error) {
 					logger.error('Deleted-items cleanup failed', { error: error instanceof Error ? error.message : String(error) });
+				}
+				// Revoked invites past their 30 days, or queued with "Delete permanently now" (docs/USER_INVITES.md)
+				try {
+					const invites = await purgeRevokedInvites(env.AUTH_DB);
+					if (invites.purged || invites.failed) logger.info('Invite cleanup completed', invites);
+				} catch (error) {
+					logger.error('Invite cleanup failed', { error: error instanceof Error ? error.message : String(error) });
 				}
 				break;
 			}

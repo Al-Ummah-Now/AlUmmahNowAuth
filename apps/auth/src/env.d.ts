@@ -72,6 +72,8 @@ declare global {
     ADMIN_LIMITER?: RateLimit;
     /** Workers Rate Limiting (AU-1): destructive admin actions per admin */
     ADMIN_SENSITIVE_LIMITER?: RateLimit;
+    /** Days an invite link works (docs/USER_INVITES.md); default 14, at most 90 */
+    INVITE_TTL_DAYS?: string;
   }
 }
 
