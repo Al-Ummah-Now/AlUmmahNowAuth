@@ -445,6 +445,24 @@ export class D1SessionAdapter implements SessionService {
 	}
 
 	/**
+	 * Store the user's current roles on their account sessions in the tenant
+	 * (a refresh recomputed them). Returns the number of account sessions updated.
+	 */
+	async updateAccountRoles(params: { tenantId: string; userId: string; roles: string[] }): Promise<number> {
+		const result = await this.db
+			.prepare(
+				`UPDATE account_sessions
+				SET subject_properties = json_set(COALESCE(subject_properties, '{}'), '$.roles', json(?))
+				WHERE user_id = ? AND browser_session_id IN (
+					SELECT id FROM browser_sessions WHERE tenant_id = ?
+				)`
+			)
+			.bind(JSON.stringify(params.roles), params.userId, params.tenantId)
+			.run();
+		return result.meta?.changes ?? 0;
+	}
+
+	/**
 	 * Revoke a specific browser session
 	 */
 	async revokeSpecificSession(sessionId: string, tenantId: string): Promise<boolean> {

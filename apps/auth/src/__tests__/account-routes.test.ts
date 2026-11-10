@@ -9,7 +9,7 @@ import { generateKeyPair, exportSPKI, SignJWT } from 'jose';
 import worker from '../index';
 import { setupDatabase } from '../test-setup';
 import { clearJWKSCache, SIGNING_KEY_KV_KEY } from '../utils/jwks-cache';
-import { REAUTH_MAX_AGE_SECONDS, requireRecentSignIn } from '../routes/account-routes';
+import { REAUTH_MAX_AGE_SECONDS, exceedsAccessTtl, requireRecentSignIn } from '../routes/account-routes';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { D1SessionAdapter } from '../adapters/session-adapter';
@@ -126,6 +126,45 @@ describe('self-service account endpoints (worker)', () => {
 		await Storage.set(kv, ['oauth:refresh', 'user:abc', 'tok-late'], { subject: 'user:abc' });
 		expect((await del(t)).status).toBe(200);
 		expect(await Storage.get(kv, ['oauth:refresh', 'user:abc', 'tok-late'])).toBeFalsy();
+	});
+
+	it('a 30-day token from before 15-minute tokens is refused once ACCESS_TOKEN_TTL is set', async () => {
+		const legacy = await new SignJWT({ mode: 'access', type: 'user', aud: 'viewer-mobile', properties: { id: 'usr_alice', roles: ['Admin'] }, auth_time: now() - 60 })
+			.setProtectedHeader({ alg: 'ES256', kid: 'acct-kid' })
+			.setIssuer(ISSUER)
+			.setSubject('user:abc')
+			.setIssuedAt(now() - 3600)
+			.setExpirationTime(now() - 3600 + 30 * 86_400)
+			.sign(privateKey);
+		const withTtl = { ...E, ACCESS_TOKEN_TTL: '900' } as Env;
+		const ctx = createExecutionContext();
+		const res = await worker.fetch(
+			new Request(`${ISSUER}/account`, { method: 'DELETE', headers: { host: 'localhost:3301', Authorization: `Bearer ${legacy}` } }),
+			withTtl,
+			ctx,
+		);
+		await waitOnExecutionContext(ctx);
+		expect(res.status).toBe(401);
+		expect((await userRow('usr_alice'))!.status).toBe('active');
+		// A 15-minute token passes the lifetime check (then the normal rules apply)
+		const ctx2 = createExecutionContext();
+		const ok = await worker.fetch(
+			new Request(`${ISSUER}/account`, { method: 'DELETE', headers: { host: 'localhost:3301', Authorization: `Bearer ${await userToken('usr_bob')}` } }),
+			withTtl,
+			ctx2,
+		);
+		await waitOnExecutionContext(ctx2);
+		expect(ok.status).toBe(200);
+	});
+
+	it('exceedsAccessTtl: lifetime over the TTL (plus 60 s slack) or no iat/exp', () => {
+		expect(exceedsAccessTtl({ iat: 1000, exp: 1900 }, 900)).toBe(false);
+		expect(exceedsAccessTtl({ iat: 1000, exp: 1960 }, 900)).toBe(false);
+		expect(exceedsAccessTtl({ iat: 1000, exp: 1961 }, 900)).toBe(true);
+		expect(exceedsAccessTtl({ iat: 1000, exp: 1000 + 30 * 86_400 }, 900)).toBe(true);
+		expect(exceedsAccessTtl({ exp: 1900 }, 900)).toBe(true);
+		// No TTL configured (local dev): no cap
+		expect(exceedsAccessTtl({ iat: 1000, exp: 1000 + 30 * 86_400 }, undefined)).toBe(false);
 	});
 
 	it('requires a recent sign-in: stale or missing auth_time gets the step-up challenge', async () => {
