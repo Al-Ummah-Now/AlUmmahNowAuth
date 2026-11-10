@@ -19,6 +19,7 @@
 --   migrations-qa/0014_theme_demo_redirect_uris.sql
 --   migrations-qa/0020_password_attempts.sql
 --   migrations-qa/0021_openauth_atomic.sql
+--   migrations-qa/0022_moderation_requests.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
@@ -28,6 +29,8 @@ CREATE TABLE browser_sessions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, cre
 CREATE TABLE identity_providers (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL, display_name TEXT NOT NULL, client_id TEXT, client_secret_encrypted TEXT, client_secret_iv TEXT, config TEXT DEFAULT '{}', enabled INTEGER DEFAULT 1, display_order INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(tenant_id, name), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE jwt_keys (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', algorithm TEXT NOT NULL DEFAULT 'RS256', public_key TEXT NOT NULL, private_key TEXT NOT NULL, kid TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), expires_at INTEGER, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE logs (id INTEGER PRIMARY KEY AUTOINCREMENT, level TEXT NOT NULL, service TEXT DEFAULT 'AUTH', message TEXT NOT NULL, context TEXT, timestamp INTEGER NOT NULL DEFAULT (unixepoch() * 1000));
+CREATE TABLE moderation_request_events (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, type TEXT NOT NULL, actor_type TEXT NOT NULL, actor_id TEXT NOT NULL, actor_name TEXT, note TEXT, metadata TEXT, created_at INTEGER NOT NULL, FOREIGN KEY (request_id) REFERENCES moderation_requests(id) ON DELETE CASCADE);
+CREATE TABLE moderation_requests (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'default', client_id TEXT NOT NULL, subject_user_id TEXT NOT NULL, action TEXT NOT NULL, reason_category TEXT NOT NULL, reason TEXT NOT NULL, evidence TEXT NOT NULL DEFAULT '[]', requested_by_id TEXT NOT NULL, requested_by_name TEXT NOT NULL, idempotency_key TEXT NOT NULL, payload_hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', decision_note TEXT, decided_by TEXT, decided_at INTEGER, actioned_at INTEGER, action_result TEXT, action_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE (client_id, idempotency_key));
 CREATE TABLE oauth_clients (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, client_secret_hash TEXT, grant_types TEXT DEFAULT '[]', scopes TEXT DEFAULT '[]', redirect_uris TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}', enabled INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, rotated_at INTEGER, previous_secret_hash TEXT, previous_secret_expires_at INTEGER, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE openauth_atomic (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER);
 CREATE TABLE password_codes (email TEXT PRIMARY KEY, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, window_start INTEGER NOT NULL DEFAULT 0, window_attempts INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
@@ -74,6 +77,10 @@ CREATE INDEX idx_jwt_keys_kid ON jwt_keys(kid);
 CREATE INDEX idx_jwt_keys_tenant_id ON jwt_keys(tenant_id);
 CREATE INDEX idx_logs_level ON logs(level);
 CREATE INDEX idx_logs_timestamp ON logs(timestamp);
+CREATE INDEX idx_moderation_request_events_request ON moderation_request_events(request_id, created_at);
+CREATE INDEX idx_moderation_requests_client ON moderation_requests(client_id, created_at);
+CREATE INDEX idx_moderation_requests_status ON moderation_requests(status, created_at);
+CREATE INDEX idx_moderation_requests_subject ON moderation_requests(subject_user_id, created_at);
 CREATE INDEX idx_oauth_clients_created ON oauth_clients(created_at);
 CREATE INDEX idx_oauth_clients_enabled ON oauth_clients(enabled);
 CREATE INDEX idx_oauth_clients_tenant ON oauth_clients(tenant_id);

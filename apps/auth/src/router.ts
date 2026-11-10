@@ -32,6 +32,9 @@ import { BrowserSessionService } from './services/browser-session.service';
 import { parseSessionCookie } from './utils/session-cookie';
 import { requireAdmin } from './middleware/admin-auth';
 import { verifyAdminAuth } from './auth-middleware';
+import { routeModerationClient } from './moderation/client-routes';
+import { moderationAdminRoutes } from './moderation/admin-routes';
+import { createRouteExecutor } from './moderation/executor';
 
 const methodNotAllowed = (allow: string) =>
 	new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: { Allow: allow, 'Content-Type': 'application/json' } });
@@ -634,6 +637,12 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 		return await handleApiPermissionsRoutes(rctx);
 	}
 
+	// Moderation requests from client apps (client credentials, docs/MODERATION_REQUESTS.md)
+	if (pathname === '/moderation/requests' || pathname.startsWith('/moderation/requests/')) {
+		const response = await routeModerationClient(request, rctx.env, rctx.ctx, rctx.requestId);
+		return response ? addSecurityHeaders(response, rctx.isProduction) : null;
+	}
+
 	if (pathname.startsWith('/test/')) {
 		return await handleTestRoutes(rctx);
 	}
@@ -699,5 +708,20 @@ async function routeAdminPaths(rctx: RouterContext): Promise<RouteResult> {
 		return await handleAdminDlqRoutes(rctx);
 	}
 
+	if (pathname === '/admin/moderation-requests' || pathname.startsWith('/admin/moderation-requests/')) {
+		return await handleAdminModerationRoutes(rctx);
+	}
+
 	return null;
+}
+
+/**
+ * Moderation requests queue and decisions (/admin/moderation-requests/*). An
+ * approval runs the action through this same router (the existing admin user
+ * routes) with the deciding admin's credentials.
+ */
+async function handleAdminModerationRoutes(rctx: RouterContext): Promise<RouteResult> {
+	const executor = createRouteExecutor(rctx.request, (inner) => routeRequest({ ...rctx, request: inner, url: new URL(inner.url) }));
+	const response = await moderationAdminRoutes(executor).fetch(rctx.request, rctx.env, rctx.ctx);
+	return addSecurityHeaders(response, rctx.isProduction);
 }

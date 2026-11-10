@@ -83,6 +83,15 @@ export enum AuditEventType {
   ADMIN_SESSIONS_TERMINATED_ALL = 'admin.sessions.terminated_all',
   ADMIN_FORCE_LOGOUT = 'admin.force_logout',
   ADMIN_SESSION_VIEWED = 'admin.session.viewed',
+
+  // Moderation requests from client apps (docs/MODERATION_REQUESTS.md)
+  MODERATION_REQUEST_CREATED = 'moderation.request.created',
+  MODERATION_REQUEST_INFO_REQUESTED = 'moderation.request.info_requested',
+  MODERATION_REQUEST_INFO_PROVIDED = 'moderation.request.info_provided',
+  MODERATION_REQUEST_APPROVED = 'moderation.request.approved',
+  MODERATION_REQUEST_REJECTED = 'moderation.request.rejected',
+  MODERATION_REQUEST_ACTIONED = 'moderation.request.actioned',
+  MODERATION_REQUEST_ACTION_FAILED = 'moderation.request.action_failed',
 }
 
 /**
