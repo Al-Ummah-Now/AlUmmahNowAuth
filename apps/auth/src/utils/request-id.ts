@@ -9,7 +9,7 @@
 export const REQUEST_ID_HEADER = 'X-Request-ID';
 
 /** Accept only short, printable, header-safe identifiers to avoid log injection. */
-const SAFE_REQUEST_ID = /^[A-Za-z0-9._:\-]{1,128}$/;
+const SAFE_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export function resolveRequestId(request: Request): string {
 	const incoming = request.headers.get(REQUEST_ID_HEADER)?.trim();

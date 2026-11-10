@@ -6,7 +6,7 @@ import { join } from 'node:path';
 const workflow = readFileSync(join(__dirname, '../../../.github/workflows/release.yml'), 'utf8');
 
 /** Each step of the workflow as raw text, split on step boundaries. */
-const steps = workflow.split(/\n(?=      - )/);
+const steps = workflow.split(/\n(?= {6}- )/);
 
 describe('release.yml', () => {
 	it('runs stage E2E against the deployed workers, never local dev servers', () => {
