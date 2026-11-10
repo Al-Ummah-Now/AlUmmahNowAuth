@@ -168,7 +168,7 @@ test.describe('Admin sign-in themes', () => {
         const clientRow = page.locator('tr', { hasText: CLIENT_NAME });
         if (await clientRow.count()) {
           await clientRow.getByTitle('Delete').click();
-          await page.locator('[role="dialog"]').getByRole('button', { name: /Delete/ }).click();
+          await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
           await expect(clientRow).toHaveCount(0, { timeout: 20000 });
         }
       }
@@ -176,6 +176,8 @@ test.describe('Admin sign-in themes', () => {
         await page.goto(admin('/themes'));
         const card = page.getByTestId(`theme-${THEME_ID}`);
         await card.getByRole('button', { name: 'Delete' }).click();
+        // In-app confirmation; the theme moves to Recently deleted
+        await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
         await expect(card).toHaveCount(0, { timeout: 20000 });
       }
     }

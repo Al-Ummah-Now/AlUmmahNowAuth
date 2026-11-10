@@ -314,10 +314,10 @@ export async function deleteUser(page: Page, email: string): Promise<void> {
   await expect(userRow).toBeVisible({ timeout: 10000 });
   await userRow.locator('button:has-text("Delete")').click();
 
-  // Wait for confirmation dialog and confirm deletion
-  const dialog = page.locator('[role="dialog"]');
+  // Wait for the in-app confirmation (native <dialog>) and confirm: a soft delete
+  const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible({ timeout: 5000 });
-  const confirmBtn = dialog.locator('button:has-text("Confirm")');
+  const confirmBtn = dialog.getByRole('button', { name: 'Delete', exact: true });
   await expect(confirmBtn).toBeVisible({ timeout: 5000 });
 
   // Click confirm and wait for the form submission to complete

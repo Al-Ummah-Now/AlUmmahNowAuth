@@ -50,12 +50,10 @@ test.describe('Admin User Deletion', () => {
     await userRow.locator('button:has-text("Delete")').click();
 
     // Verify confirmation dialog appears with proper content
-    // The dialog contains "Are you sure you want to delete this user?" and a "Confirm" button
-    await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
-    // Check for dialog description text (case-insensitive)
-    await expect(
-      page.locator('[role="dialog"]').locator('text=/are you sure/i')
-    ).toBeVisible({ timeout: 5000 });
+    // An in-app dialog (native <dialog>): the user moves to Recently deleted, restorable for 30 days
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('dialog').getByText(/Recently deleted/)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'Cancel' })).toBeFocused();
   });
 
   test('should cancel deletion when clicking cancel', async ({ page }) => {
@@ -70,13 +68,13 @@ test.describe('Admin User Deletion', () => {
     await userRow.locator('button:has-text("Delete")').click();
 
     // Wait for confirmation dialog to appear
-    await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
 
     // Click cancel in confirmation dialog
-    await page.locator('[role="dialog"] button:has-text("Cancel")').click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
 
     // Wait for dialog to close
-    await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5000 });
+    await expect(page.getByRole('dialog')).toBeHidden({ timeout: 5000 });
 
     // Verify user still exists
     await expect(page.locator(`tr:has-text("${userEmail}")`)).toBeVisible();

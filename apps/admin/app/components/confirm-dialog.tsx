@@ -28,8 +28,12 @@ export interface ConfirmDialogProps {
   lang?: string;
 }
 
-export function ConfirmDialog({
-  open,
+/** Mounted only while open, so its buttons are never on the page otherwise. */
+export function ConfirmDialog(props: ConfirmDialogProps) {
+  return props.open ? <OpenConfirmDialog {...props} /> : null;
+}
+
+function OpenConfirmDialog({
   title,
   description,
   confirmLabel,
@@ -52,14 +56,13 @@ export function ConfirmDialog({
 
   useEffect(() => {
     const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) {
-      dialog.showModal();
-      cancelRef.current?.focus();
-    } else if (!open && dialog.open) {
-      dialog.close();
-    }
-  }, [open]);
+    if (!dialog || dialog.open) return;
+    dialog.showModal();
+    cancelRef.current?.focus();
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, []);
 
   const matches = !typeToConfirm || typed.trim() === typeToConfirm.expected.trim();
 
@@ -70,10 +73,6 @@ export function ConfirmDialog({
       lang={lang}
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-desc`}
-      onClose={() => {
-        setReasonText("");
-        setTyped("");
-      }}
       onCancel={(e) => {
         e.preventDefault();
         if (!busy) onCancel();
