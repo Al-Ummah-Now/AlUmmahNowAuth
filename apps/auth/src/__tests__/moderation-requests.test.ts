@@ -6,10 +6,13 @@ import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { env } from 'cloudflare:test';
 import { hashClientSecret } from '@al-ummah-now/openauth';
 import migration0022 from '../../migrations/0022_moderation_requests.sql?raw';
+import migration0023 from '../../migrations/0023_moderation_execution_queue.sql?raw';
 import { setupDatabase } from '../test-setup';
 import { canTransition, isFinal, validate, CreateRequestSchema, payloadHash, MODERATION_STATUSES, type Decision } from '../moderation/model';
 import { routeModerationClient } from '../moderation/client-routes';
-import { actionRoute, createRouteExecutor } from '../moderation/executor';
+import { handleModerationBatch, retryDelaySeconds, runQueuedAction, deadLetter, MAX_ATTEMPTS, type ModerationQueueMessage } from '../moderation/queue';
+import { classifyActionError, type ActionOutcome } from '../moderation/actions';
+import { ModerationStore } from '../moderation/store';
 
 // requireAdmin is tested elsewhere; here the acting admin comes from a test header
 vi.mock('../middleware/admin-auth', async (importOriginal) => ({
@@ -73,14 +76,17 @@ async function clientCall(method: string, path: string, opts: { client?: { id: s
 	return { status: res.status, headers: res.headers, json: (await res.json()) as Record<string, any> };
 }
 
-const executor = vi.fn(async (_action: string, _userId: string, _context: unknown) => ({ ok: true, status: 200, body: { success: true } }));
-const adminApp = () => moderationAdminRoutes(executor as never);
+/** The approve/execute routes only queue: a fake producer records what was sent. */
+const sent: ModerationQueueMessage[] = [];
+const fakeQueue = { send: vi.fn(async (m: ModerationQueueMessage) => void sent.push(m)) };
+const testEnv = () => ({ ...(env as unknown as Env), MODERATION_QUEUE: fakeQueue as unknown as Queue });
+const adminApp = () => moderationAdminRoutes();
 async function adminCall(method: string, path: string, adminId: string | null, json?: unknown) {
 	const headers = new Headers({ 'Content-Type': 'application/json' });
 	if (adminId) headers.set('X-Test-Admin', adminId);
 	const res = await adminApp().fetch(
 		new Request(`https://auth.test/admin/moderation-requests${path}`, { method, headers, body: json === undefined ? undefined : JSON.stringify(json) }),
-		env as unknown as Env,
+		testEnv(),
 		ctx
 	);
 	return { status: res.status, json: (await res.json()) as Record<string, any> };
@@ -110,7 +116,7 @@ beforeAll(async () => {
 		await db.prepare(`INSERT OR IGNORE INTO rbac_roles (id, name, tenant_id) VALUES (?, ?, 'default')`).bind(id, name).run();
 	}
 	// The migration under test
-	for (const stmt of sqlStatements(migration0022)) await db.prepare(stmt).run();
+	for (const stmt of [...sqlStatements(migration0022), ...sqlStatements(migration0023)]) await db.prepare(stmt).run();
 
 	await db.prepare(`UPDATE oauth_clients SET client_secret_hash = ? WHERE id = ?`).bind(await hashClientSecret(VIDEOS.secret), VIDEOS.id).run();
 	for (const [c, scopes, hash] of [
@@ -139,8 +145,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-	executor.mockClear();
-	executor.mockImplementation(async () => ({ ok: true, status: 200, body: { success: true } }));
+	sent.length = 0;
+	fakeQueue.send.mockClear();
 });
 
 describe('state machine', () => {
@@ -322,32 +328,77 @@ describe('auth admin decisions', () => {
 		expect(res.json.prior_requests.length).toBeGreaterThan(0);
 		expect(res.json.prior_requests.every((r: { id: string }) => r.id !== req.id)).toBe(true);
 	});
-	it('approve runs the action through the executor and ends actioned; the client sees it', async () => {
+	it('approve queues the action (202); the queue runs it and the client sees actioned', async () => {
 		const req = await fileRequest({ action: 'revoke_sessions' });
 		const res = await adminCall('POST', `/${req.id}/approve`, ADMIN, { note: 'Confirmed spam' });
-		expect(res.status).toBe(200);
-		expect(executor).toHaveBeenCalledWith('revoke_sessions', SUBJECT, expect.objectContaining({ requestId: req.id }));
-		expect(res.json.request).toMatchObject({ status: 'actioned', decision_note: 'Confirmed spam', decided_by: ADMIN });
+		expect(res.status).toBe(202);
+		expect(res.json.request).toMatchObject({ status: 'approved', decision_note: 'Confirmed spam', decided_by: ADMIN, execution: { status: 'queued', needs_attention: false } });
+		expect(sent).toEqual([{ type: 'moderation.execute', requestId: req.id, adminId: ADMIN }]);
+		// The client already sees the decision; the action is still pending
+		expect((await clientCall('GET', `/moderation/requests/${req.id}`)).json.request.status).toBe('approved');
+
+		const run = vi.fn(async (): Promise<ActionOutcome> => ({ ok: true, result: { sessionsTerminated: 1 } }));
+		expect(await runQueuedAction(new ModerationStore(DB()), run, sent[0], 1)).toBe('done');
+		expect(run).toHaveBeenCalledWith('revoke_sessions', SUBJECT, 'default');
 		const seen = await clientCall('GET', `/moderation/requests/${req.id}`);
-		expect(seen.json.request.status).toBe('actioned');
-		expect(seen.json.request.decision_note).toBe('Confirmed spam');
+		expect(seen.json.request).toMatchObject({ status: 'actioned', decision_note: 'Confirmed spam' });
 		expect(seen.json.request.history.map((h: { type: string }) => h.type)).toEqual(['created', 'approved', 'actioned']);
 		expect(JSON.stringify(seen.json)).not.toContain(ADMIN);
-		// Final: a second approval is a conflict and does not run again
-		const again = await adminCall('POST', `/${req.id}/approve`, SUPER, {});
-		expect(again.status).toBe(409);
-		expect(executor).toHaveBeenCalledTimes(1);
+		// Final: a second approval is a conflict and queues nothing
+		expect((await adminCall('POST', `/${req.id}/approve`, SUPER, {})).status).toBe(409);
+		expect(sent).toHaveLength(1);
+		// A late duplicate delivery does nothing
+		expect(await runQueuedAction(new ModerationStore(DB()), run, sent[0], 2)).toBe('skipped');
+		expect(run).toHaveBeenCalledTimes(1);
 	});
-	it('a failed action stays approved with the error, and execute retries it', async () => {
-		executor.mockImplementationOnce(async () => ({ ok: false, status: 404, body: { error: 'user_not_found' } }));
+	it('transient failures retry with backoff; the last one flags the request; execute queues it again', async () => {
 		const req = await fileRequest({ action: 'suspend_account' });
-		const failed = await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
-		expect(failed.status).toBe(502);
-		expect(failed.json.request.status).toBe('approved');
-		expect(failed.json.request.action_error).toContain('user_not_found');
-		const retried = await adminCall('POST', `/${req.id}/execute`, ADMIN, {});
-		expect(retried.status).toBe(200);
-		expect(retried.json.request).toMatchObject({ status: 'actioned', action_error: null });
+		await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
+		const store = new ModerationStore(DB());
+		const failing = vi.fn(async (): Promise<ActionOutcome> => ({ ok: false, permanent: false, error: 'D1 timeout' }));
+		expect(await runQueuedAction(store, failing, sent[0], 1)).toBe('retry');
+		let row = (await store.get(req.id))!;
+		expect(row).toMatchObject({ status: 'approved', execution_status: 'retrying', execution_attempts: 1 });
+		expect(row.action_error).toContain('D1 timeout');
+		expect(await runQueuedAction(store, failing, sent[0], MAX_ATTEMPTS)).toBe('failed');
+		const flagged = await adminCall('GET', `/${req.id}`, ADMIN);
+		expect(flagged.json.request.execution).toMatchObject({ status: 'failed', needs_attention: true, attempts: MAX_ATTEMPTS });
+		expect(flagged.json.request.history.map((h: { type: string }) => h.type)).toContain('action_failed');
+		const queue = await adminCall('GET', '?needs_attention=1&status=approved', ADMIN);
+		expect(queue.json.requests.map((r: { id: string }) => r.id)).toContain(req.id);
+		expect(queue.json.needs_attention).toBeGreaterThan(0);
+		// Run again: re-queued with a fresh attempt count, then succeeds
+		const again = await adminCall('POST', `/${req.id}/execute`, ADMIN, {});
+		expect(again.status).toBe(202);
+		expect(again.json.request.execution).toMatchObject({ status: 'queued', attempts: 0 });
+		expect(sent).toHaveLength(2);
+		expect(await runQueuedAction(store, async () => ({ ok: true, result: {} }), sent[1], 1)).toBe('done');
+		row = (await store.get(req.id))!;
+		expect(row).toMatchObject({ status: 'actioned', execution_status: 'done', action_error: null });
+	});
+	it('a permanent failure flags at once (no retry)', async () => {
+		const req = await fileRequest({ action: 'require_password_reset' });
+		await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
+		const store = new ModerationStore(DB());
+		expect(await runQueuedAction(store, async () => ({ ok: false, permanent: true, error: 'user_not_found' }), sent[0], 1)).toBe('failed');
+		expect((await store.get(req.id))!.execution_status).toBe('failed');
+	});
+	it('execute is refused while the action is queued', async () => {
+		const req = await fileRequest({ action: 'suspend_account' });
+		await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
+		expect((await adminCall('POST', `/${req.id}/execute`, ADMIN, {})).status).toBe(409);
+	});
+	it('without a queue binding the approval is flagged instead of lost', async () => {
+		const req = await fileRequest({ action: 'suspend_account' });
+		const headers = new Headers({ 'Content-Type': 'application/json', 'X-Test-Admin': ADMIN });
+		const res = await moderationAdminRoutes().fetch(
+			new Request(`https://auth.test/admin/moderation-requests/${req.id}/approve`, { method: 'POST', headers, body: '{}' }),
+			{ ...(env as unknown as Env), MODERATION_QUEUE: undefined },
+			ctx
+		);
+		expect(res.status).toBe(502);
+		const json = (await res.json()) as Record<string, any>;
+		expect(json.request.execution).toMatchObject({ status: 'failed', needs_attention: true });
 	});
 	it('reject needs a note and is final', async () => {
 		const req = await fileRequest();
@@ -355,15 +406,22 @@ describe('auth admin decisions', () => {
 		const res = await adminCall('POST', `/${req.id}/reject`, ADMIN, { note: 'Not enough evidence' });
 		expect(res.json.request).toMatchObject({ status: 'rejected', decision_note: 'Not enough evidence' });
 		expect((await adminCall('POST', `/${req.id}/approve`, ADMIN, {})).status).toBe(409);
-		expect(executor).not.toHaveBeenCalled();
+		expect(sent).toHaveLength(0);
 		const seen = await clientCall('GET', `/moderation/requests/${req.id}`);
 		expect(seen.json.request).toMatchObject({ status: 'rejected', decision_note: 'Not enough evidence' });
+	});
+	it('a request rejected after its action was queued is not run', async () => {
+		const req = await fileRequest({ action: 'delete_account' });
+		await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
+		await adminCall('POST', `/${req.id}/reject`, SUPER, { note: 'Changed my mind' });
+		const run = vi.fn(async (): Promise<ActionOutcome> => ({ ok: true, result: {} }));
+		expect(await runQueuedAction(new ModerationStore(DB()), run, sent[0], 1)).toBe('skipped');
+		expect(run).not.toHaveBeenCalled();
 	});
 	it('request-info -> the client answers -> pending again -> approve', async () => {
 		const req = await fileRequest({ action: 'require_password_reset' });
 		const asked = await adminCall('POST', `/${req.id}/request-info`, ADMIN, { note: 'Which videos?' });
 		expect(asked.json.request.status).toBe('info_requested');
-		// Only while info is requested
 		const answered = await clientCall('POST', `/moderation/requests/${req.id}/info`, {
 			json: { note: 'Videos 1 and 2', evidence: [{ url: 'https://admin.qa.alummahnow.net/moderation/reports/r1' }], requested_by: { id: 'm1', display_name: 'Videos Moderator' } },
 		});
@@ -373,28 +431,25 @@ describe('auth admin decisions', () => {
 		const twice = await clientCall('POST', `/moderation/requests/${req.id}/info`, { json: { note: 'again', requested_by: { id: 'm1', display_name: 'M' } } });
 		expect(twice.status).toBe(409);
 		const approved = await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
-		expect(approved.json.request.status).toBe('actioned');
-		expect(executor).toHaveBeenCalledWith('require_password_reset', SUBJECT, expect.anything());
+		expect(approved.json.request.status).toBe('approved');
+		expect(sent).toHaveLength(1);
 	});
-	it('"other" is approved without running anything, then marked actioned by hand', async () => {
+	it('"other" is approved without queueing anything, then marked actioned by hand', async () => {
 		const req = await fileRequest({ action: 'other', reason: 'Merge two accounts' });
 		const approved = await adminCall('POST', `/${req.id}/approve`, ADMIN, { note: 'Will merge' });
+		expect(approved.status).toBe(200);
 		expect(approved.json.request.status).toBe('approved');
-		expect(executor).not.toHaveBeenCalled();
+		expect(sent).toHaveLength(0);
 		const done = await adminCall('POST', `/${req.id}/mark-actioned`, ADMIN, { note: 'Merged' });
 		expect(done.json.request.status).toBe('actioned');
 	});
 	it('an automatic action is closed by hand only after it failed', async () => {
 		const req = await fileRequest({ action: 'delete_account' });
-		executor.mockImplementationOnce(async () => ({ ok: false, status: 500, body: { error: 'boom' } }));
-		const res = await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
-		expect(res.json.request.status).toBe('approved');
-		// Without a recorded failure it must be run (execute), not closed by hand
-		await DB().prepare('UPDATE moderation_requests SET action_error = NULL WHERE id = ?').bind(req.id).run();
+		await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
 		expect((await adminCall('POST', `/${req.id}/mark-actioned`, ADMIN, { note: 'x' })).status).toBe(409);
-		await DB().prepare("UPDATE moderation_requests SET action_error = 'boom' WHERE id = ?").bind(req.id).run();
+		await runQueuedAction(new ModerationStore(DB()), async () => ({ ok: false, permanent: true, error: 'boom' }), sent[0], 1);
 		const closed = await adminCall('POST', `/${req.id}/mark-actioned`, ADMIN, { note: 'Deleted by hand' });
-		expect(closed.json.request.status).toBe('actioned');
+		expect(closed.json.request).toMatchObject({ status: 'actioned', execution: { status: 'done', needs_attention: false } });
 	});
 	it('decisions are audit-logged', async () => {
 		const spy = vi.spyOn(await import('../audit-emitter'), 'emitAuditEvent');
@@ -405,30 +460,51 @@ describe('auth admin decisions', () => {
 	});
 });
 
-describe('executor', () => {
-	it('maps each automatic action to the existing admin route', () => {
-		expect(actionRoute('suspend_account', 'usr_1')).toEqual({ method: 'POST', path: '/admin/users/usr_1/suspend' });
-		expect(actionRoute('delete_account', 'usr_1')).toEqual({ method: 'DELETE', path: '/admin/users/usr_1' });
-		expect(actionRoute('revoke_sessions', 'usr_1')).toEqual({ method: 'DELETE', path: '/admin/users/usr_1/sessions' });
-		expect(actionRoute('require_password_reset', 'usr_1')).toEqual({ method: 'POST', path: '/admin/users/usr_1/force-password-reset' });
+describe('moderation-actions queue', () => {
+	function batch(queue: string, messages: ModerationQueueMessage[], attempts = 1) {
+		const msgs = messages.map((body) => ({ body, attempts, id: crypto.randomUUID(), timestamp: new Date(), ack: vi.fn(), retry: vi.fn() }));
+		return { b: { queue, messages: msgs, ackAll: vi.fn(), retryAll: vi.fn() } as unknown as MessageBatch<ModerationQueueMessage>, msgs };
+	}
+	it('backs off 30 s doubling, capped at 15 minutes', () => {
+		expect([1, 2, 3, 4, 5, 6, 7].map(retryDelaySeconds)).toEqual([30, 60, 120, 240, 480, 900, 900]);
 	});
-	it('forwards the deciding admin\'s credentials and reports the result', async () => {
-		const seen: Request[] = [];
-		const original = new Request('https://auth.test/admin/moderation-requests/x/approve', {
-			method: 'POST',
-			headers: { Authorization: 'Bearer m2m', 'X-Acting-User-Id': ADMIN, 'X-Unrelated': 'no' },
-		});
-		const run = createRouteExecutor(original, async (r) => {
-			seen.push(r);
-			return new Response(JSON.stringify({ success: true }), { status: 200 });
-		});
-		const result = await run('suspend_account', 'usr_1', { requestId: 'modreq_1', note: null });
-		expect(result).toEqual({ ok: true, status: 200, body: { success: true } });
-		expect(seen[0].url).toBe('https://auth.test/admin/users/usr_1/suspend');
-		expect(seen[0].headers.get('Authorization')).toBe('Bearer m2m');
-		expect(seen[0].headers.get('X-Acting-User-Id')).toBe(ADMIN);
-		expect(seen[0].headers.get('X-Unrelated')).toBeNull();
-		const failed = await createRouteExecutor(original, async () => new Response('{"error":"Forbidden"}', { status: 403 }))('delete_account', 'usr_1', { requestId: 'r', note: null });
-		expect(failed).toEqual({ ok: false, status: 403, body: { error: 'Forbidden' } });
+	it('acks a done action and retries a failing one with its backoff', async () => {
+		const ok = await fileRequest({ action: 'suspend_account' });
+		const bad = await fileRequest({ action: 'suspend_account' });
+		await adminCall('POST', `/${ok.id}/approve`, ADMIN, {});
+		await adminCall('POST', `/${bad.id}/approve`, ADMIN, {});
+		const { b, msgs } = batch('moderation-actions-qa', [...sent], 2);
+		await handleModerationBatch(b, env as unknown as Env, async (_a, userId) => (userId === SUBJECT && msgs[0].retry.mock.calls.length === 0 && msgs[0].ack.mock.calls.length === 0 ? { ok: true, result: {} } : { ok: false, permanent: false, error: 'flaky' }));
+		expect(msgs[0].ack).toHaveBeenCalled();
+		expect(msgs[1].retry).toHaveBeenCalledWith({ delaySeconds: 60 });
+	});
+	it('the dead-letter queue flags the request for an auth admin', async () => {
+		const req = await fileRequest({ action: 'suspend_account' });
+		await adminCall('POST', `/${req.id}/approve`, ADMIN, {});
+		const { b, msgs } = batch('moderation-actions-qa-dlq', [...sent]);
+		const run = vi.fn();
+		await handleModerationBatch(b, env as unknown as Env, run as never);
+		expect(run).not.toHaveBeenCalled();
+		expect(msgs[0].ack).toHaveBeenCalled();
+		const row = (await new ModerationStore(DB()).get(req.id))!;
+		expect(row.execution_status).toBe('failed');
+		// Flagging twice adds nothing
+		await deadLetter(new ModerationStore(DB()), sent[0]);
+		const events = await new ModerationStore(DB()).events(req.id);
+		expect(events.filter((e) => e.type === 'action_failed')).toHaveLength(1);
+	});
+	it('drops malformed messages', async () => {
+		const { b, msgs } = batch('moderation-actions-qa', [{ type: 'other' } as never]);
+		await handleModerationBatch(b, env as unknown as Env, vi.fn() as never);
+		expect(msgs[0].ack).toHaveBeenCalled();
+	});
+});
+
+describe('account actions', () => {
+	it('deleting an account that is already gone counts as done; a missing user is permanent; other errors retry', () => {
+		const notFound = Object.assign(new Error('User x not found'), { code: 'user_not_found' });
+		expect(classifyActionError('delete_account', notFound)).toEqual({ ok: true, result: { alreadyDeleted: true } });
+		expect(classifyActionError('suspend_account', notFound)).toMatchObject({ ok: false, permanent: true });
+		expect(classifyActionError('suspend_account', new Error('D1_ERROR: timeout'))).toMatchObject({ ok: false, permanent: false });
 	});
 });

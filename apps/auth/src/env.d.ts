@@ -39,6 +39,8 @@ declare global {
     OPENAUTH_ISSUER: string;
     AUTH_DB: D1Database;
     AUDIT_QUEUE: Queue;
+    /** Approved moderation requests' actions (moderation/queue.ts); consumed by this worker */
+    MODERATION_QUEUE?: Queue;
     AUTH_ANALYTICS?: AnalyticsEngineDataset;
     TEST_PROMOTE_SECRET?: string;
     ACCESS_TOKEN_EXPIRY?: number;

@@ -41,6 +41,8 @@ import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/li
 import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
 import { DEFAULT_SITE_THEME, fetchSiteTheme } from '../../../packages/ui/src/site-theme';
 import { applySiteTheme, withSiteTheme } from './ui/site-theme';
+import { handleModerationBatch, type ModerationQueueMessage } from './moderation/queue';
+import { createActionRunner } from './moderation/actions';
 
 /** The email-code field's label: points the user to their inbox. */
 const CODE_INPUT_LABEL = {
@@ -126,6 +128,22 @@ export default {
    * Cron expressions are configured in `triggers.crons` (wrangler.json production env
    * and wrangler.qa.json) and mapped to jobs in cron/token-cron.ts.
    */
+  /**
+   * moderation-actions[-env] and its DLQ: approved moderation requests' actions,
+   * retried with backoff; failures flag the request (moderation/queue.ts).
+   */
+  async queue(batch: MessageBatch<ModerationQueueMessage>, env: Env, ctx: ExecutionContext) {
+    logger.setDatabase(env.AUTH_DB, false);
+    logger.setContext(ctx);
+    setupAuditEmitter(env, ctx);
+    try {
+      await handleModerationBatch(batch, env, createActionRunner(env));
+    } finally {
+      ctx.waitUntil(flushAuditEvents());
+      ctx.waitUntil(logger.finalizeRequest());
+    }
+  },
+
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     logger.setDatabase(env.AUTH_DB, false);
     logger.setContext(ctx);

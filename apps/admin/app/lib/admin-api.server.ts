@@ -992,6 +992,8 @@ export interface ModerationRequest {
   decided_by: string | null;
   action_result: unknown;
   action_error: string | null;
+  /** The queued run of an approved request's action; failed = needs an auth admin */
+  execution: { status: 'queued' | 'retrying' | 'failed' | 'done' | null; attempts: number; updated_at: string | null; needs_attention: boolean };
   history: ModerationHistoryItem[];
   subject?: ModerationSubject | null;
 }
@@ -1000,6 +1002,7 @@ export interface ModerationQueue {
   requests: ModerationRequest[];
   total: number;
   open: number;
+  needs_attention: number;
   limit: number;
   offset: number;
   clients: Array<{ id: string; name: string }>;
@@ -1015,7 +1018,7 @@ export interface ModerationRequestDetail {
 export async function listModerationRequests(
   env: ApiEnv,
   actingUser: ActingUser,
-  params: { status?: string; client_id?: string; action?: string; from?: string; to?: string; limit?: number; offset?: number }
+  params: { status?: string; client_id?: string; action?: string; from?: string; to?: string; needs_attention?: string; limit?: number; offset?: number }
 ): Promise<ModerationQueue | ErrorResponse> {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));

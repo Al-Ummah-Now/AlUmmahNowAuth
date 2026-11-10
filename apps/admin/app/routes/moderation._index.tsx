@@ -25,7 +25,7 @@ export const meta: MetaFunction = () => [
   { name: "description", content: "Requests from client apps to act on user accounts" },
 ];
 
-type Filters = { status: string; client_id: string; action: string; from: string; to: string };
+type Filters = { status: string; client_id: string; action: string; from: string; to: string; needs_attention: string };
 
 type LoaderData = {
   queue: ModerationQueue | null;
@@ -59,11 +59,13 @@ export async function loader({ request, context }: LoaderFunctionArgs): Promise<
     action: url.searchParams.get("action") ?? "",
     from: url.searchParams.get("from") ?? "",
     to: url.searchParams.get("to") ?? "",
+    needs_attention: url.searchParams.get("needs_attention") === "1" ? "1" : "",
   };
   const page = Math.max(parseInt(url.searchParams.get("page") || "1", 10) || 1, 1);
   const result = await listModerationRequests(env, actingUser, {
     ...filters,
-    status: filters.status === "all" ? "" : filters.status,
+    // "Needs attention" = approved requests whose action failed after its retries
+    status: filters.needs_attention ? "approved" : filters.status === "all" ? "" : filters.status,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   });
@@ -98,12 +100,21 @@ export default function ModerationRequestsPage() {
         </div>
       )}
 
+      {!!queue?.needs_attention && !filters.needs_attention && (
+        <div role="alert" data-testid="moderation-needs-attention" className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600 flex flex-wrap items-center justify-between gap-2">
+          <span>
+            {queue.needs_attention === 1 ? "1 approved action failed" : `${queue.needs_attention} approved actions failed`} after every retry and need an admin.
+          </span>
+          <Link to="/moderation?needs_attention=1" className="underline font-medium">Show them</Link>
+        </div>
+      )}
+
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="text-base">Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <Form method="get" className="grid gap-4 md:grid-cols-6 items-end" data-testid="moderation-filters">
+          <Form method="get" className="grid gap-4 md:grid-cols-7 items-end" data-testid="moderation-filters">
             <div className="space-y-1">
               <Label htmlFor="status">Status</Label>
               <select id="status" name="status" defaultValue={filters.status} className={selectClass}>
@@ -129,6 +140,13 @@ export default function ModerationRequestsPage() {
                 {Object.entries(MODERATION_ACTION_LABELS).map(([value, text]) => (
                   <option key={value} value={value}>{text}</option>
                 ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="needs_attention">Needs attention</Label>
+              <select id="needs_attention" name="needs_attention" defaultValue={filters.needs_attention} className={selectClass}>
+                <option value="">Any</option>
+                <option value="1">Failed actions only</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -192,6 +210,12 @@ export default function ModerationRequestsPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={MODERATION_STATUS_CLASSES[r.status]}>{label(MODERATION_STATUS_LABELS, r.status)}</Badge>
+                        {r.execution?.needs_attention && (
+                          <Badge variant="destructive" className="ms-1" data-testid="moderation-row-failed">Action failed</Badge>
+                        )}
+                        {(r.execution?.status === "queued" || r.execution?.status === "retrying") && r.status === "approved" && (
+                          <span className="ms-1 text-xs text-[rgb(var(--color-muted-foreground))]">{r.execution.status}</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -28,9 +28,15 @@ export interface ModerationRequestRow {
 	actioned_at: number | null;
 	action_result: string | null;
 	action_error: string | null;
+	/** NULL | queued | retrying | failed | done (migration 0023; moderation/queue.ts) */
+	execution_status: ExecutionStatus | null;
+	execution_attempts: number;
+	execution_updated_at: number | null;
 	created_at: number;
 	updated_at: number;
 }
+
+export type ExecutionStatus = 'queued' | 'retrying' | 'failed' | 'done';
 
 export interface ModerationEventRow {
 	id: string;
@@ -94,6 +100,12 @@ export function adminView(row: ModerationRequestRow, events: ModerationEventRow[
 		decided_by: row.decided_by,
 		action_result: row.action_result ? safeJson(row.action_result) : null,
 		action_error: row.action_error,
+		execution: {
+			status: row.execution_status ?? null,
+			attempts: row.execution_attempts ?? 0,
+			updated_at: iso(row.execution_updated_at ?? null),
+			needs_attention: row.execution_status === 'failed',
+		},
 		history: events.map((e) => ({
 			id: e.id,
 			type: e.type,
@@ -263,9 +275,26 @@ export class ModerationStore {
 		return this.get(id);
 	}
 
-	/** Records an action failure without changing the status (stays approved; can be retried). */
-	async recordActionError(id: string, error: string, now = Date.now()) {
-		await this.db.prepare('UPDATE moderation_requests SET action_error = ?, updated_at = ? WHERE id = ?').bind(error, now, id).run();
+	/** Execution bookkeeping of a queued action (moderation/queue.ts). */
+	async setExecution(id: string, status: ExecutionStatus, opts: { error?: string | null; attempts?: number; resetAttempts?: boolean } = {}, now = Date.now()) {
+		const sets = ['execution_status = ?', 'execution_updated_at = ?', 'updated_at = ?'];
+		const values: unknown[] = [status, now, now];
+		if (opts.error !== undefined) {
+			sets.push('action_error = ?');
+			values.push(opts.error);
+		}
+		if (opts.resetAttempts) sets.push('execution_attempts = 0');
+		else if (opts.attempts !== undefined) {
+			sets.push('execution_attempts = ?');
+			values.push(opts.attempts);
+		}
+		await this.db.prepare(`UPDATE moderation_requests SET ${sets.join(', ')} WHERE id = ?`).bind(...values, id).run();
+	}
+
+	/** Requests whose action failed for good: they need an auth admin. */
+	async needsAttentionCount(): Promise<number> {
+		const row = await this.db.prepare("SELECT COUNT(*) AS n FROM moderation_requests WHERE execution_status = 'failed' AND status = 'approved'").first<{ n: number }>();
+		return row?.n ?? 0;
 	}
 
 	async list(filters: {
@@ -273,6 +302,7 @@ export class ModerationStore {
 		status?: string;
 		action?: string;
 		subjectUserId?: string;
+		needsAttention?: boolean;
 		from?: number;
 		to?: number;
 		limit: number;
@@ -296,6 +326,7 @@ export class ModerationStore {
 			where.push('subject_user_id = ?');
 			values.push(filters.subjectUserId);
 		}
+		if (filters.needsAttention) where.push("execution_status = 'failed' AND status = 'approved'");
 		if (filters.from !== undefined) {
 			where.push('created_at >= ?');
 			values.push(filters.from);
