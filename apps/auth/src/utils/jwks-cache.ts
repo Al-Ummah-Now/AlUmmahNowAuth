@@ -19,6 +19,7 @@
 
 import { importSPKI, exportJWK, type JWK } from 'jose';
 import { logger } from '../logger';
+import { D1AtomicStorage } from '../storage/d1-atomic';
 
 /**
  * Cache TTL for JWKS in milliseconds (5 minutes)
@@ -31,6 +32,9 @@ export const JWKS_CACHE_TTL = 5 * 60 * 1000;
  * Uses OpenAuth's key path format: ["signing:key", "primary"] -> "signing:key::primary"
  */
 export const SIGNING_KEY_KV_KEY = 'signing:key::primary';
+
+/** The issuer's signing-key index in its atomic store (openauth OA-3). */
+export const SIGNING_KEY_INDEX = ['keys:signing'];
 
 /**
  * Default signing algorithm used by OpenAuth
@@ -71,6 +75,8 @@ interface JWKSEnv {
 	AUTH_STORAGE: KVNamespace;
 	/** OpenAuth issuer URL for fallback JWKS fetch */
 	OPENAUTH_ISSUER?: string;
+	/** D1 with the issuer's key index (openauth_atomic) */
+	AUTH_DB?: D1Database;
 }
 
 /**
@@ -101,33 +107,50 @@ export async function getJWKS(env: JWKSEnv): Promise<{ keys: JWK[] }> {
 		return { keys: cachedJWKS.keys };
 	}
 
-	// Try to get from KV storage using OpenAuth's key format
+	// OpenAuth's keys: the original primary key in KV, plus every key in the
+	// issuer's key index in D1 (openauth OA-3: unique kid per key, created
+	// atomically). Verifiers pick the key by kid, so all of them are listed.
+	const stored: SerializedKeyPair[] = [];
 	const primaryKeyStr = await env.AUTH_STORAGE.get(SIGNING_KEY_KV_KEY);
 	if (primaryKeyStr) {
 		try {
-			const keyData = JSON.parse(primaryKeyStr) as SerializedKeyPair;
-			if (keyData.publicKey) {
-				// Import SPKI format and convert to JWK
-				const publicKey = await importSPKI(keyData.publicKey, keyData.alg || SIGNING_ALG, {
-					extractable: true,
-				});
-				const jwk = await exportJWK(publicKey);
-				jwk.kid = keyData.id || 'primary';
-				jwk.use = 'sig';
-				jwk.alg = keyData.alg || SIGNING_ALG;
-
-				cachedJWKS = {
-					keys: [jwk as JWK],
-					fetchedAt: Date.now(),
-				};
-				logger.debug('Loaded JWKS from KV storage', { keyId: jwk.kid, alg: jwk.alg });
-				return { keys: cachedJWKS.keys };
-			}
+			stored.push(JSON.parse(primaryKeyStr) as SerializedKeyPair);
 		} catch (e) {
 			logger.error('Failed to parse JWKS from KV storage', { error: e, key: SIGNING_KEY_KV_KEY });
 		}
 	} else {
 		logger.warn('Signing key not found in KV storage', { key: SIGNING_KEY_KV_KEY });
+	}
+	if (env.AUTH_DB) {
+		try {
+			const index = (await D1AtomicStorage(env.AUTH_DB).get(SIGNING_KEY_INDEX)) as { keys?: SerializedKeyPair[] } | undefined;
+			for (const key of index?.keys ?? []) if (!key.expired) stored.push(key);
+		} catch (e) {
+			logger.warn('Could not read the signing key index', { error: e instanceof Error ? e.message : String(e) });
+		}
+	}
+	const keys: JWK[] = [];
+	const seen = new Set<string>();
+	for (const keyData of stored) {
+		const kid = keyData.id || 'primary';
+		if (!keyData.publicKey || seen.has(kid)) continue;
+		try {
+			// Import SPKI format and convert to JWK
+			const publicKey = await importSPKI(keyData.publicKey, keyData.alg || SIGNING_ALG, { extractable: true });
+			const jwk = await exportJWK(publicKey);
+			jwk.kid = kid;
+			jwk.use = 'sig';
+			jwk.alg = keyData.alg || SIGNING_ALG;
+			keys.push(jwk as JWK);
+			seen.add(kid);
+		} catch (e) {
+			logger.error('Failed to import a signing key', { error: e, kid });
+		}
+	}
+	if (keys.length) {
+		cachedJWKS = { keys, fetchedAt: Date.now() };
+		logger.debug('Loaded JWKS from storage', { keyIds: [...seen] });
+		return { keys };
 	}
 
 	// Fallback: fetch from JWKS endpoint (may fail in workers due to self-referential call)

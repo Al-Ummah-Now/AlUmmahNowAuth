@@ -19,7 +19,7 @@
  * as the RFC asks, so tokens can't be probed.
  */
 import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
-import { Storage } from '@al-ummah-now/openauth/storage/storage';
+import { loadRefreshToken, refreshKey, removeRefreshToken } from '@al-ummah-now/openauth/refresh-token';
 import { logger } from '../logger';
 import { isRevoked, readRevocation } from './revocation-list';
 
@@ -58,35 +58,50 @@ function capAccessTtl<T extends TokenRecord | undefined>(value: T, accessTtl: nu
 
 export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorageGuard): StorageAdapter {
 	if (!guard.revocations && !guard.accessTtl) return storage;
+
+	/** Refused (revoked sign-in) -> undefined; else the value with the TTL cap. */
+	async function check(key: string[], value: TokenRecord | undefined, remove: () => Promise<void>) {
+		if (!value || !GUARDED.has(key[0] ?? '')) return value;
+		if (key[0] === 'oauth:refresh' && guard.revocations) {
+			const userId = value.properties?.id;
+			const entry = userId ? await readRevocation(guard.revocations, userId) : null;
+			const authTime = typeof value.authTime === 'number' ? Math.floor(value.authTime / 1000) : undefined;
+			if (entry && isRevoked(entry, { authTime })) {
+				await remove();
+				logger.info('[revocation] Refused a refresh token of a revoked sign-in', { userId, reason: entry.reason });
+				return undefined;
+			}
+		}
+		return capAccessTtl(value, guard.accessTtl);
+	}
+
 	const atomic = storage.atomic;
 	return {
 		...storage,
-		// Authorization codes live in the atomic store: cap them there too
+		// Codes and refresh tokens live in the atomic store (D1): guard them there too
 		...(atomic
 			? {
 					atomic: {
 						...atomic,
 						async get(key: string[]) {
 							const value = (await atomic.get(key)) as TokenRecord | undefined;
-							return key[0] === 'oauth:code' ? capAccessTtl(value, guard.accessTtl) : value;
+							return check(key, value, () => atomic.remove(key));
+						},
+						// The issuer compares against what it read, which may carry the
+						// TTL cap: compare against the stored value that caps to it
+						async replace(key: string[], expected: unknown, value: unknown, expiry?: Date) {
+							if (GUARDED.has(key[0] ?? '')) {
+								const raw = (await atomic.get(key)) as TokenRecord | undefined;
+								if (raw && JSON.stringify(capAccessTtl(raw, guard.accessTtl)) === JSON.stringify(expected)) expected = raw;
+							}
+							return atomic.replace(key, expected, value, expiry);
 						},
 					},
 				}
 			: {}),
 		async get(key: string[]) {
 			const value = (await storage.get(key)) as TokenRecord | undefined;
-			if (!value || !GUARDED.has(key[0] ?? '')) return value;
-			if (key[0] === 'oauth:refresh' && guard.revocations) {
-				const userId = value.properties?.id;
-				const entry = userId ? await readRevocation(guard.revocations, userId) : null;
-				const authTime = typeof value.authTime === 'number' ? Math.floor(value.authTime / 1000) : undefined;
-				if (entry && isRevoked(entry, { authTime })) {
-					await storage.remove(key);
-					logger.info('[revocation] Refused a refresh token of a revoked sign-in', { userId, reason: entry.reason });
-					return undefined;
-				}
-			}
-			return capAccessTtl(value, guard.accessTtl);
+			return check(key, value, () => storage.remove(key));
 		},
 	};
 }
@@ -138,12 +153,13 @@ export async function handleTokenRevoke(request: Request, storage: StorageAdapte
 	const secret = parts.pop();
 	const subject = parts.join(':');
 	if (!subject || !secret) return ok();
-	const key = ['oauth:refresh', subject, secret];
-	const record = (await Storage.get(storage, key)) as TokenRecord | undefined;
+	const key = refreshKey(subject, secret);
+	// D1 since openauth OA-2; older tokens are still read from KV
+	const record = (await loadRefreshToken(storage, key)) as TokenRecord | undefined;
 	if (!record) return ok();
 	// A client may only revoke its own tokens
 	if (clients.length && clients.some((id) => id !== record.clientID)) return ok();
-	await Storage.remove(storage, key);
+	await removeRefreshToken(storage, key);
 	logger.info('[revocation] Refresh token revoked', { userId: record.properties?.id });
 	return ok();
 }

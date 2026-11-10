@@ -31,6 +31,8 @@ export interface CloudflarePatchedStorageOptions {
    * (D1AtomicStorage). KV alone cannot make them single-use across PoPs.
    */
   atomic?: AtomicStorageAdapter;
+  /** Stable name of the store (StorageAdapter.scope) */
+  scope?: string;
 }
 
 /**
@@ -39,6 +41,7 @@ export interface CloudflarePatchedStorageOptions {
 export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOptions): StorageAdapter {
   return {
     ...(options.atomic ? { atomic: options.atomic } : {}),
+    ...(options.scope ? { scope: options.scope } : {}),
     async get(key: string[]): Promise<Record<string, unknown> | undefined> {
       const value = await options.namespace.get(joinKey(key), "json");
       if (!value) return undefined;

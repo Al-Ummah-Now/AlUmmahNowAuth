@@ -1,8 +1,7 @@
 import { Hono } from "hono";
 import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from "@al-ummah-now/openauth/rbac/index";
-import { CloudflarePatchedStorage } from "./storage/cloudflare-patched";
-import { D1AtomicStorage } from "./storage/d1-atomic";
+import { authStorage } from "./storage/auth-storage";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
 import { hexToSecret } from "./utils/crypto";
@@ -169,8 +168,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const adminEnterpriseRoutes = new AdminEnterpriseRoutes(env.AUTH_DB, env.AUTH_STORAGE);
 
     // Create storage for UserService and RBAC (needed early for apps)
-    // Codes and other single-use credentials go to D1 (KV can't make them single-use)
-    const storage = CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE, atomic: D1AtomicStorage(env.AUTH_DB) });
+    // Codes, refresh tokens and other single-use credentials go to D1 (KV can't make them single-use)
+    const storage = authStorage(env);
 
     // Create RBAC service (Phase 3: OpenAuth migration)
     const rbacAdapter = new RBACAdapter(env.AUTH_DB);

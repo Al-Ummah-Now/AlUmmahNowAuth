@@ -16,6 +16,7 @@ import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { guardIssuerStorage } from '../revocation/token-gate';
 import { TokenCleanupService } from '../services/token-cleanup';
 import { setupDatabase } from '../test-setup';
+import { SIGNING_KEY_INDEX, clearJWKSCache, getJWKS } from '../utils/jwks-cache';
 
 const DB = () => (env as unknown as Env).AUTH_DB;
 
@@ -95,6 +96,27 @@ describe('D1AtomicStorage', () => {
 		);
 		expect(await a.get(['n'])).toBe(50);
 	}, 30_000);
+
+	it('removePrefix deletes exactly the keys under the prefix', async () => {
+		const a = D1AtomicStorage(DB());
+		await a.set(['oauth:refresh', 'user:1', 't1'], 1);
+		await a.set(['oauth:refresh', 'user:1', 't2'], 2);
+		await a.set(['oauth:refresh', 'user:10', 't3'], 3); // prefix of the subject, not under it
+		await a.set(['oauth:refresh', 'user:1'], 4); // the prefix itself is not a token
+		expect(await a.removePrefix!(['oauth:refresh', 'user:1'])).toBe(2);
+		expect(await a.get(['oauth:refresh', 'user:10', 't3'])).toBe(3);
+		expect(await a.get(['oauth:refresh', 'user:1'])).toBe(4);
+		expect(await a.get(['oauth:refresh', 'user:1', 't1'])).toBeUndefined();
+	});
+
+	it('200 parallel increments: exact; an expired counter restarts', async () => {
+		const a = D1AtomicStorage(DB());
+		const results = await Promise.all(Array.from({ length: 200 }, () => a.increment!(['rl', 'c'], 1, new Date(Date.now() + 60_000))));
+		expect(await a.get(['rl', 'c'])).toBe(200);
+		expect(new Set(results).size).toBe(200);
+		await a.set(['rl', 'old'], 9, new Date(Date.now() - 1));
+		expect(await a.increment!(['rl', 'old'], 1, new Date(Date.now() + 60_000))).toBe(1);
+	});
 
 	it('the cleanup cron deletes expired rows only', async () => {
 		const a = D1AtomicStorage(DB());
@@ -204,5 +226,59 @@ describe('authorization code through D1', () => {
 			body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token }).toString(),
 		});
 		expect(refreshed.status).toBe(400);
+	});
+});
+
+describe('refresh tokens through D1 (guarded issuer storage)', () => {
+	async function signIn(auth: ReturnType<typeof pop>) {
+		const client = createClient({ issuer: HOST, clientID: 'app', fetch: (a, b) => Promise.resolve(auth.request(a, b)) });
+		const { challenge, url } = await client.authorize(REDIRECT, 'code', { pkce: true });
+		let res = await auth.request(url);
+		res = await auth.request(res.headers.get('location')!, { headers: { cookie: res.headers.get('set-cookie')! } });
+		const code = new URL(res.headers.get('location')!).searchParams.get('code')!;
+		const exchanged = await client.exchange(code, REDIRECT, challenge.verifier);
+		if (exchanged.err) throw exchanged.err;
+		return exchanged.tokens.refresh;
+	}
+	const refresh = (auth: ReturnType<typeof pop>, token: string) =>
+		auth.request(`${HOST}/token`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: token }).toString(),
+		});
+
+	it('50 parallel refreshes over 5 stale PoPs: all succeed with one next token, which works (TTL cap applied)', async () => {
+		const kv = new Map<string, string>();
+		const first = pop(kv);
+		const r1 = await signIn(first);
+		const pops = Array.from({ length: 5 }, () => pop(kv));
+		const results = await Promise.all(Array.from({ length: 50 }, (_, i) => refresh(pops[i % 5], r1)));
+		expect(results.every((r) => r.status === 200)).toBe(true);
+		const bodies = (await Promise.all(results.map((r) => r.json()))) as Array<{ refresh_token: string; expires_in: number }>;
+		expect(new Set(bodies.map((b) => b.refresh_token)).size).toBe(1);
+		// The guard caps the access TTL at ACCESS_TOKEN_TTL (900 s) even though the token was stored with the default
+		expect(bodies[0].expires_in).toBeLessThanOrEqual(900);
+		expect((await refresh(pops[2], bodies[0].refresh_token)).status).toBe(200);
+		// Refresh tokens live in D1, never in KV
+		expect([...kv.keys()].some((k) => k.startsWith('oauth:refresh'))).toBe(false);
+	});
+});
+
+describe('JWKS for verification includes the key index (openauth OA-3)', () => {
+	it('lists the KV primary key and every non-expired key of the D1 index, once each', async () => {
+		const { generateKeyPair, exportSPKI, exportPKCS8 } = await import('jose');
+		const make = async (id: string, expired?: number) => {
+			const pair = await generateKeyPair('ES256', { extractable: true });
+			return { id, publicKey: await exportSPKI(pair.publicKey), privateKey: await exportPKCS8(pair.privateKey), created: Date.now(), alg: 'ES256', ...(expired ? { expired } : {}) };
+		};
+		const [k1, k2, old] = await Promise.all([make('kid-1'), make('kid-2'), make('kid-old', 1)]);
+		await D1AtomicStorage(DB()).set(SIGNING_KEY_INDEX, { keys: [k1, k2, old] });
+		clearJWKSCache();
+		const jwks = await getJWKS({ AUTH_STORAGE: (env as unknown as Env).AUTH_STORAGE, AUTH_DB: DB() });
+		const kids = jwks.keys.map((k) => k.kid);
+		expect(kids).toEqual(expect.arrayContaining(['kid-1', 'kid-2']));
+		expect(kids).not.toContain('kid-old');
+		expect(new Set(kids).size).toBe(kids.length);
+		clearJWKSCache();
 	});
 });

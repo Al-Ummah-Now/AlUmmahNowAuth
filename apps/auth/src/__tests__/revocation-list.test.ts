@@ -11,6 +11,8 @@ import worker from '../index';
 import { setupDatabase } from '../test-setup';
 import { clearJWKSCache, SIGNING_KEY_KV_KEY } from '../utils/jwks-cache';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
+import { authStorage } from '../storage/auth-storage';
+import { loadRefreshToken } from '@al-ummah-now/openauth/refresh-token';
 import {
 	REVOCATION_TTL_SECONDS,
 	isRevoked,
@@ -165,6 +167,27 @@ describe('issuer storage guard', () => {
 		expect(((await Storage.get(guarded, refreshKey('short'))) as any).ttl.access).toBe(300);
 	});
 
+	it('guards refresh tokens and codes in the D1 atomic store the same way (openauth OA-1/OA-2)', async () => {
+		await E.AUTH_DB.prepare('CREATE TABLE IF NOT EXISTS openauth_atomic (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER)').run();
+		const raw = authStorage(E);
+		const { kv } = memoryKv();
+		const guarded = guardIssuerStorage(raw, { revocations: kv, accessTtl: 900 });
+		const atomic = Storage.atomic(guarded);
+		await Storage.atomic(raw).set(refreshKey('d1-old'), record(nowS() - 3600));
+		await Storage.atomic(raw).set(['oauth:code', 'd1c'], record(nowS()));
+		await revokeUser(kv, 'usr_guard', 'sign_out_all');
+		await Storage.atomic(raw).set(refreshKey('d1-new'), record(nowS() + 5));
+
+		// A revoked sign-in reads as missing and is deleted from D1
+		expect(await atomic.get(refreshKey('d1-old'))).toBeUndefined();
+		expect(await Storage.atomic(raw).get(refreshKey('d1-old'))).toBeUndefined();
+		// The TTL cap applies, and a compare-and-set against the capped copy still succeeds
+		const seen = await atomic.get(refreshKey('d1-new'));
+		expect(seen.ttl.access).toBe(900);
+		expect(await atomic.replace(refreshKey('d1-new'), seen, { ...seen, timeUsed: 1 })).toBe(true);
+		expect((await atomic.get(['oauth:code', 'd1c'])).ttl.access).toBe(900);
+	});
+
 	it('is the plain storage when nothing is configured', () => {
 		const raw = CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE });
 		expect(guardIssuerStorage(raw, {})).toBe(raw);
@@ -255,13 +278,21 @@ describe('revocation through the worker', () => {
 	});
 
 	it('POST /token/revoke deletes a refresh token, but only for the client it was issued to', async () => {
-		const raw = CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE });
-		const key = ['oauth:refresh', 'user:rev2', 'tok2'];
-		await Storage.set(raw, key, { subject: 'user:rev2', clientID: 'web', properties: { id: 'usr_rev' } }, 3600);
-		expect((await call('/token/revoke', form({ token: 'user:rev2:tok2', client_id: 'other' }))).status).toBe(200);
-		expect(await Storage.get(raw, key)).toBeDefined();
-		expect((await call('/token/revoke', form({ token: 'user:rev2:tok2', client_id: 'web' }))).status).toBe(200);
-		expect(await Storage.get(raw, key)).toBeUndefined();
+		// Refresh tokens live in D1 (openauth OA-2); one stored in KV by an older
+		// version is moved to D1 when first read, and revocable the same way
+		const storage = authStorage(E);
+		const record = { subject: 'user:rev2', clientID: 'web', properties: { id: 'usr_rev' }, ttl: { access: 900, refresh: 3600 } };
+		const d1Key = ['oauth:refresh', 'user:rev2', 'tok2'];
+		const kvKey = ['oauth:refresh', 'user:rev2', 'legacy'];
+		await Storage.atomic(storage).set(d1Key, record);
+		await Storage.set(CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE }), kvKey, record, 3600);
+		for (const [token, key] of [['user:rev2:tok2', d1Key], ['user:rev2:legacy', kvKey]] as const) {
+			expect((await call('/token/revoke', form({ token, client_id: 'other' }))).status).toBe(200);
+			expect(await loadRefreshToken(storage, [...key])).toBeDefined();
+			expect((await call('/token/revoke', form({ token, client_id: 'web' }))).status).toBe(200);
+			expect(await loadRefreshToken(storage, [...key])).toBeUndefined();
+			expect(await Storage.get(storage, [...key])).toBeUndefined();
+		}
 		expect((await call('/token/revoke', form({ token: 'user:nope:nope' }))).status).toBe(200);
 		expect((await call('/token/revoke', form({}))).status).toBe(400);
 	});
