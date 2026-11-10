@@ -196,6 +196,7 @@ export async function routeInviteProvisioning(request: Request, env: Env, ctx: E
 						expiresInDays: typeof body.expiresInDays === 'number' ? body.expiresInDays : undefined,
 						continueUrl: safeContinueUrl(body.continueUrl, env),
 						details: body.details && typeof body.details === 'object' ? (body.details as Record<string, unknown>) : undefined,
+						roles: body.roles === undefined ? undefined : (body.roles as string[]),
 					},
 					actor
 				);

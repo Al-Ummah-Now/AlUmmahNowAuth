@@ -35,6 +35,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Ids are minted by the inviting app (stable before Auth has the row). */
 export const USER_ID_RE = /^usr_[0-9a-f]{32}$/;
 export const INVITE_ID_RE = /^inv_[0-9a-f]{32}$/;
+/**
+ * Auth roles an inviting app may give on top of Member, by role name. Only
+ * non-privileged roles: Admin, Super Admin and Moderator stay with Auth admins.
+ */
+export const INVITE_GRANTABLE_ROLES: Readonly<Record<string, string>> = { Scholar: 'role_scholar' };
 
 export type InviteStatus = 'invited' | 'active' | 'expired' | 'revoked';
 export type InviteLocale = 'en' | 'ar';
@@ -183,6 +188,8 @@ export interface CreateInviteInput {
 	expiresInDays?: number;
 	continueUrl?: string | null;
 	details?: Record<string, unknown>;
+	/** Extra Auth roles by name, from INVITE_GRANTABLE_ROLES (e.g. ["Scholar"]). */
+	roles?: string[];
 }
 
 export interface ListInvitesParams {
@@ -255,6 +262,20 @@ export class InviteService {
 			.first<InviteUser>();
 	}
 
+	/** Role names → ids: only INVITE_GRANTABLE_ROLES, and only roles that exist in this tenant. */
+	private async grantableRoleIds(names: unknown): Promise<string[]> {
+		if (!Array.isArray(names)) throw new InviteError(400, 'invalid_request', 'roles must be a list of role names');
+		const ids: string[] = [];
+		for (const name of new Set(names)) {
+			const id = typeof name === 'string' && Object.hasOwn(INVITE_GRANTABLE_ROLES, name) ? INVITE_GRANTABLE_ROLES[name] : undefined;
+			if (!id) throw new InviteError(403, 'role_not_grantable', `An invite cannot give the role ${String(name)}`);
+			const exists = await this.db.prepare('SELECT id FROM rbac_roles WHERE id = ?1 AND tenant_id = ?2').bind(id, this.tenantId).first();
+			if (!exists) throw new InviteError(400, 'unknown_role', `The role ${name} does not exist yet`);
+			ids.push(id);
+		}
+		return ids;
+	}
+
 	/**
 	 * Pre-provisions the account and its invite with the app's ids. Idempotent
 	 * on inviteId (a retried queue message gets the same invite back, created =
@@ -275,6 +296,7 @@ export class InviteService {
 		const locale: InviteLocale = input.locale === 'ar' ? 'ar' : 'en';
 		const days = ttlDays(input.expiresInDays, this.defaultTtl);
 		const details = input.details && typeof input.details === 'object' ? input.details : {};
+		const roleIds = await this.grantableRoleIds(input.roles ?? []);
 
 		const replay = await this.rowById(input.inviteId);
 		if (replay) {
@@ -344,6 +366,14 @@ export class InviteService {
 						 SELECT ?1, id, ?2, ?3, ?4 FROM rbac_roles WHERE id = 'role_member' AND tenant_id = ?2`
 					)
 					.bind(input.userId, this.tenantId, now, 'user_system'),
+				...roleIds.map((roleId) =>
+					this.db
+						.prepare(
+							`INSERT OR IGNORE INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by)
+							 VALUES (?1, ?2, ?3, ?4, ?5)`
+						)
+						.bind(input.userId, roleId, this.tenantId, now, actor.userId)
+				),
 			]);
 		} catch (error) {
 			// Someone signed up (or was invited) with this email a moment ago: the unique index let them in first
