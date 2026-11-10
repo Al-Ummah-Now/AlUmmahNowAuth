@@ -38,6 +38,7 @@ export async function setupDatabase() {
     'account_sessions',
     'browser_sessions',
     'oauth_clients',
+    'user_identities',
     'users',
     'tenants',
     'token_usage',
@@ -63,12 +64,21 @@ export async function setupDatabase() {
       updated_at INTEGER NOT NULL,
       last_login_at INTEGER,
       deleted_at INTEGER,
-      password_reset_required INTEGER DEFAULT 0,
-      UNIQUE(tenant_id, email)
+      password_reset_required INTEGER DEFAULT 0
     )
   `).run();
 
+  // As in production (schema.snapshot.sql): an email is unique among live users only
+  await env.AUTH_DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_email ON users(tenant_id, email) WHERE deleted_at IS NULL`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`).run();
+  await env.AUTH_DB.prepare(`
+    CREATE TABLE IF NOT EXISTS user_identities (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, provider TEXT NOT NULL,
+      provider_user_id TEXT NOT NULL, provider_data TEXT, created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `).run();
+  await env.AUTH_DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_identities_provider ON user_identities(tenant_id, provider, provider_user_id)`).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id)`).run();
 
   // Note: App uses OpenAuth's rbac_* tables directly (no compatibility views needed)
