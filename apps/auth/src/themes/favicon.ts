@@ -1,5 +1,7 @@
 import { BUILTIN_IDS } from '../../../../packages/ui/src/auth-theme/builtin.ts';
-import { AUTH_ICONS, faviconSvgPath, iconServer } from '../../../../packages/ui/src/app-icons/index.ts';
+// only this app's set, so the profile icons are not bundled into the auth Worker
+import { APP_ICONS as AUTH_ICONS } from '../../../../packages/ui/src/app-icons/auth.generated.ts';
+import { faviconSvgPath, iconServer } from '../../../../packages/ui/src/app-icons/serve.ts';
 
 /** Sign-in's tab and app icons (the owner's keyhole lantern, cropped and downscaled by AlUmmahNow packages/app-icons). */
 export const serveIcon = iconServer(AUTH_ICONS);
