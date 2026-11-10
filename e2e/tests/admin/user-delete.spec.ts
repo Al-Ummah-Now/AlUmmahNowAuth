@@ -6,7 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import { loginAdmin } from '../../fixtures/admin';
-import { createUser, deleteUser, navigateToAdmin } from '../../fixtures/admin';
+import { createUser, deleteUser, userRowsMatching } from '../../fixtures/admin';
 import { TEST_USERS, TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 // Signs in with the test password / one-time codes (or sends test secrets in headers):
@@ -82,66 +82,17 @@ test.describe('Admin User Deletion', () => {
     await expect(page.locator(`tr:has-text("${userEmail}")`)).toBeVisible();
   });
 
-  test('should update user count after deletion', async ({ page }) => {
-    // This test verifies dashboard stats update after user operations
-    // It can be flaky due to server-side caching, so we use generous timeouts
-
-    // Navigate to dashboard to get initial count
-    await navigateToAdmin(page);
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-
-    // Get user count from dashboard card
-    // The card structure is: Card > CardHeader (Total Users) + CardContent (number div)
-    const getUserCount = async (): Promise<number> => {
-      // Wait for the stats to be visible first
-      await expect(page.locator('text=Total Users')).toBeVisible({ timeout: 5000 });
-
-      // Find the Total Users card and extract the count
-      const countText = await page.locator('text=Total Users')
-        .locator('xpath=ancestor::*[contains(@class, "rounded")][1]')
-        .locator('div.text-2xl')
-        .first()
-        .textContent({ timeout: 5000 });
-      return parseInt(countText?.trim() || '0', 10);
-    };
-
-    const initialCount = await getUserCount();
-    expect(initialCount).toBeGreaterThanOrEqual(0);
-
-    // Create a user
+  test('removes exactly the deleted user (search by its email)', async ({ page }) => {
+    // Checks only this test's own user: the dashboard's global "Total Users"
+    // moves with every parallel run on shared QA, so it can't show a deletion.
     const userEmail = generateTestEmail('count-delete');
     await createUser(page, { email: userEmail, role: 'member' });
+    await expect.poll(() => userRowsMatching(page, userEmail), { timeout: 20000 }).toBe(1);
 
-    // Navigate to dashboard and verify count increased
-    await page.goto(TEST_URLS.adminDashboard);
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-
-    // Verify count increased after creation (use >= to handle parallel test interference)
-    await expect(async () => {
-      const countAfterCreate = await getUserCount();
-      expect(countAfterCreate).toBeGreaterThanOrEqual(initialCount + 1);
-    }).toPass({ timeout: 20000, intervals: [1000, 2000, 3000, 5000] });
-
-    // Get the count after creation for comparison
-    const countAfterCreate = await getUserCount();
-
-    // Delete the user
     await deleteUser(page, userEmail);
 
-    // Force a hard refresh to bypass any caching
-    // This is more reliable than just navigation for stats that might be cached
-    await page.goto(TEST_URLS.adminDashboard, { waitUntil: 'domcontentloaded' });
-    await page.reload({ waitUntil: 'networkidle' });
-
-    // Verify count decreased after deletion
-    // Use relative assertion: count should be less than post-create count
-    // This handles parallel test interference better than expecting exact initial count
-    await expect(async () => {
-      // Reload the page on each retry to get fresh data
-      await page.reload({ waitUntil: 'networkidle' });
-      const countAfterDelete = await getUserCount();
-      expect(countAfterDelete).toBeLessThan(countAfterCreate);
-    }).toPass({ timeout: 30000, intervals: [2000, 3000, 5000, 7000] });
+    // Fresh page load each poll (the list does not revalidate after the delete)
+    await expect.poll(() => userRowsMatching(page, userEmail), { timeout: 30000, intervals: [1000, 2000, 3000, 5000] }).toBe(0);
   });
 
   test('should delete admin user successfully', async ({ page }) => {
