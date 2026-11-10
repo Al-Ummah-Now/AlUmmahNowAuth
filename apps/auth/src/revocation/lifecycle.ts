@@ -33,7 +33,7 @@ export function revokeOnAdminUserAction(kv: KVNamespace | undefined, db?: D1Data
 		if (c.res.status >= 300) return;
 		const action = adminUserActionReason(c.req.method, new URL(c.req.url).pathname);
 		if (!action) return;
-		await revokeUser(kv, action.userId, action.reason);
+		await revokeUser({ kv, db }, action.userId, action.reason);
 		await endBrowserSignIns(db, action.userId);
 	};
 }
@@ -58,7 +58,7 @@ export async function revokeOnPasswordChange(db: D1Database, kv: KVNamespace | u
 		.bind(email)
 		.all<{ id: string }>();
 	for (const { id } of results ?? []) {
-		await revokeUser(kv, id, 'password_changed');
+		await revokeUser({ kv, db }, id, 'password_changed');
 		await endBrowserSignIns(db, id);
 	}
 	if (!results?.length) logger.warn('[revocation] Password changed for an email with no D1 user');
@@ -81,7 +81,7 @@ export async function endAllSessions(
 		.first<{ count: number }>();
 	// refresh_tokens has no session link (no session_id column): revoke by user
 	const { revoked } = await revokeUserTokens(userId, db);
-	await revokeUser(kv, userId, 'admin_sessions_revoked');
+	await revokeUser({ kv, db }, userId, 'admin_sessions_revoked');
 	// Or /authorize (prompt=none) would sign the user straight back in from the SSO session
 	await endBrowserSignIns(db, userId);
 	return { sessionsTerminated: countResult?.count ?? 0, tokensRevoked: revoked };

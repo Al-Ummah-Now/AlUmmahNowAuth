@@ -344,7 +344,7 @@ adminSessionRoutes.post(
 		// Revoke all app tokens via user tokens method
 		const tokenResult = await revokeUserTokens(userId, c.env.AUTH_DB);
 		// OpenAuth refresh tokens and access tokens already out (#437)
-		await revokeUser(c.env.TOKEN_REVOCATIONS, userId, 'admin_force_logout');
+		await revokeUser({ kv: c.env.TOKEN_REVOCATIONS, db: c.env.AUTH_DB }, userId, 'admin_force_logout');
 
 		// Emit critical audit event
 		await emitAuditEvent({

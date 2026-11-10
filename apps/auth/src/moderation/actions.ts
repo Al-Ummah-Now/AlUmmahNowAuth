@@ -56,7 +56,7 @@ export function createActionRunner(env: Env): ActionRunner {
 			if (action === 'suspend_account') result = await userService.suspendUser(tenantId, userId);
 			else if (action === 'delete_account') result = (await userService.deleteUser(tenantId, userId), { deleted: true });
 			else result = { passwordResetRequired: !!(await userService.forcePasswordReset(tenantId, userId)) };
-			await revokeUser(env.TOKEN_REVOCATIONS, userId, REASON[action]);
+			await revokeUser({ kv: env.TOKEN_REVOCATIONS, db: env.AUTH_DB }, userId, REASON[action]);
 			await endBrowserSignIns(env.AUTH_DB, userId);
 			return { ok: true, result };
 		} catch (error) {

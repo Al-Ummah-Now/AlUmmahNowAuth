@@ -4,6 +4,7 @@ import passwordAttemptsSql from "../migrations/0020_password_attempts.sql?raw";
 import atomicMigration from "../migrations/0021_openauth_atomic.sql?raw";
 import themesMigration from "../migrations/0024_auth_themes.sql?raw";
 import appSessionsSql from "../migrations/0025_app_sessions.sql?raw";
+import userRevocationsSql from "../migrations/0026_user_revocations.sql?raw";
 
 /** Statements of a migration file (comments stripped). */
 function sqlStatements(sql: string): string[] {
@@ -319,6 +320,7 @@ export async function setupDatabase() {
   // Password attempt counters (AU-2): the real migration file, rows cleared
   for (const stmt of sqlStatements(passwordAttemptsSql)) await env.AUTH_DB.prepare(stmt).run();
   for (const stmt of sqlStatements(appSessionsSql)) await env.AUTH_DB.prepare(stmt).run();
+  for (const stmt of sqlStatements(userRevocationsSql)) await env.AUTH_DB.prepare(stmt).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_codes`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_login_attempts`).run();
 }

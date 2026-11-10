@@ -169,7 +169,7 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	if (row.status === 'deleted') {
 		// Idempotent retry; also cleans refresh tokens of accounts deleted before this was fixed
 		const removed = await removeRefreshTokens(storage, user.subject);
-		await revokeUser(env.TOKEN_REVOCATIONS, row.id, 'account_deleted');
+		await revokeUser({ kv: env.TOKEN_REVOCATIONS, db: env.AUTH_DB }, row.id, 'account_deleted');
 		if (removed > 0) logger.info('[account] Removed refresh tokens of a deleted account', { userId: row.id, removed });
 		return json({ deleted: true, userId: row.id, deletedAt: row.deleted_at });
 	}
@@ -188,7 +188,7 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	// No refresh token of this user can mint access tokens any more: KV (OpenAuth) and D1
 	const kvRefreshTokensRemoved = await removeRefreshTokens(storage, user.subject);
 	// Every other sign-in (other subjects, access tokens already out): the revocation list
-	await revokeUser(env.TOKEN_REVOCATIONS, row.id, 'account_deleted');
+	await revokeUser({ kv: env.TOKEN_REVOCATIONS, db: env.AUTH_DB }, row.id, 'account_deleted');
 	const nowUnix = Math.floor(Date.now() / 1000);
 	const revoked = await env.AUTH_DB.prepare(
 		`UPDATE refresh_tokens SET revoked = 1, revoked_at = ?, revoked_reason = 'account_deleted'
@@ -228,7 +228,7 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 export async function handleSignOutAll(request: Request, env: Env, ctx: ExecutionContext, requestId: string): Promise<Response> {
 	const user = await verifyUserAccessToken(request, env);
 	if (user instanceof Response) return user;
-	const entry = await revokeUser(env.TOKEN_REVOCATIONS, user.userId, 'sign_out_all');
+	const entry = await revokeUser({ kv: env.TOKEN_REVOCATIONS, db: env.AUTH_DB }, user.userId, 'sign_out_all');
 	if (!entry) return json({ error: 'temporarily_unavailable', error_description: 'Sign-out of all devices is not available' }, 503);
 	const kvRefreshTokensRemoved = await removeRefreshTokens(authStorage(env), user.subject);
 	ctx.waitUntil(

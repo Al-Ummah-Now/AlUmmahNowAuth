@@ -17,6 +17,7 @@ import {
 	REVOCATION_TTL_SECONDS,
 	isRevoked,
 	readRevocation,
+	readRevocationForRefresh,
 	revocationKey,
 	revokeUser,
 	type RevocationEntry,
@@ -72,12 +73,12 @@ describe('revocation list', () => {
 	it('revokeUser covers this second, keeps the later of two revocations and outlives refresh tokens', async () => {
 		const { kv, puts } = memoryKv();
 		const t = Date.UTC(2026, 10, 8, 12, 0, 0);
-		const first = await revokeUser(kv, 'usr_a', 'sign_out_all', t);
+		const first = await revokeUser({ kv }, 'usr_a', 'sign_out_all', t);
 		expect(first!.before).toBe(t / 1000 + 1);
 		expect(puts[0]).toEqual({ key: 'u:usr_a', ttl: REVOCATION_TTL_SECONDS });
 		expect(REVOCATION_TTL_SECONDS).toBeGreaterThan(365 * 86400);
 		// A clock behind the first write never moves `before` back
-		const second = await revokeUser(kv, 'usr_a', 'password_changed', t - 60_000);
+		const second = await revokeUser({ kv }, 'usr_a', 'password_changed', t - 60_000);
 		expect(second!.before).toBe(first!.before);
 		expect(second!.reason).toBe('password_changed');
 	});
@@ -92,8 +93,8 @@ describe('revocation list', () => {
 		expect(isRevoked(entry, {})).toBe(true);
 	});
 
-	it('does nothing without the KV binding', async () => {
-		expect(await revokeUser(undefined, 'usr_a', 'sign_out_all')).toBeNull();
+	it('does nothing without any revocation store', async () => {
+		expect(await revokeUser({}, 'usr_a', 'sign_out_all')).toBeNull();
 		expect(await readRevocation(undefined, 'usr_a')).toBeNull();
 	});
 
@@ -145,7 +146,7 @@ describe('issuer storage guard', () => {
 		const { kv } = memoryKv();
 		const guarded = guardIssuerStorage(raw, { revocations: kv });
 		await Storage.set(raw, refreshKey('old'), record(nowS() - 3600), 3600);
-		await revokeUser(kv, 'usr_guard', 'sign_out_all');
+		await revokeUser({ kv }, 'usr_guard', 'sign_out_all');
 		await Storage.set(raw, refreshKey('new'), record(nowS() + 5), 3600);
 
 		expect(await Storage.get(guarded, refreshKey('old'))).toBeUndefined();
@@ -175,7 +176,7 @@ describe('issuer storage guard', () => {
 		const atomic = Storage.atomic(guarded);
 		await Storage.atomic(raw).set(refreshKey('d1-old'), record(nowS() - 3600));
 		await Storage.atomic(raw).set(['oauth:code', 'd1c'], record(nowS()));
-		await revokeUser(kv, 'usr_guard', 'sign_out_all');
+		await revokeUser({ kv }, 'usr_guard', 'sign_out_all');
 		await Storage.atomic(raw).set(refreshKey('d1-new'), record(nowS() + 5));
 
 		// A revoked sign-in reads as missing and is deleted from D1
@@ -188,9 +189,72 @@ describe('issuer storage guard', () => {
 		expect((await atomic.get(['oauth:code', 'd1c'])).ttl.access).toBe(900);
 	});
 
+	it('AU-4: a revocation only in D1 refuses a refresh token read from the atomic store', async () => {
+		await E.AUTH_DB.prepare('CREATE TABLE IF NOT EXISTS openauth_atomic (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER)').run();
+		await E.AUTH_DB.prepare('DELETE FROM user_revocations').run();
+		const raw = authStorage(E);
+		const { kv } = memoryKv(); // a location whose KV has not seen the revocation
+		const guarded = guardIssuerStorage(raw, { revocations: kv, revocationsDb: E.AUTH_DB, accessTtl: 900 });
+		await Storage.atomic(raw).set(refreshKey('au4-old'), record(nowS() - 3600));
+		await revokeUser({ db: E.AUTH_DB }, 'usr_guard', 'sign_out_all');
+		await Storage.atomic(raw).set(refreshKey('au4-new'), record(nowS() + 5));
+		expect(await Storage.atomic(guarded).get(refreshKey('au4-old'))).toBeUndefined();
+		expect(await Storage.atomic(raw).get(refreshKey('au4-old'))).toBeUndefined();
+		expect(await Storage.atomic(guarded).get(refreshKey('au4-new'))).toMatchObject({ clientID: 'web' });
+	});
+
 	it('is the plain storage when nothing is configured', () => {
 		const raw = CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE });
 		expect(guardIssuerStorage(raw, {})).toBe(raw);
+	});
+});
+
+describe('AU-4: the refresh path reads revocations from D1', () => {
+	const refreshKey = (token: string) => ['oauth:refresh', 'user:au4', token];
+	const record = (authTimeS: number) => ({
+		type: 'user',
+		properties: { id: 'usr_au4' },
+		subject: 'user:au4',
+		clientID: 'web',
+		authTime: authTimeS * 1000,
+		ttl: { access: 900, refresh: 31_536_000 },
+	});
+
+	beforeEach(async () => {
+		await E.AUTH_DB.prepare('DELETE FROM user_revocations').run();
+	});
+
+	it("a location whose KV has not seen the revocation yet still refuses the refresh", async () => {
+		const raw = CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE });
+		const here = memoryKv();
+		const elsewhere = memoryKv(); // KV in another location: no entry yet (or a cached miss)
+		await Storage.set(raw, refreshKey('stolen'), record(nowS() - 60), 3600);
+		await revokeUser({ kv: here.kv, db: E.AUTH_DB }, 'usr_au4', 'password_changed');
+		const guardedElsewhere = guardIssuerStorage(raw, { revocations: elsewhere.kv, revocationsDb: E.AUTH_DB });
+		expect(await Storage.get(guardedElsewhere, refreshKey('stolen'))).toBeUndefined();
+		expect(elsewhere.data.size).toBe(0);
+		// The KV contract for the resource servers is still written
+		expect(JSON.parse(here.data.get('u:usr_au4')!).reason).toBe('password_changed');
+	});
+
+	it('100 concurrent revocations with skewed clocks keep the latest time (one upsert, MAX)', async () => {
+		const t = Date.UTC(2026, 10, 9, 12, 0, 0);
+		await Promise.all(Array.from({ length: 100 }, (_, i) => revokeUser({ db: E.AUTH_DB }, 'usr_au4', 'sign_out_all', t - i * 1000)));
+		const row = await E.AUTH_DB.prepare('SELECT revoked_before FROM user_revocations WHERE user_id = ?').bind('usr_au4').first<{ revoked_before: number }>();
+		expect(row!.revoked_before).toBe(t / 1000 + 1);
+		// A later write with an earlier clock never shortens it
+		await revokeUser({ db: E.AUTH_DB }, 'usr_au4', 'sign_out_all', t - 3_600_000);
+		expect((await readRevocationForRefresh({ db: E.AUTH_DB }, 'usr_au4'))!.before).toBe(t / 1000 + 1);
+	});
+
+	it('revocations written to KV before D1 had them still count, and the later of the two wins', async () => {
+		const { kv } = memoryKv();
+		const t = Date.UTC(2026, 10, 9, 12, 0, 0);
+		await revokeUser({ kv }, 'usr_au4', 'sign_out_all', t); // old code path: KV only
+		expect((await readRevocationForRefresh({ kv, db: E.AUTH_DB }, 'usr_au4'))!.before).toBe(t / 1000 + 1);
+		await revokeUser({ db: E.AUTH_DB }, 'usr_au4', 'password_changed', t + 60_000);
+		expect(await readRevocationForRefresh({ kv, db: E.AUTH_DB }, 'usr_au4')).toMatchObject({ before: t / 1000 + 61, reason: 'password_changed' });
+		expect(await readRevocationForRefresh({ db: E.AUTH_DB }, 'usr_nobody')).toBeNull();
 	});
 });
 
@@ -250,7 +314,7 @@ describe('revocation through the worker', () => {
 		const raw = CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE });
 		const key = ['oauth:refresh', 'user:rev1', 'tok1'];
 		await Storage.set(raw, key, { type: 'user', subject: 'user:rev1', clientID: 'web', properties: { id: 'usr_rev' }, authTime: Date.now() - 3600_000, ttl: { access: 900, refresh: 3600 } }, 3600);
-		await revokeUser(KV(), 'usr_rev', 'sign_out_all');
+		await revokeUser({ kv: KV(), db: E.AUTH_DB }, 'usr_rev', 'sign_out_all');
 		const res = await call('/token', form({ grant_type: 'refresh_token', refresh_token: 'user:rev1:tok1', client_id: 'web' }));
 		expect(res.status).toBe(400);
 		expect(((await res.json()) as any).error).toBe('invalid_grant');
