@@ -1,0 +1,2705 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Al-Ummah-Now/AlUmmahNow/main/docs/themes/theme-package.v1.schema.json",
+  "title": "Al Ummah Now theme package, format version 1",
+  "description": "theme.json at the root of a theme package folder. Files it names live in the package's assets/ folder. See docs/themes/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "patternProperties": {
+    "^x-[a-z0-9-]+$": {
+      "description": "Extension data. Consumers ignore keys they do not know."
+    }
+  },
+  "required": [
+    "format",
+    "formatVersion",
+    "id",
+    "version",
+    "name",
+    "author",
+    "kind",
+    "tokens",
+    "materials",
+    "components",
+    "typography",
+    "imagery"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "const": "alummahnow.theme-package"
+    },
+    "formatVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,39}$",
+      "description": "Stable id, lowercase. Unique per app."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+      "description": "Semantic version of this package (MAJOR.MINOR.PATCH)."
+    },
+    "name": {
+      "$ref": "#/$defs/localized"
+    },
+    "description": {
+      "$ref": "#/$defs/localized"
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "kind": {
+      "enum": [
+        "base",
+        "look",
+        "event",
+        "rebrand",
+        "custom"
+      ],
+      "description": "What the theme is for: base (the platform look), look (an alternative look), event (Ramadan, Eid), rebrand, or custom (made in an admin)."
+    },
+    "basedOn": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,39}(@[0-9]+\\.[0-9]+\\.[0-9]+)?$",
+      "description": "Informational: the package this one was duplicated from. Packages are standalone; nothing is inherited."
+    },
+    "tokens": {
+      "type": "object",
+      "properties": {
+        "brand": {
+          "type": "object",
+          "properties": {
+            "night": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "nightDeep": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "nightShallow": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "lantern": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "glow": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "earth": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "parchment": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "verified": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "error": {
+              "$ref": "#/$defs/hexColor"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "night",
+            "nightDeep",
+            "nightShallow",
+            "lantern",
+            "glow",
+            "earth",
+            "parchment",
+            "verified",
+            "error"
+          ],
+          "description": "Named brand colours."
+        },
+        "color": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/roleColors"
+            },
+            "dark": {
+              "$ref": "#/$defs/roleColors"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ],
+          "description": "Semantic colour roles per mode. A hex value, or {brand.*} / {color.*} (same mode)."
+        },
+        "radius": {
+          "type": "object",
+          "properties": {
+            "none": {
+              "$ref": "#/$defs/px"
+            },
+            "sm": {
+              "$ref": "#/$defs/px"
+            },
+            "md": {
+              "$ref": "#/$defs/px"
+            },
+            "lg": {
+              "$ref": "#/$defs/px"
+            },
+            "xl": {
+              "$ref": "#/$defs/px"
+            },
+            "full": {
+              "$ref": "#/$defs/px"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "none",
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "full"
+          ]
+        },
+        "elevation": {
+          "type": "object",
+          "properties": {
+            "low": {
+              "$ref": "#/$defs/elevation"
+            },
+            "medium": {
+              "$ref": "#/$defs/elevation"
+            },
+            "high": {
+              "$ref": "#/$defs/elevation"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "borderStyle": {
+          "enum": [
+            "solid",
+            "double",
+            "dashed",
+            "none"
+          ]
+        },
+        "spacing": {
+          "type": "object",
+          "description": "Optional overrides of the shared spacing scale (px). Omit to keep the platform scale.",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^(xxs|xs|sm|md|lg|xl|xxl|xxxl)$": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 128
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "brand",
+        "color",
+        "radius",
+        "elevation"
+      ]
+    },
+    "materials": {
+      "type": "object",
+      "properties": {
+        "radius": {
+          "type": "object",
+          "properties": {
+            "sm": {
+              "$ref": "#/$defs/length"
+            },
+            "md": {
+              "$ref": "#/$defs/length"
+            },
+            "lg": {
+              "$ref": "#/$defs/length"
+            },
+            "xl": {
+              "$ref": "#/$defs/length"
+            },
+            "pill": {
+              "$ref": "#/$defs/length"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "pill"
+          ],
+          "description": "Corner radii used by components."
+        },
+        "glow": {
+          "$ref": "#/$defs/cssValue"
+        },
+        "blur": {
+          "$ref": "#/$defs/cssValue"
+        },
+        "hover": {
+          "$ref": "#/$defs/cssValue"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "radius",
+        "glow",
+        "blur",
+        "hover"
+      ],
+      "description": "Shared material values every component draws from."
+    },
+    "components": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "object",
+          "properties": {
+            "style": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "background"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "style"
+          ],
+          "description": "The page canvas behind everything."
+        },
+        "header": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.nav"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.nav"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `nav.*`, per mode. A hex value or a reference such as {color.surface}."
+            },
+            "style": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "background",
+                "edge"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors",
+            "style"
+          ],
+          "description": "Top bar: logo, search, account. Colours: nav.*"
+        },
+        "drawer": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.drawer"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.drawer"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `drawer.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Phone navigation drawer."
+        },
+        "sidebar": {
+          "type": "object",
+          "properties": {
+            "style": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "active": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "activeEdge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "selection": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "selectionEdge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "selectionBar": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "selectionGlow": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicator": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicatorWidth": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicatorHeight": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicatorShadow": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicatorShape": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "background",
+                "edge",
+                "active",
+                "activeEdge",
+                "selection",
+                "selectionEdge",
+                "selectionBar",
+                "selectionGlow",
+                "indicator",
+                "indicatorWidth",
+                "indicatorHeight",
+                "indicatorShadow",
+                "indicatorShape"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "style"
+          ],
+          "description": "Side rail and phone tab bar: the rail surface, the selected item and its indicator."
+        },
+        "buttonPrimary": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.button.primary"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.button.primary"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `button.primary.*`, per mode. A hex value or a reference such as {color.surface}."
+            },
+            "style": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "hover": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "pressed": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "background",
+                "hover",
+                "pressed",
+                "edge"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors",
+            "style"
+          ],
+          "description": "Primary buttons (Subscribe, Sign in, Save)."
+        },
+        "buttonSecondary": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.button.secondary"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.button.secondary"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `button.secondary.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Secondary buttons."
+        },
+        "buttonGhost": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.button.ghost"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.button.ghost"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `button.ghost.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Ghost buttons."
+        },
+        "buttonDestructive": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.button.destructive"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.button.destructive"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `button.destructive.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Destructive buttons."
+        },
+        "buttonIcon": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.button.icon"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.button.icon"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `button.icon.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Icon buttons."
+        },
+        "upload": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.upload"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.upload"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `upload.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "The header Upload action."
+        },
+        "input": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.form"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.form"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `form.*`, per mode. A hex value or a reference such as {color.surface}."
+            },
+            "style": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "background",
+                "edge"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors",
+            "style"
+          ],
+          "description": "Inputs, selects, switches, checkboxes and form sections."
+        },
+        "card": {
+          "type": "object",
+          "properties": {
+            "style": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "border": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "background",
+                "border",
+                "edge"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "style"
+          ],
+          "description": "Every card surface: settings rows, pills and action buttons, shelves."
+        },
+        "videoCard": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.card.video"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.card.video"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `card.video.*`, per mode. A hex value or a reference such as {color.surface}."
+            },
+            "style": {
+              "type": "object",
+              "properties": {
+                "thumbnailEdge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "thumbnailEdge"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors",
+            "style"
+          ],
+          "description": "Video cards in grids and shelves."
+        },
+        "channelCard": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.card.channel"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.card.channel"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `card.channel.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Channel cards."
+        },
+        "hero": {
+          "type": "object",
+          "properties": {
+            "style": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "background"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "style"
+          ],
+          "description": "Home hero, channel header and profile cover."
+        },
+        "tabs": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.tabs"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.tabs"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `tabs.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Tabs (channel tabs, settings tabs)."
+        },
+        "segment": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.segment"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.segment"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `segment.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Segmented controls and filter chips."
+        },
+        "menu": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.menu"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.menu"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `menu.*`, per mode. A hex value or a reference such as {color.surface}."
+            },
+            "style": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "background",
+                "edge"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors",
+            "style"
+          ],
+          "description": "Menus and popovers. The style is the raised surface, which dialogs share."
+        },
+        "dialog": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.dialog"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.dialog"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `dialog.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Dialogs."
+        },
+        "toast": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.toast"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.toast"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `toast.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Toasts."
+        },
+        "badge": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.badge"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.badge"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `badge.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Live, duration and status badges."
+        },
+        "player": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.player"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.player"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `player.*`, per mode. A hex value or a reference such as {color.surface}."
+            },
+            "style": {
+              "type": "object",
+              "properties": {
+                "frame": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "inner": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "ring": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "frame",
+                "inner",
+                "ring"
+              ],
+              "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "chrome": {
+              "type": "object",
+              "properties": {
+                "bar": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "bar-edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "bar-pad": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "bar-inset": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "bar-radius": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "blur": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "icon": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "dim": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "track": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "track-edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "buffered": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "played": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "glow": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "handle": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "handle-edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "hover": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "press": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "shape": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "tip-bg": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "tip-text": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "tip-edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "menu": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "menu-edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "menu-hover": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "menu-selected": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "accent": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "big": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "big-icon": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "big-edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "spin": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "pill": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "pill-edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "cue": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "err": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "scrim": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "live": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "live-text": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "bar",
+                "bar-edge",
+                "bar-pad",
+                "bar-inset",
+                "bar-radius",
+                "blur",
+                "icon",
+                "dim",
+                "track",
+                "track-edge",
+                "buffered",
+                "played",
+                "glow",
+                "handle",
+                "handle-edge",
+                "hover",
+                "press",
+                "shape",
+                "tip-bg",
+                "tip-text",
+                "tip-edge",
+                "menu",
+                "menu-edge",
+                "menu-hover",
+                "menu-selected",
+                "accent",
+                "big",
+                "big-icon",
+                "big-edge",
+                "spin",
+                "pill",
+                "pill-edge",
+                "cue",
+                "err",
+                "scrim",
+                "live",
+                "live-text"
+              ],
+              "description": "Player controls over the video. One value for both modes, because the chrome sits on video."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors",
+            "style",
+            "chrome"
+          ],
+          "description": "Video player: frame around the video, and `chrome` for the controls."
+        },
+        "footer": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.footer"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.footer"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `footer.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Footer."
+        },
+        "link": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.link"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.link"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `link.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Text links."
+        },
+        "divider": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.divider"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.divider"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `divider.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Divider lines."
+        },
+        "skeleton": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.skeleton"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.skeleton"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `skeleton.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Loading skeletons."
+        },
+        "empty": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "object",
+              "properties": {
+                "light": {
+                  "$ref": "#/$defs/parts.empty"
+                },
+                "dark": {
+                  "$ref": "#/$defs/parts.empty"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "light",
+                "dark"
+              ],
+              "description": "Colours for `empty.*`, per mode. A hex value or a reference such as {color.surface}."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "colors"
+          ],
+          "description": "Empty states."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "page",
+        "header",
+        "drawer",
+        "sidebar",
+        "buttonPrimary",
+        "buttonSecondary",
+        "buttonGhost",
+        "buttonDestructive",
+        "buttonIcon",
+        "upload",
+        "input",
+        "card",
+        "videoCard",
+        "channelCard",
+        "hero",
+        "tabs",
+        "segment",
+        "menu",
+        "dialog",
+        "toast",
+        "badge",
+        "player",
+        "footer",
+        "link",
+        "divider",
+        "skeleton",
+        "empty"
+      ],
+      "description": "Per-component design. Every component lists all of its colour parts and style fields."
+    },
+    "typography": {
+      "type": "object",
+      "properties": {
+        "pair": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9]+$",
+          "description": "Optional name of a shared font pair (system, plexSans, notoKufiInter, sourceSerifAmiri)."
+        },
+        "latin": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fontFamily"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "arabic": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fontFamily"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "latin": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/fontFamily"
+              },
+              "minItems": 1,
+              "maxItems": 8
+            },
+            "arabic": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/fontFamily"
+              },
+              "minItems": 1,
+              "maxItems": 8
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "latin",
+            "arabic"
+          ],
+          "description": "When present, page text uses these stacks instead of the app font (Arabic for lang=ar)."
+        },
+        "faces": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "properties": {
+              "family": {
+                "$ref": "#/$defs/fontFamily"
+              },
+              "weight": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 900
+              },
+              "style": {
+                "enum": [
+                  "normal",
+                  "italic"
+                ]
+              },
+              "src": {
+                "$ref": "#/$defs/fontAsset"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "family",
+              "weight",
+              "src"
+            ]
+          },
+          "description": "Font files shipped in assets/fonts/. Families the platform already ships need no face."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "latin",
+        "arabic"
+      ]
+    },
+    "imagery": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/svgAsset"
+            },
+            {
+              "const": "none"
+            }
+          ]
+        },
+        "loader": {
+          "$ref": "#/$defs/svgAsset"
+        },
+        "logo": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/imageAsset"
+            },
+            "dark": {
+              "$ref": "#/$defs/imageAsset"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "wordmark": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/imageAsset"
+            },
+            "dark": {
+              "$ref": "#/$defs/imageAsset"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "favicon": {
+          "$ref": "#/$defs/asset"
+        },
+        "icon192": {
+          "$ref": "#/$defs/asset"
+        },
+        "icon512": {
+          "$ref": "#/$defs/asset"
+        },
+        "iconMaskable512": {
+          "$ref": "#/$defs/asset"
+        },
+        "appleTouchIcon": {
+          "$ref": "#/$defs/asset"
+        },
+        "ogImage": {
+          "$ref": "#/$defs/asset"
+        },
+        "headerGraphic": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/svgAsset"
+            },
+            "dark": {
+              "$ref": "#/$defs/svgAsset"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ],
+          "description": "Header art for sign-in style cards."
+        },
+        "backdrop": {
+          "$ref": "#/$defs/imageAsset"
+        },
+        "ornament": {
+          "$ref": "#/$defs/svgAsset"
+        },
+        "hero": {
+          "$ref": "#/$defs/imageAsset"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Image slots. Each names a file under assets/."
+    },
+    "signIn": {
+      "type": "object",
+      "properties": {
+        "background": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/cssValue"
+            },
+            "dark": {
+              "$ref": "#/$defs/cssValue"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "graphic": {
+          "$ref": "#/$defs/svgAsset"
+        },
+        "graphicVars": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/cssValue"
+              },
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9-]{0,31}$"
+              }
+            },
+            "dark": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/cssValue"
+              },
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9-]{0,31}$"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "card": {
+          "type": "object",
+          "properties": {
+            "background": {
+              "$ref": "#/$defs/cssValue"
+            },
+            "edge": {
+              "$ref": "#/$defs/cssValue"
+            },
+            "radius": {
+              "$ref": "#/$defs/length"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "description": "Sign-in page. Rendered by the app that owns sign-in (Auth has its own theme admin); the videos site ignores it."
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "cover": {
+          "$ref": "#/$defs/cssValue"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Profile pages. Rendered by the app that owns them; the videos site ignores it."
+    },
+    "browser": {
+      "type": "object",
+      "properties": {
+        "themeColor": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "dark": {
+              "$ref": "#/$defs/hexColor"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "manifest": {
+          "type": "object",
+          "properties": {
+            "background": {
+              "$ref": "#/$defs/hexColor"
+            },
+            "theme": {
+              "$ref": "#/$defs/hexColor"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "background",
+            "theme"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "email": {
+      "type": "object",
+      "properties": {
+        "headerImage": {
+          "$ref": "#/$defs/imageAsset"
+        },
+        "background": {
+          "$ref": "#/$defs/hexColor"
+        },
+        "text": {
+          "$ref": "#/$defs/hexColor"
+        },
+        "buttonBackground": {
+          "$ref": "#/$defs/hexColor"
+        },
+        "buttonText": {
+          "$ref": "#/$defs/hexColor"
+        },
+        "buttonRadius": {
+          "$ref": "#/$defs/length"
+        }
+      },
+      "additionalProperties": false
+    },
+    "banner": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "object",
+          "properties": {
+            "en": {
+              "type": "string",
+              "maxLength": 90
+            },
+            "ar": {
+              "type": "string",
+              "maxLength": 90
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "en",
+            "ar"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ]
+    }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "properties": {
+        "en": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "ar": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "en",
+        "ar"
+      ]
+    },
+    "hexColor": {
+      "type": "string",
+      "pattern": "^#[0-9a-f]{6}$",
+      "description": "An opaque colour, #rrggbb in lowercase. Opaque so contrast can be checked."
+    },
+    "hexColorAlpha": {
+      "type": "string",
+      "pattern": "^#[0-9a-f]{8}$",
+      "description": "#rrggbbaa in lowercase."
+    },
+    "colorRef": {
+      "type": "string",
+      "pattern": "^\\{(?:color|brand)\\.[a-zA-Z][a-zA-Z0-9]*\\}$"
+    },
+    "color": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/hexColor"
+        },
+        {
+          "$ref": "#/$defs/colorRef"
+        }
+      ]
+    },
+    "length": {
+      "type": "string",
+      "pattern": "^(?:0|-?[0-9]+(?:\\.[0-9]+)?(?:px|rem|em|%))$"
+    },
+    "px": {
+      "type": "string",
+      "pattern": "^-?[0-9]+(?:\\.[0-9]+)?px$"
+    },
+    "cssValue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "pattern": "^(?![\\s\\S]*(?:url\\(|expression\\(|javascript:|var\\(--(?:fanous|m|r)-))(?:[^;{}<>\\\\@]|\\{(?:(?:color|brand|component|material|radius|spacing)\\.[a-zA-Z0-9.]+|asset:assets/[A-Za-z0-9._/-]+)\\})*$",
+      "description": "One CSS value. No ; { } < > \\ @ or url(). Tokens are {color.x}, {brand.x}, {component.part.name}, {material.x}, {radius.x}, {spacing.x}; images are {asset:assets/file.svg}. var() is only for layout variables a component sets (for example var(--from))."
+    },
+    "asset": {
+      "type": "string",
+      "pattern": "^assets/(?![\\s\\S]*\\.\\.)[A-Za-z0-9_-][A-Za-z0-9._/-]*\\.(?:svg|png|jpg|jpeg|webp|ico|woff2)$"
+    },
+    "imageAsset": {
+      "type": "string",
+      "pattern": "^assets/(?![\\s\\S]*\\.\\.)[A-Za-z0-9_-][A-Za-z0-9._/-]*\\.(?:svg|png|jpg|jpeg|webp)$"
+    },
+    "svgAsset": {
+      "type": "string",
+      "pattern": "^assets/(?![\\s\\S]*\\.\\.)[A-Za-z0-9_-][A-Za-z0-9._/-]*\\.svg$"
+    },
+    "fontAsset": {
+      "type": "string",
+      "pattern": "^assets/fonts/[A-Za-z0-9_-][A-Za-z0-9._-]*\\.woff2$"
+    },
+    "fontFamily": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9 -]{1,48}$"
+    },
+    "elevation": {
+      "type": "object",
+      "properties": {
+        "color": {
+          "$ref": "#/$defs/hexColorAlpha"
+        },
+        "offsetX": {
+          "$ref": "#/$defs/px"
+        },
+        "offsetY": {
+          "$ref": "#/$defs/px"
+        },
+        "blur": {
+          "$ref": "#/$defs/px"
+        },
+        "spread": {
+          "$ref": "#/$defs/px"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "offsetX",
+        "offsetY",
+        "blur",
+        "spread"
+      ]
+    },
+    "roleColors": {
+      "type": "object",
+      "properties": {
+        "background": {
+          "$ref": "#/$defs/color"
+        },
+        "surface": {
+          "$ref": "#/$defs/color"
+        },
+        "surfaceRaised": {
+          "$ref": "#/$defs/color"
+        },
+        "heroStart": {
+          "$ref": "#/$defs/color"
+        },
+        "heroEnd": {
+          "$ref": "#/$defs/color"
+        },
+        "textPrimary": {
+          "$ref": "#/$defs/color"
+        },
+        "textSecondary": {
+          "$ref": "#/$defs/color"
+        },
+        "textMuted": {
+          "$ref": "#/$defs/color"
+        },
+        "link": {
+          "$ref": "#/$defs/color"
+        },
+        "successText": {
+          "$ref": "#/$defs/color"
+        },
+        "errorText": {
+          "$ref": "#/$defs/color"
+        },
+        "primary": {
+          "$ref": "#/$defs/color"
+        },
+        "onPrimary": {
+          "$ref": "#/$defs/color"
+        },
+        "primaryHover": {
+          "$ref": "#/$defs/color"
+        },
+        "onPrimaryHover": {
+          "$ref": "#/$defs/color"
+        },
+        "primaryPressed": {
+          "$ref": "#/$defs/color"
+        },
+        "onPrimaryPressed": {
+          "$ref": "#/$defs/color"
+        },
+        "primaryDisabled": {
+          "$ref": "#/$defs/color"
+        },
+        "onPrimaryDisabled": {
+          "$ref": "#/$defs/color"
+        },
+        "primaryEdge": {
+          "$ref": "#/$defs/color"
+        },
+        "primarySheen": {
+          "$ref": "#/$defs/color"
+        },
+        "motif": {
+          "$ref": "#/$defs/color"
+        },
+        "secondary": {
+          "$ref": "#/$defs/color"
+        },
+        "onSecondary": {
+          "$ref": "#/$defs/color"
+        },
+        "verifiedFill": {
+          "$ref": "#/$defs/color"
+        },
+        "onVerifiedFill": {
+          "$ref": "#/$defs/color"
+        },
+        "errorFill": {
+          "$ref": "#/$defs/color"
+        },
+        "onErrorFill": {
+          "$ref": "#/$defs/color"
+        },
+        "live": {
+          "$ref": "#/$defs/color"
+        },
+        "onLive": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        },
+        "focusRing": {
+          "$ref": "#/$defs/color"
+        },
+        "focusGlow": {
+          "$ref": "#/$defs/color"
+        },
+        "verifiedIcon": {
+          "$ref": "#/$defs/color"
+        },
+        "outline": {
+          "$ref": "#/$defs/color"
+        },
+        "divider": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "background",
+        "surface",
+        "surfaceRaised",
+        "heroStart",
+        "heroEnd",
+        "textPrimary",
+        "textSecondary",
+        "textMuted",
+        "link",
+        "successText",
+        "errorText",
+        "primary",
+        "onPrimary",
+        "primaryHover",
+        "onPrimaryHover",
+        "primaryPressed",
+        "onPrimaryPressed",
+        "primaryDisabled",
+        "onPrimaryDisabled",
+        "primaryEdge",
+        "primarySheen",
+        "motif",
+        "secondary",
+        "onSecondary",
+        "verifiedFill",
+        "onVerifiedFill",
+        "errorFill",
+        "onErrorFill",
+        "live",
+        "onLive",
+        "accent",
+        "focusRing",
+        "focusGlow",
+        "verifiedIcon",
+        "outline",
+        "divider"
+      ]
+    },
+    "parts.nav": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "icon": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        },
+        "activeBg": {
+          "$ref": "#/$defs/color"
+        },
+        "activeText": {
+          "$ref": "#/$defs/color"
+        },
+        "indicator": {
+          "$ref": "#/$defs/color"
+        },
+        "searchBg": {
+          "$ref": "#/$defs/color"
+        },
+        "searchBorder": {
+          "$ref": "#/$defs/color"
+        },
+        "searchText": {
+          "$ref": "#/$defs/color"
+        },
+        "searchPlaceholder": {
+          "$ref": "#/$defs/color"
+        },
+        "menuBg": {
+          "$ref": "#/$defs/color"
+        },
+        "menuText": {
+          "$ref": "#/$defs/color"
+        },
+        "menuHover": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "border",
+        "text",
+        "icon",
+        "hover",
+        "activeBg",
+        "activeText",
+        "indicator",
+        "searchBg",
+        "searchBorder",
+        "searchText",
+        "searchPlaceholder",
+        "menuBg",
+        "menuText",
+        "menuHover"
+      ]
+    },
+    "parts.drawer": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "icon": {
+          "$ref": "#/$defs/color"
+        },
+        "activeBg": {
+          "$ref": "#/$defs/color"
+        },
+        "activeText": {
+          "$ref": "#/$defs/color"
+        },
+        "divider": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "icon",
+        "activeBg",
+        "activeText",
+        "divider"
+      ]
+    },
+    "parts.button.primary": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        },
+        "pressed": {
+          "$ref": "#/$defs/color"
+        },
+        "focus": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledBg": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledText": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "border",
+        "hover",
+        "pressed",
+        "focus",
+        "disabledBg",
+        "disabledText"
+      ]
+    },
+    "parts.button.secondary": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        },
+        "pressed": {
+          "$ref": "#/$defs/color"
+        },
+        "focus": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledBg": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledText": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "border",
+        "hover",
+        "pressed",
+        "focus",
+        "disabledBg",
+        "disabledText"
+      ]
+    },
+    "parts.button.ghost": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        },
+        "pressed": {
+          "$ref": "#/$defs/color"
+        },
+        "focus": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledBg": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledText": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "border",
+        "hover",
+        "pressed",
+        "focus",
+        "disabledBg",
+        "disabledText"
+      ]
+    },
+    "parts.button.destructive": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        },
+        "pressed": {
+          "$ref": "#/$defs/color"
+        },
+        "focus": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledBg": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledText": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "border",
+        "hover",
+        "pressed",
+        "focus",
+        "disabledBg",
+        "disabledText"
+      ]
+    },
+    "parts.button.icon": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        },
+        "pressed": {
+          "$ref": "#/$defs/color"
+        },
+        "focus": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledBg": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledText": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "border",
+        "hover",
+        "pressed",
+        "focus",
+        "disabledBg",
+        "disabledText"
+      ]
+    },
+    "parts.upload": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        },
+        "pressed": {
+          "$ref": "#/$defs/color"
+        },
+        "focus": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledBg": {
+          "$ref": "#/$defs/color"
+        },
+        "disabledText": {
+          "$ref": "#/$defs/color"
+        },
+        "icon": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "border",
+        "hover",
+        "pressed",
+        "focus",
+        "disabledBg",
+        "disabledText",
+        "icon"
+      ]
+    },
+    "parts.form": {
+      "type": "object",
+      "properties": {
+        "sectionBg": {
+          "$ref": "#/$defs/color"
+        },
+        "sectionBorder": {
+          "$ref": "#/$defs/color"
+        },
+        "label": {
+          "$ref": "#/$defs/color"
+        },
+        "help": {
+          "$ref": "#/$defs/color"
+        },
+        "inputBg": {
+          "$ref": "#/$defs/color"
+        },
+        "inputBorder": {
+          "$ref": "#/$defs/color"
+        },
+        "inputText": {
+          "$ref": "#/$defs/color"
+        },
+        "placeholder": {
+          "$ref": "#/$defs/color"
+        },
+        "focusRing": {
+          "$ref": "#/$defs/color"
+        },
+        "error": {
+          "$ref": "#/$defs/color"
+        },
+        "success": {
+          "$ref": "#/$defs/color"
+        },
+        "checkOn": {
+          "$ref": "#/$defs/color"
+        },
+        "checkMark": {
+          "$ref": "#/$defs/color"
+        },
+        "switchOn": {
+          "$ref": "#/$defs/color"
+        },
+        "switchOff": {
+          "$ref": "#/$defs/color"
+        },
+        "switchThumb": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sectionBg",
+        "sectionBorder",
+        "label",
+        "help",
+        "inputBg",
+        "inputBorder",
+        "inputText",
+        "placeholder",
+        "focusRing",
+        "error",
+        "success",
+        "checkOn",
+        "checkMark",
+        "switchOn",
+        "switchOff",
+        "switchThumb"
+      ]
+    },
+    "parts.card.video": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "title": {
+          "$ref": "#/$defs/color"
+        },
+        "meta": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "title",
+        "meta",
+        "hover"
+      ]
+    },
+    "parts.card.channel": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "name": {
+          "$ref": "#/$defs/color"
+        },
+        "meta": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "name",
+        "meta"
+      ]
+    },
+    "parts.tabs": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "activeText": {
+          "$ref": "#/$defs/color"
+        },
+        "indicator": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "activeText",
+        "indicator",
+        "border"
+      ]
+    },
+    "parts.segment": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "activeBg": {
+          "$ref": "#/$defs/color"
+        },
+        "activeText": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "activeBg",
+        "activeText"
+      ]
+    },
+    "parts.menu": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "muted": {
+          "$ref": "#/$defs/color"
+        },
+        "hover": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "muted",
+        "hover",
+        "border"
+      ]
+    },
+    "parts.dialog": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "muted": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "muted",
+        "border"
+      ]
+    },
+    "parts.toast": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "success": {
+          "$ref": "#/$defs/color"
+        },
+        "error": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "success",
+        "error",
+        "border"
+      ]
+    },
+    "parts.badge": {
+      "type": "object",
+      "properties": {
+        "liveBg": {
+          "$ref": "#/$defs/color"
+        },
+        "liveText": {
+          "$ref": "#/$defs/color"
+        },
+        "durationBg": {
+          "$ref": "#/$defs/color"
+        },
+        "durationText": {
+          "$ref": "#/$defs/color"
+        },
+        "statusBg": {
+          "$ref": "#/$defs/color"
+        },
+        "statusText": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "liveBg",
+        "liveText",
+        "durationBg",
+        "durationText",
+        "statusBg",
+        "statusText"
+      ]
+    },
+    "parts.player": {
+      "type": "object",
+      "properties": {
+        "control": {
+          "$ref": "#/$defs/color"
+        },
+        "controlBg": {
+          "$ref": "#/$defs/color"
+        },
+        "progress": {
+          "$ref": "#/$defs/color"
+        },
+        "buffered": {
+          "$ref": "#/$defs/color"
+        },
+        "track": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "control",
+        "controlBg",
+        "progress",
+        "buffered",
+        "track"
+      ]
+    },
+    "parts.footer": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "text": {
+          "$ref": "#/$defs/color"
+        },
+        "link": {
+          "$ref": "#/$defs/color"
+        },
+        "border": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "text",
+        "link",
+        "border"
+      ]
+    },
+    "parts.link": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ]
+    },
+    "parts.divider": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "line"
+      ]
+    },
+    "parts.skeleton": {
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/color"
+        },
+        "shine": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bg",
+        "shine"
+      ]
+    },
+    "parts.empty": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/color"
+        },
+        "body": {
+          "$ref": "#/$defs/color"
+        },
+        "icon": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "body",
+        "icon"
+      ]
+    }
+  }
+}
