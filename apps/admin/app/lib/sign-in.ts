@@ -58,6 +58,30 @@ export function clearLoginCookie(secure = true): string {
   return `${LOGIN_COOKIE}=; Path=/; HttpOnly; ${secure ? "Secure; " : ""}SameSite=Lax; Max-Age=0`;
 }
 
+/**
+ * PKCE (RFC 7636): /login keeps the code verifier in this cookie, bound to
+ * the OAuth state; /auth/callback sends it with the code, so a leaked code
+ * can't be redeemed without it and the auth server can require PKCE.
+ */
+export const PKCE_COOKIE = "admin_pkce";
+
+export function pkceCookie(state: string, verifier: string, secure = true): string {
+  return `${PKCE_COOKIE}=${state}.${verifier}; Path=/; HttpOnly; ${secure ? "Secure; " : ""}SameSite=Lax; Max-Age=${LOGIN_COOKIE_MAX_AGE}`;
+}
+
+export function clearPkceCookie(secure = true): string {
+  return `${PKCE_COOKIE}=; Path=/; HttpOnly; ${secure ? "Secure; " : ""}SameSite=Lax; Max-Age=0`;
+}
+
+/** The verifier /login stored for this `state`, if any. */
+export function savedPkceVerifier(cookieHeader: string | null, state: string | null): string | undefined {
+  const raw = readCookie(cookieHeader, PKCE_COOKIE);
+  if (!raw || !state) return undefined;
+  const dot = raw.indexOf(".");
+  if (dot <= 0 || raw.slice(0, dot) !== state) return undefined;
+  return raw.slice(dot + 1) || undefined;
+}
+
 export function readCookie(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(";")) {

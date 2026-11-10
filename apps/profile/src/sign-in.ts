@@ -48,6 +48,8 @@ export function buildAuthorizeUrl(o: {
   prompt?: LoginPrompt;
   /** Only an explicit Arabic request is passed on; the sign-in pages default to English. */
   lang?: "ar";
+  /** PKCE (S256) challenge; its verifier is kept in the PKCE cookie */
+  codeChallenge?: string;
 }): string {
   const url = new URL("/authorize", o.authServerUrl);
   url.searchParams.set("response_type", "code");
@@ -56,7 +58,38 @@ export function buildAuthorizeUrl(o: {
   url.searchParams.set("state", o.state);
   if (o.prompt) url.searchParams.set("prompt", o.prompt);
   if (o.lang === "ar") url.searchParams.set("lang", "ar");
+  if (o.codeChallenge) {
+    url.searchParams.set("code_challenge", o.codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+  }
   return url.toString();
+}
+
+/**
+ * PKCE (RFC 7636): /login keeps the verifier in this cookie, bound to the
+ * OAuth state; /callback sends it with the code. A code that leaks (logs,
+ * Referer, a proxy) can't be redeemed without it, and the auth server can
+ * require PKCE for this client.
+ */
+export const PKCE_COOKIE = "profile_pkce";
+
+export function pkceCookie(state: string, verifier: string, isLocalhost: boolean): string {
+  const secure = isLocalhost ? "" : "Secure; ";
+  return `${PKCE_COOKIE}=${state}.${verifier}; Path=/; HttpOnly; ${secure}SameSite=Lax; Max-Age=${LOGIN_COOKIE_MAX_AGE}`;
+}
+
+export function clearPkceCookie(isLocalhost: boolean): string {
+  const secure = isLocalhost ? "" : "Secure; ";
+  return `${PKCE_COOKIE}=; Path=/; HttpOnly; ${secure}SameSite=Lax; Max-Age=0`;
+}
+
+/** The verifier /login stored for this `state`, if any. */
+export function savedPkceVerifier(cookieHeader: string | null, state: string | null): string | undefined {
+  const raw = readCookie(cookieHeader, PKCE_COOKIE);
+  if (!raw || !state) return undefined;
+  const dot = raw.indexOf(".");
+  if (dot <= 0 || raw.slice(0, dot) !== state) return undefined;
+  return raw.slice(dot + 1) || undefined;
 }
 
 export function loginCookie(state: string, returnTo: string, isLocalhost: boolean): string {

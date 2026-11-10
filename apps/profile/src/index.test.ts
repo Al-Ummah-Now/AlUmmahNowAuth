@@ -5,7 +5,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeKV, NOW_MS, NOW_S, jwt } from "./test-helpers";
-import { LOGIN_COOKIE } from "./sign-in";
+import { LOGIN_COOKIE, PKCE_COOKIE } from "./sign-in";
+import { validatePKCE } from "@al-ummah-now/openauth/pkce";
 import { revokedKey, sessionKey } from "./session-store";
 
 const client = { exchange: vi.fn(), verify: vi.fn(), refresh: vi.fn() };
@@ -70,6 +71,34 @@ describe("profile sign-in routing", () => {
     expect(cookiePair(res, LOGIN_COOKIE)).toBe(`${LOGIN_COOKIE}=${state}.${encodeURIComponent("/?lang=ar")}`);
     // The sign-in pages follow the Arabic the profile link asked for
     expect(url.searchParams.get("lang")).toBe("ar");
+  });
+
+  it("/login sends a PKCE S256 challenge; the callback exchanges with its verifier", async () => {
+    const login = await get("/login");
+    const url = new URL(login.headers.get("location")!);
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    const challenge = url.searchParams.get("code_challenge")!;
+    const state = url.searchParams.get("state")!;
+    const pkce = cookiePair(login, PKCE_COOKIE)!;
+    const verifier = pkce.split("=")[1].split(".")[1];
+    expect(pkce.startsWith(`${PKCE_COOKIE}=${state}.`)).toBe(true);
+    expect(await validatePKCE(verifier, challenge, "S256")).toBe(true);
+
+    client.exchange.mockResolvedValue({ err: false, tokens: { access: jwt(NOW_S + 900), refresh: "r0" } });
+    client.verify.mockResolvedValue({ subject: { type: "user", properties: USER } });
+    const res = await get(`/callback?code=c1&state=${state}`, `${cookiePair(login, LOGIN_COOKIE)}; ${pkce}`);
+    expect(res.status).toBe(302);
+    expect(client.exchange).toHaveBeenCalledWith("c1", `${APP}/callback`, verifier);
+    expect(setCookies(res).some((c) => c.startsWith(`${PKCE_COOKIE}=;`))).toBe(true);
+  });
+
+  it("a PKCE cookie for another state is never used", async () => {
+    const login = await get("/login");
+    const state = new URL(login.headers.get("location")!).searchParams.get("state")!;
+    client.exchange.mockResolvedValue({ err: false, tokens: { access: jwt(NOW_S + 900), refresh: "r0" } });
+    client.verify.mockResolvedValue({ subject: { type: "user", properties: USER } });
+    await get(`/callback?code=c1&state=${state}`, `${cookiePair(login, LOGIN_COOKIE)}; ${PKCE_COOKIE}=other.v1`);
+    expect(client.exchange).toHaveBeenCalledWith("c1", `${APP}/callback`, undefined);
   });
 
   it("/login without an Arabic return path sends no lang (sign-in defaults to English)", async () => {
