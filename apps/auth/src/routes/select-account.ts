@@ -10,6 +10,7 @@ import { BrowserSessionService } from '../services/browser-session.service';
 import { AccountSessionService } from '../services/account-session.service';
 import { validateClient } from '../middleware/client-validation';
 import { renderAccountSelector } from '../ui/select-account';
+import { uiLocale } from '../ui/confirm-dialog';
 import type { AccountSelectorAccount } from '../ui/select-account';
 import { SESSION_CONSTRAINTS } from '../types/sessions';
 import type { BrowserSession } from '../types/sessions';
@@ -113,6 +114,7 @@ export async function handleSelectAccountGet(
 		codeChallengeMethod: codeChallengeMethod || undefined,
 		nonce: nonce || undefined,
 		allowAddAccount,
+		locale: uiLocale(request),
 	});
 
 	return new Response(html, {

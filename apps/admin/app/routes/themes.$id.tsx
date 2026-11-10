@@ -3,6 +3,7 @@ import { Link, useFetcher, useLoaderData } from "react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, Download, Monitor, Moon, Smartphone, Star, Sun, Upload } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
+import { ConfirmDialog } from "../components/confirm-dialog";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -363,6 +364,7 @@ export default function ThemeBuilderPage() {
   const saver = useFetcher<ActionData>();
   const uploader = useFetcher<ActionData>();
   const remover = useFetcher<ActionData>();
+  const [removing, setRemoving] = useState<string | null>(null);
   const frameBox = useRef<HTMLDivElement>(null);
   const [boxWidth, setBoxWidth] = useState(320);
 
@@ -776,11 +778,7 @@ export default function ThemeBuilderPage() {
                             <div className={`text-xs ${muted}`}>{(a.size / 1024).toFixed(1)} KB</div>
                           </div>
                           {!readOnly && (
-                            <remover.Form method="post">
-                              <input type="hidden" name="intent" value="remove-asset" />
-                              <input type="hidden" name="path" value={p} />
-                              <Button size="sm" variant="ghost" type="submit" className="text-red-500" disabled={dirty} title={dirty ? "Save the draft first" : "Remove this file"}>Remove</Button>
-                            </remover.Form>
+                            <Button size="sm" variant="ghost" type="button" className="text-red-500" disabled={dirty} title={dirty ? "Save the draft first" : "Remove this file"} onClick={() => setRemoving(p)}>Remove</Button>
                           )}
                         </div>
                       ))}
@@ -866,6 +864,18 @@ export default function ThemeBuilderPage() {
           </CardContent>
         </Card>
       </div>
+      <ConfirmDialog
+        open={!!removing}
+        cancelLabel="Cancel"
+        onCancel={() => setRemoving(null)}
+        title="Remove this file?"
+        description={removing ? `${removing.replace(/^assets\//, "")} is removed from the theme. Anything that uses it stops showing it.` : ""}
+        confirmLabel="Remove file"
+        onConfirm={() => {
+          if (removing) remover.submit({ intent: "remove-asset", path: removing }, { method: "post" });
+          setRemoving(null);
+        }}
+      />
     </AdminLayout>
   );
 }

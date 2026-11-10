@@ -297,6 +297,16 @@ export async function editUser(
 }
 
 /**
+ * Answer the admin's in-app confirmation (a native <dialog>, never a browser
+ * prompt) by clicking its confirming button.
+ */
+export async function confirmInDialog(page: Page, button: string): Promise<void> {
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible({ timeout: 5000 });
+  await dialog.getByRole('button', { name: button, exact: true }).click();
+}
+
+/**
  * Delete a user
  *
  * @param page - Playwright page object

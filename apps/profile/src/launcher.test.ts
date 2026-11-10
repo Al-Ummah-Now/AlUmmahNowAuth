@@ -68,6 +68,20 @@ describe("renderHomePage", () => {
     expect(html).not.toContain("</script><script>alert(1)");
     expect(scriptJson("</script>")).toBe('"\\u003c/script>"');
   });
+  it("confirms sign-outs in an in-page dialog, never a browser prompt", () => {
+    const html = renderHomePage({ ...base, locale: "en" });
+    expect(html).toMatch(/<dialog class="confirm-dialog" id="confirmDialog" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">/);
+    expect(html).toMatch(/value="cancel" class="btn btn-secondary" id="confirmCancel" autofocus>Cancel</);
+    expect(html).toContain('onclick="requestSignOutAll()"');
+    expect(html).toContain("requestSignOutAccount(this.dataset.userId)");
+    expect(html).not.toMatch(/(?<![\w$.])(?:window\.)?(?:confirm|alert|prompt)\s*\(|beforeunload/);
+  });
+
+  it("words the dialog in Arabic for Arabic pages", () => {
+    const html = renderHomePage({ ...base, locale: "ar" });
+    expect(html).toContain(`autofocus>${MESSAGES.ar.confirmCancel}<`);
+    expect(html).toContain(MESSAGES.ar.signOutAllTitle);
+  });
 });
 
 describe("escapeHtml", () => {

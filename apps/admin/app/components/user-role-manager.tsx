@@ -17,6 +17,7 @@ import {
 } from "./ui/select";
 import { Button } from "./ui/button";
 import { UserRoleBadge } from "./user-role-badge";
+import { ConfirmDialog } from "./confirm-dialog";
 
 interface UserRoleManagerProps {
   userId: string;
@@ -45,6 +46,7 @@ export function UserRoleManager({
 }: UserRoleManagerProps) {
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [roleToRemove, setRoleToRemove] = useState<{ id: string; name: string } | null>(null);
 
   const assignFetcher = useFetcher();
   const removeFetcher = useFetcher();
@@ -134,7 +136,7 @@ export function UserRoleManager({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => handleRemoveRole(role.id)}
+                      onClick={() => setRoleToRemove(role)}
                       disabled={isLoading || loadingAction === `remove-${role.id}`}
                       className="h-8 w-8"
                     >
@@ -199,6 +201,18 @@ export function UserRoleManager({
             )}
           </div>
         </div>
+        <ConfirmDialog
+          open={!!roleToRemove}
+          cancelLabel="Cancel"
+          onCancel={() => setRoleToRemove(null)}
+          title="Remove this role?"
+          description={roleToRemove ? `${userEmail} loses the "${roleToRemove.name}" role and every permission it grants.` : ""}
+          confirmLabel="Remove role"
+          onConfirm={() => {
+            if (roleToRemove) handleRemoveRole(roleToRemove.id);
+            setRoleToRemove(null);
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

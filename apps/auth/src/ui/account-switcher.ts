@@ -12,6 +12,8 @@
  * NOT during OAuth flows (use select-account.ts for that).
  */
 
+import { CONFIRM_COPY, confirmAttributes, renderConfirmDialog, type ConfirmCopy, type UiLocale } from './confirm-dialog';
+
 /**
  * Account data for display in switcher
  */
@@ -33,6 +35,8 @@ export interface AccountSwitcherProps {
 	actionBaseUrl?: string;
 	/** Show account count in trigger */
 	showAccountCount?: boolean;
+	/** Language of the sign-out confirmations (English unless `?lang=ar`) */
+	locale?: UiLocale;
 }
 
 /**
@@ -49,7 +53,9 @@ export function renderAccountSwitcher(props: AccountSwitcherProps): string {
 		accounts,
 		actionBaseUrl = '/session',
 		showAccountCount = true,
+		locale = 'en',
 	} = props;
+	const t = CONFIRM_COPY[locale];
 
 	const activeAccount = accounts.find((a) => a.isActive);
 	const canAddAccount = accounts.length < 3;
@@ -155,7 +161,7 @@ export function renderAccountSwitcher(props: AccountSwitcherProps): string {
 
     <!-- Accounts List -->
     <div class="py-2">
-      ${accounts.map((account) => renderAccountItem(account, actionBaseUrl)).join('')}
+      ${accounts.map((account) => renderAccountItem(account, actionBaseUrl, t)).join('')}
     </div>
 
     <!-- Divider -->
@@ -165,8 +171,9 @@ export function renderAccountSwitcher(props: AccountSwitcherProps): string {
     ${canAddAccount ? renderAddAccountOption(actionBaseUrl) : ''}
 
     <!-- Sign Out All Option -->
-    ${renderSignOutAllOption(actionBaseUrl)}
+    ${renderSignOutAllOption(actionBaseUrl, t)}
   </div>
+  ${renderConfirmDialog(locale)}
 </div>
   `;
 }
@@ -176,7 +183,8 @@ export function renderAccountSwitcher(props: AccountSwitcherProps): string {
  */
 function renderAccountItem(
 	account: AccountSwitcherAccount,
-	actionBaseUrl: string
+	actionBaseUrl: string,
+	t: ConfirmCopy
 ): string {
 	const isActive = account.isActive;
 
@@ -252,7 +260,7 @@ function renderAccountItem(
         ${
 					!isActive
 						? `
-        <form method="POST" action="${escapeHtml(actionBaseUrl)}/signout/${escapeHtml(account.userId)}" class="flex-shrink-0">
+        <form method="POST" action="${escapeHtml(actionBaseUrl)}/signout/${escapeHtml(account.userId)}" class="flex-shrink-0" ${confirmAttributes({ title: t.signOutAccountTitle, message: t.signOutAccountMessage.replace('{email}', () => account.email), action: t.signOut })}>
           <button
             type="submit"
             class="
@@ -266,7 +274,6 @@ function renderAccountItem(
             "
             title="Sign out ${escapeHtml(account.email)}"
             aria-label="Sign out ${escapeHtml(account.email)}"
-            onclick="return confirm('Sign out of ${escapeHtml(account.email)}?');"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -324,9 +331,9 @@ function renderAddAccountOption(actionBaseUrl: string): string {
 /**
  * Render "Sign out of all accounts" option
  */
-function renderSignOutAllOption(actionBaseUrl: string): string {
+function renderSignOutAllOption(actionBaseUrl: string, t: ConfirmCopy): string {
 	return `
-    <form method="POST" action="${escapeHtml(actionBaseUrl)}/signout-all">
+    <form method="POST" action="${escapeHtml(actionBaseUrl)}/signout-all" ${confirmAttributes({ title: t.signOutAllAccountsTitle, message: t.signOutAllAccountsMessage, action: t.signOutAllAccountsAction })}>
       <button
         type="submit"
         class="
@@ -339,7 +346,6 @@ function renderSignOutAllOption(actionBaseUrl: string): string {
           transition-colors
           focus:outline-none focus:bg-red-100
         "
-        onclick="return confirm('Sign out of all accounts? You will need to log in again.');"
       >
         <!-- Sign Out Icon -->
         <div

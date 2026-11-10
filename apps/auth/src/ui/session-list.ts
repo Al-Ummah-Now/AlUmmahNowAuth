@@ -11,6 +11,8 @@
  * This component is designed for user-facing session management in profile/settings.
  */
 
+import { CONFIRM_COPY, confirmAttributes, renderConfirmDialog, type ConfirmCopy, type UiLocale } from './confirm-dialog';
+
 /**
  * Device session data for display
  */
@@ -35,6 +37,8 @@ export interface SessionListProps {
 	actionBaseUrl?: string;
 	/** Show revoke all button when multiple sessions exist */
 	showRevokeAll?: boolean;
+	/** Language of the sign-out confirmations (English unless `?lang=ar`) */
+	locale?: UiLocale;
 }
 
 /**
@@ -47,7 +51,8 @@ export interface SessionListProps {
  * @returns Complete HTML component as string
  */
 export function renderSessionList(props: SessionListProps): string {
-	const { sessions, actionBaseUrl = '/session/devices', showRevokeAll = true } = props;
+	const { sessions, actionBaseUrl = '/session/devices', showRevokeAll = true, locale = 'en' } = props;
+	const t = CONFIRM_COPY[locale];
 
 	const currentSession = sessions.find((s) => s.isCurrentSession);
 	const otherSessions = sessions.filter((s) => !s.isCurrentSession);
@@ -73,10 +78,11 @@ export function renderSessionList(props: SessionListProps): string {
   ${currentSession ? renderCurrentSessionSection(currentSession) : ''}
 
   <!-- Other Sessions Section -->
-  ${renderOtherSessionsSection(otherSessions, actionBaseUrl, showRevokeAll)}
+  ${renderOtherSessionsSection(otherSessions, actionBaseUrl, showRevokeAll, t)}
 
   <!-- Security Notice -->
   ${renderSecurityNotice()}
+  ${renderConfirmDialog(locale)}
   `
 	}
 </div>
@@ -101,7 +107,8 @@ function renderCurrentSessionSection(session: DeviceSession): string {
 function renderOtherSessionsSection(
 	sessions: DeviceSession[],
 	actionBaseUrl: string,
-	showRevokeAll: boolean
+	showRevokeAll: boolean,
+	t: ConfirmCopy
 ): string {
 	return `
 <section class="mb-8">
@@ -113,7 +120,7 @@ function renderOtherSessionsSection(
     ${
 			showRevokeAll && sessions.length > 0
 				? `
-    <form method="POST" action="${escapeHtml(actionBaseUrl)}/revoke-all" class="flex-shrink-0">
+    <form method="POST" action="${escapeHtml(actionBaseUrl)}/revoke-all" class="flex-shrink-0" ${confirmAttributes({ title: t.signOutAllOtherTitle, message: t.signOutAllOtherMessage, action: t.signOutAllOtherAction })}>
       <button
         type="submit"
         class="
@@ -128,7 +135,6 @@ function renderOtherSessionsSection(
           transition-colors
           w-full sm:w-auto
         "
-        onclick="return confirm('Sign out from all other devices? You will stay signed in on this device.');"
       >
         Sign out all other devices
       </button>
@@ -158,7 +164,7 @@ function renderOtherSessionsSection(
   `
 			: `
   <div class="space-y-3">
-    ${sessions.map((session) => renderDeviceCard(session, false, actionBaseUrl)).join('')}
+    ${sessions.map((session) => renderDeviceCard(session, false, actionBaseUrl, t)).join('')}
   </div>
   `
 	}
@@ -172,7 +178,8 @@ function renderOtherSessionsSection(
 function renderDeviceCard(
 	session: DeviceSession,
 	isCurrent: boolean,
-	actionBaseUrl: string
+	actionBaseUrl: string,
+	t?: ConfirmCopy
 ): string {
 	const DeviceIcon = getDeviceIconSvg(session.deviceType);
 
@@ -264,7 +271,7 @@ function renderDeviceCard(
 			!isCurrent
 				? `
     <div class="flex-shrink-0 sm:ml-4">
-      <form method="POST" action="${escapeHtml(actionBaseUrl)}/${escapeHtml(session.id)}">
+      <form method="POST" action="${escapeHtml(actionBaseUrl)}/${escapeHtml(session.id)}" ${t ? confirmAttributes({ title: t.signOutDeviceTitle, message: t.signOutDeviceMessage, action: t.signOut }) : ''}>
         <input type="hidden" name="_method" value="DELETE" />
         <button
           type="submit"
@@ -280,7 +287,6 @@ function renderDeviceCard(
             focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2
             transition-colors
           "
-          onclick="return confirm('Sign out this device?');"
         >
           Sign out
         </button>

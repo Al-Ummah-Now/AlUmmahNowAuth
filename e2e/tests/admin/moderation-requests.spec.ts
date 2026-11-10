@@ -9,7 +9,7 @@
  * The subject user is created for the test and deleted at the end.
  */
 import { test, expect, type APIRequestContext, type Browser, type Page } from '@playwright/test';
-import { loginAdmin, deleteUser } from '../../fixtures/admin';
+import { confirmInDialog, loginAdmin, deleteUser } from '../../fixtures/admin';
 import { register } from '../../fixtures/auth';
 import { TEST_URLS, TEST_USERS, generateTestEmail } from '../../utils/test-data';
 
@@ -59,8 +59,10 @@ async function decide(page: Page, requestId: string, button: string, note?: stri
 	await page.goto(`${TEST_URLS.adminDashboard}/moderation/${requestId}`);
 	await expect(page.getByTestId('moderation-status')).toBeVisible({ timeout: 15000 });
 	if (note) await page.locator('textarea#note').fill(note);
-	page.once('dialog', (dialog) => dialog.accept());
 	await page.getByRole('button', { name: button }).click();
+	// Approving and re-running ask in the page first
+	if (button.startsWith('Approve')) await confirmInDialog(page, 'Approve');
+	else if (button === 'Run action again') await confirmInDialog(page, 'Run action again');
 }
 
 test.describe('Moderation requests', () => {

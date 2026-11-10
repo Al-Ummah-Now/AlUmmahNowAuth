@@ -16,6 +16,7 @@ import { renderSessionList } from '../ui/session-list';
 import { renderAccountSwitcher } from '../ui/account-switcher';
 import { renderAdminSessionsDashboard } from '../ui/admin-sessions';
 import { addSecurityHeaders } from '../utils/security-headers';
+import { uiLocale } from '../ui/confirm-dialog';
 
 interface SessionUIEnv {
 	AUTH_DB: D1Database;
@@ -88,6 +89,7 @@ export async function handleSettingsSessions(
 		sessions,
 		actionBaseUrl: '/session/devices',
 		showRevokeAll: true,
+		locale: uiLocale(request),
 	});
 
 	return addSecurityHeaders(
@@ -146,6 +148,7 @@ export async function handleAccountSwitcher(
 		accounts,
 		actionBaseUrl: '/session',
 		showAccountCount: true,
+		locale: uiLocale(request),
 	});
 
 	return addSecurityHeaders(

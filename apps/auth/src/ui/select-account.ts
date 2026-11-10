@@ -7,6 +7,26 @@
  * - Add a new account (if under max limit)
  */
 
+import { CONFIRM_COPY, type UiLocale } from './confirm-dialog';
+
+/** The selector's own words, English unless the request asks for Arabic. */
+const SELECTOR_COPY: Record<UiLocale, { title: string; continueTo: string; active: string; signedIn: string; useAnother: string }> = {
+	en: {
+		title: 'Choose an account',
+		continueTo: 'to continue to',
+		active: 'Active',
+		signedIn: 'Signed in',
+		useAnother: 'Use another account',
+	},
+	ar: {
+		title: 'اختر حسابًا',
+		continueTo: 'للمتابعة إلى',
+		active: 'نشط',
+		signedIn: 'مسجّل الدخول',
+		useAnother: 'استخدام حساب آخر',
+	},
+};
+
 /**
  * Account data for display in selector
  */
@@ -33,6 +53,8 @@ export interface AccountSelectorProps {
 	codeChallengeMethod?: string;
 	nonce?: string;
 	allowAddAccount: boolean;
+	/** Page language (English unless `?lang=ar`) */
+	locale?: UiLocale;
 }
 
 /**
@@ -46,14 +68,17 @@ export interface AccountSelectorProps {
  */
 export function renderAccountSelector(props: AccountSelectorProps): string {
 	const { accounts, clientName, allowAddAccount } = props;
+	const locale = props.locale ?? 'en';
+	const t = SELECTOR_COPY[locale];
+	const errors = CONFIRM_COPY[locale];
 
 	return `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Choose an account</title>
+  <title>${escapeHtml(t.title)}</title>
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
@@ -102,7 +127,7 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
       border: none;
       background: none;
       width: 100%;
-      text-align: left;
+      text-align: start;
     }
     .account:hover {
       background: #f5f5f5;
@@ -120,7 +145,7 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
       align-items: center;
       justify-content: center;
       font-weight: 600;
-      margin-right: 16px;
+      margin-inline-end: 16px;
       flex-shrink: 0;
       font-size: 16px;
     }
@@ -150,7 +175,7 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
       border: none;
       background: none;
       width: 100%;
-      text-align: left;
+      text-align: start;
       border-top: 1px solid #eee;
     }
     .add-account:hover {
@@ -164,7 +189,7 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-right: 16px;
+      margin-inline-end: 16px;
       font-size: 24px;
       color: #666;
     }
@@ -177,10 +202,27 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
       opacity: 0.6;
       cursor: wait;
     }
+    .switch-error {
+      margin: 0 24px 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+      font-size: 14px;
+    }
+    .switch-error[hidden] { display: none; }
   </style>
   <script>
+    function showSwitchError(detail) {
+      var box = document.getElementById('switch-error');
+      box.textContent = box.getAttribute('data-message') + ': ' + (detail || box.getAttribute('data-unknown'));
+      box.hidden = false;
+    }
+
     async function switchAccount(userId, authorizeUrl) {
       // Disable all buttons while switching
+      document.getElementById('switch-error').hidden = true;
       document.querySelectorAll('.account').forEach(btn => btn.disabled = true);
 
       try {
@@ -193,8 +235,8 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
         });
 
         if (!response.ok) {
-          const error = await response.json();
-          alert('Failed to switch account: ' + (error.error || 'Unknown error'));
+          const error = await response.json().catch(() => ({}));
+          showSwitchError(error.error);
           document.querySelectorAll('.account').forEach(btn => btn.disabled = false);
           return;
         }
@@ -202,7 +244,7 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
         // 2. Redirect to /authorize?prompt=none to get tokens silently
         window.location.href = authorizeUrl;
       } catch (error) {
-        alert('Failed to switch account: ' + error.message);
+        showSwitchError(error.message);
         document.querySelectorAll('.account').forEach(btn => btn.disabled = false);
       }
     }
@@ -211,13 +253,14 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
 <body>
   <div class="container">
     <div class="header">
-      <h1>Choose an account</h1>
-      <p>to continue to ${escapeHtml(clientName)}</p>
+      <h1>${escapeHtml(t.title)}</h1>
+      <p>${escapeHtml(t.continueTo)} ${escapeHtml(clientName)}</p>
     </div>
     <div class="accounts">
-      ${accounts.map((account) => renderAccountOption(account, props)).join('')}
-      ${allowAddAccount ? renderAddAccountOption(props) : ''}
+      ${accounts.map((account) => renderAccountOption(account, props, t)).join('')}
+      ${allowAddAccount ? renderAddAccountOption(props, t) : ''}
     </div>
+    <p id="switch-error" class="switch-error" role="alert" hidden data-message="${escapeHtml(errors.switchFailed)}" data-unknown="${escapeHtml(errors.unknownError)}"></p>
   </div>
 </body>
 </html>
@@ -229,7 +272,8 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
  */
 function renderAccountOption(
 	account: AccountSelectorAccount,
-	props: AccountSelectorProps
+	props: AccountSelectorProps,
+	t: (typeof SELECTOR_COPY)[UiLocale]
 ): string {
 	// Build authorize URL for redirect after switch
 	const authorizeParams = new URLSearchParams();
@@ -257,7 +301,7 @@ function renderAccountOption(
       <div class="avatar">${getInitials(account.email)}</div>
       <div class="account-info">
         <div class="account-email">${escapeHtml(account.email)}</div>
-        <div class="account-status">${account.isActive ? 'Active' : 'Signed in'}</div>
+        <div class="account-status">${escapeHtml(account.isActive ? t.active : t.signedIn)}</div>
       </div>
     </button>
   `;
@@ -266,7 +310,7 @@ function renderAccountOption(
 /**
  * Render "Use another account" option
  */
-function renderAddAccountOption(props: AccountSelectorProps): string {
+function renderAddAccountOption(props: AccountSelectorProps, t: (typeof SELECTOR_COPY)[UiLocale]): string {
 	const hiddenFields = buildHiddenFields({
 		client_id: props.clientId,
 		redirect_uri: props.redirectUri,
@@ -285,7 +329,7 @@ function renderAddAccountOption(props: AccountSelectorProps): string {
       <button type="submit" class="add-account">
         <div class="add-icon">+</div>
         <div class="account-info">
-          <div class="add-account-text">Use another account</div>
+          <div class="add-account-text">${escapeHtml(t.useAnother)}</div>
         </div>
       </button>
     </form>
