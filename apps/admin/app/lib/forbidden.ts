@@ -32,12 +32,12 @@ export const FORBIDDEN_COPY = {
   },
 } as const satisfies Record<ForbiddenLocale, Record<string, string>>;
 
-/** ?lang= wins, then the browser's Accept-Language; English otherwise. */
+/**
+ * English unless the link asks for Arabic with ?lang=ar, like the sign-in and
+ * profile pages. The browser's Accept-Language is not used; any other value is English.
+ */
 export function forbiddenLocale(request: Request): ForbiddenLocale {
-  const lang = new URL(request.url).searchParams.get("lang");
-  if (lang === "ar" || lang === "en") return lang;
-  const accept = request.headers.get("Accept-Language") ?? "";
-  return /^\s*ar\b/i.test(accept) ? "ar" : "en";
+  return new URL(request.url).searchParams.get("lang") === "ar" ? "ar" : "en";
 }
 
 /** The profile app (the user's apps) next to this auth server: profile.<auth host>. */
