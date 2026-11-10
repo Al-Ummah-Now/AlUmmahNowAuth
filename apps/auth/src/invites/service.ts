@@ -27,6 +27,7 @@
 import { generateSecureToken, hashToken } from '../utils/crypto';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
+import { DeletionStore } from '../deletions/store';
 
 export const DEFAULT_INVITE_TTL_DAYS = 14;
 export const MAX_INVITE_TTL_DAYS = 90;
@@ -525,20 +526,40 @@ export class InviteService {
 		if (row.deleted_at !== null) return toInvite(row, this.now());
 		if (row.accepted_at !== null) throw new InviteError(409, 'already_accepted', 'This invite was already accepted; manage the account instead');
 		const now = this.now();
-		await this.db.batch([
+		const why = cleanText(reason, 500);
+		const statements = [
 			this.db
 				.prepare(
 					`UPDATE user_invites SET deleted_at = ?3, deleted_by = ?4, deleted_by_email = ?5, deleted_reason = ?6, token_hash = NULL, updated_at = ?3
 					 WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL`
 				)
-				.bind(this.tenantId, id, now, actor.userId, actor.email || null, cleanText(reason, 500)),
-			this.db
-				.prepare(
-					`UPDATE users SET status = 'deleted', deleted_at = ?3, updated_at = ?3
-					 WHERE tenant_id = ?1 AND id = ?2 AND status = 'invited' AND deleted_at IS NULL`
-				)
-				.bind(this.tenantId, row.user_id, now),
-		]);
+				.bind(this.tenantId, id, now, actor.userId, actor.email || null, why),
+		];
+		// The unused account is an admin soft delete like any other (admin_deletions, #293): it shows
+		// in Auth's Recently deleted, and that cleanup removes everything keyed by the user.
+		const account = await this.userById(row.user_id);
+		if (account?.status === 'invited') {
+			statements.push(
+				this.db
+					.prepare(
+						`UPDATE users SET status = 'deleted', deleted_at = ?3, updated_at = ?3
+						 WHERE tenant_id = ?1 AND id = ?2 AND status = 'invited' AND deleted_at IS NULL`
+					)
+					.bind(this.tenantId, row.user_id, now),
+				new DeletionStore(this.db).insertStatement({
+					kind: 'user',
+					itemId: row.user_id,
+					tenantId: this.tenantId,
+					label: row.email,
+					deletedBy: actor.userId,
+					deletedByEmail: actor.email || null,
+					reason: why ? `Invite revoked: ${why}` : 'Invite revoked',
+					snapshot: { status: 'invited', email: row.email },
+					now,
+				})
+			);
+		}
+		await this.db.batch(statements);
 		return toInvite(await this.requireRow(id), now);
 	}
 
@@ -553,6 +574,7 @@ export class InviteService {
 		if (taken) throw new InviteError(409, 'email_taken', 'Another account now uses this email', { userId: taken.id });
 		const now = this.now();
 		await this.db.batch([
+			new DeletionStore(this.db).removeStatement('user', row.user_id),
 			this.db
 				.prepare(
 					`UPDATE user_invites SET deleted_at = NULL, deleted_by = NULL, deleted_by_email = NULL, deleted_reason = NULL,
@@ -580,6 +602,7 @@ export class InviteService {
 			.prepare('UPDATE user_invites SET purge_requested_at = ?3, purge_requested_by = ?4, updated_at = ?3 WHERE tenant_id = ?1 AND id = ?2')
 			.bind(this.tenantId, id, now, actor.userId)
 			.run();
+		await new DeletionStore(this.db).requestPurge('user', row.user_id, actor.userId, now);
 		return toInvite(await this.requireRow(id), now);
 	}
 

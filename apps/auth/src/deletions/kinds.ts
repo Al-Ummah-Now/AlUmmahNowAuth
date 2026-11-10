@@ -113,7 +113,8 @@ const user: KindHandler = {
 
 	async restore(env, row, now) {
 		const snap = snapshotOf<UserSnapshot>(row);
-		const status = snap.status === 'suspended' ? 'suspended' : 'active';
+		// An invited account (docs/USER_INVITES.md) comes back invited: only a sign-in claims it
+		const status = snap.status === 'suspended' || snap.status === 'invited' ? snap.status : 'active';
 		const current = await env.AUTH_DB.prepare('SELECT email, tenant_id FROM users WHERE id = ?').bind(row.item_id).first<{ email: string; tenant_id: string }>();
 		if (!current) throw new DeletionError(404, 'user_not_found', 'The account no longer exists');
 		const taken = await env.AUTH_DB.prepare('SELECT id FROM users WHERE tenant_id = ? AND email = ? AND deleted_at IS NULL AND id != ?')

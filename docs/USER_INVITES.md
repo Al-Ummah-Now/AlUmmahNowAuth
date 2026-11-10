@@ -84,9 +84,13 @@ videos admin-api ── queue ──▶ POST /provisioning/invites (client crede
   old, or queued. It deletes the invite and its never-used account (the users
   row and its role links). An account that somehow signed in is kept. Audit
   event: `user.invite.purged`.
-- When the admin soft-delete framework (`admin_deletions`, migration 0027) is
-  on main, revoked invites can be listed there too. The fields are the same, so
-  nothing moves.
+- The unused account goes through the admin soft-delete framework
+  (`admin_deletions`, #293). A `user` row is written with the snapshot status
+  `invited` and the reason "Invite revoked: …", so the account appears in
+  Auth's **Recently deleted**. That cleanup removes everything keyed by the
+  user (identities, sessions, codes, the password credential and KV copies).
+  Restoring it there brings it back as `invited`, never `active`. Restoring
+  the invite removes the deletion row; purging the invite also queues it.
 
 ## API (client credentials)
 
