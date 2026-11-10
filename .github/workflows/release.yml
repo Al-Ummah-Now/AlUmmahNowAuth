@@ -155,6 +155,8 @@ jobs:
           E2E_PROFILE_URL: https://profile.auth.stage.alummahnow.net
           E2E_ADMIN_URL: https://admin.auth.stage.alummahnow.net
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_STAGE }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
           TEST_PROMOTE_SECRET: ${{ secrets.TEST_PROMOTE_SECRET_STAGE }}
         # "code delivery failure" needs Resend to reject example.com, which only QA's
         # Resend key does; stage uses production's key. It runs on every PR in QA.
@@ -168,6 +170,8 @@ jobs:
         if: failure()
         env:
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_STAGE }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_NEW_TEST_PASSWORD: ${{ secrets.E2E_NEW_TEST_PASSWORD }}
           TEST_PROMOTE_SECRET: ${{ secrets.TEST_PROMOTE_SECRET_STAGE }}
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env TEST_PROMOTE_SECRET -- e2e-report test-results
 
