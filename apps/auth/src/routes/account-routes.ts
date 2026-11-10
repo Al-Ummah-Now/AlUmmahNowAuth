@@ -15,7 +15,8 @@
  * api-videos orchestrates the full deletion (content first, then this call).
  */
 import { createLocalJWKSet, jwtVerify, type JWTPayload } from 'jose';
-import { createUserService, D1UserAdapter } from '@al-ummah-now/openauth';
+import { D1UserAdapter } from '@al-ummah-now/openauth';
+import { D1UserService } from '../services/d1-user-service';
 import { getJWKS } from '../utils/jwks-cache';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { authStorage } from '../storage/auth-storage';
@@ -157,12 +158,8 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	}
 
 	const userAdapter = new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' });
-	// KV user record and email index, when the account has them (older accounts live only in D1)
-	try {
-		await createUserService({ storage, d1Adapter: userAdapter }).deleteUser(row.tenant_id, row.id);
-	} catch (error) {
-		if ((error as { code?: string })?.code !== 'user_not_found') throw error;
-	}
+	// The old KV user record and email index, when the account has them (never written since AU-3)
+	await new D1UserService({ db: env.AUTH_DB, adapter: userAdapter, legacy: storage }).removeLegacy(row.tenant_id, row.id, row.email.toLowerCase());
 	// D1 is the source of truth: soft delete and drop the sign-in sessions (idempotent)
 	await userAdapter.softDeleteUser(row.tenant_id, row.id, Date.now());
 	await userAdapter.revokeAllUserSessions(row.tenant_id, row.id);

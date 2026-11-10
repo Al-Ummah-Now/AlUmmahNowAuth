@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from "@al-ummah-now/openauth/rbac/index";
 import { authStorage } from "./storage/auth-storage";
+import { D1UserService } from "./services/d1-user-service";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
 import { hexToSecret } from "./utils/crypto";
@@ -22,7 +23,6 @@ import { ensureAuditEmitter, flushAuditEvents } from "./audit-emitter";
 import { resolveRequestId, withRequestId } from "./utils/request-id";
 import {
   userApiRoutes,
-  createUserService,
   D1UserAdapter,
   clientAdminRoutes,
 } from "@al-ummah-now/openauth";
@@ -186,7 +186,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Create UserService and admin user app (Phase 2: OpenAuth migration)
     const userAdapter = new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' });
-    const userService = createUserService({ storage, d1Adapter: userAdapter });
+    // D1 is the source of truth for users (AU-3); KV is read only for accounts D1 lacks
+    const userService = new D1UserService({ db: env.AUTH_DB, adapter: userAdapter, legacy: storage });
     const adminUserApp = new Hono();
     adminUserApp.use('*', requireAdmin());  // M2M auth required
     adminUserApp.use('*', adminContextMiddleware);

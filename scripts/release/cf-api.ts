@@ -28,6 +28,8 @@ function wranglerOAuthToken(): string | undefined {
 export interface CfClient {
 	accountId: string;
 	request<T>(method: string, path: string, body?: unknown): Promise<T>;
+	/** The raw response: KV values are not wrapped in the API envelope, and list cursors live in result_info. */
+	fetchRaw?(method: string, path: string): Promise<Response>;
 }
 
 export function createCfClient(env: NodeJS.ProcessEnv = process.env): CfClient {
@@ -37,6 +39,11 @@ export function createCfClient(env: NodeJS.ProcessEnv = process.env): CfClient {
 
 	return {
 		accountId,
+		fetchRaw: (method: string, path: string) =>
+			fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}${path}`, {
+				method,
+				headers: { Authorization: `Bearer ${token}` },
+			}),
 		async request<T>(method: string, path: string, body?: unknown): Promise<T> {
 			const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}${path}`, {
 				method,
@@ -88,4 +95,36 @@ export async function getWorkerBindings(cf: CfClient, script: string): Promise<W
 export async function d1Query<Row>(cf: CfClient, databaseId: string, sql: string, params: unknown[] = []): Promise<Row[]> {
 	const result = await cf.request<{ results: Row[] }[]>('POST', `/d1/database/${databaseId}/query`, { sql, params });
 	return result[0]?.results ?? [];
+}
+
+function rawFetcher(cf: CfClient) {
+	if (!cf.fetchRaw) throw new Error('This Cloudflare client cannot make raw requests');
+	return cf.fetchRaw.bind(cf);
+}
+
+/** Every key name under `prefix` in a KV namespace (read-only; pages through the cursor). */
+export async function kvListKeys(cf: CfClient, namespaceId: string, prefix: string): Promise<string[]> {
+	const fetchRaw = rawFetcher(cf);
+	const names: string[] = [];
+	let cursor = '';
+	do {
+		const query = new URLSearchParams({ limit: '1000', prefix });
+		if (cursor) query.set('cursor', cursor);
+		const path = `/storage/kv/namespaces/${namespaceId}/keys?${query}`;
+		const res = await fetchRaw('GET', path);
+		const json = (await res.json().catch(() => ({}))) as { result?: { name: string }[]; result_info?: { cursor?: string } };
+		if (!res.ok || !json.result) throw new CfApiError(res.status, `GET ${path.split('?')[0]} -> ${res.status}`);
+		names.push(...json.result.map((k) => k.name));
+		cursor = json.result_info?.cursor ?? '';
+	} while (cursor);
+	return names;
+}
+
+/** A KV value parsed as JSON, or undefined when the key does not exist (read-only). */
+export async function kvGetJson(cf: CfClient, namespaceId: string, key: string): Promise<unknown> {
+	const path = `/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`;
+	const res = await rawFetcher(cf)('GET', path);
+	if (res.status === 404) return undefined;
+	if (!res.ok) throw new CfApiError(res.status, `GET ${path.split('/values/')[0]}/values/... -> ${res.status}`);
+	return JSON.parse(await res.text());
 }
