@@ -217,36 +217,47 @@ function timedLimiter(limiter: RateLimit, name: string, timer: RequestTimer): Ra
 	} as RateLimit;
 }
 
-const isD1 = (v: unknown): v is D1Database => !!v && typeof (v as D1Database).prepare === 'function' && typeof (v as D1Database).batch === 'function';
-const isKV = (v: unknown): v is KVNamespace =>
-	!!v &&
-	typeof (v as KVNamespace).get === 'function' &&
-	typeof (v as KVNamespace).put === 'function' &&
-	typeof (v as KVNamespace).list === 'function' &&
-	typeof (v as { head?: unknown }).head !== 'function'; // R2 buckets have head()
-const isQueue = (v: unknown): v is Queue => !!v && typeof (v as Queue).send === 'function' && typeof (v as Queue).sendBatch === 'function';
-const isLimiter = (v: unknown): v is RateLimit => !!v && typeof (v as RateLimit).limit === 'function' && Object.keys(v as object).length <= 1;
+/**
+ * The bindings that are timed, by name. Never by shape: a Secrets Store binding
+ * or service binding is an RPC stub on which every property name is a function,
+ * so it would look like KV and its get() would break.
+ */
+const TIMED_BINDINGS: Record<string, 'd1' | 'kv' | 'queue'> = {
+	AUTH_DB: 'd1',
+	AUTH_STORAGE: 'kv',
+	TOKEN_REVOCATIONS: 'kv',
+	AUTH_THEMES: 'kv',
+	AUDIT_QUEUE: 'queue',
+	MODERATION_QUEUE: 'queue',
+};
+/** Workers Rate Limiting bindings: PASSWORD_IP_LIMITER, TOKEN_LIMITER, ... */
+const LIMITER = /^[A-Z_]+_LIMITER$/;
 
 /**
  * This request's env with its D1, KV, queue and rate-limit bindings timed.
- * A Proxy over the real env, not a copy: some bindings (Secrets Store) are not
- * enumerable, and a copy silently loses them. Everything else (secrets, vars,
- * other bindings) is passed through as is.
+ * A Proxy over the real env (not a copy), so every other property, enumerable
+ * or not, is the original value.
  */
 export function instrumentEnv<E extends object>(env: E, timer: RequestTimer): E {
-	const wrapped = new Map<PropertyKey, unknown>();
+	const wrapped = new Map<string, unknown>();
 	return new Proxy(env, {
-		get(target, prop, receiver) {
-			const value = Reflect.get(target, prop, receiver);
-			if (typeof prop !== 'string' || value === null || typeof value !== 'object') return value;
-			if (wrapped.has(prop)) return wrapped.get(prop);
-			let out: unknown = value;
-			if (isD1(value)) out = timedD1(value, timer);
-			else if (isKV(value)) out = timedKV(value, timer);
-			else if (isQueue(value)) out = timedQueue(value, prop, timer);
-			else if (prop.endsWith('_LIMITER') && isLimiter(value)) out = timedLimiter(value, prop, timer);
-			wrapped.set(prop, out);
-			return out;
+		get(target, prop) {
+			const value: unknown = Reflect.get(target, prop);
+			if (typeof prop !== 'string' || !value || typeof value !== 'object') return value;
+			const kind = TIMED_BINDINGS[prop] ?? (LIMITER.test(prop) ? 'rl' : undefined);
+			if (!kind) return value;
+			if (!wrapped.has(prop)) {
+				const out =
+					kind === 'd1'
+						? timedD1(value as D1Database, timer)
+						: kind === 'kv'
+							? timedKV(value as KVNamespace, timer)
+							: kind === 'queue'
+								? timedQueue(value as Queue, prop, timer)
+								: timedLimiter(value as RateLimit, prop, timer);
+				wrapped.set(prop, out);
+			}
+			return wrapped.get(prop);
 		},
 	});
 }

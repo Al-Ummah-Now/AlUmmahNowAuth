@@ -90,7 +90,12 @@ describe('instrumentEnv', () => {
 			SECRET: string;
 		};
 		expect(env.SECRET).toBe('s');
-		// Secrets Store bindings are not enumerable: they must still be reachable
+		// A Secrets Store binding is an RPC stub (every property is a function): never wrapped
+		const stub = new Proxy({}, { get: (_t, p) => (p === 'get' ? async () => 'stub-secret' : () => undefined) });
+		const withStub = instrumentEnv({ E2E_CODE_SINK_SECRET: stub } as Record<string, unknown>, timer) as { E2E_CODE_SINK_SECRET: { get: () => Promise<string> } };
+		expect(withStub.E2E_CODE_SINK_SECRET).toBe(stub);
+		expect(await withStub.E2E_CODE_SINK_SECRET.get()).toBe('stub-secret');
+		// Non-enumerable properties are reachable too
 		const raw = { AUTH_DB: db } as Record<string, unknown>;
 		Object.defineProperty(raw, 'STORE_SECRET', { value: { get: async () => 'hidden' }, enumerable: false });
 		const hidden = instrumentEnv(raw, timer) as { STORE_SECRET: { get: () => Promise<string> } };
