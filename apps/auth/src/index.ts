@@ -23,6 +23,7 @@ import { logger } from "./logger";
 import { AdminEnterpriseRoutes } from "./admin-enterprise-routes";
 import { ensureAuditEmitter, flushAuditEvents } from "./audit-emitter";
 import { resolveRequestId, withRequestId } from "./utils/request-id";
+import { RequestTimer, instrumentCtx, instrumentEnv, shouldLogTiming } from "./utils/request-timing";
 import {
   userApiRoutes,
   D1UserAdapter,
@@ -119,13 +120,19 @@ export default {
     const icon = serveIcon(pathname, request.method);
     if (icon) return withRequestId(icon, requestId);
 
+    // The audit emitter is shared by the isolate's requests: it gets the plain bindings
     setupAuditEmitter(env, ctx);
+    // Per-request timings of the bindings and stages: Server-Timing + an auth.timing log line (#804)
+    const timer = new RequestTimer();
+    const timedCtx = instrumentCtx(ctx, timer);
+    let response: Response | undefined;
     try {
-      const response = await handleFetch(request, env, ctx, requestId);
-      return withRequestId(response, requestId);
+      response = withRequestId(await handleFetch(request, instrumentEnv(env, timer), timedCtx, requestId, timer), requestId);
+      return withServerTiming(response, timer);
     } finally {
       // Deliver any audit events buffered during this request
-      ctx.waitUntil(flushAuditEvents());
+      timedCtx.waitUntil(flushAuditEvents());
+      logTiming(ctx, timer, request.method, pathname, response?.status ?? 500, requestId);
     }
   },
 
@@ -170,7 +177,35 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, requestId: string): Promise<Response> {
+function withServerTiming(response: Response, timer: RequestTimer): Response {
+  if (response.status === 101) return response;
+  try {
+    response.headers.append('Server-Timing', timer.serverTiming());
+    return response;
+  } catch {
+    const copy = new Response(response.body, response);
+    copy.headers.append('Server-Timing', timer.serverTiming());
+    return copy;
+  }
+}
+
+/**
+ * One `auth.timing` line per sign-in chain request (and per slow request):
+ * path without the query string, stages, binding totals and the slowest calls.
+ * `auth.timing.background` follows once the request's waitUntil work settled.
+ */
+function logTiming(ctx: ExecutionContext, timer: RequestTimer, method: string, path: string, status: number, requestId: string) {
+  const elapsed = timer.elapsed();
+  if (!shouldLogTiming(path, elapsed)) return;
+  console.info(JSON.stringify({ msg: 'auth.timing', requestId, method, path, status, ...timer.summary() }));
+  ctx.waitUntil(
+    timer.backgroundDurations().then((ms) => {
+      if (ms.length) console.info(JSON.stringify({ msg: 'auth.timing.background', requestId, method, path, waitUntilMs: ms }));
+    })
+  );
+}
+
+async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, requestId: string, timer: RequestTimer): Promise<Response> {
     const url = new URL(request.url);
 
     // Determine if running in production (test endpoints disabled in production)
@@ -202,7 +237,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Create storage for UserService and RBAC (needed early for apps)
     // Codes, refresh tokens and other single-use credentials go to D1 (KV can't make them single-use)
-    const storage = authStorage(env);
+    const storage = authStorage(env, { waitUntil: (promise) => ctx.waitUntil(promise) });
 
     // Create RBAC service (Phase 3: OpenAuth migration)
     const rbacAdapter = new RBACAdapter(env.AUTH_DB);
@@ -276,7 +311,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       adminEnterpriseRoutes,
     };
 
-    const routedResponse = await routeRequest(routerContext);
+    const routedResponse = await timer.stage('router', () => routeRequest(routerContext));
     if (routedResponse) {
       return routedResponse;
     }
@@ -319,7 +354,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // a "too many attempts" message for this request.
     // In the page's own language: copy overrides openauth's translation in every locale.
     const passwordCopy: PasswordCopy = { input_code: CODE_INPUT_LABEL[getLocaleFromRequest(request)] };
-    const passwordGuard = await guardPasswordRequest(request, env, url, passwordCopy);
+    const passwordGuard = await timer.stage('guard', () => guardPasswordRequest(request, env, url, passwordCopy, (promise) => ctx.waitUntil(promise)));
 
     // The page's theme, from Auth's own themes (Auth admin): the per-call ?theme=
     // if it is published, else the client's default (known at /authorize), else
@@ -327,11 +362,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const issuerOrigin = assetBaseOf(env, url);
     const isPage = wantsPage(request);
     const theme = isPage
-      ? (await resolveRequestTheme(new ThemeStore(env.AUTH_DB, env.AUTH_THEMES), {
+      ? (await timer.stage('theme', () => resolveRequestTheme(new ThemeStore(env.AUTH_DB, env.AUTH_THEMES), {
           requested: requestedTheme(url),
           clientId: url.pathname === '/authorize' ? url.searchParams.get('client_id') : null,
           assetBase: issuerOrigin,
-        })).compiled
+        }))).compiled
       : compileBuiltin(BUILTIN_DEFAULT_THEME, issuerOrigin)!;
 
     const openauthTheme = { ...openauthThemeFor(theme), favicon: signInFavicon(theme, env.ENVIRONMENT) };
@@ -378,7 +413,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
           ...PasswordUI({
             sendCode: createSendCodeHandler(
               userService,
-              { request, env, ctx, requestId, url, emailTheme: theme.email },
+              { request, env, ctx, requestId, url, emailTheme: theme.email, timer },
               storage,
             ),
             copy: passwordCopy,
@@ -405,14 +440,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         db: env.AUTH_DB,
         homeUrl: signInFallbackUrl(env),
         theme: openauthTheme,
+        timer,
       }),
     });
 
     // Call issuer to handle the request
     // OpenAuth enterprise issuer manages sessions via D1SessionAdapter and sets the __session cookie
-    let issuerResponse = await passwordGuard.finish(await app.fetch(passwordGuard.request, env, ctx));
+    const issued = await timer.stage('issuer', () => app.fetch(passwordGuard.request, env, ctx));
+    let issuerResponse = await timer.stage('guard.finish', () => passwordGuard.finish(issued));
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
-    if (isPage) issuerResponse = await finishThemedResponse(issuerResponse, theme, url, issuerOrigin);
+    if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin));
 
     // Picker "Sign out" of the last account: single sign-out (#219)
     if (request.method === 'POST' && url.pathname === ACCOUNT_PICKER_REMOVE_PATH) {

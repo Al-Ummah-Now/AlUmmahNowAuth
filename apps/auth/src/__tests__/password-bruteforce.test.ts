@@ -38,12 +38,15 @@ function testEnv(extra: Record<string, unknown> = {}): Env {
 	} as unknown as Env;
 }
 
-const ctx = () => {
-	const pending: Promise<unknown>[] = [];
-	return {
-		waitUntil: (p: Promise<unknown>) => void pending.push(p.catch(() => {})),
+/** Every request's waitUntil work, so a test can wait for what runs after the response */
+const background: Promise<unknown>[] = [];
+const ctx = () =>
+	({
+		waitUntil: (p: Promise<unknown>) => void background.push(p.catch(() => {})),
 		passThroughOnException: () => {},
-	} as unknown as ExecutionContext;
+	}) as unknown as ExecutionContext;
+const settle = async () => {
+	while (background.length) await Promise.all(background.splice(0));
 };
 
 function absorb(res: Response, jar: Jar) {
@@ -205,6 +208,8 @@ describe('password sign-in brute force', () => {
 		const res = await call(e, `/password/authorize${query}`, jar, form({ email, password: 'Right-pass-123' }));
 		expect(res.status).toBeGreaterThanOrEqual(300);
 		expect(res.status).toBeLessThan(400);
+		// The slot is given back after the redirect (waitUntil, #804)
+		await settle();
 		const row = await env.AUTH_DB.prepare('SELECT failures FROM password_login_attempts WHERE email = ?').bind(email).first<{
 			failures: number;
 		}>();

@@ -27,6 +27,7 @@
 --   migrations-qa/0027_admin_deletions.sql
 --   migrations-qa/0029_scholar_role.sql
 --   migrations-qa/0030_user_invites.sql
+--   migrations-qa/0031_signin_scan_indexes.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
@@ -104,6 +105,7 @@ CREATE INDEX idx_oauth_clients_enabled ON oauth_clients(enabled);
 CREATE INDEX idx_oauth_clients_tenant ON oauth_clients(tenant_id);
 CREATE UNIQUE INDEX idx_oauth_clients_tenant_name ON oauth_clients(tenant_id, name);
 CREATE INDEX idx_openauth_atomic_expires_at ON openauth_atomic(expires_at);
+CREATE INDEX idx_openauth_atomic_refresh_user ON openauth_atomic(json_extract(value, '$.properties.id')) WHERE key >= 'oauth:refresh' AND key < 'oauth:refresi';
 CREATE INDEX idx_rbac_permissions_client ON rbac_permissions(client_id);
 CREATE UNIQUE INDEX idx_rbac_permissions_name_client ON rbac_permissions(name, client_id);
 CREATE INDEX idx_rbac_permissions_resource ON rbac_permissions(resource);
@@ -145,6 +147,7 @@ CREATE UNIQUE INDEX idx_user_invites_token ON user_invites(token_hash) WHERE tok
 CREATE INDEX idx_user_invites_user ON user_invites(user_id);
 CREATE INDEX idx_users_created ON users(tenant_id, created_at);
 CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_email_lower ON users(lower(email));
 CREATE INDEX idx_users_password_reset ON users(tenant_id, password_reset_required) WHERE password_reset_required = 1;
 CREATE INDEX idx_users_status ON users(tenant_id, status);
 CREATE INDEX idx_users_tenant ON users(tenant_id);
