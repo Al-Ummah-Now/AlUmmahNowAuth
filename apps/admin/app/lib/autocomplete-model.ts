@@ -37,6 +37,19 @@ export type AutocompleteOption =
 
 export type AutocompleteStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+/**
+ * Initial results (pick mode; owner rule 2026-11-11: pickers open with
+ * content): the newest users, shown when the box opens before anything is
+ * typed, paged on scroll. One typed character filters what is loaded; from
+ * MIN_QUERY the server is asked as before. Same as the videos admin.
+ */
+export interface InitialList {
+  items: Suggestion[];
+  /** Cursor of the next page; null after the last */
+  next: string | null;
+  status: 'loading' | 'more' | 'ready' | 'error';
+}
+
 export interface AutocompleteState {
   query: string;
   open: boolean;
@@ -74,20 +87,24 @@ export function optionsFor(mode: AutocompleteMode, query: string, suggestions: S
 }
 
 export const suggestUrl = (query: string): string => `/api/suggest/users?q=${encodeURIComponent(query.trim())}`;
+/** A picker's page before anything is typed (null cursor: the first). */
+export const initialUrl = (cursor: string | null): string => `/api/suggest/users?q=${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
 export const resolveUrl = (id: string): string => `/api/suggest/users/${encodeURIComponent(id)}`;
 
 // ---------------------------------------------------------------------------
 // State changes
 // ---------------------------------------------------------------------------
 
-/** The admin typed: the list opens and waits for suggestions (or closes when too short). */
-export function typed(state: AutocompleteState, query: string): AutocompleteState {
+/** The admin typed: the list opens and waits for suggestions (or closes when too short; with initial results it shows them). */
+export function typed(state: AutocompleteState, query: string, initial?: InitialList | null): AutocompleteState {
   const asks = query.trim().length >= MIN_QUERY;
+  if (!asks && initial !== undefined) return showInitial({ ...state, query, open: true, active: -1 }, initial);
   return {
     query,
     open: asks,
     active: -1,
-    options: asks ? state.options : [],
+    // Suggestions for a shorter query stay while the next answer comes; the initial list does not (it isn't a match)
+    options: asks && state.query.trim().length >= MIN_QUERY ? state.options : [],
     status: asks ? 'loading' : 'idle',
   };
 }
@@ -105,6 +122,26 @@ export function failed(state: AutocompleteState, mode: AutocompleteMode, query: 
 }
 
 export const closed = (state: AutocompleteState): AutocompleteState => ({ ...state, open: false, active: -1 });
+
+const fold = (text: string | null | undefined) => (text ?? '').toLocaleLowerCase();
+
+/** The initial list as the options while fewer than MIN_QUERY characters are typed (all of it, or the items containing the character). */
+export function showInitial(state: AutocompleteState, initial: InitialList | null): AutocompleteState {
+  const q = fold(state.query.trim());
+  if (q.length >= MIN_QUERY) return state;
+  const items = initial?.items ?? [];
+  const shown = q ? items.filter((s) => fold(s.label).includes(q) || fold(s.secondary).includes(q) || fold(s.id).includes(q)) : items;
+  const status: AutocompleteStatus = !initial || initial.status === 'loading' ? 'loading' : initial.status === 'error' && items.length === 0 ? 'error' : 'ready';
+  const options: AutocompleteOption[] = shown.map((suggestion) => ({ type: 'suggestion', suggestion }));
+  return { ...state, options, status, active: state.active < options.length ? state.active : -1 };
+}
+
+/** A page of the initial list arrived (the first replaces, later ones append; duplicates dropped). */
+export function addPage(initial: InitialList | null, page: { items: Suggestion[]; next: string | null }, append: boolean): InitialList {
+  const base = append && initial ? initial.items : [];
+  const seen = new Set(base.map((s) => s.id));
+  return { items: [...base, ...page.items.filter((s) => !seen.has(s.id))], next: page.next, status: 'ready' };
+}
 
 export type KeyEffect =
   | { type: 'none' }

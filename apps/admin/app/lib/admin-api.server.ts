@@ -59,7 +59,7 @@ export interface Role {
 
 export interface PaginatedUsers {
   users: User[];
-  total_count?: number;  // Total count from API (not capped by pagination limit)
+  total_count?: number | null;  // Total count from API (not capped by pagination limit); null when skipCount
   pagination: {
     cursor?: string;
     nextCursor?: string;
@@ -291,7 +291,7 @@ export function isErrorResponse(response: unknown): response is ErrorResponse {
 export async function listUsers(
   env: ApiEnv,
   actingUser: ActingUser,
-  params?: { cursor?: string; limit?: number; search?: string; role?: string; email?: string },
+  params?: { cursor?: string; limit?: number; search?: string; role?: string; email?: string; skipCount?: boolean },
   request?: Request
 ): Promise<PaginatedUsers | ErrorResponse> {
   const searchParams = new URLSearchParams();
@@ -300,6 +300,8 @@ export async function listUsers(
   if (params?.search) searchParams.set('search', params.search);
   if (params?.role) searchParams.set('role', params.role);
   if (params?.email) searchParams.set('email', params.email);
+  // A picker's page: no COUNT over every user (total_count comes back null)
+  if (params?.skipCount) searchParams.set('count', 'none');
 
   const query = searchParams.toString();
   const endpoint = `/admin/users${query ? `?${query}` : ''}`;

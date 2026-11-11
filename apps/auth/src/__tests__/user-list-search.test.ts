@@ -65,4 +65,16 @@ describe('GET /admin/users?search=', () => {
 	it('counts what it matches', async () => {
 		expect((await search('omar')).total).toBe(2);
 	});
+
+	it('count=none (a picker opening): the newest page, paged, without the COUNT', async () => {
+		const res = await app().request('/?limit=2&count=none');
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { users: { id: string }[]; total_count: number | null; pagination: { hasMore: boolean; nextCursor: string | null } };
+		expect(body.total_count).toBeNull();
+		expect(body.users).toHaveLength(2);
+		expect(body.pagination.hasMore).toBe(true);
+		const next = (await (await app().request(`/?limit=2&count=none&cursor=${body.pagination.nextCursor}`)).json()) as { users: { id: string }[] };
+		expect(next.users.map((u) => u.id)).not.toContain(body.users[0].id);
+		expect([...body.users, ...next.users].map((u) => u.id)).not.toContain('usr_ddd444');
+	});
 });

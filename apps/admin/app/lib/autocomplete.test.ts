@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UserAutocomplete, type UserAutocompleteProps } from "../components/autocomplete";
-import { failed, initialState, keyDown, looksLikeId, MIN_QUERY, optionsFor, received, typed, type AutocompleteState, type Suggestion } from "./autocomplete-model";
+import { addPage, failed, initialState, initialUrl, keyDown, looksLikeId, MIN_QUERY, optionsFor, received, showInitial, typed, type AutocompleteState, type InitialList, type Suggestion } from "./autocomplete-model";
+import { AUTOCOMPLETE_STRINGS } from "./autocomplete-strings";
 import { toSuggestion } from "./suggest-users.server";
 
 const u = (id: string, label: string, email: string): Suggestion => ({ id, label, secondary: email, imageUrl: null });
@@ -43,6 +44,47 @@ describe("autocomplete model", () => {
     const once = keyDown(ready("search", "omar"), "search", "Escape");
     expect(once.state.open).toBe(false);
     expect(keyDown(once.state, "search", "Escape").effect).toEqual({ type: "clear" });
+  });
+});
+
+describe("opens with results (pick fields list the newest users before anything is typed)", () => {
+  const page: InitialList = { items: USERS, next: "c2", status: "ready" };
+
+  it("asks for the first page with an empty q, and the next with its cursor", () => {
+    expect(initialUrl(null)).toBe("/api/suggest/users?q=");
+    expect(initialUrl("abc")).toBe("/api/suggest/users?q=&cursor=abc");
+  });
+
+  it("opens with results: loading first, then the whole first page", () => {
+    expect(showInitial({ ...initialState(), open: true }, { items: [], next: null, status: "loading" }).status).toBe("loading");
+    const shown = showInitial({ ...initialState(), open: true }, page);
+    expect(shown.status).toBe("ready");
+    expect(shown.options.map((o) => (o.type === "suggestion" ? o.suggestion.label : o.type))).toEqual(["Omar", "Omar F"]);
+  });
+
+  it("one character filters what is loaded; MIN_QUERY asks the server; clearing brings the page back", () => {
+    const one = typed(initialState(), "@", page); // "of@…" only (ids have no @)
+    expect(one.open).toBe(true);
+    expect(one.options.map((o) => (o.type === "suggestion" ? o.suggestion.label : ""))).toEqual(["Omar", "Omar F"]);
+    expect(typed(initialState(), "z", { ...page, items: [...USERS, u("x-3", "Zaid", "z@example.com")] }).options).toHaveLength(1);
+    const two = typed(one, "om", page);
+    expect("om".length).toBe(MIN_QUERY);
+    expect(two.status).toBe("loading");
+    expect(two.options).toHaveLength(0); // nothing stale to click while the search runs
+    expect(typed(two, "", page).options).toHaveLength(2);
+  });
+
+  it("pages append without duplicates; a failure keeps what is shown", () => {
+    const more = addPage(page, { items: [USERS[1], u("x-3", "Zaid", "z@example.com")], next: null }, true);
+    expect(more.items.map((s) => s.label)).toEqual(["Omar", "Omar F", "Zaid"]);
+    expect(showInitial(initialState(), { ...more, status: "error" }).status).toBe("ready");
+    expect(showInitial(initialState(), { items: [], next: null, status: "error" }).status).toBe("error");
+  });
+
+  it("search boxes keep their behaviour; the strings exist", () => {
+    expect(typed(initialState(), "a").open).toBe(false);
+    for (const key of ["loadingList", "emptyList", "listFailed", "retry", "loadingMore", "current"] as const) expect(AUTOCOMPLETE_STRINGS[key]).toBeTruthy();
+    expect(AUTOCOMPLETE_STRINGS.recent(3)).toContain("3");
   });
 });
 

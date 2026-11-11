@@ -135,8 +135,11 @@ export function userListRoutes(db: D1Database) {
       if (email) countBindingsSimple.push(`%${email.toLowerCase()}%`);
       if (search) countBindingsSimple.push(searchLike, searchLike, search);
 
-      const countResult = await db.prepare(countQuery).bind(...countBindingsSimple).first<{ count: number }>();
-      const totalCount = countResult?.count || 0;
+      // count=none: a picker's page (the admin's autocomplete opening) never shows the total, so it
+      // skips the COUNT over every user (48k rows read on QA) and answers total_count null
+      const skipCount = url.searchParams.get('count') === 'none';
+      const countResult = skipCount ? null : await db.prepare(countQuery).bind(...countBindingsSimple).first<{ count: number }>();
+      const totalCount = skipCount ? null : countResult?.count || 0;
 
       // Get user IDs for role lookup
       const userIds = userRows.map(u => u.id);
