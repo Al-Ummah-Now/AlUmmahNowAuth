@@ -173,8 +173,11 @@ const user: KindHandler = {
 			db.prepare('DELETE FROM authorization_codes WHERE user_id = ?').bind(userId),
 			db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').bind(userId),
 			db.prepare('DELETE FROM app_sessions WHERE instr(user_json, ?) > 0').bind(quoted),
-			// OpenAuth refresh tokens (key oauth:refresh/<subject>/<token>); the value names the user
-			db.prepare(`DELETE FROM openauth_atomic WHERE key >= 'oauth:refresh' AND key < 'oauth:refresi' AND instr(value, ?) > 0`).bind(quoted),
+			// OpenAuth refresh tokens (key oauth:refresh/<subject>/<token>); the value names the user.
+			// idx_openauth_atomic_refresh_user (migration 0031) serves this; it was a scan of every token (#804)
+			db.prepare(
+				`DELETE FROM openauth_atomic WHERE key >= 'oauth:refresh' AND key < 'oauth:refresi' AND json_extract(value, '$.properties.id') = ?`
+			).bind(userId),
 		];
 		if (email && !(await db.prepare('SELECT 1 FROM users WHERE lower(email) = ? AND id != ?').bind(email, userId).first())) {
 			statements.push(db.prepare('DELETE FROM password_codes WHERE email = ?').bind(email));

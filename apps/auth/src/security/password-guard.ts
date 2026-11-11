@@ -49,6 +49,9 @@ export function routedPath(pathname: string): string {
 /** The PasswordUI `copy` object; PasswordUI reads it on every render, so changes here show up. */
 export type PasswordCopy = Record<string, string>;
 
+/** Background work after the response (ExecutionContext.waitUntil) */
+type WaitUntil = (promise: Promise<unknown>) => void;
+
 export interface PasswordGuardEnv {
 	AUTH_DB: D1Database;
 	PASSWORD_IP_LIMITER?: RateLimit;
@@ -83,7 +86,8 @@ export async function guardPasswordRequest(
 	request: Request,
 	env: PasswordGuardEnv,
 	url: URL,
-	copy: PasswordCopy
+	copy: PasswordCopy,
+	waitUntil?: WaitUntil
 ): Promise<PasswordGuard> {
 	const lang = langOf(url);
 	const guard: PasswordGuard = {
@@ -154,7 +158,13 @@ export async function guardPasswordRequest(
 			// Success redirects (to the app, or to the forced password change); a wrong
 			// password re-renders the form. Only a success gives the slot back.
 			if (response.status >= 300 && response.status < 400) {
-				await releaseLoginAttempt(env.AUTH_DB, email);
+				// The redirect need not wait for it (#804): until it lands the slot just
+				// counts as in flight, which can only make the limit stricter
+				const release = releaseLoginAttempt(env.AUTH_DB, email).catch((error: unknown) => {
+					logger.error('Could not release a sign-in slot', { error: error instanceof Error ? error.message : String(error) });
+				});
+				if (waitUntil) waitUntil(release);
+				else await release;
 			}
 			return response;
 		};

@@ -33,6 +33,12 @@ export interface CloudflarePatchedStorageOptions {
   atomic?: AtomicStorageAdapter;
   /** Stable name of the store (StorageAdapter.scope) */
   scope?: string;
+  /**
+   * Writes whose key matches finish in the background (waitUntil) instead of
+   * before `set` resolves. Only for records nothing reads in the same request.
+   */
+  deferWrite?: (key: string[]) => boolean;
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 /**
@@ -56,9 +62,18 @@ export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOption
         ? Math.min(MAX_TTL, Math.max(60, Math.ceil((expiry.getTime() - Date.now()) / 1000)))
         : undefined;
 
-      await options.namespace.put(joinKey(key), JSON.stringify(value), {
+      const put = options.namespace.put(joinKey(key), JSON.stringify(value), {
         expirationTtl: ttl
       });
+      if (options.waitUntil && options.deferWrite?.(key)) {
+        options.waitUntil(
+          put.catch((error: unknown) => {
+            console.error(JSON.stringify({ msg: 'auth.storage.deferred_write_failed', key: key[0], error: String(error) }));
+          })
+        );
+        return;
+      }
+      await put;
     },
 
     async remove(key: string[]): Promise<void> {

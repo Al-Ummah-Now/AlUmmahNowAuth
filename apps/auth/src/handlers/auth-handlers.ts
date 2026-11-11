@@ -22,6 +22,12 @@ import { renderAccountSuspendedPage } from '../ui/account-suspended-page';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
 import { claimInvitedAccount } from '../invites/service';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
+import type { RequestTimer } from '../utils/request-timing';
+
+/** Times `fn` as a stage of the request when there is a timer (#804). */
+function staged<T>(timer: RequestTimer | undefined, name: string, fn: () => Promise<T>): Promise<T> {
+	return timer ? timer.stage(name, fn) : fn();
+}
 
 /**
  * Returned from sendCode when the code could not be delivered. The password
@@ -49,6 +55,8 @@ export interface AuthHandlerContext {
 	homeUrl?: string;
 	/** This request's sign-in theme: the "account suspended" page matches the sign-in pages. */
 	theme?: Theme;
+	/** This request's timings (Server-Timing, auth.timing log) */
+	timer?: RequestTimer;
 }
 
 /**
@@ -119,7 +127,7 @@ export function createOnSuccessHandler(
 	rbacService: RBACServiceImpl,
 	handlerCtx: AuthHandlerContext
 ) {
-	const { request, env, ctx, requestId, db, homeUrl, theme } = handlerCtx;
+	const { request, env, ctx, requestId, db, homeUrl, theme, timer } = handlerCtx;
 
 	/** D1 state of an existing account: the user service's row, else a direct D1 read. */
 	async function stateOf(user: { id: string; status?: string; deleted_at?: number | null }): Promise<AccountState> {
@@ -198,23 +206,24 @@ export function createOnSuccessHandler(
 		try {
 			// Look up user via OpenAuth's UserService
 			const tenantId = _tenant?.id || 'default';
-			let existingUser = await userService.getUserByEmail(tenantId, email);
+			let existingUser = await staged(timer, 'onsuccess.user', () => userService.getUserByEmail(tenantId, email));
 
 			// Silent sign-on carries the session account's id: a deleted account (hidden
 			// from the email lookup) must be refused, not re-created as a new user (#662)
 			const sessionUserId = value.provider === 'session' ? String(value.properties?.id ?? (value as { id?: unknown }).id ?? '') : '';
 			if (!existingUser && sessionUserId && db) {
-				const state = await readAccountState(db, sessionUserId);
+				const state = await staged(timer, 'onsuccess.state', () => readAccountState(db, sessionUserId));
 				if (isRefusedAccountState(state)) return await refuse(email, sessionUserId, state, 'session');
 			}
 
 			if (!existingUser) {
 				// User doesn't exist - this is a registration, create them
 				logger.info('Creating new user during registration', { email, tenantId });
-				existingUser = await userService.createUser(tenantId, { email });
+				existingUser = await staged(timer, 'onsuccess.create', () => userService.createUser(tenantId, { email }));
 				logger.info('User created successfully', { userId: existingUser.id, email });
 				// E2E run accounts (QA/stage only): the marker the run teardown requires
-				await markRunUser(env as unknown as RunUsersEnv, db, existingUser);
+				const created = existingUser;
+				await staged(timer, 'onsuccess.runmarker', () => markRunUser(env as unknown as RunUsersEnv, db, created));
 
 				// Assign default "member" role to new users
 				try {
@@ -241,7 +250,8 @@ export function createOnSuccessHandler(
 				// the pre-provisioned account: same id, roles, plan and channels; now active
 				// with the email verified. Never a second account for the same email.
 				if (existingUser.status === 'invited' && db) {
-					const claimed = await claimInvitedAccount(db, tenantId, existingUser.id);
+					const invitedId = existingUser.id;
+					const claimed = await staged(timer, 'onsuccess.invite', () => claimInvitedAccount(db, tenantId, invitedId));
 					if (claimed) {
 						logger.info('[auth] Invited account claimed at first sign-in', { userId: existingUser.id, provider: value.provider });
 						ctx.waitUntil(
@@ -263,16 +273,26 @@ export function createOnSuccessHandler(
 					existingUser = { ...existingUser, status: undefined };
 				}
 				// Suspended or deleted (D1): refused before anything is issued (#662)
-				const state = await stateOf(existingUser);
+				const known = existingUser;
+				const state = await staged(timer, 'onsuccess.state', () => stateOf(known));
 				if (isRefusedAccountState(state)) {
 					return await refuse(email, existingUser.id, state, String(value.provider ?? ''));
 				}
-				// User exists - update last login timestamp
-				await userService.updateLastLogin(tenantId, existingUser.id);
+				// User exists - update last login timestamp. Informational only, so it
+				// finishes after the redirect instead of delaying it (#804)
+				ctx.waitUntil(
+					userService.updateLastLogin(tenantId, known.id).catch((error: unknown) => {
+						logger.error('[auth] Could not update last login', {
+							userId: known.id,
+							error: error instanceof Error ? error.message : String(error),
+						});
+					})
+				);
 			}
 
 			// Get roles from RBAC
-			const rbacResult = await rbacService.getUserRoles(existingUser.id, tenantId);
+			const userId = existingUser.id;
+			const rbacResult = await staged(timer, 'onsuccess.roles', () => rbacService.getUserRoles(userId, tenantId));
 			const roles = rbacResult.map((r) => r.name);
 
 			// Debug: Log the roles being returned
@@ -311,11 +331,13 @@ export function createOnSuccessHandler(
 				properties: { id: user.id, email, roles: user.roles },
 			});
 
-			const subjectResponse = await authCtx.subject('user', {
-				id: user.id,
-				email,
-				roles: user.roles,
-			});
+			const subjectResponse = await staged(timer, 'onsuccess.subject', () =>
+				authCtx.subject('user', {
+					id: user.id,
+					email,
+					roles: user.roles,
+				})
+			);
 
 			// DEBUG: Log the response from subject
 			logger.info('[DEBUG] authCtx.subject returned', {
@@ -425,6 +447,8 @@ export interface SendCodeContext {
 	url: URL;
 	/** The sign-in's theme `email` section (colours, header image) */
 	emailTheme?: import('../email-templates').EmailTheme;
+	/** This request's timings (Server-Timing, auth.timing log) */
+	timer?: RequestTimer;
 }
 
 /**
@@ -459,7 +483,7 @@ export function createSendCodeHandler(
 	handlerCtx: SendCodeContext,
 	passwordStorage?: StorageAdapter
 ) {
-	const { request, env, ctx, requestId, url } = handlerCtx;
+	const { request, env, ctx, requestId, url, timer } = handlerCtx;
 
 	// Import dependencies at handler creation time
 	const withinRateLimitPromise = import('../rate-limit').then((m) => m.withinRateLimit);
@@ -596,14 +620,14 @@ export function createSendCodeHandler(
 			const textContent = emailTemplates.getVerificationCodePlainText(emailData);
 			const subject = emailTemplates.getVerificationCodeSubject();
 
-			const emailResult = await SendEmail({
+			const emailResult = await staged(timer, 'sendcode.email', () => SendEmail({
 				apiKey,
 				from: 'Al Ummah Now <login@alummahnow.net>',
 				to: email,
 				subject,
 				html: htmlContent,
 				text: textContent,
-			});
+			}));
 			logger.info('Login code sent successfully', { email, emailId: emailResult.emailId });
 
 			// For E2E tests, store the email ID in KV so tests can retrieve it
