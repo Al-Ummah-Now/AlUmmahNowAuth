@@ -8,6 +8,7 @@
  */
 
 import { CONFIRM_COPY, type UiLocale } from './confirm-dialog';
+import { tabIconHtml } from '../../../../packages/ui/src/app-icons/serve.ts';
 
 /** The selector's own words, English unless the request asks for Arabic. */
 const SELECTOR_COPY: Record<UiLocale, { title: string; continueTo: string; active: string; signedIn: string; useAnother: string }> = {
@@ -79,8 +80,7 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(t.title)}</title>
-  <link rel="icon" href="/favicon.ico" sizes="32x32">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  ${tabIconHtml('production')}
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {

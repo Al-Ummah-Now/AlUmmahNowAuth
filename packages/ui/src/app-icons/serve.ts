@@ -21,12 +21,13 @@ export function iconServer(set: IconSet): (pathname: string, method?: string) =>
 
 /**
  * The SVG tab icon for an environment. Stage and production share a build, so this is chosen per
- * request: production plain, stage with a pink corner dot, QA and dev with a violet one.
+ * request: stage with a pink corner dot, QA and dev with a violet one. Production has no SVG (null):
+ * browsers prefer an SVG over sized PNGs and blur its image.
  */
-export function faviconSvgPath(environment: string | undefined): string {
+export function faviconSvgPath(environment: string | undefined): string | null {
 	switch (environment) {
 		case 'production':
-			return '/favicon.svg';
+			return null;
 		case 'stage':
 		case 'staging':
 			return '/favicon-stage.svg';
@@ -43,11 +44,38 @@ export function environmentOfHost(host: string): string {
 	return 'production';
 }
 
+export interface IconLink { href: string; type?: string; sizes?: string }
+
+/** Exact-size PNGs, each its own downscale of the owner's art, so the browser never shrinks it itself. */
+export const TAB_PNG_SIZES = [16, 32, 48, 96] as const;
+
+/** rel="icon" links: the ICO, then the sized PNGs (production) or the dot SVG (QA, stage, dev). */
+export function tabIconLinks(environment: string | undefined): IconLink[] {
+	const svg = faviconSvgPath(environment);
+	return [
+		{ href: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+		...(svg
+			? [{ href: svg, type: 'image/svg+xml' }]
+			: TAB_PNG_SIZES.map((s) => ({ href: `/favicon-${s}x${s}.png`, type: 'image/png', sizes: `${s}x${s}` }))),
+	];
+}
+
+/** The rel="icon" links as HTML. */
+export function tabIconHtml(environment: string | undefined): string {
+	return tabIconLinks(environment)
+		.map((l) => `<link rel="icon" href="${l.href}"${l.type ? ` type="${l.type}"` : ''}${l.sizes ? ` sizes="${l.sizes}"` : ''}>`)
+		.join('\n    ');
+}
+
+/** One icon, for a page that can link only one (the sign-in theme): the dot SVG, or the ICO, whose 16/32/48 frames the browser picks from. */
+export function tabIconPath(environment: string | undefined): string {
+	return faviconSvgPath(environment) ?? '/favicon.ico';
+}
+
 /** <link> tags for a server-rendered page. */
 export function iconLinks(environment: string | undefined, opts: { manifest?: boolean; themeColor?: string } = {}): string {
 	return [
-		'<link rel="icon" href="/favicon.ico" sizes="32x32">',
-		`<link rel="icon" type="image/svg+xml" href="${faviconSvgPath(environment)}">`,
+		tabIconHtml(environment),
 		'<link rel="apple-touch-icon" href="/apple-touch-icon.png">',
 		opts.manifest ? '<link rel="manifest" href="/site.webmanifest">' : '',
 		opts.themeColor ? `<meta name="theme-color" content="${opts.themeColor}">` : '',
