@@ -9,13 +9,13 @@ import {
 } from "react-router";
 import { getAuthServerUrl, getOAuthClientId } from "./lib/config";
 import { fetchShellTheme } from "./lib/shell-theme";
-import { environmentOfHost, faviconSvgPath } from "../../../packages/ui/src/app-icons/serve";
+import { environmentOfHost, tabIconLinks } from "../../../packages/ui/src/app-icons/serve";
 
 import "./tailwind.css";
 
 export const links: LinksFunction = () => [
-  // The owner's accounts-admin art (lantern in a double gold octagon), cropped and downscaled by AlUmmahNow packages/app-icons into public/
-  { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
+  // The owner's accounts-admin art (lantern in a double gold octagon), cropped and downscaled by AlUmmahNow
+  // packages/app-icons into public/. The rel="icon" links depend on the host, so Layout renders them.
   { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
   { rel: "manifest", href: "/site.webmanifest" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -35,8 +35,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_ID?: string } | undefined;
   return {
     shellCss: await fetchShellTheme(getAuthServerUrl(request, env), getOAuthClientId(env)),
-    // QA and stage tabs get a corner dot; one build serves stage and production, so read the host
-    favicon: faviconSvgPath(environmentOfHost(new URL(request.url).hostname)),
+    // QA and stage tabs get a corner dot (SVG); production the ICO and exact-size PNGs. One build
+    // serves stage and production, so read the host
+    tabIcons: tabIconLinks(environmentOfHost(new URL(request.url).hostname)),
   };
 }
 
@@ -54,7 +55,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
-        <link rel="icon" type="image/svg+xml" href={data?.favicon ?? "/favicon.svg"} />
+        {(data?.tabIcons ?? tabIconLinks("production")).map((l) => (
+          <link key={l.href} rel="icon" href={l.href} type={l.type} sizes={l.sizes} />
+        ))}
         <meta name="theme-color" content="#09273a" />
         {shellCss ? <style data-shell-theme dangerouslySetInnerHTML={{ __html: shellCss }} /> : null}
       </head>
