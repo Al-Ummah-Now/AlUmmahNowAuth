@@ -239,6 +239,26 @@ test.describe('Admin Audit View', () => {
     }
   });
 
+  // Owner rule 2026-11-11: pickers open with content before anything is typed
+  test('the user filter opens with the newest users before typing, and one picks without searching', async ({ page }) => {
+    await page.goto(`${TEST_URLS.adminDashboard}/audit`);
+    await page.click('button:has-text("Show Filters")');
+    const userInput = page.getByTestId('audit-user-input');
+    await userInput.click();
+    const list = page.getByTestId('audit-user-list');
+    await expect(userInput).toHaveAttribute('aria-expanded', 'true');
+    await expect(list.getByRole('option').first()).toBeVisible({ timeout: 15_000 });
+    await expect(userInput).toHaveValue('');
+    await expect(list).not.toHaveAttribute('aria-busy', 'true');
+    const id = await list.getByRole('option').first().getAttribute('data-id');
+    expect(id).toBeTruthy();
+    await list.getByRole('option').first().click();
+    await expect(page.getByTestId('audit-user-chip')).toHaveAttribute('data-id', id!);
+    // Changing it lists the users again with the current one marked
+    await page.getByTestId('audit-user-change').click();
+    await expect(list.getByRole('option').first()).toBeVisible();
+  });
+
   test('should clear filters', async ({ page }) => {
     // Navigate to audit logs page with filters
     await page.goto(`${TEST_URLS.adminDashboard}/audit?event_type=auth.login&severity=info`);

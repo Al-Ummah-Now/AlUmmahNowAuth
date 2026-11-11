@@ -10,6 +10,11 @@
  *
  * WAI-ARIA 1.2 combobox with a listbox popup (autocomplete-model.ts has the keys). The result count
  * is announced in a polite live region. Layout uses logical properties; ids are shown left-to-right.
+ *
+ * Initial results (pick mode by default; owner rule 2026-11-11): the box opens with the newest
+ * users before anything is typed, pages on as the list is scrolled (or arrowed) to its end, and
+ * shows a skeleton while loading, a note when there is nothing and a retry when it fails. The
+ * current value is marked when the admin changes it.
  */
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -17,17 +22,21 @@ import { Input } from "./ui/input";
 import {
   DEBOUNCE_MS,
   MIN_QUERY,
+  addPage,
   closed,
   failed,
   initialState,
+  initialUrl,
   keyDown,
   received,
   resolveUrl,
+  showInitial,
   suggestUrl,
   typed,
   type AutocompleteMode,
   type AutocompleteOption,
   type AutocompleteState,
+  type InitialList,
   type Suggestion,
 } from "../lib/autocomplete-model";
 
@@ -55,6 +64,8 @@ export interface UserAutocompleteProps {
   placeholder?: string;
   className?: string;
   testId?: string;
+  /** Open with the newest users before anything is typed (default: pick mode yes, search mode no: the list below shows them) */
+  initialResults?: boolean;
 }
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -63,7 +74,8 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor, onChange, submitOnChange = false, onSearch, onQueryChange, placeholder, className = "", testId }: UserAutocompleteProps) {
+export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor, onChange, submitOnChange = false, onSearch, onQueryChange, placeholder, className = "", testId, initialResults }: UserAutocompleteProps) {
+  const initialOn = initialResults ?? mode === "pick";
   const ids = useId();
   const inputId = `${ids}-input`;
   const listId = `${ids}-list`;
@@ -75,6 +87,46 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
     mode === "pick" && defaultValue ? { id: defaultValue, item: null, missing: false } : null,
   );
   const [editing, setEditing] = useState(false);
+  // Initial results: loaded on first open, kept for the life of the box
+  const [initial, setInitial] = useState<InitialList | null>(null);
+  const initialRef = useRef<InitialList | null>(null);
+  const initialAbort = useRef<AbortController | null>(null);
+
+  const loadInitial = useCallback((cursor: string | null) => {
+    initialAbort.current?.abort();
+    const controller = new AbortController();
+    initialAbort.current = controller;
+    const loading: InitialList = cursor && initialRef.current ? { ...initialRef.current, status: "more" } : { items: [], next: null, status: "loading" };
+    initialRef.current = loading;
+    setInitial(loading);
+    if (!cursor) setState((s) => showInitial(s, loading));
+    getJson<{ items: Suggestion[]; next?: string | null }>(initialUrl(cursor), controller.signal)
+      .then(({ items, next }) => {
+        const list = addPage(initialRef.current, { items, next: next ?? null }, !!cursor);
+        initialRef.current = list;
+        setInitial(list);
+        setState((s) => showInitial(s, list));
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        const list: InitialList = { ...(initialRef.current ?? { items: [], next: null }), status: "error" };
+        initialRef.current = list;
+        setInitial(list);
+        setState((s) => showInitial(s, list));
+      });
+  }, []);
+  useEffect(() => () => initialAbort.current?.abort(), []);
+
+  const openInitial = useCallback(() => {
+    if (!initialOn) return;
+    setState((s) => (s.query.trim().length >= MIN_QUERY ? { ...s, open: s.options.length > 0 } : showInitial({ ...s, open: true }, initialRef.current)));
+    if (!initialRef.current || (initialRef.current.status === "error" && initialRef.current.items.length === 0)) loadInitial(null);
+  }, [initialOn, loadInitial]);
+
+  const loadMore = useCallback(() => {
+    const list = initialRef.current;
+    if (list && list.status === "ready" && list.next && state.query.trim().length === 0) loadInitial(list.next);
+  }, [loadInitial, state.query]);
 
   // The chip's name for an id that came from the URL
   useEffect(() => {
@@ -107,6 +159,11 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
     };
   }, [mode, query]);
 
+  // Arrowing onto the last option of the initial list asks for the next page
+  useEffect(() => {
+    if (initialOn && state.active >= 0 && state.active >= state.options.length - 1) loadMore();
+  }, [initialOn, state.active, state.options.length, loadMore]);
+
   useEffect(() => {
     if (state.active >= 0) document.getElementById(optionId(state.active))?.scrollIntoView?.({ block: "nearest" });
     // optionId derives from a stable useId value
@@ -128,6 +185,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
         setEditing(false);
         setState(initialState());
       });
+      if (initialRef.current) setState((s) => showInitial(s, initialRef.current));
       onChange?.(id, item);
       if (submitOnChange) hiddenRef.current?.form?.requestSubmit();
     },
@@ -172,15 +230,26 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
   const showChip = mode === "pick" && picked && !editing;
   const expanded = state.open && !showChip && (state.options.length > 0 || state.status !== "idle");
   const suggestionCount = state.options.filter((o) => o.type === "suggestion").length;
+  // The box shows the initial list (nothing, or one character, typed)
+  const showingInitial = initialOn && state.query.trim().length < MIN_QUERY;
+  const emptyInitial = showingInitial && !state.query.trim() && state.status === "ready" && suggestionCount === 0;
   const announcement = !expanded
     ? ""
     : state.status === "loading" && state.options.length === 0
-      ? S.searching
+      ? showingInitial
+        ? S.loadingList
+        : S.searching
       : state.status === "error"
-        ? S.failed
-        : suggestionCount === 0
-          ? S.noMatches
-          : S.count(suggestionCount);
+        ? showingInitial
+          ? S.listFailed
+          : S.failed
+        : emptyInitial
+          ? S.emptyList
+          : suggestionCount === 0
+            ? S.noMatches
+            : showingInitial && !state.query.trim()
+              ? S.recent(suggestionCount)
+              : S.count(suggestionCount);
 
   return (
     <div className={`flex flex-col gap-1 ${className}`} data-testid={testId} data-mode={mode}>
@@ -218,7 +287,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
             value={state.query}
             placeholder={placeholder ?? (mode === "search" ? S.searchPlaceholder : S.pickPlaceholder)}
             onChange={(e) => {
-              setState((s) => typed(s, e.target.value));
+              setState((s) => (initialOn ? typed(s, e.target.value, initialRef.current) : typed(s, e.target.value)));
               onQueryChange?.(e.target.value);
             }}
             onKeyDown={onKeyDown}
@@ -226,16 +295,31 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
               setState(closed);
               if (mode === "pick" && picked && !state.query.trim()) setEditing(false);
             }}
-            onFocus={() => setState((s) => (s.options.length > 0 && s.query.trim().length >= MIN_QUERY ? { ...s, open: true } : s))}
+            onFocus={() => (initialOn ? openInitial() : setState((s) => (s.options.length > 0 && s.query.trim().length >= MIN_QUERY ? { ...s, open: true } : s)))}
+            onClick={() => {
+              if (initialOn && !state.open) openInitial();
+            }}
             data-testid={testId ? `${testId}-input` : undefined}
           />
+          <div
+            hidden={!expanded}
+            className="absolute start-0 top-full z-50 mt-1 w-full min-w-72 overflow-hidden rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-popover))] text-[rgb(var(--color-popover-foreground))] shadow-lg"
+            data-testid={testId ? `${testId}-popup` : undefined}
+            // A press on the list (its scrollbar too) must not blur the input and close it
+            onMouseDown={(e) => e.preventDefault()}
+          >
           <ul
             id={listId}
             role="listbox"
             aria-label={label}
+            aria-busy={(showingInitial && (state.status === "loading" || initial?.status === "more")) || undefined}
             hidden={!expanded}
-            className="absolute start-0 top-full z-50 mt-1 max-h-80 w-full min-w-72 overflow-auto rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-popover))] py-1 text-[rgb(var(--color-popover-foreground))] shadow-lg"
+            className="max-h-80 overflow-auto py-1"
             data-testid={testId ? `${testId}-list` : undefined}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              if (showingInitial && el.scrollTop + el.clientHeight >= el.scrollHeight - 48) loadMore();
+            }}
           >
             {state.options.map((option, i) => (
               <li
@@ -253,15 +337,53 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
                 data-option={option.type}
                 data-id={option.type === "suggestion" ? option.suggestion.id : undefined}
               >
-                <OptionContent option={option} />
+                <OptionContent option={option} current={picked?.id} />
               </li>
             ))}
-            {state.status === "loading" && state.options.length === 0 && (
-              <li role="presentation" className="px-3 py-2 text-sm text-[rgb(var(--color-muted-foreground))]">
-                {S.searching}
-              </li>
-            )}
+            {state.status === "loading" && state.options.length === 0 &&
+              (showingInitial ? (
+                [0, 1, 2, 3].map((i) => (
+                  <li key={`sk-${i}`} role="presentation" aria-hidden="true" className="flex items-center gap-3 px-3 py-2" data-testid={testId ? `${testId}-skeleton` : undefined}>
+                    <span className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-[rgb(var(--color-muted))] motion-reduce:animate-none" />
+                    <span className="flex flex-1 flex-col gap-1.5">
+                      <span className="h-3 w-3/4 animate-pulse rounded bg-[rgb(var(--color-muted))] motion-reduce:animate-none" />
+                      <span className="h-2.5 w-1/3 animate-pulse rounded bg-[rgb(var(--color-muted))] motion-reduce:animate-none" />
+                    </span>
+                  </li>
+                ))
+              ) : (
+                <li role="presentation" className="px-3 py-2 text-sm text-[rgb(var(--color-muted-foreground))]">
+                  {S.searching}
+                </li>
+              ))}
           </ul>
+          {emptyInitial && (
+            <p className="px-3 py-2 text-sm text-[rgb(var(--color-muted-foreground))]" data-testid={testId ? `${testId}-empty` : undefined}>
+              {S.emptyList}
+            </p>
+          )}
+          {showingInitial && initial?.status === "more" && (
+            <p className="px-3 py-2 text-xs text-[rgb(var(--color-muted-foreground))]" data-testid={testId ? `${testId}-loading-more` : undefined}>
+              {S.loadingMore}
+            </p>
+          )}
+          {showingInitial && initial?.status === "error" && (
+            <div className="flex items-center justify-between gap-2 border-t border-[rgb(var(--color-border))] px-3 py-2 text-sm text-[rgb(var(--color-muted-foreground))]" data-testid={testId ? `${testId}-error` : undefined}>
+              <span>{S.listFailed}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  loadInitial(initial.items.length ? initial.next : null);
+                  inputRef.current?.focus();
+                }}
+                className="rounded border border-[rgb(var(--color-border))] px-2 py-1 text-xs hover:bg-[rgb(var(--color-muted))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(var(--color-ring))]"
+                data-testid={testId ? `${testId}-retry` : undefined}
+              >
+                {S.retry}
+              </button>
+            </div>
+          )}
+          </div>
         </div>
       )}
       <p role="status" aria-live="polite" className="sr-only">
@@ -279,7 +401,7 @@ function Initial({ label }: { label: string }) {
   );
 }
 
-function OptionContent({ option }: { option: AutocompleteOption }) {
+function OptionContent({ option, current }: { option: AutocompleteOption; current?: string }) {
   if (option.type === "searchAll") {
     return (
       <span>
@@ -302,8 +424,15 @@ function OptionContent({ option }: { option: AutocompleteOption }) {
     <>
       <Initial label={s.label} />
       <span className="flex min-w-0 flex-col">
-        <span className="truncate" dir="auto">
-          {s.label}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate" dir="auto">
+            {s.label}
+          </span>
+          {current === s.id && (
+            <span className="shrink-0 rounded-full border border-[rgb(var(--color-border))] px-2 text-xs text-[rgb(var(--color-muted-foreground))]" data-testid="autocomplete-current">
+              {S.current}
+            </span>
+          )}
         </span>
         <span className="flex min-w-0 gap-2 text-xs text-[rgb(var(--color-muted-foreground))]">
           {s.secondary && (
