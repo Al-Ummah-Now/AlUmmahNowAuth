@@ -1,8 +1,20 @@
 /**
- * The invite email: both languages in one message, the invite's language first.
- * Sent with the same Resend sender as sign-in codes (src/email.ts).
+ * The invite email, in ONE language: the one the admin picked next to Send
+ * (the invite's locale; a resend may change it). Sent with the same Resend
+ * sender as email codes (src/email.ts), in the shared design (src/email/layout.ts).
+ *
+ * A channel is mentioned only when the admin attached one (the videos admin
+ * sends them in the invite's details: `channels: [{ name, action }]`), by name;
+ * otherwise the email talks about the creator account only.
  */
+import { formatEmailDate, renderEmail, type EmailDoc, type RenderedEmailParts } from '../email/layout';
 import type { InviteLocale } from './service';
+
+export interface InviteChannelInfo {
+	name: string;
+	/** created: a new channel for them; transferred: an existing channel moved to their account */
+	action?: 'created' | 'transferred' | string;
+}
 
 export interface InviteEmailData {
 	email: string;
@@ -11,93 +23,81 @@ export interface InviteEmailData {
 	expiresAt: number;
 	note: string | null;
 	locale: InviteLocale;
+	channels?: InviteChannelInfo[];
 }
 
-const escapeHtml = (value: string) =>
-	value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
-
-function dateIn(locale: InviteLocale, at: number): string {
-	return new Intl.DateTimeFormat(locale === 'ar' ? 'ar' : 'en-GB', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(at));
+/** The channel names from an invite's details (as the videos admin stores them). */
+export function inviteChannels(details: Record<string, unknown> | null | undefined): InviteChannelInfo[] {
+	const list = details && Array.isArray(details.channels) ? details.channels : [];
+	return list
+		.filter((c): c is { name: string; action?: string } => !!c && typeof c === 'object' && typeof (c as { name?: unknown }).name === 'string' && !!(c as { name: string }).name.trim())
+		.map((c) => ({ name: c.name.trim(), action: c.action }));
 }
+
+const joinNames = (names: string[], locale: InviteLocale) =>
+	new Intl.ListFormat(locale === 'ar' ? 'ar' : 'en', { style: 'long', type: 'conjunction' }).format(names);
 
 const COPY = {
 	en: {
 		subject: "You're invited to Al Ummah Now",
+		preheader: (channels: string | null) => (channels ? `Your creator account and ${channels} are ready. Accept the invite to sign in.` : 'Your creator account is ready. Accept the invite to sign in.'),
 		greeting: (name: string | null) => (name ? `Assalamu alaikum ${name},` : 'Assalamu alaikum,'),
-		body: 'An Al Ummah Now admin has set up a creator account for you. Everything is ready: sign in and your channel is waiting.',
+		account: 'An Al Ummah Now admin has set up a creator account for you.',
+		created: (names: string, n: number) => `It comes with ${n > 1 ? 'the channels' : 'the channel'} ${names}, ready for you to manage.`,
+		transferred: (names: string, n: number) => `${n > 1 ? 'The channels' : 'The channel'} ${names} ${n > 1 ? 'have' : 'has'} been moved to your account.`,
 		how: (email: string) => `Sign in with ${email}. If you have not set a password yet, choose "Create account" and we will email you a code to confirm it is you.`,
 		button: 'Accept the invite',
+		note: 'Note from the admin',
 		expires: (date: string) => `This link works until ${date}. After that you can still sign in with this email address.`,
-		note: 'Note from the admin:',
-		ignore: "If you weren't expecting this, you can ignore this email.",
+		reason: 'You got this email because an Al Ummah Now admin invited this address to a creator account. If you weren\'t expecting it, you can ignore it.',
 	},
 	ar: {
 		subject: 'دعوة للانضمام إلى الأمة الآن',
+		preheader: (channels: string | null) => (channels ? `حساب صانع المحتوى الخاص بك جاهز مع ${channels}. اقبل الدعوة لتسجيل الدخول.` : 'حساب صانع المحتوى الخاص بك جاهز. اقبل الدعوة لتسجيل الدخول.'),
 		greeting: (name: string | null) => (name ? `السلام عليكم ${name}،` : 'السلام عليكم،'),
-		body: 'أنشأ لك أحد مشرفي الأمة الآن حساب صانع محتوى. كل شيء جاهز: سجّل الدخول وستجد قناتك بانتظارك.',
+		account: 'أنشأ لك أحد مشرفي الأمة الآن حساب صانع محتوى.',
+		created: (names: string, n: number) => `ويضم ${n > 1 ? 'القنوات' : 'القناة'} ${names} جاهزةً لتديرها.`,
+		transferred: (names: string, n: number) => `ونُقلت إليه ${n > 1 ? 'القنوات' : 'القناة'} ${names}.`,
 		how: (email: string) => `سجّل الدخول باستخدام ${email}. إن لم تكن قد عيّنت كلمة مرور بعد، فاختر «إنشاء حساب» وسنرسل إليك رمزًا للتأكد من أنك صاحب البريد.`,
 		button: 'قبول الدعوة',
+		note: 'ملاحظة من المشرف',
 		expires: (date: string) => `يعمل هذا الرابط حتى ${date}. وبعد ذلك يمكنك تسجيل الدخول بهذا البريد الإلكتروني.`,
-		note: 'ملاحظة من المشرف:',
-		ignore: 'إن لم تكن تتوقع هذه الرسالة، فيمكنك تجاهلها.',
+		reason: 'وصلتك هذه الرسالة لأن أحد مشرفي الأمة الآن دعا هذا العنوان إلى حساب صانع محتوى. إن لم تكن تتوقعها، فيمكنك تجاهلها.',
 	},
 } as const;
 
-function section(locale: InviteLocale, data: InviteEmailData): string {
+export function inviteEmailDoc(data: InviteEmailData): EmailDoc {
+	const locale: InviteLocale = data.locale === 'ar' ? 'ar' : 'en';
 	const t = COPY[locale];
-	const dir = locale === 'ar' ? 'rtl' : 'ltr';
-	const link = escapeHtml(data.link);
-	return `
-  <div dir="${dir}" lang="${locale}" style="text-align:${locale === 'ar' ? 'right' : 'left'};padding:24px 28px;">
-    <p style="margin:0 0 12px;font-size:16px;">${escapeHtml(t.greeting(data.name))}</p>
-    <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">${escapeHtml(t.body)}</p>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;">${escapeHtml(t.how(data.email))}</p>
-    <p style="margin:0 0 20px;"><a href="${link}" style="display:inline-block;background:#047857;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">${escapeHtml(t.button)}</a></p>
-    ${data.note ? `<p style="margin:0 0 6px;font-size:14px;font-weight:600;">${escapeHtml(t.note)}</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;white-space:pre-line;">${escapeHtml(data.note)}</p>` : ''}
-    <p style="margin:0 0 6px;font-size:13px;color:#555555;">${escapeHtml(t.expires(dateIn(locale, data.expiresAt)))}</p>
-    <p style="margin:0;font-size:13px;color:#555555;">${escapeHtml(t.ignore)}</p>
-  </div>`;
+	const channels = data.channels ?? [];
+	const moved = channels.filter((c) => c.action === 'transferred').map((c) => c.name);
+	const made = channels.filter((c) => c.action !== 'transferred').map((c) => c.name);
+	const all = channels.length ? joinNames(channels.map((c) => c.name), locale) : null;
+	const intro = [t.account, made.length ? t.created(joinNames(made, locale), made.length) : '', moved.length ? t.transferred(joinNames(moved, locale), moved.length) : '']
+		.filter(Boolean)
+		.join(' ');
+	return {
+		locale,
+		subject: t.subject,
+		preheader: t.preheader(all),
+		greeting: t.greeting(data.name),
+		blocks: [
+			{ kind: 'p', text: intro },
+			{ kind: 'p', text: t.how(data.email) },
+		],
+		cta: { label: t.button, url: data.link },
+		after: [
+			...(data.note ? [{ kind: 'quote' as const, label: t.note, text: data.note }] : []),
+			{ kind: 'small', text: t.expires(formatEmailDate(data.expiresAt, locale)) },
+		],
+		reason: t.reason,
+	};
 }
 
-const order = (first: InviteLocale): InviteLocale[] => (first === 'ar' ? ['ar', 'en'] : ['en', 'ar']);
-
-export function inviteEmailSubject(locale: InviteLocale): string {
-	const [a, b] = order(locale);
-	return `${COPY[a].subject} · ${COPY[b].subject}`;
+export function renderInviteEmail(data: InviteEmailData): RenderedEmailParts {
+	return renderEmail(inviteEmailDoc(data));
 }
 
-export function inviteEmailHtml(data: InviteEmailData): string {
-	const [first, second] = order(data.locale);
-	return `<!DOCTYPE html>
-<html lang="${first}">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(COPY[first].subject)}</title></head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#333333;">
-<div style="max-width:600px;margin:0 auto;background:#ffffff;">
-  <div style="background:#047857;padding:28px 20px;text-align:center;"><h1 style="margin:0;color:#ffffff;font-size:22px;">Al Ummah Now · الأمة الآن</h1></div>
-  ${section(first, data)}
-  <hr style="border:none;border-top:1px solid #e5e5e5;margin:0 28px;">
-  ${section(second, data)}
-</div>
-</body>
-</html>`;
-}
-
-export function inviteEmailText(data: InviteEmailData): string {
-	return order(data.locale)
-		.map((locale) => {
-			const t = COPY[locale];
-			return [
-				t.greeting(data.name),
-				'',
-				t.body,
-				t.how(data.email),
-				'',
-				`${t.button}: ${data.link}`,
-				...(data.note ? ['', t.note, data.note] : []),
-				'',
-				t.expires(dateIn(locale, data.expiresAt)),
-				t.ignore,
-			].join('\n');
-		})
-		.join('\n\n———\n\n');
-}
+export const inviteEmailSubject = (locale: InviteLocale): string => COPY[locale === 'ar' ? 'ar' : 'en'].subject;
+export const inviteEmailHtml = (data: InviteEmailData): string => renderInviteEmail(data).html;
+export const inviteEmailText = (data: InviteEmailData): string => renderInviteEmail(data).text;

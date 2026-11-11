@@ -1,273 +1,97 @@
 import type { EmailTheme } from '../../../packages/ui/src/auth-theme/types.ts';
+import { renderEmail, type EmailDoc, type EmailLocale, type RenderedEmailParts } from './email/layout';
 /**
- * Email Templates for Al Ummah Now Authentication
+ * The email-code email (src/email/layout.ts design), in the language of the
+ * page the user clicked from (?lang=ar, else English; never Accept-Language).
  *
- * Professional, responsive HTML email templates
+ * OpenAuth's password provider sends a code from two pages only, so the copy
+ * says which one: creating an account (/password/register) or resetting a
+ * forgotten password (/password/change).
  */
+
+export type CodePurpose = 'register' | 'reset';
 
 export interface VerificationEmailData {
-  code: string;
-  email: string;
-  expiryMinutes?: number;
+	code: string;
+	email: string;
+	expiryMinutes?: number;
+	locale?: EmailLocale;
+	purpose?: CodePurpose;
 }
 
-/** An Auth theme's `email` section (theme package format v1); unset keys keep the template's own look. */
+/** An Auth theme's `email` section (theme package format v1); unset keys keep the design's own look. */
 export type { EmailTheme };
 
-const SAFE = /^(?:#[0-9a-fA-F]{3,8}|\d{1,3}(?:\.\d+)?(?:px|rem|em|%)|0)$/;
-
-/** CSS overrides for the theme's email colours (only validated values). */
-export function emailThemeCss(theme: EmailTheme | undefined): string {
-  if (!theme) return '';
-  const v = (k: keyof EmailTheme) => (theme[k] && SAFE.test(theme[k]!) ? theme[k] : undefined);
-  const rules: string[] = [];
-  if (v('background')) rules.push(`body { background-color: ${v('background')}; }`);
-  if (v('text')) rules.push(`.email-body, .email-body p { color: ${v('text')}; }`);
-  const accent = v('buttonBackground');
-  if (accent) rules.push(`.email-header { background: ${accent}; } .brand-name, .email-footer a, .code-expiry { color: ${accent}; } .code-container { border-color: ${accent}; }`);
-  if (v('buttonText')) rules.push(`.email-header h1 { color: ${v('buttonText')}; }`);
-  if (v('buttonRadius')) rules.push(`.code-container { border-radius: ${v('buttonRadius')}; }`);
-  return rules.join('\n');
+/** /password/register → register; /password/change (forgot password) → reset. */
+export function codePurposeOf(pathname: string): CodePurpose {
+	return pathname.includes('/register') ? 'register' : 'reset';
 }
 
-/**
- * Generate HTML for verification code email
- */
+const COPY = {
+	en: {
+		subject: { register: 'Your Al Ummah Now code to create your account', reset: 'Your Al Ummah Now code to reset your password' },
+		preheader: (code: string, min: number) => `Your code is ${code}. It works for ${min} minutes.`,
+		greeting: 'Assalamu alaikum,',
+		intro: {
+			register: () => 'Use this code to confirm your email address and finish creating your Al Ummah Now account.',
+			reset: () => 'Use this code to choose a new password for your Al Ummah Now account.',
+		},
+		label: 'Your code',
+		hint: (min: number) => `It works for ${min} minutes, once.`,
+		enter: 'Enter it on the page where you asked for it.',
+		notice: "Didn't ask for this? You can ignore this email: nothing changes without the code. Never share it with anyone, including people who say they are from Al Ummah Now.",
+		reason: { register: 'You got this email because someone started creating an Al Ummah Now account with this address.', reset: 'You got this email because someone asked to reset the password of the Al Ummah Now account with this address.' },
+	},
+	ar: {
+		subject: { register: 'رمزك لإنشاء حسابك في الأمة الآن', reset: 'رمزك لإعادة تعيين كلمة المرور في الأمة الآن' },
+		preheader: (code: string, min: number) => `رمزك هو ${code}، وهو صالح لمدة ${min} دقيقة.`,
+		greeting: 'السلام عليكم،',
+		intro: {
+			register: () => 'استخدم هذا الرمز لتأكيد بريدك الإلكتروني وإكمال إنشاء حسابك في الأمة الآن.',
+			reset: () => 'استخدم هذا الرمز لاختيار كلمة مرور جديدة لحسابك في الأمة الآن.',
+		},
+		label: 'رمزك',
+		hint: (min: number) => `صالح لمدة ${min} دقيقة، ولمرة واحدة.`,
+		enter: 'أدخله في الصفحة التي طلبته منها.',
+		notice: 'لم تطلب هذا الرمز؟ يمكنك تجاهل هذه الرسالة، فلن يتغير شيء من دونه. لا تشارك الرمز مع أحد، حتى مع من يقول إنه من الأمة الآن.',
+		reason: { register: 'وصلتك هذه الرسالة لأن أحدًا بدأ إنشاء حساب في الأمة الآن بهذا العنوان.', reset: 'وصلتك هذه الرسالة لأن أحدًا طلب إعادة تعيين كلمة مرور حساب الأمة الآن المرتبط بهذا العنوان.' },
+	},
+} as const;
+
+export function verificationCodeDoc(data: VerificationEmailData, theme?: EmailTheme): EmailDoc {
+	const locale: EmailLocale = data.locale === 'ar' ? 'ar' : 'en';
+	const purpose: CodePurpose = data.purpose ?? 'register';
+	const min = data.expiryMinutes ?? 15;
+	const t = COPY[locale];
+	return {
+		locale,
+		subject: t.subject[purpose],
+		preheader: t.preheader(data.code, min),
+		greeting: t.greeting,
+		blocks: [
+			{ kind: 'p', text: t.intro[purpose]() },
+			{ kind: 'code', label: t.label, code: data.code, hint: t.hint(min) },
+			{ kind: 'p', text: t.enter },
+			{ kind: 'notice', text: t.notice, tone: 'warning' },
+		],
+		reason: t.reason[purpose],
+		theme: theme && Object.keys(theme).length ? theme : undefined,
+	};
+}
+
+export function renderVerificationCodeEmail(data: VerificationEmailData, theme?: EmailTheme): RenderedEmailParts {
+	return renderEmail(verificationCodeDoc(data, theme));
+}
+
+/** HTML part (kept for callers of the old API). */
 export function getVerificationCodeTemplate(data: VerificationEmailData, theme?: EmailTheme): string {
-  const { code, expiryMinutes = 10 } = data;
-  const html = renderVerificationCodeTemplate(code, expiryMinutes);
-  if (!theme || Object.keys(theme).length === 0) return html;
-  let out = html.replace('</head>', `<style>${emailThemeCss(theme)}</style>\n</head>`);
-  if (theme.headerImage && /^https:\/\/[^\s"'<>]+$/.test(theme.headerImage)) {
-    out = out.replace(/(<img src=")[^"]*(" alt="Al Ummah Now" class="logo">)/, `$1${theme.headerImage}$2`);
-  }
-  return out;
+	return renderVerificationCodeEmail(data, theme).html;
 }
 
-function renderVerificationCodeTemplate(code: string, expiryMinutes: number): string {
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Verification Code</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      line-height: 1.6;
-      color: #333333;
-      background-color: #f5f5f5;
-    }
-
-    .email-wrapper {
-      max-width: 600px;
-      margin: 0 auto;
-      background-color: #ffffff;
-    }
-
-    .email-header {
-      background: linear-gradient(135deg, #047857 0%, #16a34a 100%);
-      padding: 40px 20px;
-      text-align: center;
-    }
-
-    .logo {
-      width: 80px;
-      height: 80px;
-      margin: 0 auto 15px;
-    }
-
-    .email-header h1 {
-      color: #ffffff;
-      font-size: 28px;
-      font-weight: 600;
-      margin: 0;
-    }
-
-    .email-body {
-      padding: 40px 30px;
-    }
-
-    .email-body p {
-      margin-bottom: 20px;
-      color: #555555;
-      font-size: 16px;
-    }
-
-    .code-container {
-      background: linear-gradient(135deg, #f0fdf4 0%, #fef3c7 100%);
-      border: 2px dashed #047857;
-      border-radius: 8px;
-      padding: 30px;
-      text-align: center;
-      margin: 30px 0;
-    }
-
-    .code-label {
-      color: #065f46;
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 10px;
-      font-weight: 600;
-    }
-
-    .code {
-      font-size: 36px;
-      font-weight: 700;
-      color: #047857;
-      letter-spacing: 8px;
-      font-family: 'Courier New', monospace;
-      margin: 10px 0;
-      user-select: all;
-    }
-
-    .code-expiry {
-      color: #999999;
-      font-size: 13px;
-      margin-top: 15px;
-    }
-
-    .security-notice {
-      background-color: #fef3c7;
-      border-left: 4px solid #eab308;
-      padding: 15px;
-      margin: 25px 0;
-      border-radius: 4px;
-    }
-
-    .security-notice p {
-      margin: 0;
-      color: #854d0e;
-      font-size: 14px;
-    }
-
-    .security-notice strong {
-      font-weight: 600;
-    }
-
-    .email-footer {
-      background-color: #f8f9fa;
-      padding: 30px;
-      text-align: center;
-      border-top: 1px solid #e0e0e0;
-    }
-
-    .email-footer p {
-      color: #999999;
-      font-size: 13px;
-      margin: 5px 0;
-    }
-
-    .email-footer a {
-      color: #047857;
-      text-decoration: none;
-    }
-
-    .brand-name {
-      color: #047857;
-      font-weight: 600;
-    }
-
-    @media only screen and (max-width: 600px) {
-      .email-header {
-        padding: 30px 15px;
-      }
-
-      .email-header h1 {
-        font-size: 24px;
-      }
-
-      .email-body {
-        padding: 30px 20px;
-      }
-
-      .code {
-        font-size: 28px;
-        letter-spacing: 4px;
-      }
-
-      .code-container {
-        padding: 20px;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="email-wrapper">
-    <div class="email-header">
-      <img src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png" alt="Al Ummah Now" class="logo">
-      <h1>Al Ummah Now</h1>
-    </div>
-
-    <div class="email-body">
-      <p>Assalamu Alaikum,</p>
-
-      <p>You requested a verification code to sign in to your <span class="brand-name">Al Ummah Now</span> account. Please use the code below to complete your authentication:</p>
-
-      <div class="code-container">
-        <div class="code-label">Your Verification Code</div>
-        <div class="code">${code}</div>
-        <div class="code-expiry">This code will expire in ${expiryMinutes} minutes</div>
-      </div>
-
-      <p>Enter this code on the sign-in page to access your account.</p>
-
-      <div class="security-notice">
-        <p><strong>Security Notice:</strong> If you didn't request this code, please ignore this email. Never share your verification code with anyone.</p>
-      </div>
-
-      <p>JazakAllahu Khairan,<br><span class="brand-name">Al Ummah Now Team</span></p>
-    </div>
-
-    <div class="email-footer">
-      <p>© ${new Date().getFullYear()} Al Ummah Now. All rights reserved.</p>
-      <p>This is an automated message, please do not reply to this email.</p>
-    </div>
-  </div>
-</body>
-</html>
-  `.trim();
-}
-
-/**
- * Generate plain text version for verification code email
- */
 export function getVerificationCodePlainText(data: VerificationEmailData): string {
-  const { code, expiryMinutes = 10 } = data;
-
-  return `
-Assalamu Alaikum,
-
-You requested a verification code to sign in to your Al Ummah Now account.
-
-Your Verification Code: ${code}
-
-This code will expire in ${expiryMinutes} minutes.
-
-Enter this code on the sign-in page to access your account.
-
-SECURITY NOTICE: If you didn't request this code, please ignore this email. Never share your verification code with anyone.
-
-JazakAllahu Khairan,
-Al Ummah Now Team
-
----
-© ${new Date().getFullYear()} Al Ummah Now. All rights reserved.
-This is an automated message, please do not reply to this email.
-  `.trim();
+	return renderVerificationCodeEmail(data).text;
 }
 
-/**
- * Get the subject line for verification code email
- */
-export function getVerificationCodeSubject(): string {
-  return "Your Al Ummah Now Verification Code";
+export function getVerificationCodeSubject(data: Pick<VerificationEmailData, 'locale' | 'purpose'> = {}): string {
+	return COPY[data.locale === 'ar' ? 'ar' : 'en'].subject[data.purpose ?? 'register'];
 }

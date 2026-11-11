@@ -13,7 +13,7 @@ import type { AuthThemeJson, StoredPackage } from '../../../../packages/ui/src/a
 import { referencedAssets, validateTheme } from '../../../../packages/ui/src/auth-theme/validate.ts';
 import { SCHEMA } from '../../../../packages/ui/src/theme-packages/schema.generated.ts';
 import { packageToZip, zipToPackage } from '../../../../packages/ui/src/theme-packages/zip.ts';
-import { emailThemeCss, getVerificationCodeTemplate } from '../email-templates';
+import { getVerificationCodeTemplate } from '../email-templates';
 
 const BASE = 'https://auth.example';
 const fawanees = () => structuredClone(builtinPackage('fawanees')!) as StoredPackage;
@@ -203,6 +203,8 @@ describe('email theme', () => {
 	it('leaves the email unchanged without a theme and keeps only safe values', () => {
 		const data = { code: '123456', email: 'a@example.com' } as never;
 		expect(getVerificationCodeTemplate(data, {})).toBe(getVerificationCodeTemplate(data));
-		expect(emailThemeCss({ background: '#ffffff', text: 'red;}body{x' })).toBe('body { background-color: #ffffff; }');
+		const themed = getVerificationCodeTemplate(data, { background: '#ffffff', text: 'red;}body{x', buttonBackground: '#123456' });
+		expect(themed).toContain('background:#ffffff');
+		expect(themed).not.toContain('red;}body{x');
 	});
 });
