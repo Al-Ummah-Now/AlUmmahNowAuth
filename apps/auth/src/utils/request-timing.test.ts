@@ -90,6 +90,11 @@ describe('instrumentEnv', () => {
 			SECRET: string;
 		};
 		expect(env.SECRET).toBe('s');
+		// Secrets Store bindings are not enumerable: they must still be reachable
+		const raw = { AUTH_DB: db } as Record<string, unknown>;
+		Object.defineProperty(raw, 'STORE_SECRET', { value: { get: async () => 'hidden' }, enumerable: false });
+		const hidden = instrumentEnv(raw, timer) as { STORE_SECRET: { get: () => Promise<string> } };
+		expect(await hidden.STORE_SECRET.get()).toBe('hidden');
 		expect(await env.AUTH_DB.prepare('SELECT 1 FROM users WHERE id = ?').bind('u').first()).toEqual({ ok: 1 });
 		const s = env.AUTH_DB.prepare('DELETE FROM users WHERE id = ?').bind('u');
 		await env.AUTH_DB.batch([s]);
