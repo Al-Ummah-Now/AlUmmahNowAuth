@@ -47,7 +47,7 @@ export async function suggestUsers(request: Request, env: Env): Promise<Response
     if (isErrorResponse(res)) return json({ error: "upstream" }, 502);
     return json({ items: res.users.map(toSuggestion), next: res.pagination?.hasMore ? (res.pagination.nextCursor ?? null) : null });
   }
-  const res = await listUsers(env, actor, { search: q, limit: SUGGEST_LIMIT }, request);
+  const res = await listUsers(env, actor, { search: q, limit: SUGGEST_LIMIT, skipCount: true }, request);
   if (isErrorResponse(res)) return json({ error: "upstream" }, 502);
   const items = res.users.map(toSuggestion);
   // A pasted id goes first

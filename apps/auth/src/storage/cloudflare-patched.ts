@@ -23,6 +23,7 @@
  */
 
 import { joinKey, splitKey, type AtomicStorageAdapter, type StorageAdapter } from "@al-ummah-now/openauth/storage/storage";
+import { REFRESH_PREFIX } from "./legacy-refresh";
 
 export interface CloudflarePatchedStorageOptions {
   namespace: KVNamespace;
@@ -39,16 +40,31 @@ export interface CloudflarePatchedStorageOptions {
    */
   deferWrite?: (key: string[]) => boolean;
   waitUntil?: (promise: Promise<unknown>) => void;
+  /**
+   * Writes whose key matches are skipped when KV already holds the same value
+   * (a KV read costs a tenth of a write). Only for records without an expiry.
+   */
+  skipUnchanged?: (key: string[]) => boolean;
+  /**
+   * Whether KV may still hold refresh tokens from before they moved to D1
+   * (legacy-refresh.ts). When it answers false, refresh-token keys skip KV.
+   */
+  kvMayHoldRefreshTokens?: () => Promise<boolean>;
 }
 
 /**
  * Patched CloudflareStorage implementation with fixed TTL calculation
  */
 export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOptions): StorageAdapter {
+  /** A refresh-token key KV can no longer hold: skip the KV call. */
+  const skipKv = async (key: string[]) =>
+    key[0] === REFRESH_PREFIX && !!options.kvMayHoldRefreshTokens && !(await options.kvMayHoldRefreshTokens());
+
   return {
     ...(options.atomic ? { atomic: options.atomic } : {}),
     ...(options.scope ? { scope: options.scope } : {}),
     async get(key: string[]): Promise<Record<string, unknown> | undefined> {
+      if (await skipKv(key)) return undefined;
       const value = await options.namespace.get(joinKey(key), "json");
       if (!value) return undefined;
       return value as Record<string, unknown>;
@@ -62,9 +78,13 @@ export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOption
         ? Math.min(MAX_TTL, Math.max(60, Math.ceil((expiry.getTime() - Date.now()) / 1000)))
         : undefined;
 
-      const put = options.namespace.put(joinKey(key), JSON.stringify(value), {
-        expirationTtl: ttl
-      });
+      const json = JSON.stringify(value);
+      const write = () => options.namespace.put(joinKey(key), json, { expirationTtl: ttl });
+      // e.g. ["email", <email>, "subject"]: rewritten with the same subject on every password sign-in
+      const put =
+        !ttl && options.skipUnchanged?.(key)
+          ? options.namespace.get(joinKey(key), "text").then((current) => (current === json ? undefined : write()))
+          : write();
       if (options.waitUntil && options.deferWrite?.(key)) {
         options.waitUntil(
           put.catch((error: unknown) => {
@@ -77,10 +97,12 @@ export function CloudflarePatchedStorage(options: CloudflarePatchedStorageOption
     },
 
     async remove(key: string[]): Promise<void> {
+      if (await skipKv(key)) return;
       await options.namespace.delete(joinKey(key));
     },
 
     async *scan(prefix: string[]): AsyncGenerator<[string[], unknown]> {
+      if (await skipKv(prefix)) return;
       let cursor: string | undefined;
       while (true) {
         const result = await options.namespace.list({

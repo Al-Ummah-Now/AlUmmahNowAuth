@@ -815,7 +815,7 @@ export async function getUsersByRole(
 ): Promise<UsersByRole[] | ErrorResponse> {
   // TODO: Implement /admin/stats/users-by-role endpoint on auth server
   try {
-    const result = await listUsers(env, actingUser, { limit: 1000 }, request);
+    const result = await listUsers(env, actingUser, { limit: 1000, skipCount: true }, request);
     if (isErrorResponse(result)) {
       return result;
     }

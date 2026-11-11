@@ -29,8 +29,11 @@
   // Observability
   "observability": {
     "enabled": true,
-    // Workers Logs bills per line: log 10% of invocations (sampling drops errors too)
-    "head_sampling_rate": 0.1,
-    "logs": { "enabled": true, "head_sampling_rate": 0.1 }
-  }
+    // Every invocation, but only warn/error lines (LOG_LEVEL) and no invocation
+    // logs: sampling dropped errors too, and Workers Logs bills per line
+    "head_sampling_rate": 1,
+    "logs": { "enabled": true, "head_sampling_rate": 1, "invocation_logs": false }
+  },
+  "logpush": false,
+  "vars": { "LOG_LEVEL": "warn" }
 }

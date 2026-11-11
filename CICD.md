@@ -454,6 +454,22 @@ wrangler tail
 - `warn`: Warning messages
 - `error`: Error messages with context
 
+**What each environment keeps** (Workers Logs bills per line):
+
+| Worker config | `LOG_LEVEL` var | `logs.head_sampling_rate` | `invocation_logs` | `logpush` |
+| --- | --- | --- | --- | --- |
+| QA (`wrangler.qa.json[c]`, admin: `scripts/patch-qa-config.js`) | `warn` | 1 | false | false |
+| Stage (`env.stage`, admin: `scripts/release/admin-config.ts`) | `warn` | 1 | false | false |
+| Production | `debug` (everything) | 1 | default (on) | not set |
+
+`LOG_LEVEL` drops `console.debug/log/info` per isolate in every Auth worker
+(auth, profile, admin, audit-consumer; `packages/ui/src/log-level.ts`), including
+library output such as openauth's per-attempt `console.log`. QA and stage log every
+invocation (no sampling), so no warning or error is sampled away, but no info lines
+and no per-request invocation log. No Logpush job reads these workers, so QA/stage
+send nothing to Logpush. `wrangler versions deploy` (stage/prod promote) syncs
+`observability` and `logpush` from the config it is given.
+
 **Example Log**:
 ```javascript
 logger.error('Auth callback error', {

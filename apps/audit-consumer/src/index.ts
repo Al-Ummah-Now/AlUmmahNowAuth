@@ -16,6 +16,7 @@
 
 import type { AuditEventMessage } from "@al-ummah-now/openauth/services/audit";
 import type { ExportedHandler, MessageBatch as CloudflareMessageBatch, Message, D1Database } from "@cloudflare/workers-types";
+import { applyLogLevel } from "../../../packages/ui/src/log-level";
 
 /**
  * Application audit event published by apps/auth's QueueSink
@@ -179,6 +180,8 @@ export default {
     batch: CloudflareMessageBatch<QueueMessageBody>,
     env: Env
   ): Promise<void> {
+    // "warn" on QA/stage: console lines below it are dropped (wrangler vars)
+    applyLogLevel((env as { LOG_LEVEL?: string }).LOG_LEVEL);
     const startTime = Date.now();
     const messageCount = batch.messages.length;
 

@@ -134,6 +134,7 @@
       },
       "vars": {
         "ENVIRONMENT": "production",
+        "LOG_LEVEL": "debug",
         "PROFILE_APP_URL": "https://profile.auth.alummahnow.net/",
         "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
         "ALLOWED_ORIGINS": "*.alummahnow.net,https://alummahnow.net,https://www.alummahnow.net",
@@ -179,7 +180,8 @@
       }
     },
     "stage": {
-      "observability": { "enabled": true, "head_sampling_rate": 0.1, "logs": { "enabled": true, "head_sampling_rate": 0.1 } },
+      "observability": { "enabled": true, "head_sampling_rate": 1, "logs": { "enabled": true, "head_sampling_rate": 1, "invocation_logs": false } },
+      "logpush": false,
       "name": "al-ummah-now-auth-stage",
       "routes": [
         {
@@ -234,6 +236,7 @@
       },
       "vars": {
         "ENVIRONMENT": "stage",
+        "LOG_LEVEL": "warn",
         "E2E_RUN_USERS": "enabled",
         "PROFILE_APP_URL": "https://profile.auth.stage.alummahnow.net/",
         "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",

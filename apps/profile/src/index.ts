@@ -33,6 +33,7 @@ import { fetchAuthTheme } from './theme';
 // only this app's set, so the sign-in icons are not bundled into the profile Worker
 import { APP_ICONS as PROFILE_ICONS } from '../../../packages/ui/src/app-icons/profile.generated.ts';
 import { iconServer } from '../../../packages/ui/src/app-icons/serve.ts';
+import { applyLogLevel } from '../../../packages/ui/src/log-level.ts';
 
 /** Account's tab and app icons (the owner's account lantern, cropped and downscaled by AlUmmahNow packages/app-icons). */
 const serveIcon = iconServer(PROFILE_ICONS);
@@ -58,6 +59,8 @@ interface Env {
   /** "production" | "qa"; selects app launcher URLs (see apps.ts) */
   APP_ENV?: string;
   CF_WEB_ANALYTICS_TOKEN?: string;
+  /** "warn" on QA/stage: console lines below it are dropped */
+  LOG_LEVEL?: string;
 }
 
 function sessionTokenOf(request: Request): string | null {
@@ -180,6 +183,7 @@ const INVALID_STATE_PAGE = `<!DOCTYPE html>
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+    applyLogLevel(env.LOG_LEVEL);
     const alias = aliasRedirect(request.url, env.APP_URL);
     if (alias) return alias;
 

@@ -11,6 +11,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { TenantService as D1TenantService } from '../services/tenant.service';
+import { cachedTenant } from '../services/tenant-cache';
 import type { Tenant as D1Tenant } from '../types/tenant';
 import type { Theme, ColorScheme } from '@al-ummah-now/openauth/ui/theme';
 import type {
@@ -91,22 +92,20 @@ export class D1TenantAdapter implements OpenAuthTenantService {
 	 * Get a tenant by ID
 	 */
 	async getTenant(tenantId: string): Promise<OpenAuthTenant | null> {
-		const d1Tenant = await this.tenantService.getTenantById(tenantId);
-
-		if (!d1Tenant) return null;
-
-		return this.mapToOpenAuthTenant(d1Tenant);
+		return cachedTenant(`id:${tenantId}`, async () => {
+			const d1Tenant = await this.tenantService.getTenantById(tenantId);
+			return d1Tenant ? this.mapToOpenAuthTenant(d1Tenant) : null;
+		});
 	}
 
 	/**
 	 * Get a tenant by domain
 	 */
 	async getTenantByDomain(domain: string): Promise<OpenAuthTenant | null> {
-		const d1Tenant = await this.tenantService.resolveTenantByDomain(domain);
-
-		if (!d1Tenant) return null;
-
-		return this.mapToOpenAuthTenant(d1Tenant);
+		return cachedTenant(`domain:${domain}`, async () => {
+			const d1Tenant = await this.tenantService.resolveTenantByDomain(domain);
+			return d1Tenant ? this.mapToOpenAuthTenant(d1Tenant) : null;
+		});
 	}
 
 	/**

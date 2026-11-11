@@ -28,6 +28,7 @@
 --   migrations-qa/0029_scholar_role.sql
 --   migrations-qa/0030_user_invites.sql
 --   migrations-qa/0031_signin_scan_indexes.sql
+--   migrations-qa/0032_app_sessions_user_index.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
@@ -73,6 +74,7 @@ CREATE INDEX idx_account_sessions_user ON account_sessions(user_id);
 CREATE INDEX idx_admin_deletions_deleted_at ON admin_deletions(deleted_at);
 CREATE INDEX idx_admin_deletions_purge ON admin_deletions(purge_requested_at);
 CREATE INDEX idx_app_sessions_expires ON app_sessions(expires_at);
+CREATE INDEX idx_app_sessions_user ON app_sessions(json_extract(user_json, '$.id'));
 CREATE INDEX idx_audit_events_event_type ON audit_events(event_type);
 CREATE INDEX idx_audit_events_severity ON audit_events(severity);
 CREATE INDEX idx_audit_events_tenant_id ON audit_events(tenant_id);

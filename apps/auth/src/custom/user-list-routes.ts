@@ -39,6 +39,24 @@ interface RoleRow {
   role_name: string;
 }
 
+/** The unfiltered live-user count per tenant, per isolate (a dashboard figure, not a ledger). */
+const TOTAL_TTL_MS = 30_000;
+const totals = new Map<string, { at: number; count: number }>();
+
+function cachedTotal(tenantId: string): number | undefined {
+  const hit = totals.get(tenantId);
+  return hit && Date.now() - hit.at < TOTAL_TTL_MS ? hit.count : undefined;
+}
+
+function rememberTotal(tenantId: string, count: number): void {
+  totals.set(tenantId, { at: Date.now(), count });
+}
+
+/** Forget the cached totals (tests). */
+export function clearUserTotals(): void {
+  totals.clear();
+}
+
 /**
  * Creates a Hono router with enhanced user listing that includes roles
  */
@@ -120,9 +138,12 @@ export function userListRoutes(db: D1Database) {
 
       if (hasMore) userRows.pop();
 
-      // Get total count
-      const countBindings = bindings.slice(0, -1); // Remove limit
-      const countConditions = conditions.slice(); // Copy conditions without cursor
+      // Get total count. COUNT(*) reads every live user of the tenant (48k rows on
+      // QA), so callers that don't show it pass count=none (pickers, the users page,
+      // users-by-role) and get total_count null; the unfiltered total is reused for
+      // a few seconds per isolate (the dashboard's "Total Users").
+      const skipCount = url.searchParams.get('count') === 'none';
+      const unfiltered = !status && !email && !search;
       const countQuery = `
         SELECT COUNT(*) as count FROM users
         WHERE tenant_id = ? AND deleted_at IS NULL
@@ -135,11 +156,17 @@ export function userListRoutes(db: D1Database) {
       if (email) countBindingsSimple.push(`%${email.toLowerCase()}%`);
       if (search) countBindingsSimple.push(searchLike, searchLike, search);
 
-      // count=none: a picker's page (the admin's autocomplete opening) never shows the total, so it
-      // skips the COUNT over every user (48k rows read on QA) and answers total_count null
-      const skipCount = url.searchParams.get('count') === 'none';
-      const countResult = skipCount ? null : await db.prepare(countQuery).bind(...countBindingsSimple).first<{ count: number }>();
-      const totalCount = skipCount ? null : countResult?.count || 0;
+      let totalCount: number | null = null;
+      if (!skipCount) {
+        const cached = unfiltered ? cachedTotal(tenantId) : undefined;
+        if (cached !== undefined) {
+          totalCount = cached;
+        } else {
+          const countResult = await db.prepare(countQuery).bind(...countBindingsSimple).first<{ count: number }>();
+          totalCount = countResult?.count || 0;
+          if (unfiltered) rememberTotal(tenantId, totalCount);
+        }
+      }
 
       // Get user IDs for role lookup
       const userIds = userRows.map(u => u.id);

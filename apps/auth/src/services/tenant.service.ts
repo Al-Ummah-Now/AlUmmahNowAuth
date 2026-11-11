@@ -16,6 +16,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Tenant, TenantSettings, TenantBranding, TenantAdmin } from '../types/tenant';
 import { DEFAULT_TENANT_ID } from '../types/tenant';
+import { clearTenantCache } from './tenant-cache';
 
 /**
  * Generate a unique ID with a prefix
@@ -159,6 +160,7 @@ export class TenantService {
       now,
       now
     ).run();
+    clearTenantCache();
 
     const tenant = await this.getTenantById(id);
     if (!tenant) {
@@ -268,6 +270,7 @@ export class TenantService {
     await this.db.prepare(`
       UPDATE tenants SET ${sets.join(', ')} WHERE id = ?
     `).bind(...values).run();
+    clearTenantCache();
 
     const tenant = await this.getTenantById(id);
     if (!tenant) {
@@ -295,6 +298,7 @@ export class TenantService {
       UPDATE tenants SET status = 'deleted', updated_at = ?
       WHERE id = ?
     `).bind(now, id).run();
+    clearTenantCache();
   }
 
   /**

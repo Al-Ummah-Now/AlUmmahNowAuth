@@ -42,12 +42,16 @@
     "head_sampling_rate": 1,
     "logs": { "enabled": true, "head_sampling_rate": 1 }
   },
+  "vars": { "LOG_LEVEL": "debug" },
 
   // Stage (release pipeline): consumes the stage auth worker's audit queue
   "env": {
     "stage": {
-      // Workers Logs bills per line: log 10% of invocations (sampling drops errors too)
-      "observability": { "enabled": true, "head_sampling_rate": 0.1, "logs": { "enabled": true, "head_sampling_rate": 0.1 } },
+      // Every invocation, only warn/error lines (LOG_LEVEL), no invocation logs:
+      // sampling dropped errors too, and Workers Logs bills per line
+      "vars": { "LOG_LEVEL": "warn" },
+      "observability": { "enabled": true, "head_sampling_rate": 1, "logs": { "enabled": true, "head_sampling_rate": 1, "invocation_logs": false } },
+      "logpush": false,
       "name": "al-ummah-now-audit-consumer-stage",
       "d1_databases": [
         {

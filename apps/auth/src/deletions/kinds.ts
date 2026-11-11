@@ -162,7 +162,6 @@ const user: KindHandler = {
 		await env.AUTH_STORAGE.delete(`permissions:${userId}`);
 
 		// D1: every row keyed by the user, then the user (FK cascades cover the rest)
-		const quoted = JSON.stringify(userId);
 		const statements = [
 			db.prepare('DELETE FROM rbac_user_roles WHERE user_id = ?').bind(userId),
 			db.prepare('DELETE FROM account_sessions WHERE user_id = ?').bind(userId),
@@ -172,7 +171,8 @@ const user: KindHandler = {
 			db.prepare('DELETE FROM user_identities WHERE user_id = ?').bind(userId),
 			db.prepare('DELETE FROM authorization_codes WHERE user_id = ?').bind(userId),
 			db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').bind(userId),
-			db.prepare('DELETE FROM app_sessions WHERE instr(user_json, ?) > 0').bind(quoted),
+			// Profile/admin sessions of the user; idx_app_sessions_user (migration 0032) serves this
+			db.prepare(`DELETE FROM app_sessions WHERE json_extract(user_json, '$.id') = ?`).bind(userId),
 			// OpenAuth refresh tokens (key oauth:refresh/<subject>/<token>); the value names the user.
 			// idx_openauth_atomic_refresh_user (migration 0031) serves this; it was a scan of every token (#804)
 			db.prepare(

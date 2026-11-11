@@ -7,6 +7,7 @@
 import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import { CloudflarePatchedStorage } from './cloudflare-patched';
 import { D1AtomicStorage } from './d1-atomic';
+import { kvMayHoldRefreshTokens } from './legacy-refresh';
 
 export function authStorage(
 	env: { AUTH_STORAGE: KVNamespace; AUTH_DB: D1Database },
@@ -17,6 +18,9 @@ export function authStorage(
 		atomic: D1AtomicStorage(env.AUTH_DB),
 		scope: 'AUTH_STORAGE',
 		...(options.waitUntil ? { waitUntil: options.waitUntil, deferWrite: isSubjectRecord } : {}),
+		// The subject of an email never changes: skip the KV write when it is already there
+		skipUnchanged: isSubjectRecord,
+		kvMayHoldRefreshTokens: () => kvMayHoldRefreshTokens(env.AUTH_DB),
 	});
 }
 

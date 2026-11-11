@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { Hono } from 'hono';
 import '../test-setup';
-import { userListRoutes } from '../custom/user-list-routes';
+import { clearUserTotals, userListRoutes } from '../custom/user-list-routes';
 
 const T = 'default';
 
@@ -44,6 +44,7 @@ describe('GET /admin/users?search=', () => {
 		await seed('usr_bbb222', 'aisha@example.com', 'Aisha');
 		await seed('usr_ccc333', 'omar_100%@example.com', null);
 		await seed('usr_ddd444', 'omar.gone@example.com', 'Omar Gone', true);
+		clearUserTotals();
 	});
 
 	it('matches the name or the email, case-insensitively, never a deleted user', async () => {
@@ -76,5 +77,15 @@ describe('GET /admin/users?search=', () => {
 		const next = (await (await app().request(`/?limit=2&count=none&cursor=${body.pagination.nextCursor}`)).json()) as { users: { id: string }[] };
 		expect(next.users.map((u) => u.id)).not.toContain(body.users[0].id);
 		expect([...body.users, ...next.users].map((u) => u.id)).not.toContain('usr_ddd444');
+	});
+
+	it('reuses the unfiltered total for a few seconds; filtered counts are always fresh', async () => {
+		const total = async (q = '') => ((await (await app().request(`/?limit=1${q}`)).json()) as { total_count: number }).total_count;
+		expect(await total()).toBe(3);
+		await seed('usr_eee555', 'omar.new@example.com', 'Omar New');
+		expect(await total()).toBe(3);
+		expect(await total('&search=omar')).toBe(3);
+		clearUserTotals();
+		expect(await total()).toBe(4);
 	});
 });

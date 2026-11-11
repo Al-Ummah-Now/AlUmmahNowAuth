@@ -14,6 +14,8 @@ import { purgeExpiredAttempts } from '../security/password-attempts';
 import { purgeExpiredAppSessions } from '../services/app-sessions-cleanup';
 import { purgeDeleted } from '../deletions/purge';
 import { purgeRevokedInvites } from '../invites/service';
+import { D1AtomicStorage } from '../storage/d1-atomic';
+import { adoptLegacyRefreshTokens } from '../storage/legacy-refresh';
 
 export type CronJobName = 'token-cleanup';
 
@@ -65,6 +67,14 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 				await purgeExpiredAttempts(env.AUTH_DB);
 				// Expired profile/admin sessions (PF-1)
 				await purgeExpiredAppSessions(env.AUTH_DB);
+				// Refresh tokens still in KV from before D1 held them: moved over a batch
+				// at a time; once KV has none, refresh-token keys skip KV (legacy-refresh.ts)
+				try {
+					const adopted = await adoptLegacyRefreshTokens(env.AUTH_STORAGE, D1AtomicStorage(env.AUTH_DB), env.AUTH_DB);
+					if (adopted.moved) logger.info('Legacy KV refresh tokens moved to D1', { ...adopted });
+				} catch (error) {
+					logger.error('Legacy KV refresh token move failed', { error: error instanceof Error ? error.message : String(error) });
+				}
 				// Admin-deleted items due for permanent deletion (30 days, or asked for); never fails the job
 				try {
 					await purgeDeleted(env);

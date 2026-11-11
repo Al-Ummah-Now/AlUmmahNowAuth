@@ -38,6 +38,7 @@ import { hideDeleted, refuseDeletedRoleAssignment, softDeleteRoute } from "./del
 import { routeRequest, type RouterContext } from "./router";
 import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
+import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
@@ -98,6 +99,7 @@ function healthResponse(method: string): Response {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    applyLogLevel(env.LOG_LEVEL);
     const requestId = resolveRequestId(request);
     const { pathname } = new URL(request.url);
 
@@ -146,6 +148,7 @@ export default {
    * retried with backoff; failures flag the request (moderation/queue.ts).
    */
   async queue(batch: MessageBatch<ModerationQueueMessage>, env: Env, ctx: ExecutionContext) {
+    applyLogLevel(env.LOG_LEVEL);
     logger.setDatabase(env.AUTH_DB, false);
     logger.setContext(ctx);
     setupAuditEmitter(env, ctx);
@@ -158,6 +161,7 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    applyLogLevel(env.LOG_LEVEL);
     logger.setDatabase(env.AUTH_DB, false);
     logger.setContext(ctx);
     setupAuditEmitter(env, ctx);

@@ -12,7 +12,8 @@ import { join, resolve } from 'node:path';
 import { parseJsonc } from './jsonc.ts';
 
 /** Keys an env block may override in the generated config. */
-const ENV_KEYS = ['name', 'vars', 'kv_namespaces', 'routes', 'd1_databases', 'services', 'secrets_store_secrets'] as const;
+// observability/logpush: `wrangler versions deploy` syncs them from this config (stage logs warn/error only)
+const ENV_KEYS = ['name', 'vars', 'kv_namespaces', 'routes', 'd1_databases', 'services', 'secrets_store_secrets', 'observability', 'logpush'] as const;
 
 export function deriveEnvConfig(built: Record<string, unknown>, source: { env?: Record<string, Record<string, unknown>> }, envName: string) {
 	const block = source.env?.[envName];
