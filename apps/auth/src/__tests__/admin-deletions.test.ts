@@ -145,6 +145,14 @@ describe('cleanup', () => {
 		await db().prepare(`INSERT INTO user_identities (id, user_id, tenant_id, provider, provider_user_id, created_at) VALUES ('del-i4', 'del-u4', 'default', 'google', 'g-4', 1)`).run();
 		await db().prepare(`INSERT INTO rbac_roles (id, name, tenant_id) VALUES ('del-r4', 'del-r4', 'default')`).run();
 		await db().prepare(`INSERT INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by) VALUES ('del-u4', 'del-r4', 'default', 1, 'x')`).run();
+		// Profile/admin sessions of the user and of someone else whose JSON merely mentions the id
+		const session = (id: string, user: object) =>
+			db()
+				.prepare(`INSERT INTO app_sessions (id, app, user_json, access_token, expires_at, created_at, updated_at) VALUES (?, 'profile', ?, 'a', ?, 1, 1)`)
+				.bind(id, JSON.stringify(user), Date.now() + DAY)
+				.run();
+		await session('del-s4', { id: 'del-u4', email: 'del-u4@example.com' });
+		await session('del-s5', { id: 'del-u5', email: 'del-u5@example.com', note: 'del-u4' });
 		const storage = authStorage(ENV);
 		await Storage.set(storage, ['email', 'del-u4@example.com', 'password'], { hash: 'h' });
 		await Storage.set(storage, LEGACY_USER_KEYS.user('default', 'del-u4'), { id: 'del-u4' });
@@ -162,6 +170,8 @@ describe('cleanup', () => {
 		expect(await userRow('del-u4')).toBeNull();
 		expect(await db().prepare(`SELECT 1 FROM user_identities WHERE user_id = 'del-u4'`).first()).toBeNull();
 		expect(await db().prepare(`SELECT 1 FROM rbac_user_roles WHERE user_id = 'del-u4'`).first()).toBeNull();
+		expect((await db().prepare(`SELECT id FROM app_sessions WHERE id LIKE 'del-s%' ORDER BY id`).all()).results).toEqual([{ id: 'del-s5' }]);
+		await db().prepare(`DELETE FROM app_sessions WHERE id LIKE 'del-s%'`).run();
 		expect(await Storage.get(storage, ['email', 'del-u4@example.com', 'password'])).toBeUndefined();
 		expect(await Storage.get(storage, LEGACY_USER_KEYS.user('default', 'del-u4'))).toBeUndefined();
 		expect(await Storage.get(storage, LEGACY_USER_KEYS.email('default', 'del-u4@example.com'))).toBeUndefined();

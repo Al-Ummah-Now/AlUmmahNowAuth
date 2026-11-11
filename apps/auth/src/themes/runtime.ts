@@ -10,7 +10,9 @@ import type { CompiledTheme, StoredPackage } from '../../../../packages/ui/src/a
 import { logger } from '../logger';
 import { ThemeStore, type ThemeSettings } from './store';
 
-const SETTINGS_TTL_MS = 5_000;
+// Every sign-in page needs the settings (51k D1 reads a day on QA at 5 s). An
+// admin change clears this isolate's copy at once; other isolates follow within the TTL.
+const SETTINGS_TTL_MS = 30_000;
 let settingsCache: { at: number; value: ThemeSettings } | null = null;
 const compiledCache = new Map<string, CompiledTheme>();
 const MAX_COMPILED = 50;

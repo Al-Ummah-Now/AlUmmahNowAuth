@@ -106,7 +106,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // Fetch users via M2M API
     // ?q= (e.g. from a moderation request): load the users whose email matches
     const q = new URL(request.url).searchParams.get("q")?.trim();
-    const usersResponse = await listUsers(env, actingUser, q ? { email: q } : undefined, request);
+    const usersResponse = await listUsers(env, actingUser, q ? { email: q, skipCount: true } : { skipCount: true }, request);
 
     if (isErrorResponse(usersResponse)) {
       console.error("Error fetching users:", usersResponse.error);

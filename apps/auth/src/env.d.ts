@@ -22,6 +22,8 @@ declare global {
 
   interface Env {
     AUTH_STORAGE: KVNamespace;
+    /** "warn" on QA/stage: console lines below it are dropped (packages/ui/src/log-level.ts) */
+    LOG_LEVEL?: string;
     /** Token revocation list shared with the resource servers (u:<usr_id>). */
     TOKEN_REVOCATIONS?: KVNamespace;
     AUDIT_WEBHOOK_URL: string;

@@ -7,6 +7,7 @@ import appSessionsSql from "../migrations/0025_app_sessions.sql?raw";
 import userRevocationsSql from "../migrations/0026_user_revocations.sql?raw";
 import adminDeletionsSql from "../migrations/0027_admin_deletions.sql?raw";
 import signinIndexesSql from "../migrations/0031_signin_scan_indexes.sql?raw";
+import appSessionsUserIndexSql from "../migrations/0032_app_sessions_user_index.sql?raw";
 
 /** Statements of a migration file (comments stripped). */
 function sqlStatements(sql: string): string[] {
@@ -326,6 +327,7 @@ export async function setupDatabase() {
   for (const stmt of sqlStatements(adminDeletionsSql)) await env.AUTH_DB.prepare(stmt).run();
   // Indexes for the sign-in path's lookups (#804); the tables above are rebuilt, so recreate them
   for (const stmt of sqlStatements(signinIndexesSql)) await env.AUTH_DB.prepare(stmt).run();
+  for (const stmt of sqlStatements(appSessionsUserIndexSql)) await env.AUTH_DB.prepare(stmt).run();
   await env.AUTH_DB.prepare(`DELETE FROM admin_deletions`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_codes`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_login_attempts`).run();
