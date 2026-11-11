@@ -88,6 +88,23 @@ describe('createSendCodeHandler', () => {
 		});
 	});
 
+	describe('the email language', () => {
+		it('follows the page: ?lang=ar gives an Arabic reset email, never Accept-Language', async () => {
+			await makeHandler('/password/change?lang=ar', makeUserService(), storage)(KNOWN_USER_EMAIL, '123456');
+			const ar = sendEmailMock.mock.calls[0][0];
+			expect(ar.subject).toBe('رمزك لإعادة تعيين كلمة المرور في الأمة الآن');
+			expect(ar.html).toContain('<html lang="ar" dir="rtl"');
+			expect(ar.text).toContain('123456');
+		});
+
+		it('is English without ?lang, and says it is for creating an account on /password/register', async () => {
+			await makeHandler('/password/register', makeUserService(), storage)('new-person@example.com', '654321');
+			const en = sendEmailMock.mock.calls[0][0];
+			expect(en.subject).toBe('Your Al Ummah Now code to create your account');
+			expect(en.html).toContain('<html lang="en" dir="ltr"');
+		});
+	});
+
 	describe('password change flow (/password/change)', () => {
 		it('does not throw and sends no email for an unknown email', async () => {
 			const sendCode = makeHandler('/password/change', makeUserService(), storage);

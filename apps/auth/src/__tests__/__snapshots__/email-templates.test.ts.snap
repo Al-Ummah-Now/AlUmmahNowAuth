@@ -1,0 +1,121 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the email-code email > ar register: one language, code in the preheader, text parity 1`] = `
+"السلام عليكم،
+
+استخدم هذا الرمز لتأكيد بريدك الإلكتروني وإكمال إنشاء حسابك في الأمة الآن.
+
+رمزك: 482913
+صالح لمدة 15 دقيقة، ولمرة واحدة.
+
+أدخله في الصفحة التي طلبته منها.
+
+لم تطلب هذا الرمز؟ يمكنك تجاهل هذه الرسالة، فلن يتغير شيء من دونه. لا تشارك الرمز مع أحد، حتى مع من يقول إنه من الأمة الآن.
+
+—
+
+وصلتك هذه الرسالة لأن أحدًا بدأ إنشاء حساب في الأمة الآن بهذا العنوان.
+
+زيارة الأمة الآن: https://www.alummahnow.net/ar"
+`;
+
+exports[`the email-code email > ar reset: one language, code in the preheader, text parity 1`] = `
+"السلام عليكم،
+
+استخدم هذا الرمز لاختيار كلمة مرور جديدة لحسابك في الأمة الآن.
+
+رمزك: 482913
+صالح لمدة 15 دقيقة، ولمرة واحدة.
+
+أدخله في الصفحة التي طلبته منها.
+
+لم تطلب هذا الرمز؟ يمكنك تجاهل هذه الرسالة، فلن يتغير شيء من دونه. لا تشارك الرمز مع أحد، حتى مع من يقول إنه من الأمة الآن.
+
+—
+
+وصلتك هذه الرسالة لأن أحدًا طلب إعادة تعيين كلمة مرور حساب الأمة الآن المرتبط بهذا العنوان.
+
+زيارة الأمة الآن: https://www.alummahnow.net/ar"
+`;
+
+exports[`the email-code email > en register: one language, code in the preheader, text parity 1`] = `
+"Assalamu alaikum,
+
+Use this code to confirm your email address and finish creating your Al Ummah Now account.
+
+Your code: 482913
+It works for 15 minutes, once.
+
+Enter it on the page where you asked for it.
+
+Didn't ask for this? You can ignore this email: nothing changes without the code. Never share it with anyone, including people who say they are from Al Ummah Now.
+
+—
+
+You got this email because someone started creating an Al Ummah Now account with this address.
+
+Visit Al Ummah Now: https://www.alummahnow.net/en"
+`;
+
+exports[`the email-code email > en reset: one language, code in the preheader, text parity 1`] = `
+"Assalamu alaikum,
+
+Use this code to choose a new password for your Al Ummah Now account.
+
+Your code: 482913
+It works for 15 minutes, once.
+
+Enter it on the page where you asked for it.
+
+Didn't ask for this? You can ignore this email: nothing changes without the code. Never share it with anyone, including people who say they are from Al Ummah Now.
+
+—
+
+You got this email because someone asked to reset the password of the Al Ummah Now account with this address.
+
+Visit Al Ummah Now: https://www.alummahnow.net/en"
+`;
+
+exports[`the invite email > ar: one language, button, expiry date in that language, text parity 1`] = `
+"السلام عليكم Ali،
+
+أنشأ لك أحد مشرفي الأمة الآن حساب صانع محتوى. ويضم القناة Noor Talks جاهزةً لتديرها.
+
+سجّل الدخول باستخدام new@example.com. إن لم تكن قد عيّنت كلمة مرور بعد، فاختر «إنشاء حساب» وسنرسل إليك رمزًا للتأكد من أنك صاحب البريد.
+
+قبول الدعوة:
+https://auth.test/invite/abc?lang=ar
+
+ملاحظة من المشرف
+> Welcome
+
+يعمل هذا الرابط حتى 24 نوفمبر 2026. وبعد ذلك يمكنك تسجيل الدخول بهذا البريد الإلكتروني.
+
+—
+
+وصلتك هذه الرسالة لأن أحد مشرفي الأمة الآن دعا هذا العنوان إلى حساب صانع محتوى. إن لم تكن تتوقعها، فيمكنك تجاهلها.
+
+زيارة الأمة الآن: https://www.alummahnow.net/ar"
+`;
+
+exports[`the invite email > en: one language, button, expiry date in that language, text parity 1`] = `
+"Assalamu alaikum Ali,
+
+An Al Ummah Now admin has set up a creator account for you. It comes with the channel Noor Talks, ready for you to manage.
+
+Sign in with new@example.com. If you have not set a password yet, choose "Create account" and we will email you a code to confirm it is you.
+
+Accept the invite:
+https://auth.test/invite/abc?lang=ar
+
+Note from the admin
+> Welcome
+
+This link works until 24 November 2026. After that you can still sign in with this email address.
+
+—
+
+You got this email because an Al Ummah Now admin invited this address to a creator account. If you weren't expecting it, you can ignore it.
+
+Visit Al Ummah Now: https://www.alummahnow.net/en"
+`;

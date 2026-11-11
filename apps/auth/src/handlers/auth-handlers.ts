@@ -611,14 +611,16 @@ export function createSendCodeHandler(
 			}
 
 			// Generate email content from professional template
+			// One language: the page the user asked from (?lang=ar, else English;
+			// the form posts to its own URL, so the query is still here). Never Accept-Language.
 			const emailData = {
 				code,
 				email,
 				expiryMinutes: CODE_TTL_SECONDS / 60, // enforced by recordCode/checkCode
+				locale: url.searchParams.get('lang') === 'ar' ? ('ar' as const) : ('en' as const),
+				purpose: emailTemplates.codePurposeOf(url.pathname),
 			};
-			const htmlContent = emailTemplates.getVerificationCodeTemplate(emailData, handlerCtx.emailTheme);
-			const textContent = emailTemplates.getVerificationCodePlainText(emailData);
-			const subject = emailTemplates.getVerificationCodeSubject();
+			const { html: htmlContent, text: textContent, subject } = emailTemplates.renderVerificationCodeEmail(emailData, handlerCtx.emailTheme);
 
 			const emailResult = await staged(timer, 'sendcode.email', () => SendEmail({
 				apiKey,

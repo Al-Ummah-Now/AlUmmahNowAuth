@@ -27,7 +27,7 @@ import { isE2EAddress, shouldSinkCode, SINK_TTL_SECONDS } from '../utils/e2e-sin
 import { requireSecret } from '../utils/secrets';
 import { signInFallbackUrl } from '../utils/sign-in-restart';
 import SendEmail from '../email';
-import { inviteEmailHtml, inviteEmailSubject, inviteEmailText } from './email';
+import { inviteChannels, renderInviteEmail } from './email';
 import { pageLocale, renderInvitePage, renderStaleInvitePage } from './page';
 import { InviteError, InviteService, statusOf, type Invite, type InviteActor } from './service';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
@@ -116,15 +116,16 @@ export async function deliverInvite(env: Env, invite: Invite, link: string): Pro
 	}
 	try {
 		const apiKey = await requireSecret(env.RESEND_API_KEY as never, 'RESEND_API_KEY', env as unknown as Record<string, unknown>);
-		const data = { email: invite.email, name: invite.name, link, expiresAt: invite.expiresAt, note: invite.note, locale: invite.locale };
-		const result = await SendEmail({
-			apiKey,
-			from: INVITE_FROM,
-			to: invite.email,
-			subject: inviteEmailSubject(invite.locale),
-			html: inviteEmailHtml(data),
-			text: inviteEmailText(data),
+		const email = renderInviteEmail({
+			email: invite.email,
+			name: invite.name,
+			link,
+			expiresAt: invite.expiresAt,
+			note: invite.note,
+			locale: invite.locale,
+			channels: inviteChannels(invite.details),
 		});
+		const result = await SendEmail({ apiKey, from: INVITE_FROM, to: invite.email, subject: email.subject, html: email.html, text: email.text });
 		if (!result.success) return { sent: false, via: 'none', error: 'send_failed' };
 		return { sent: true, via: 'email' };
 	} catch (error) {

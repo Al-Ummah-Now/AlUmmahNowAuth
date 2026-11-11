@@ -130,7 +130,7 @@ describe('who may provision', () => {
 });
 
 describe('POST /provisioning/invites', () => {
-	it('pre-provisions a real account with the app\'s id, invited and unverified, and emails a bilingual link', async () => {
+	it('pre-provisions a real account with the app\'s id, invited and unverified, and emails the link in the invite\'s language', async () => {
 		const { res, body } = await invite({ email: '  New.Creator+YT@Example.COM ', locale: 'ar', note: 'Welcome aboard' });
 		expect(res.status).toBe(201);
 		expect(res.json.user).toMatchObject({ id: body.userId, email: 'new.creator+yt@example.com', status: 'invited' });
@@ -154,6 +154,15 @@ describe('POST /provisioning/invites', () => {
 		expect(stored!.token_hash).toBe(await hashToken(token));
 		expect(JSON.stringify(audit.mock.calls)).not.toContain(token);
 		expect(audit.mock.calls.map((c) => c[0].eventType)).toContain('user.invited');
+	});
+
+	it('names the attached channel, and says "creator account" when none is attached', async () => {
+		await invite({ details: { channels: [{ id: 'ch1', name: 'Noor <Talks>', action: 'created' }] } });
+		expect(sent[0].text).toContain('the channel Noor <Talks>');
+		expect(sent[0].html).toContain('Noor &lt;Talks&gt;');
+		await invite();
+		expect(sent[1].text).toContain('creator account');
+		expect(sent[1].text).not.toMatch(/channel/i);
 	});
 
 	it('is idempotent on inviteId: a retried message gets the same invite and no second email', async () => {
@@ -420,13 +429,16 @@ describe('revoke, restore, purge', () => {
 });
 
 describe('the invite email', () => {
+	// Rendering details (one language, channels, escaping, text parity): email-templates.test.ts
 	const data = { email: 'x@example.com', name: '<b>Ali</b>', link: 'https://auth.test/invite/abc', expiresAt: Date.UTC(2026, 10, 24), note: null, locale: 'en' as const };
-	it('has both languages, the chosen one first, and escapes what the admin typed', () => {
+	it('is in the invite\'s one language and escapes what the admin typed', () => {
 		const html = inviteEmailHtml(data);
-		expect(html.indexOf('lang="en"')).toBeLessThan(html.indexOf('dir="rtl"'));
+		expect(html).toContain('lang="en"');
+		expect(html).not.toContain('dir="rtl"');
 		expect(html).toContain('&lt;b&gt;Ali&lt;/b&gt;');
-		expect(inviteEmailHtml({ ...data, locale: 'ar' }).indexOf('dir="rtl"')).toBeLessThan(inviteEmailHtml({ ...data, locale: 'ar' }).indexOf('dir="ltr"'));
+		expect(inviteEmailHtml({ ...data, locale: 'ar' })).not.toContain('dir="ltr" lang="en"');
 		expect(inviteEmailText(data)).toContain('https://auth.test/invite/abc');
-		expect(inviteEmailSubject('en')).toMatch(/^You're invited/);
+		expect(inviteEmailSubject('en')).toBe("You're invited to Al Ummah Now");
+		expect(inviteEmailSubject('ar')).toBe('دعوة للانضمام إلى الأمة الآن');
 	});
 });
