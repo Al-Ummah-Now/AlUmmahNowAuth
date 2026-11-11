@@ -9,17 +9,30 @@ import { inviteChannels, renderInviteEmail } from '../invites/email';
 import { EMAIL_LOGO_URL, escapeHtml, renderEmail, type RenderedEmailParts } from '../email/layout';
 
 const ARABIC = /[؀-ۿ]/;
-const visibleText = (html: string) =>
-	html
-		.replace(/<style[\s\S]*?<\/style>/g, '')
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/<div style="display:none[\s\S]*?<\/div>/, '')
-		.replace(/<title>[\s\S]*?<\/title>/, '')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-		.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+/** The text a reader sees: skips <head>, comments and the hidden preheader, drops tags, decodes entities. */
+function visibleText(html: string): string {
+	let rest = html.slice(html.indexOf('<body'));
+	const pre = rest.indexOf('<div style="display:none');
+	if (pre >= 0) rest = rest.slice(0, pre) + rest.slice(rest.indexOf('</div>', pre) + 6);
+	let out = '';
+	let inTag = false;
+	for (let k = 0; k < rest.length; k++) {
+		if (rest.startsWith('<!--', k)) {
+			k = rest.indexOf('-->', k) + 2;
+			continue;
+		}
+		const ch = rest[k];
+		if (ch === '<') inTag = true;
+		else if (ch === '>' && inTag) {
+			inTag = false;
+			out += ' ';
+		} else if (!inTag) out += ch;
+	}
+	const named: Record<string, string> = { quot: '"', lt: '<', gt: '>', amp: '&' };
+	return out.replace(/&(#\d+|quot|lt|gt|amp);/g, (_, e: string) => (e.startsWith('#') ? String.fromCodePoint(Number(e.slice(1))) : named[e]));
+}
 /** Sentences compared without the label colons the text part adds. */
-const norm = (s: string) => s.replace(/[:\s\u200f\u200e\u2007\ufeff\u034f]+/g, ' ').trim();
+const norm = (s: string) => s.replace(/(?:[:\s\u200f\u200e\u2007\ufeff]|\u034f)+/g, ' ').trim();
 
 /** Shared checks for every rendered email. */
 function expectWellFormed(email: RenderedEmailParts, locale: 'en' | 'ar') {
