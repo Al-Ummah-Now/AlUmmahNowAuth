@@ -304,8 +304,10 @@ jobs:
         run: pnpm install
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
+        uses: ./.github/actions/playwright-install
+        with:
+          runner: npx
+          browsers: chromium
       - name: Run Admin Audit tests (shard ${{ matrix.shard }}/2)
         run: pnpm exec playwright test e2e/tests/admin/audit-view.spec.ts --shard=${{ matrix.shard }}/2
         env:
@@ -373,8 +375,10 @@ jobs:
         run: pnpm install
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
+        uses: ./.github/actions/playwright-install
+        with:
+          runner: npx
+          browsers: chromium
       - name: Run Admin User tests (shard ${{ matrix.shard }}/2)
         run: pnpm exec playwright test e2e/tests/admin/user-create.spec.ts e2e/tests/admin/user-edit.spec.ts e2e/tests/admin/user-delete.spec.ts e2e/tests/admin/moderation-requests.spec.ts e2e/tests/admin/themes.spec.ts --shard=${{ matrix.shard }}/2
         env:
@@ -445,8 +449,10 @@ jobs:
         run: pnpm install
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
+        uses: ./.github/actions/playwright-install
+        with:
+          runner: npx
+          browsers: chromium
       - name: Run Auth tests (shard ${{ matrix.shard }}/2)
         run: pnpm exec playwright test e2e/tests/auth/ --shard=${{ matrix.shard }}/2
         env:
@@ -510,8 +516,10 @@ jobs:
         run: pnpm install
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
+        uses: ./.github/actions/playwright-install
+        with:
+          runner: npx
+          browsers: chromium
       - name: Run Profile, Integration & Release regression tests
         run: pnpm exec playwright test e2e/tests/profile/ e2e/tests/integration/ e2e/tests/release/
         env:
