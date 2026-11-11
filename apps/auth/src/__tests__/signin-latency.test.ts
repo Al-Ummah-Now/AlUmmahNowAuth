@@ -111,15 +111,15 @@ describe('purging an account deletes its refresh tokens through the index (migra
 			E.AUTH_DB.prepare('INSERT OR REPLACE INTO openauth_atomic (key, value, expires_at) VALUES (?, ?, NULL)')
 				.bind(key, JSON.stringify({ type: 'user', properties: { id, email: `${id}@example.com`, roles: [] } }))
 				.run();
-		await put('oauth:refresh::user:aaa::t1', 'usr_gone');
-		await put('oauth:refresh::user:aaa::t2', 'usr_gone');
-		await put('oauth:refresh::user:bbb::t3', 'usr_kept');
+		await put('oauth:refresh::user:t804a::t1', 'usr_gone804');
+		await put('oauth:refresh::user:t804a::t2', 'usr_gone804');
+		await put('oauth:refresh::user:t804b::t3', 'usr_kept804');
 		const sql = `DELETE FROM openauth_atomic WHERE key >= 'oauth:refresh' AND key < 'oauth:refresi' AND json_extract(value, '$.properties.id') = ?`;
-		const plan = await E.AUTH_DB.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind('usr_gone').all<{ detail: string }>();
+		const plan = await E.AUTH_DB.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind('usr_gone804').all<{ detail: string }>();
 		expect(plan.results.map((r) => r.detail).join(' ')).toContain('idx_openauth_atomic_refresh_user');
-		await E.AUTH_DB.prepare(sql).bind('usr_gone').run();
-		const left = await E.AUTH_DB.prepare("SELECT key FROM openauth_atomic WHERE key LIKE 'oauth:refresh::%' ORDER BY key").all<{ key: string }>();
-		expect(left.results.map((r) => r.key)).toEqual(['oauth:refresh::user:bbb::t3']);
+		await E.AUTH_DB.prepare(sql).bind('usr_gone804').run();
+		const left = await E.AUTH_DB.prepare("SELECT key FROM openauth_atomic WHERE key LIKE 'oauth:refresh::user:t804%' ORDER BY key").all<{ key: string }>();
+		expect(left.results.map((r) => r.key)).toEqual(['oauth:refresh::user:t804b::t3']);
 	});
 
 	it('email lookups by lower(email) use idx_users_email_lower', async () => {
