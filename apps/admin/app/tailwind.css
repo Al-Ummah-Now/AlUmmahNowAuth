@@ -35,6 +35,8 @@
 /* Fallbacks for the shared header account menu (NAV_CSS, AlUmmahNow docs/design/NAV.md) when
    Auth's theme (root.tsx shellCss, which defines the real Fanous tokens) cannot be loaded */
 :root {
+  /* Dark only: the shared nav's light-dark() menus take their dark colours */
+  color-scheme: dark;
   --fanous-c-nav-bg: rgb(var(--color-card));
   --fanous-c-nav-text: rgb(var(--color-foreground));
   --fanous-c-nav-icon: rgb(var(--color-muted-foreground));
