@@ -110,7 +110,7 @@ describe('a custom theme from duplicate to delete', () => {
 		expect(await res.json()).toMatchObject({ id: ID, kind: 'custom', status: 'draft', basedOn: null });
 		expect(audit).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'theme.created', userId: ADMIN_USER }));
 		const got = await (await call('GET', `/${ID}`)).json<{ theme: Record<string, unknown> }>();
-		expect(got.theme).toMatchObject({ id: ID, kind: 'custom', version: '1.0.0', basedOn: 'fawanees@1.0.0' });
+		expect(got.theme).toMatchObject({ id: ID, kind: 'custom', version: '1.0.0', basedOn: 'fawanees@1.1.0' });
 	});
 
 	it('cannot change or delete a built-in', async () => {

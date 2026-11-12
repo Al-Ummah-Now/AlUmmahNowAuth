@@ -3,7 +3,7 @@
   "format": "alummahnow.theme-package",
   "formatVersion": 1,
   "id": "fawanees",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": {
     "en": "Fawanees",
     "ar": "فوانيس"
@@ -25,11 +25,11 @@
     },
     "color": {
       "light": {
-        "background": "#f6d67f",
-        "surface": "#fff1c4",
-        "surfaceRaised": "#fff9e6",
+        "background": "#fff1c4",
+        "surface": "#f6d67f",
+        "surfaceRaised": "#f9df97",
         "heroStart": "#efc65f",
-        "heroEnd": "#f6d67f",
+        "heroEnd": "#fff1c4",
         "textPrimary": "#0b2534",
         "textSecondary": "#143a4c",
         "textMuted": "#24505f",
@@ -167,7 +167,7 @@
           "searchBorder": "#8ba3ae",
           "searchText": "#fbefd0",
           "searchPlaceholder": "#d6dfe2",
-          "menuBg": "{color.surfaceRaised}",
+          "menuBg": "{color.surface}",
           "menuText": "{color.textPrimary}",
           "menuHover": "{color.heroStart}"
         },
@@ -200,7 +200,7 @@
           "bg": "{color.surface}",
           "text": "{color.textPrimary}",
           "icon": "{color.textSecondary}",
-          "activeBg": "{color.surfaceRaised}",
+          "activeBg": "{color.heroStart}",
           "activeText": "{color.link}",
           "divider": "{color.divider}"
         },
@@ -390,7 +390,7 @@
           "sectionBorder": "{color.divider}",
           "label": "{color.textPrimary}",
           "help": "{color.textSecondary}",
-          "inputBg": "{color.background}",
+          "inputBg": "{color.surface}",
           "inputBorder": "{color.outline}",
           "inputText": "{color.textPrimary}",
           "placeholder": "{color.textMuted}",
@@ -509,7 +509,7 @@
     "menu": {
       "colors": {
         "light": {
-          "bg": "{color.surfaceRaised}",
+          "bg": "{color.surface}",
           "text": "{color.textPrimary}",
           "muted": "{color.textMuted}",
           "hover": "{color.heroStart}",
@@ -531,7 +531,7 @@
     "dialog": {
       "colors": {
         "light": {
-          "bg": "{color.surfaceRaised}",
+          "bg": "{color.surface}",
           "text": "{color.textPrimary}",
           "muted": "{color.textSecondary}",
           "border": "{color.divider}"
