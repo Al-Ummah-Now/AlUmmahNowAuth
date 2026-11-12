@@ -75,6 +75,8 @@ const STYLES = `
         .nav-menu { display: flex; gap: 1rem; align-items: center; }
 
         /* Language link, account button and menus: the shared .aun-* classes (NAV_CSS, AlUmmahNow docs/design/NAV.md) */
+        /* The shared nav's menus pick light or dark with light-dark(): the page follows the OS, like its tokens */
+        :root { color-scheme: light dark; }
         .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .accounts-list:empty { display: none; }
         html[lang="ar"] .profile-field label { text-transform: none; letter-spacing: 0; }
