@@ -155,6 +155,9 @@ describe('cleanup', () => {
 		await session('del-s5', { id: 'del-u5', email: 'del-u5@example.com', note: 'del-u4' });
 		const storage = authStorage(ENV);
 		await Storage.set(storage, ['email', 'del-u4@example.com', 'password'], { hash: 'h' });
+		await Storage.set(storage, ['email', 'del-u4@example.com', 'subject'], 'del-u4');
+		await db().prepare(`INSERT INTO password_login_attempts (email, window_start, failures) VALUES ('del-u4@example.com', 1, 1)`).run();
+		await db().prepare(`INSERT INTO password_codes (email, code_hash, expires_at, attempts, window_start, window_attempts, created_at) VALUES ('del-u4@example.com', 'h', 1, 0, 1, 0, 1)`).run();
 		await Storage.set(storage, LEGACY_USER_KEYS.user('default', 'del-u4'), { id: 'del-u4' });
 		await Storage.set(storage, LEGACY_USER_KEYS.email('default', 'del-u4@example.com'), { userId: 'del-u4' });
 
@@ -173,12 +176,41 @@ describe('cleanup', () => {
 		expect((await db().prepare(`SELECT id FROM app_sessions WHERE id LIKE 'del-s%' ORDER BY id`).all()).results).toEqual([{ id: 'del-s5' }]);
 		await db().prepare(`DELETE FROM app_sessions WHERE id LIKE 'del-s%'`).run();
 		expect(await Storage.get(storage, ['email', 'del-u4@example.com', 'password'])).toBeUndefined();
+		// Nothing keyed by the email is left: the subject record, sign-in attempts, codes
+		expect(await Storage.get(storage, ['email', 'del-u4@example.com', 'subject'])).toBeUndefined();
+		expect(await db().prepare(`SELECT 1 FROM password_login_attempts WHERE email = 'del-u4@example.com'`).first()).toBeNull();
+		expect(await db().prepare(`SELECT 1 FROM password_codes WHERE email = 'del-u4@example.com'`).first()).toBeNull();
+		// The revocation that outlives the account names the user by id only, never the email
+		const revocations = (await db().prepare(`SELECT * FROM user_revocations WHERE user_id = 'del-u4'`).all()).results;
+		expect(revocations).toHaveLength(1);
+		expect(JSON.stringify(revocations)).not.toContain('del-u4@example.com');
+		const kvRevocation = await ENV.TOKEN_REVOCATIONS?.get('u:del-u4');
+		if (kvRevocation) expect(kvRevocation).not.toContain('del-u4@example.com');
 		expect(await Storage.get(storage, LEGACY_USER_KEYS.user('default', 'del-u4'))).toBeUndefined();
 		expect(await Storage.get(storage, LEGACY_USER_KEYS.email('default', 'del-u4@example.com'))).toBeUndefined();
 		expect(await listDeleted(ENV)).toEqual([]);
 
 		const again = await purgeDeleted(ENV, { now: t0 + RETENTION_MS + 2 });
 		expect(again.purged.user + again.failed.user).toBe(0);
+	});
+
+	it('keeps the email records while another live account uses the email', async () => {
+		await db().prepare(`INSERT OR IGNORE INTO tenants (id, name, created_at, updated_at) VALUES ('del-other', 'del-other', 1, 1)`).run().catch(() => undefined);
+		await addUser('del-u6', 'del-shared@example.com');
+		// Another tenant's live account with the same email (one live account per email per tenant)
+		await db()
+			.prepare(`INSERT INTO users (id, tenant_id, email, status, created_at, updated_at, password_reset_required) VALUES ('del-u7', 'del-other', 'del-shared@example.com', 'active', 1, 1, 0)`)
+			.run();
+		const storage = authStorage(ENV);
+		await Storage.set(storage, ['email', 'del-shared@example.com', 'password'], { hash: 'h' });
+		await Storage.set(storage, ['email', 'del-shared@example.com', 'subject'], 'del-u7');
+		const t0 = Date.now();
+		await softDelete(ENV, 'user', 'del-u6', ADMIN, { now: t0 });
+		expect((await purgeDeleted(ENV, { now: t0 + RETENTION_MS + 1 })).purged.user).toBe(1);
+		expect(await Storage.get(storage, ['email', 'del-shared@example.com', 'subject'])).toBe('del-u7');
+		expect(await Storage.get(storage, ['email', 'del-shared@example.com', 'password'])).toEqual({ hash: 'h' });
+		await Storage.remove(storage, ['email', 'del-shared@example.com', 'subject']);
+		await Storage.remove(storage, ['email', 'del-shared@example.com', 'password']);
 	});
 
 	it('"delete permanently now" needs the typed label, queues the item for the next run, and can still be restored', async () => {
