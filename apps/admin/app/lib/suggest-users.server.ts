@@ -9,6 +9,7 @@
 import { requireAuth } from "./auth.server";
 import { getUser, isErrorResponse, listUsers, type ActingUser, type User } from "./admin-api.server";
 import type { Suggestion } from "./autocomplete-model";
+import { resolveUserDisplayName } from "../../../../packages/ui/src/display-name";
 
 export const SUGGEST_LIMIT = 8;
 /** A picker's page before anything is typed */
@@ -19,8 +20,9 @@ type Env = Parameters<typeof requireAuth>[1] & { ADMIN_CLIENT_SECRET?: string };
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-export function toSuggestion(u: Pick<User, "id" | "email" | "name">): Suggestion {
-  const name = u.name?.trim();
+export function toSuggestion(u: Pick<User, "id" | "email" | "name" | "metadata">): Suggestion {
+  // The platform's display-name rule; the email only when there is no name at all
+  const name = resolveUserDisplayName(u);
   return { id: u.id, label: name || u.email, secondary: name ? u.email : null, imageUrl: null };
 }
 

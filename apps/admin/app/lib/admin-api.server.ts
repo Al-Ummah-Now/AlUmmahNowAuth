@@ -15,6 +15,8 @@ export interface User {
   id: string;
   email: string;
   name?: string;
+  /** Free-form; may hold first/last/display names or a handle (see packages/ui/src/display-name.ts) */
+  metadata?: unknown;
   created_at: number;
   password_reset_required: boolean;
   roles: Array<{

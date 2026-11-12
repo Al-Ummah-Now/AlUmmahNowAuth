@@ -39,6 +39,7 @@ import { routeRequest, type RouterContext } from "./router";
 import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
 import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
+import { resolveUserDisplayName } from "../../../packages/ui/src/display-name.ts";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
@@ -519,7 +520,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
             const userIds = data.accounts.map(a => a.userId);
             const placeholders = userIds.map(() => '?').join(',');
             const usersResult = await env.AUTH_DB
-              .prepare(`SELECT id, email, name FROM users WHERE id IN (${placeholders})`)
+              .prepare(`SELECT id, email, name, metadata FROM users WHERE id IN (${placeholders})`)
               .bind(...userIds)
               .all();
 
@@ -527,7 +528,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
             for (const row of usersResult.results || []) {
               usersMap.set(row.id as string, {
                 email: row.email as string,
-                name: row.name as string | null,
+                name: resolveUserDisplayName({ name: row.name as string | null, metadata: row.metadata }) || null,
               });
             }
 
