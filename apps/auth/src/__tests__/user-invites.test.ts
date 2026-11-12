@@ -224,6 +224,38 @@ describe('POST /provisioning/invites', () => {
 	});
 });
 
+describe('E2E run addresses', () => {
+	const RUN_EMAIL = `e2e+12345-1-admin-chromium-invite-${hex().slice(0, 6)}@e2e.alummahnow.net`;
+	const runEnv = () =>
+		({
+			...E(),
+			E2E_RUN_USERS: 'enabled',
+			E2E_CODE_SINK_SECRET: { get: async () => 'invite-test-sink-secret-0123456789' },
+			TEST_PROMOTE_SECRET: 'invite-test-promote-secret-0123456789',
+		}) as unknown as Env;
+	const marker = async (userId: string) =>
+		(await DB().prepare(`SELECT json_extract(metadata, '$.e2eRun') AS m FROM users WHERE id = ?`).bind(userId).first<{ m: string | null }>())?.m ?? null;
+
+	it('an invited run address is marked as a run account where run accounts are on, so the teardown may delete it', async () => {
+		const body = { ...ids(), email: RUN_EMAIL, name: 'Run invitee', locale: 'en', actor: { id: 'usr_videosadmin', email: 'admin@example.com' } };
+		const headers = new Headers({ 'Content-Type': 'application/json', Authorization: basic(VIDEOS.id, VIDEOS.secret) });
+		const res = await routeInviteProvisioning(new Request('https://auth.test/provisioning/invites', { method: 'POST', headers, body: JSON.stringify(body) }), runEnv(), ctx, 'req-run');
+		expect(res!.status).toBe(201);
+		expect(JSON.parse((await marker(body.userId))!)).toMatchObject({ via: 'invite' });
+	});
+
+	it('never where run accounts are off (production), nor for an ordinary address', async () => {
+		const run = { ...ids(), email: `e2e+12345-1-admin-chromium-invite-${hex().slice(0, 6)}@e2e.alummahnow.net` };
+		expect((await invite(run)).res.status).toBe(201);
+		expect(await marker(run.userId)).toBeNull();
+		const plain = ids();
+		const headers = new Headers({ 'Content-Type': 'application/json', Authorization: basic(VIDEOS.id, VIDEOS.secret) });
+		const body = { ...plain, email: `creator-${hex().slice(0, 8)}@example.com`, name: 'Plain', locale: 'en', actor: { id: 'usr_videosadmin', email: 'admin@example.com' } };
+		expect((await routeInviteProvisioning(new Request('https://auth.test/provisioning/invites', { method: 'POST', headers, body: JSON.stringify(body) }), runEnv(), ctx, 'req-plain'))!.status).toBe(201);
+		expect(await marker(plain.userId)).toBeNull();
+	});
+});
+
 describe('another client', () => {
 	it('cannot see or change this client\'s invites', async () => {
 		const { body } = await invite();
