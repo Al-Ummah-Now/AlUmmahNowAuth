@@ -60,7 +60,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
     name: { en: "Al Ummah Now", ar: "الأمة الآن" },
     description: {
       en: "Watch and share videos",
-      ar: "شاهد الفيديوهات وشاركها",
+      ar: "شاهد المرئيات وشاركها",
     },
     icon: "play",
     urls: {
@@ -94,7 +94,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
     name: { en: "Al Ummah Now Admin", ar: "إدارة الأمة الآن" },
     description: {
       en: "Moderate videos, channels and reports",
-      ar: "الإشراف على الفيديوهات والقنوات والبلاغات",
+      ar: "الإشراف على المرئيات والقنوات والبلاغات",
     },
     icon: "shield",
     urls: {
@@ -112,7 +112,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
     name: { en: "CMS", ar: "إدارة المحتوى" },
     description: {
       en: "Edit the website: pages, articles and featured videos",
-      ar: "تحرير الموقع: الصفحات والمقالات والفيديوهات المختارة",
+      ar: "تحرير الموقع: الصفحات والمقالات والمرئيات المختارة",
     },
     icon: "pencil",
     urls: {
