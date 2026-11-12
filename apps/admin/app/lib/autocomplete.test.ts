@@ -118,5 +118,8 @@ describe("suggestion shape", () => {
   it("shows the name with the email under it, or the email alone", () => {
     expect(toSuggestion({ id: "a", email: "a@x.com", name: " Aisha " })).toEqual({ id: "a", label: "Aisha", secondary: "a@x.com", imageUrl: null });
     expect(toSuggestion({ id: "b", email: "b@x.com" })).toEqual({ id: "b", label: "b@x.com", secondary: null, imageUrl: null });
+    // The display-name rule: first + last from metadata when the name is empty; the email only when there is no name
+    expect(toSuggestion({ id: "c", email: "c@x.com", name: "", metadata: { firstName: "Mahmoud", lastName: "Darwish" } })).toEqual({ id: "c", label: "Mahmoud Darwish", secondary: "c@x.com", imageUrl: null });
+    expect(toSuggestion({ id: "d", email: "d@x.com", name: "  " })).toEqual({ id: "d", label: "d@x.com", secondary: null, imageUrl: null });
   });
 });

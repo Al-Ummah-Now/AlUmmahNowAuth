@@ -26,6 +26,7 @@ import { requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { LoadErrorBanner } from "../components/load-error-banner";
 import { logger } from "../lib/logger.server";
+import { resolveUserDisplayName } from "../../../../packages/ui/src/display-name";
 // Role assignment uses M2M auth through admin-api.server.ts
 import {
   listUsers,
@@ -117,7 +118,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const users = usersResponse.users.map((user) => ({
       id: user.id,
       email: user.email,
-      name: user.name,
+      // The platform's display-name rule (name, then first + last, then @handle)
+      name: resolveUserDisplayName(user),
       created_at: user.created_at,
       roles: user.roles || [],
     }));

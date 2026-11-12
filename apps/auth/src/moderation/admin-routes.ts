@@ -18,6 +18,7 @@
 import { Hono } from 'hono';
 import { requireAdmin } from '../middleware/admin-auth';
 import { rateLimit } from '../middleware/rate-limit';
+import { resolveUserDisplayName } from '../../../../packages/ui/src/display-name.ts';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import {
@@ -241,10 +242,12 @@ async function userSummaries(db: D1Database, ids: string[]) {
 	const map = new Map<string, { id: string; email: string; name: string | null; status: string; password_reset_required: boolean; created_at: number }>();
 	if (!unique.length) return map;
 	const { results } = await db
-		.prepare(`SELECT id, email, name, status, password_reset_required, created_at FROM users WHERE id IN (${unique.map(() => '?').join(',')})`)
+		.prepare(`SELECT id, email, name, metadata, status, password_reset_required, created_at FROM users WHERE id IN (${unique.map(() => '?').join(',')})`)
 		.bind(...unique)
-		.all<{ id: string; email: string; name: string | null; status: string; password_reset_required: number; created_at: number }>();
-	for (const u of results ?? []) map.set(u.id, { ...u, password_reset_required: !!u.password_reset_required });
+		.all<{ id: string; email: string; name: string | null; metadata: string | null; status: string; password_reset_required: number; created_at: number }>();
+	// name: the platform's display-name rule (name, then first + last, then @handle), null when none
+	for (const { metadata, ...u } of results ?? [])
+		map.set(u.id, { ...u, name: resolveUserDisplayName({ name: u.name, metadata }) || null, password_reset_required: !!u.password_reset_required });
 	return map;
 }
 

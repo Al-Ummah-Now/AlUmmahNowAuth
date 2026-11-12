@@ -11,6 +11,7 @@
  */
 
 import { parseUserAgent } from '../utils/user-agent';
+import { resolveUserDisplayName } from '../../../../packages/ui/src/display-name.ts';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { BrowserSession, BrowserSessionWithAccounts, AccountSessionWithUser } from '../types/sessions';
 
@@ -91,7 +92,8 @@ export class BrowserSessionService {
 					a.*,
 					u.id as user_id,
 					u.email as user_email,
-					u.name as user_name
+					u.name as user_name,
+					u.metadata as user_metadata
 				FROM account_sessions a
 				JOIN users u ON a.user_id = u.id
 				WHERE a.browser_session_id = ?
@@ -216,7 +218,8 @@ export class BrowserSessionService {
 			user: {
 				id: row.user_id as string,
 				email: row.user_email as string,
-				name: (row.user_name as string) || undefined,
+				// The platform's display-name rule (name, then first + last, then @handle); never the email
+				name: resolveUserDisplayName({ name: row.user_name as string | null, metadata: row.user_metadata }) || undefined,
 			},
 		};
 	}
