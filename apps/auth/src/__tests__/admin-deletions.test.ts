@@ -156,6 +156,11 @@ describe('cleanup', () => {
 		const storage = authStorage(ENV);
 		await Storage.set(storage, ['email', 'del-u4@example.com', 'password'], { hash: 'h' });
 		await Storage.set(storage, ['email', 'del-u4@example.com', 'subject'], 'del-u4');
+		await db()
+			.prepare(
+				`INSERT INTO user_invites (id, tenant_id, user_id, email, client_id, invited_by, created_at, updated_at, expires_at) VALUES ('inv_del4', 'default', 'del-u4', 'del-u4@example.com', 'c', 'x', 1, 1, 2)`
+			)
+			.run();
 		await db().prepare(`INSERT INTO password_login_attempts (email, window_start, failures) VALUES ('del-u4@example.com', 1, 1)`).run();
 		await db().prepare(`INSERT INTO password_codes (email, code_hash, expires_at, attempts, window_start, window_attempts, created_at) VALUES ('del-u4@example.com', 'h', 1, 0, 1, 0, 1)`).run();
 		await Storage.set(storage, LEGACY_USER_KEYS.user('default', 'del-u4'), { id: 'del-u4' });
@@ -180,6 +185,7 @@ describe('cleanup', () => {
 		expect(await Storage.get(storage, ['email', 'del-u4@example.com', 'subject'])).toBeUndefined();
 		expect(await db().prepare(`SELECT 1 FROM password_login_attempts WHERE email = 'del-u4@example.com'`).first()).toBeNull();
 		expect(await db().prepare(`SELECT 1 FROM password_codes WHERE email = 'del-u4@example.com'`).first()).toBeNull();
+		expect(await db().prepare(`SELECT 1 FROM user_invites WHERE user_id = 'del-u4'`).first()).toBeNull();
 		// The revocation that outlives the account names the user by id only, never the email
 		const revocations = (await db().prepare(`SELECT * FROM user_revocations WHERE user_id = 'del-u4'`).all()).results;
 		expect(revocations).toHaveLength(1);

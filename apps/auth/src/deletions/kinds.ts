@@ -175,6 +175,8 @@ const user: KindHandler = {
 			db.prepare('DELETE FROM tenant_admins WHERE user_id = ?').bind(userId),
 			db.prepare('DELETE FROM tenant_invitations WHERE invited_by = ?').bind(userId),
 			db.prepare('DELETE FROM user_identities WHERE user_id = ?').bind(userId),
+			// The invites that pre-provisioned the account hold its email (migration 0030; no cascade)
+			db.prepare('DELETE FROM user_invites WHERE user_id = ?').bind(userId),
 			db.prepare('DELETE FROM authorization_codes WHERE user_id = ?').bind(userId),
 			db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').bind(userId),
 			// Profile/admin sessions of the user; idx_app_sessions_user (migration 0032) serves this
