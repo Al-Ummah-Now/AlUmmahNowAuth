@@ -130,13 +130,18 @@ export async function runUsersEnabled(env: RunUsersEnv): Promise<boolean> {
 export const RUN_USER_MARKER = 'e2eRun';
 
 /**
- * Called right after a registration creates an account: a run address on a
- * deployment with run-account support gets the marker. Never throws.
+ * Called right after a registration (or an invite) creates an account: a run
+ * address on a deployment with run-account support gets the marker. Never throws.
  */
-export async function markRunUser(env: RunUsersEnv, db: D1Database | undefined, user: { id: string; email: string }): Promise<boolean> {
+export async function markRunUser(
+	env: RunUsersEnv,
+	db: D1Database | undefined,
+	user: { id: string; email: string },
+	via: 'e2e-sink-registration' | 'invite' = 'e2e-sink-registration'
+): Promise<boolean> {
 	try {
 		if (!db || !isRunUserEmail(user.email.toLowerCase()) || !(await runUsersEnabled(env))) return false;
-		const marker = JSON.stringify({ via: 'e2e-sink-registration', at: Date.now() });
+		const marker = JSON.stringify({ via, at: Date.now() });
 		await db
 			.prepare(`UPDATE users SET metadata = json_set(coalesce(metadata, '{}'), '$.${RUN_USER_MARKER}', json(?)) WHERE id = ?`)
 			.bind(marker, user.id)

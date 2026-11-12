@@ -23,7 +23,7 @@ import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { logger } from '../logger';
 import { isAllowedOrigin } from '../utils/cors';
-import { isE2EAddress, shouldSinkCode, SINK_TTL_SECONDS } from '../utils/e2e-sink';
+import { isE2EAddress, markRunUser, shouldSinkCode, SINK_TTL_SECONDS, type RunUsersEnv } from '../utils/e2e-sink';
 import { requireSecret } from '../utils/secrets';
 import { signInFallbackUrl } from '../utils/sign-in-restart';
 import SendEmail from '../email';
@@ -207,6 +207,9 @@ export async function routeInviteProvisioning(request: Request, env: Env, ctx: E
 					if (delivery.sent) await service.markSent(result.invite.id);
 				}
 				if (result.created) {
+					// An E2E run address invited on QA/stage/local is a run account like a signed-up one, so the
+					// run's teardown (/test/run-users/delete) may delete it; a no-op anywhere else
+					await markRunUser(env as unknown as RunUsersEnv, env.AUTH_DB, result.user, 'invite');
 					audit(AuditEventType.USER_INVITED, result.invite, { emailSent: delivery.sent, via: delivery.via });
 					logger.info('[invites] Invite created', { inviteId: result.invite.id, userId: result.user.id, emailSent: delivery.sent });
 				}
