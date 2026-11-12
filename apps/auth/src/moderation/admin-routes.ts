@@ -245,7 +245,7 @@ async function userSummaries(db: D1Database, ids: string[]) {
 		.prepare(`SELECT id, email, name, metadata, status, password_reset_required, created_at FROM users WHERE id IN (${unique.map(() => '?').join(',')})`)
 		.bind(...unique)
 		.all<{ id: string; email: string; name: string | null; metadata: string | null; status: string; password_reset_required: number; created_at: number }>();
-	// name: the platform's display-name rule (name, then first + last, then @handle), null when none
+	// name: the platform's display-name rule (name, then first + last), null when none
 	for (const { metadata, ...u } of results ?? [])
 		map.set(u.id, { ...u, name: resolveUserDisplayName({ name: u.name, metadata }) || null, password_reset_required: !!u.password_reset_required });
 	return map;

@@ -218,7 +218,7 @@ export class BrowserSessionService {
 			user: {
 				id: row.user_id as string,
 				email: row.user_email as string,
-				// The platform's display-name rule (name, then first + last, then @handle); never the email
+				// The platform's display-name rule (name, then first + last); never the email
 				name: resolveUserDisplayName({ name: row.user_name as string | null, metadata: row.user_metadata }) || undefined,
 			},
 		};

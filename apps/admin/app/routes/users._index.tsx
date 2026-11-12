@@ -118,7 +118,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const users = usersResponse.users.map((user) => ({
       id: user.id,
       email: user.email,
-      // The platform's display-name rule (name, then first + last, then @handle)
+      // The platform's display-name rule (name, then first + last)
       name: resolveUserDisplayName(user),
       created_at: user.created_at,
       roles: user.roles || [],

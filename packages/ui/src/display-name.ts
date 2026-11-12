@@ -9,7 +9,10 @@
  *      whichever of the two exists
  *   4. a display name, or first + last, in another language (an Arabic-only
  *      profile still has a name on an English page)
- *   5. @handle (userName)
+ *
+ * No @handle: handles belong to channels (Channel.handle), not to users. Where
+ * the UI shows who is acting as a channel, the channel's own name / @handle is
+ * shown, and that is separate from the user's name.
  *
  * Empty and whitespace-only values count as missing. It never returns the
  * email: a caller that has nothing else decides on email itself
@@ -24,10 +27,6 @@ export interface NameFields {
   firstNameLocalized?: Record<string, string | null | undefined> | null;
   lastName?: string | null;
   lastNameLocalized?: Record<string, string | null | undefined> | null;
-  /** The handle; shown as @handle */
-  userName?: string | null;
-  /** Some records store the handle as `handle` */
-  handle?: string | null;
 }
 
 function clean(value: unknown): string {
@@ -59,11 +58,8 @@ function rank(key: string): number {
   return key === 'en' ? 0 : key === 'ar' ? 1 : 2;
 }
 
-/**
- * The display name, then first + last, without the @handle fallback. For
- * places that keep the handle in its own field (the admin index title).
- */
-export function resolvePersonalName(profile: NameFields | null | undefined, locale?: string): string {
+/** The name a user is shown by (see the order above); '' when there is none. Never the email. */
+export function resolveDisplayName(profile: NameFields | null | undefined, locale?: string): string {
   if (!profile || typeof profile !== 'object') return '';
   const display = localized(profile.displayNameLocalized, locale) || clean(profile.displayName);
   if (display) return display;
@@ -79,19 +75,12 @@ export function resolvePersonalName(profile: NameFields | null | undefined, loca
   return '';
 }
 
-/** The name a user is shown by (see the order above); '' when there is none. Never the email. */
-export function resolveDisplayName(profile: NameFields | null | undefined, locale?: string): string {
-  const name = resolvePersonalName(profile, locale);
-  if (name) return name;
-  const handle = clean(profile?.userName) || clean(profile?.handle);
-  return handle ? `@${handle.replace(/^@+/, '')}` : '';
-}
-
 /**
  * Auth's user record as NameFields. Auth keeps one `name` column (the display
  * name) and free-form `metadata`; a profile that put first/last/display names
- * or a handle there (e.g. `firstName`, or OIDC `given_name`/`family_name`) is
- * read too, so the same rule applies here as on the rest of the platform.
+ * there (e.g. `firstName`, or OIDC `given_name`/`family_name`) is read too, so
+ * the same rule applies here as on the rest of the platform. No handle: handles
+ * belong to channels, not users.
  */
 export function authUserNameFields(user: { name?: string | null; metadata?: unknown } | null | undefined): NameFields {
   if (!user || typeof user !== 'object') return {};
@@ -116,8 +105,6 @@ export function authUserNameFields(user: { name?: string | null; metadata?: unkn
     firstNameLocalized: map(meta.firstNameLocalized),
     lastName: str(meta.lastName) ?? str(meta.last_name) ?? str(meta.family_name),
     lastNameLocalized: map(meta.lastNameLocalized),
-    userName: str(meta.userName) ?? str(meta.username),
-    handle: str(meta.handle),
   };
 }
 
