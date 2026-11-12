@@ -23,12 +23,12 @@ describe("role filtering", () => {
   });
 
   it("Admin and Super Admin see both admin apps", () => {
-    expect(ids(["Admin", "Member"])).toEqual(["www", "videos", "profile", "content-admin", "cms", "auth-admin"]);
-    expect(ids(["Super Admin"])).toEqual(["www", "videos", "profile", "content-admin", "cms", "auth-admin"]);
+    expect(ids(["Admin", "Member"])).toEqual(["www", "videos", "profile", "cms", "content-admin", "auth-admin"]);
+    expect(ids(["Super Admin"])).toEqual(["www", "videos", "profile", "cms", "content-admin", "auth-admin"]);
   });
 
   it("a Moderator sees the content admin and the CMS but not the auth admin (matches each app's guard)", () => {
-    expect(ids(["Moderator"])).toEqual(["www", "videos", "profile", "content-admin", "cms"]);
+    expect(ids(["Moderator"])).toEqual(["www", "videos", "profile", "cms", "content-admin"]);
   });
 
   it("a member never sees the CMS; every allowed role does", () => {
@@ -114,7 +114,7 @@ describe("environment URLs", () => {
 describe("localization", () => {
   it("returns Arabic names and descriptions for ar", () => {
     const ar = appsForUser(["Admin"], "qa", "ar");
-    expect(ar.find((a) => a.id === "videos")?.name).toBe("الأمة الآن");
+    expect(ar.find((a) => a.id === "videos")?.name).toBe("المرئيات");
     for (const app of ar) {
       expect(app.name).toMatch(/[؀-ۿ]/);
       expect(app.description).toMatch(/[؀-ۿ]/);

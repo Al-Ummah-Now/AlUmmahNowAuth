@@ -122,7 +122,8 @@ test.describe('Signed in once, signed in everywhere (profile + auth admin)', () 
     expect(forms, 'no sign-in form after the first sign-in').toEqual([]);
 
     // 3. Add a second account from the profile menu (prompt=login shows the form)
-    await profileMenu(page, 1);
+    // One account: the menu lists no accounts (the list shows from two; AlUmmahNow docs/design/NAV.md)
+    await profileMenu(page, 0);
     await page.locator('#addAccountBtn').click();
     await submitSignIn(page, bob);
     expect(await profileEmail(page)).toBe(bob);
@@ -140,12 +141,12 @@ test.describe('Signed in once, signed in everywhere (profile + auth admin)', () 
     await page.goto(TEST_URLS.adminDashboard);
     await expect(page.locator('a:has-text("Users")')).toBeVisible({ timeout: 20000 });
     items = await adminMenu(page, 2);
-    await expect(items.filter({ hasText: alice })).toContainText('Active');
+    await expect(items.filter({ hasText: alice })).toContainText('Current account');
     await switchTo(page, items.filter({ hasText: bob }), new URL('/auth/callback', admin()));
     await expect(page.locator('a:has-text("Users")')).toBeVisible({ timeout: 20000 });
     expect(new URL(page.url()).origin).toBe(admin());
     items = await adminMenu(page, 2);
-    await expect(items.filter({ hasText: bob })).toContainText('Active');
+    await expect(items.filter({ hasText: bob })).toContainText('Current account');
     expect(forms.length, 'switching shows no form').toBe(formsBefore);
 
     // ...and the profile menu (auth's list) now marks Bob as the active account

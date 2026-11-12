@@ -1,6 +1,7 @@
 import type { Locale, VisibleApp } from "./apps";
 import { dirFor, MESSAGES } from "./i18n";
-import { escapeHtml, LAUNCHER_SCRIPT, renderAppCards, renderLauncher } from "./launcher";
+import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
+import { NAV_CSS } from '../../../packages/ui/src/nav/aun-nav.generated.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
@@ -47,11 +48,13 @@ const STYLES = `
 
         :focus-visible { outline: 2px solid var(--fanous-color-primary); outline-offset: 2px; }
 
+        /* The header is dark in every theme and mode (AlUmmahNow docs/design/NAV.md): nav tokens */
         .navbar {
-            background: var(--auth-profile-nav-background, linear-gradient(135deg, var(--fanous-color-surface) 0%, var(--fanous-color-surface-raised) 100%));
-            padding: 0.75rem 2rem;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-            border-bottom: 1px solid rgba(15, 77, 102, 0.2);
+            background: var(--auth-profile-nav-background, var(--fanous-c-nav-bg));
+            color: var(--fanous-c-nav-text);
+            padding: 0.5rem 2rem;
+            min-height: 3.5rem;
+            border-bottom: 1px solid var(--fanous-c-nav-border);
             position: relative;
             z-index: 10;
         }
@@ -63,66 +66,21 @@ const STYLES = `
             align-items: center;
             gap: 1rem;
         }
-        .logo { display: flex; align-items: center; gap: 12px; color: white; text-decoration: none; min-width: 0; }
-        .logo img { width: 40px; height: 40px; border-radius: 8px; flex-shrink: 0; }
+        .logo { display: flex; align-items: center; gap: 12px; color: var(--fanous-c-nav-text); text-decoration: none; min-width: 0; }
+        .logo img { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
         .logo-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-        .logo-brand { font-size: 0.8rem; font-weight: 600; color: var(--fanous-color-link); letter-spacing: 0.02em; }
+        .logo-brand { font-size: 0.8rem; font-weight: 600; color: var(--fanous-c-nav-active-text); letter-spacing: 0.02em; }
         .logo-app { font-size: 1.35rem; font-weight: 700; white-space: nowrap; }
         .nav-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
         .nav-menu { display: flex; gap: 1rem; align-items: center; }
 
-        .lang-toggle {
-            color: var(--fanous-color-text-primary); text-decoration: none; font-size: 14px; font-weight: 600;
-            padding: 8px 12px; border-radius: 9999px; min-height: 40px; display: inline-flex; align-items: center;
-        }
-        .lang-toggle:hover { background: rgba(255, 255, 255, 0.12); }
-
-        .icon-btn {
-            width: 40px; height: 40px; border-radius: 50%;
-            display: inline-flex; align-items: center; justify-content: center;
-            background: transparent; border: 1px solid transparent; color: var(--fanous-color-text-primary); cursor: pointer;
-            transition: background 0.2s ease;
-        }
-        .icon-btn:hover, .icon-btn[aria-expanded="true"] { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.2); }
-
-        /* App launcher */
-        .apps-launcher { position: relative; }
-        .apps-menu {
-            position: absolute;
-            top: calc(100% + 8px);
-            inset-inline-end: 0;
-            width: 340px;
-            max-height: calc(100vh - 90px);
-            overflow-y: auto;
-            background: var(--fanous-color-surface-raised);
-            border: 1px solid color-mix(in srgb, var(--fanous-color-text-secondary) 25%, transparent);
-            border-radius: 16px;
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-            padding: 8px;
-            z-index: 1000;
-        }
-        .apps-menu[hidden] { display: none; }
-        .apps-group-label {
-            padding: 8px 10px 6px; font-size: 12px; color: var(--fanous-color-text-secondary);
-            text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
-        }
-        html[lang="ar"] .apps-group-label, html[lang="ar"] .profile-field label, html[lang="ar"] .dropdown-header { text-transform: none; letter-spacing: 0; }
-        .apps-separator { height: 1px; background: color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent); margin: 6px 4px; }
-        .apps-item {
-            display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px;
-            padding: 10px; border-radius: 10px; color: var(--fanous-color-text-primary); text-decoration: none;
-            min-height: 56px;
-        }
-        .apps-item:hover, .apps-item:focus { background: rgba(255, 255, 255, 0.08); }
-        .apps-item:focus-visible { outline: 2px solid var(--fanous-color-primary); outline-offset: -2px; }
-        .apps-item.is-current { background: rgba(14, 165, 233, 0.14); }
-        .apps-item-text, .app-card-text { display: flex; flex-direction: column; min-width: 0; }
-        .apps-item-name, .app-card-name { font-weight: 600; font-size: 15px; }
-        .apps-item-desc, .app-card-desc { font-size: 13px; color: var(--fanous-color-text-secondary); margin-top: 2px; }
-        .apps-item-pill {
-            font-size: 11px; font-weight: 600; color: var(--fanous-color-link); background: rgba(14, 165, 233, 0.18);
-            padding: 3px 8px; border-radius: 9999px; white-space: nowrap;
-        }
+        /* Language link, account button and menus: the shared .aun-* classes (NAV_CSS, AlUmmahNow docs/design/NAV.md) */
+        .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+        .accounts-list:empty { display: none; }
+        html[lang="ar"] .profile-field label { text-transform: none; letter-spacing: 0; }
+        .app-card-text { display: flex; flex-direction: column; min-width: 0; }
+        .app-card-name { font-weight: 600; font-size: 15px; }
+        .app-card-desc { font-size: 13px; color: var(--fanous-color-text-secondary); margin-top: 2px; }
 
         .app-tile {
             width: 40px; height: 40px; border-radius: 10px;
@@ -157,56 +115,6 @@ const STYLES = `
         .app-card-arrow { color: #64748b; flex-shrink: 0; }
         [dir="rtl"] .app-card-arrow { transform: scaleX(-1); }
 
-        /* Account Switcher Dropdown */
-        .account-switcher { position: relative; display: inline-block; }
-        .account-trigger {
-            display: flex; align-items: center; gap: 10px; padding: 6px 12px;
-            background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 9999px; cursor: pointer; transition: all 0.2s ease; color: var(--fanous-color-text-primary); font-size: 14px;
-            min-height: 40px; max-width: 280px;
-        }
-        .account-trigger:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.3); }
-        .account-trigger .avatar {
-            width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: 600; font-size: 12px; flex-shrink: 0;
-        }
-        .account-trigger #activeEmail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .account-trigger .chevron { transition: transform 0.2s ease; flex-shrink: 0; }
-        .account-trigger .chevron.open { transform: rotate(180deg); }
-        .account-dropdown {
-            position: absolute; top: calc(100% + 8px); inset-inline-end: 0; min-width: 280px;
-            background: var(--fanous-color-surface-raised); border: 1px solid color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent); border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4); z-index: 1000; overflow: hidden;
-        }
-        .dropdown-header {
-            padding: 12px 16px; border-bottom: 1px solid color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent); font-size: 12px; color: var(--fanous-color-text-secondary);
-            text-transform: uppercase; letter-spacing: 0.05em;
-        }
-        .accounts-list { padding: 8px; }
-        .account-item { display: flex; align-items: center; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: background 0.2s ease; }
-        .account-item:hover { background: rgba(255, 255, 255, 0.1); }
-        .account-item.active { background: rgba(14, 165, 233, 0.15); }
-        .account-item .avatar {
-            width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: 600; font-size: 14px; margin-inline-end: 12px; flex-shrink: 0;
-        }
-        .account-item .account-details { flex: 1; min-width: 0; }
-        .account-item .email { display: block; font-size: 14px; color: var(--fanous-color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .account-item .status { display: block; font-size: 12px; color: var(--fanous-color-text-secondary); }
-        .account-item .active-check { color: #10b981; margin-inline-start: 8px; }
-        .account-item .sign-out-btn {
-            padding: 6px; background: none; border: none; color: var(--fanous-color-text-secondary); cursor: pointer; border-radius: 4px;
-            margin-inline-start: 8px; opacity: 0; transition: all 0.2s ease;
-        }
-        .account-item:hover .sign-out-btn, .account-item .sign-out-btn:focus { opacity: 1; }
-        .account-item .sign-out-btn:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
-        .dropdown-divider { height: 1px; background: color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent); margin: 8px 0; }
-        .dropdown-action {
-            display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none;
-            color: var(--fanous-color-text-secondary); cursor: pointer; font-size: 14px; text-align: start; transition: all 0.2s ease; font-family: inherit;
-        }
-        .dropdown-action:hover { background: rgba(255, 255, 255, 0.1); color: var(--fanous-color-text-primary); }
-        .dropdown-action.danger:hover { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 
         .btn {
             padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;
@@ -257,10 +165,6 @@ const STYLES = `
             .logo-app { font-size: 1.1rem; }
             .logo img { width: 34px; height: 34px; }
             .nav-actions { gap: 0.25rem; }
-            .account-trigger { padding: 4px; gap: 4px; }
-            .account-trigger #activeEmail { display: none; }
-            .apps-launcher { position: static; }
-            .apps-menu { position: absolute; top: calc(100% + 4px); inset-inline: 12px; width: auto; }
             .container { padding: 1.5rem 1rem; }
             .hero h1 { font-size: 2rem; }
             .apps-cards { grid-template-columns: 1fr; }
@@ -301,7 +205,7 @@ export function renderHomePage(o: HomePageOptions): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${e(t.pageTitle)}</title>
     ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
-    <style>${theme.css}${STYLES}</style>
+    <style>${theme.css}${NAV_CSS}${STYLES}</style>
 </head>
 <body>
     <header class="navbar">
@@ -312,23 +216,28 @@ export function renderHomePage(o: HomePageOptions): string {
             </a>
             <nav class="nav-actions" aria-label="${e(t.brand)}">
                 <div class="nav-menu" id="navMenu"></div>
-                <a class="lang-toggle" href="?lang=${other}" lang="${other}" hreflang="${other}" aria-label="${e(t.switchLanguageLabel)}">${e(t.switchLanguage)}</a>
-                ${renderLauncher(o.apps, t)}
-                <div class="account-switcher" id="accountSwitcher" style="display: none;">
-                    <button type="button" class="account-trigger" id="accountTrigger" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdown" aria-label="${e(t.accountMenu)}" onclick="toggleAccountDropdown()">
-                        <span class="avatar" id="activeAvatar" style="background-color: #1976d2;" aria-hidden="true">?</span>
-                        <span id="activeEmail">${e(t.loading)}</span>
-                        <svg class="chevron" id="chevronIcon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <a class="lang-toggle aun-lang" href="?lang=${other}" lang="${other}" hreflang="${other}" aria-label="${e(t.switchLanguageLabel)}">${e(t.switchLanguage)}</a>
+                <div class="account-switcher" id="accountSwitcher" style="display: none; position: relative;">
+                    <button type="button" class="account-trigger aun-acct-btn" id="accountTrigger" aria-haspopup="menu" aria-expanded="false" aria-controls="accountDropdown" onclick="toggleAccountDropdown()">
+                        <span class="aun-avatar" id="activeAvatar" aria-hidden="true">?</span>
+                        <span class="aun-acct-name" id="activeEmail" dir="auto">${e(t.loading)}</span>
+                        <span class="visually-hidden">${e(t.accountMenu)}</span>
+                        <svg class="aun-caret" id="chevronIcon" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                             <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </button>
-                    <div class="account-dropdown" id="accountDropdown" style="display: none;">
-                        <div class="dropdown-header">${e(t.signedInAccounts)}</div>
-                        <div class="accounts-list" id="accountsList"></div>
-                        <div class="dropdown-divider"></div>
-                        <button type="button" class="dropdown-action" id="addAccountBtn" onclick="handleAddAccount()">${ICON_PLUS}${e(t.addAccount)}</button>
-                        <button type="button" class="dropdown-action" onclick="handleManageSessions()">${ICON_SESSIONS}${e(t.manageSessions)}</button>
-                        <button type="button" class="dropdown-action danger" onclick="requestSignOutAll()">${ICON_SIGNOUT}${e(t.signOutAll)}</button>
+                    <div class="account-dropdown aun-menu" id="accountDropdown" role="menu" hidden>
+                        <div class="aun-menu-who" id="accountWho"></div>
+                        <div class="aun-menu-sep" role="separator"></div>
+                        <span class="dropdown-header aun-menu-label" id="accountsLabel">${e(t.signedInAccounts)}</span>
+                        <div class="accounts-list" id="accountsList" role="group" aria-labelledby="accountsLabel"></div>
+                        <button type="button" class="dropdown-action aun-menu-item" role="menuitem" id="addAccountBtn" onclick="handleAddAccount()">${ICON_PLUS}<span class="aun-menu-text">${e(t.addAccount)}</span></button>
+                        <div class="aun-menu-sep" role="separator"></div>
+                        <button type="button" class="dropdown-action aun-menu-item" role="menuitem" onclick="handleManageSessions()">${ICON_SESSIONS}<span class="aun-menu-text">${e(t.manageSessions)}</span></button>
+                        ${renderAppsSection(o.apps, t)}
+                        <div class="aun-menu-sep" role="separator"></div>
+                        <button type="button" class="dropdown-action aun-menu-item" role="menuitem" id="signOutOne" onclick="requestSignOutAccount(currentUser.id)">${ICON_SIGNOUT}<span class="aun-menu-text">${e(t.signOut)}</span></button>
+                        <button type="button" class="dropdown-action danger aun-menu-item aun-menu-item--danger" role="menuitem" id="signOutAllBtn" onclick="requestSignOutAll()">${ICON_SIGNOUT}<span class="aun-menu-text">${e(t.signOutAll)}</span></button>
                     </div>
                 </div>
             </nav>
@@ -385,7 +294,6 @@ export function renderHomePage(o: HomePageOptions): string {
         </form>
     </dialog>
 
-    <script>${LAUNCHER_SCRIPT}</script>
     <script>
         var currentUser = ${scriptJson(o.user)};
         var isLoggedIn = ${isLoggedIn};
@@ -397,14 +305,12 @@ export function renderHomePage(o: HomePageOptions): string {
         var accounts = [];
         var dropdownOpen = false;
         var MAX_ACCOUNTS = 3;
-        var avatarColors = ['#1976d2', '#388e3c', '#d32f2f', '#7b1fa2', '#f57c00', '#0097a7'];
 
         function esc(s) {
             return String(s).replace(/[&<>"']/g, function (c) {
                 return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
             });
         }
-        function getAvatarColor(email) { return avatarColors[email.charCodeAt(0) % avatarColors.length]; }
         function formatRelativeTime(dateString) {
             var diffMins = Math.floor((Date.now() - new Date(dateString).getTime()) / 60000);
             if (diffMins < 1) return T.justNow;
@@ -422,10 +328,31 @@ export function renderHomePage(o: HomePageOptions): string {
 
         function setAccountDropdown(open) {
             dropdownOpen = open;
-            document.getElementById('accountDropdown').style.display = open ? 'block' : 'none';
-            document.getElementById('chevronIcon').classList.toggle('open', open);
+            document.getElementById('accountDropdown').hidden = !open;
             document.getElementById('accountTrigger').setAttribute('aria-expanded', open ? 'true' : 'false');
         }
+        function menuItems() {
+            return Array.prototype.slice.call(document.querySelectorAll('#accountDropdown a, #accountDropdown button:not([disabled])'))
+                .filter(function (el) { return el.offsetParent !== null; });
+        }
+        // Keyboard (AlUmmahNow docs/design/NAV.md): ArrowDown on the button opens at the first item;
+        // ArrowUp/ArrowDown move, Home/End jump, Escape closes and returns focus to the button.
+        document.getElementById('accountTrigger').addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setAccountDropdown(true); var l = menuItems(); if (l[0]) l[0].focus(); }
+        });
+        document.getElementById('accountDropdown').addEventListener('keydown', function (e) {
+            var list = menuItems();
+            var i = list.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                var next = (i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length;
+                if (list[next]) list[next].focus();
+            } else if (e.key === 'Home' || e.key === 'End') {
+                e.preventDefault();
+                var target = list[e.key === 'Home' ? 0 : list.length - 1];
+                if (target) target.focus();
+            }
+        });
         function toggleAccountDropdown() { setAccountDropdown(!dropdownOpen); }
         document.addEventListener('click', function (e) {
             var switcher = document.getElementById('accountSwitcher');
@@ -456,30 +383,46 @@ export function renderHomePage(o: HomePageOptions): string {
             }
         }
 
+        function initialOf(text) { return (Array.from(String(text || '?').trim())[0] || '?').toUpperCase(); }
+        // The account's name (auth's /session list carries it), else the email
+        function nameOf(account) { return (account && account.name && String(account.name).trim()) || (account && account.email) || ''; }
+
         function renderAccountSwitcher() {
             var switcher = document.getElementById('accountSwitcher');
             if (!isLoggedIn || !currentUser) { switcher.style.display = 'none'; return; }
             switcher.style.display = 'inline-block';
             var activeAccount = accounts.find(function (a) { return a.isActive; });
             var displayAccount = activeAccount || { email: currentUser.email };
-            document.getElementById('activeAvatar').style.backgroundColor = getAvatarColor(displayAccount.email);
-            document.getElementById('activeAvatar').textContent = displayAccount.email.charAt(0).toUpperCase();
-            document.getElementById('activeEmail').textContent = displayAccount.email;
+            var name = nameOf(displayAccount);
+            document.getElementById('activeAvatar').textContent = initialOf(name);
+            document.getElementById('activeEmail').textContent = name;
+            document.getElementById('accountWho').innerHTML =
+                '<span class="aun-avatar aun-avatar--lg" aria-hidden="true">' + esc(initialOf(name)) + '</span>' +
+                '<span class="aun-menu-who-text"><span class="aun-menu-who-name" dir="auto">' + esc(name) + '</span>' +
+                (displayAccount.email && displayAccount.email !== name ? '<span class="aun-menu-who-sub" dir="ltr">' + esc(displayAccount.email) + '</span>' : '') + '</span>';
 
-            document.getElementById('accountsList').innerHTML = accounts.map(function (account) {
+            // Your accounts: listed when there are two or more
+            var several = accounts.length > 1;
+            document.getElementById('accountsLabel').hidden = !several;
+            document.getElementById('accountsList').innerHTML = !several ? '' : accounts.map(function (account) {
                 var id = esc(account.userId);
+                var label = nameOf(account);
                 // Clickable unless it is both auth's active account and the one this page shows
                 var current = account.isActive && account.userId === currentUser.id;
-                return '<div class="account-item ' + (account.isActive ? 'active' : '') + '"' +
-                    (current ? '' : ' onclick="handleSwitchAccount(this.dataset.userId)"') + ' data-user-id="' + id + '" data-testid="account-item">' +
-                    '<div class="avatar" style="background-color: ' + getAvatarColor(account.email) + '">' + esc(account.email.charAt(0).toUpperCase()) + '</div>' +
-                    '<div class="account-details"><span class="email" dir="ltr">' + esc(account.email) + '</span>' +
-                    '<span class="status">' + esc(account.isActive ? T.active : T.lastUsed + ' ' + formatRelativeTime(account.lastUsed)) + '</span></div>' +
-                    (account.isActive ? '<span class="active-check" aria-hidden="true">✓</span>' : '') +
-                    '<button type="button" class="sign-out-btn" data-user-id="' + id + '" onclick="event.stopPropagation(); requestSignOutAccount(this.dataset.userId)" title="' + esc(T.signOutAccount) + '" aria-label="' + esc(T.signOutAccount + ' ' + account.email) + '">×</button>' +
+                // Name, then the email when it differs, then "Current account" or when it was last used
+                var lines = (account.email && account.email !== label ? '<span class="aun-acct-email" dir="ltr">' + esc(account.email) + '</span>' : '') +
+                    '<span class="aun-acct-current status">' + esc(account.isActive ? T.active : T.lastUsed + ' ' + formatRelativeTime(account.lastUsed)) + '</span>';
+                return '<div class="account-item aun-acct-row' + (account.isActive ? ' active' : '') + '" data-user-id="' + id + '" data-testid="account-item">' +
+                    '<button type="button" class="aun-menu-item" role="menuitem"' + (current ? ' aria-current="true" disabled' : ' onclick="handleSwitchAccount(this.parentNode.dataset.userId)"') + '>' +
+                    '<span class="aun-avatar" aria-hidden="true">' + esc(initialOf(label)) + '</span>' +
+                    '<span class="aun-acct-text account-details"><span class="aun-acct-label email" dir="auto">' + esc(label) + '</span>' + lines + '</span>' +
+                    (account.isActive ? '<svg class="aun-menu-check active-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>' : '') +
+                    '</button>' +
+                    '<button type="button" class="sign-out-btn aun-acct-signout" data-user-id="' + id + '" onclick="event.stopPropagation(); requestSignOutAccount(this.dataset.userId)" aria-label="' + esc(T.signOutAccount + ' ' + label) + '">' + esc(T.signOutAccount) + '</button>' +
                     '</div>';
             }).join('');
             document.getElementById('addAccountBtn').style.display = accounts.length < MAX_ACCOUNTS ? 'flex' : 'none';
+            document.getElementById('signOutAllBtn').style.display = several ? 'flex' : 'none';
         }
 
         async function handleSwitchAccount(userId) {

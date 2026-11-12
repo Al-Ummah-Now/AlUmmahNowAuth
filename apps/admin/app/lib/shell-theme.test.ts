@@ -10,8 +10,13 @@ const withShell = () => {
 };
 
 describe("admin shell theme", () => {
-  it("restyles nothing when the theme has no admin shell parts (today's built-ins)", () => {
-    for (const id of ["classic", "fawanees", "lantern", "nahas", "zujaj"]) expect(shellThemeCss(compileBuiltin(id, "https://auth.example")!.tokensCss)).toBe("");
+  it("restyles no shell part when the theme sets none (today's built-ins), but keeps its Fanous tokens for the account menu", () => {
+    for (const id of ["classic", "fawanees", "lantern", "nahas", "zujaj"]) {
+      const css = shellThemeCss(compileBuiltin(id, "https://auth.example")!.tokensCss);
+      expect(css).not.toContain('[data-shell=');
+      expect(css).toContain("--fanous-c-menu-bg:");
+      expect(css).not.toMatch(/@import|@font-face/);
+    }
   });
 
   it("restyles only the parts the theme sets, with its variables and no font imports", () => {

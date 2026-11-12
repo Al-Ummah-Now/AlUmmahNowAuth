@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { AccountSwitcher } from "@al-ummah-now/ui";
+import { otherApps } from "../lib/app-links";
 import { cn } from "../lib/utils";
 import { useState, useCallback } from "react";
 
@@ -76,7 +77,7 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
   return (
     <div data-shell="page" className="min-h-screen bg-[rgb(var(--color-background))]">
       {/* Top Navigation */}
-      <nav data-shell="header" className="fixed top-0 left-0 right-0 z-50 border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
+      <nav data-shell="header" className="fixed top-0 left-0 right-0 z-50 border-b border-[var(--fanous-c-nav-border)] bg-[var(--fanous-c-nav-bg)] text-[var(--fanous-c-nav-text)]">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -107,8 +108,8 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
                 className="h-9 w-9 rounded-lg"
               />
               <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-[rgb(var(--color-foreground))]">Al Ummah Now</h1>
-                <p className="text-xs text-[rgb(var(--color-muted-foreground))]">Admin Dashboard</p>
+                <h1 className="text-lg font-bold text-[var(--fanous-c-nav-text)]">Al Ummah Now</h1>
+                <p className="text-xs text-[var(--fanous-c-nav-active-text)]">Accounts admin</p>
               </div>
             </Link>
             <div className="flex items-center gap-2">
@@ -116,6 +117,7 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
                 <AccountSwitcher
                   authServerUrl={authServerUrl}
                   currentUser={user}
+                  apps={otherApps(authServerUrl)}
                   clientId="1448ed27-39a6-417d-b4c8-07f881e81269"
                 />
               )}

@@ -1,34 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { appsForUser } from "./apps";
 import { MESSAGES } from "./i18n";
-import { escapeHtml, renderAppCards, renderLauncher } from "./launcher";
+import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
 import { renderHomePage, scriptJson } from "./page";
 
-describe("renderLauncher", () => {
-  const admin = renderLauncher(appsForUser(["Admin"], "qa", "en"), MESSAGES.en);
-  const member = renderLauncher(appsForUser(["Member"], "qa", "en"), MESSAGES.en);
+describe("renderAppsSection (account menu, AlUmmahNow docs/design/NAV.md)", () => {
+  const admin = renderAppsSection(appsForUser(["Admin"], "qa", "en"), MESSAGES.en);
+  const member = renderAppsSection(appsForUser(["Member"], "qa", "en"), MESSAGES.en);
 
-  it("uses the menu-button pattern", () => {
-    expect(admin).toMatch(/<button[^>]+id="appsTrigger"[^>]+aria-haspopup="true"[^>]+aria-expanded="false"[^>]+aria-controls="appsMenu"/);
-    expect(admin).toMatch(/id="appsMenu" role="menu" aria-labelledby="appsTrigger" hidden/);
-    // www, videos, profile, content admin, CMS, auth admin
-    expect(admin.match(/role="menuitem"/g)).toHaveLength(6);
+  it("lists the other apps in the shared order and labels, never this one", () => {
+    const ids = [...admin.matchAll(/data-app="([a-z-]+)"/g)].map((m) => m[1]);
+    expect(ids).toEqual(["www", "videos", "cms", "content-admin", "auth-admin"]);
+    expect(admin).toContain(">Website<");
+    expect(admin).toContain(">Content management<");
+    expect(admin).toContain(">Videos admin<");
+    expect(admin).toContain(">Accounts admin<");
+    expect(admin).not.toContain('data-app="profile"');
+    expect(admin).toMatch(/<span class="aun-menu-label" id="appsLabel">Al Ummah Now apps<\/span>/);
+    expect(admin.match(/role="menuitem"/g)).toHaveLength(5);
   });
 
-  it("marks the current app with aria-current", () => {
-    expect(admin.match(/aria-current="page"/g)).toHaveLength(1);
-    expect(admin).toMatch(/aria-current="page"[\s\S]*?Profile/);
-  });
-
-  it("groups admin apps under Administration only for admins", () => {
-    expect(admin).toContain("Administration");
+  it("shows staff apps only to staff", () => {
     expect(admin).toContain("https://admin.auth.qa.alummahnow.net");
-    expect(member).not.toContain("Administration");
     expect(member).not.toContain("admin.");
+    expect([...member.matchAll(/data-app="([a-z-]+)"/g)].map((m) => m[1])).toEqual(["www", "videos"]);
   });
 
-  it("opens apps in the same tab", () => {
+  it("opens apps in the same tab, and renders nothing when there is nothing else", () => {
     expect(admin).not.toContain("target=");
+    expect(renderAppsSection(appsForUser([], null, "en"), MESSAGES.en)).toBe("");
   });
 });
 
@@ -55,6 +55,14 @@ describe("renderHomePage", () => {
     expect(html).toContain('<html lang="ar" dir="rtl" data-theme="fawanees">');
     expect(html).toContain('href="?lang=en"');
     expect(html).toContain("تطبيقاتك");
+  });
+
+  it("puts the apps in the account menu (no separate launcher) and uses the shared nav classes", () => {
+    const html = renderHomePage({ ...base, locale: "en", apps: appsForUser(["Admin"], "qa", "en") });
+    expect(html).not.toContain('id="appsTrigger"');
+    expect(html).toMatch(/<div class="account-dropdown aun-menu" id="accountDropdown" role="menu" hidden>[\s\S]*id="accountApps"/);
+    expect(html).toContain('class="account-trigger aun-acct-btn"');
+    expect(html).toContain(".aun-menu {");
   });
 
   it("no longer renders the old standalone Admin button", () => {

@@ -9,6 +9,7 @@ import {
 } from "react-router";
 import { getAuthServerUrl, getOAuthClientId } from "./lib/config";
 import { fetchShellTheme } from "./lib/shell-theme";
+import { NAV_CSS } from "../../../packages/ui/src/nav/aun-nav.generated";
 import { environmentOfHost, tabIconLinks } from "../../../packages/ui/src/app-icons/serve";
 
 import "./tailwind.css";
@@ -59,6 +60,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <link key={l.href} rel="icon" href={l.href} type={l.type} sizes={l.sizes} />
         ))}
         <meta name="theme-color" content="#09273a" />
+        {/* The shared header account button and menus (AlUmmahNow docs/design/NAV.md) */}
+        <style data-nav dangerouslySetInnerHTML={{ __html: NAV_CSS }} />
         {shellCss ? <style data-shell-theme dangerouslySetInnerHTML={{ __html: shellCss }} /> : null}
       </head>
       <body>
