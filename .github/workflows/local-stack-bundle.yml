@@ -40,10 +40,18 @@ jobs:
         run: |
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a full commit sha: $SHA"; exit 1; }
 
+      # The bundle script from this workflow's own commit (an older released commit predates it)
+      - uses: actions/checkout@v6
+        with:
+          path: .bundle-tools
+          sparse-checkout: scripts/release/local-stack-bundle.sh
+          sparse-checkout-cone-mode: false
+
       - uses: actions/checkout@v6
         with:
           ref: ${{ env.SHA }}
           fetch-depth: 0
+          clean: false
 
       - name: On main?
         run: git merge-base --is-ancestor "$SHA" origin/main || { echo "::error::$SHA is not on main"; exit 1; }
@@ -66,7 +74,7 @@ jobs:
         run: pnpm --filter admin run build
 
       - name: Assemble
-        run: bash scripts/release/local-stack-bundle.sh
+        run: bash .bundle-tools/scripts/release/local-stack-bundle.sh
 
       - name: Publish
         env:
