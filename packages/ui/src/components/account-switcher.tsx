@@ -188,13 +188,14 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
       <button
         type="button"
         data-testid="account-menu"
-        aria-label={`Account menu: ${name}`}
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className="aun-acct-btn"
         onClick={() => setIsOpen(!isOpen)}
       >
+        {/* No aria-label: the visible name is the button's name (axe label-content-name-mismatch) */}
         <span className="aun-avatar" aria-hidden="true">{getInitial(name)}</span>
+        <span className="sr-only">Account menu: </span>
         <span className="aun-acct-name" dir="auto">{name}</span>
         <ChevronDown className="aun-caret" aria-hidden="true" />
       </button>
