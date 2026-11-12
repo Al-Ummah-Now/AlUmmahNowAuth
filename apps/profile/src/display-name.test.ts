@@ -4,11 +4,11 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { authUserNameFields, resolveDisplayName, resolvePersonalName, resolveUserDisplayName } from '../../../packages/ui/src/display-name.ts';
+import { authUserNameFields, resolveDisplayName, resolveUserDisplayName } from '../../../packages/ui/src/display-name.ts';
 
 describe('resolveDisplayName', () => {
 	it('prefers the display name in the page language', () => {
-		const p = { displayName: 'Plain', displayNameLocalized: { en: 'English', ar: 'عربي' }, firstName: 'A', lastName: 'B', userName: 'h' };
+		const p = { displayName: 'Plain', displayNameLocalized: { en: 'English', ar: 'عربي' }, firstName: 'A', lastName: 'B' };
 		assert.equal(resolveDisplayName(p, 'en'), 'English');
 		assert.equal(resolveDisplayName(p, 'ar'), 'عربي');
 		assert.equal(resolveDisplayName(p, 'ar-EG'), 'عربي');
@@ -48,7 +48,7 @@ describe('resolveDisplayName', () => {
 	it('an Arabic-only profile still has a name on an English page', () => {
 		assert.equal(resolveDisplayName({ displayName: '', displayNameLocalized: { ar: 'محمود' } }, 'en'), 'محمود');
 		assert.equal(resolveDisplayName({ firstNameLocalized: { ar: 'محمود' }, lastNameLocalized: { ar: 'درويش' } }, 'en'), 'محمود درويش');
-		assert.equal(resolveDisplayName({ displayNameLocalized: { ar: 'محمود' }, userName: 'mahmoud' }, 'en'), 'محمود');
+		assert.equal(resolveDisplayName({ displayNameLocalized: { ar: 'محمود' } }, 'ar'), 'محمود');
 		// with no locale at all
 		assert.equal(resolveDisplayName({ displayNameLocalized: { ar: 'محمود' } }), 'محمود');
 	});
@@ -62,11 +62,10 @@ describe('resolveDisplayName', () => {
 		assert.equal(resolveDisplayName({ displayNameLocalized: { fr: 'Fr', ar: 'عربي' } }, 'en'), 'عربي');
 	});
 
-	it('falls back to @handle', () => {
-		assert.equal(resolveDisplayName({ displayName: '', firstName: '', lastName: ' ', userName: 'mahmoud' }, 'en'), '@mahmoud');
-		assert.equal(resolveDisplayName({ userName: '@mahmoud' }), '@mahmoud');
-		assert.equal(resolveDisplayName({ handle: 'mahmoud' }), '@mahmoud');
-		assert.equal(resolveDisplayName({ userName: '  ' }), '');
+	it('has no @handle step: handles belong to channels, so a legacy profile userName is not a name', () => {
+		assert.equal(resolveDisplayName({ displayName: '', firstName: '', lastName: ' ', userName: 'mahmoud' } as never, 'en'), '');
+		assert.equal(resolveDisplayName({ handle: 'mahmoud' } as never), '');
+		assert.equal(resolveDisplayName({ firstName: 'Mahmoud', lastName: 'Darwish', userName: 'm' } as never), 'Mahmoud Darwish');
 	});
 
 	it('never returns the email', () => {
@@ -80,10 +79,6 @@ describe('resolveDisplayName', () => {
 		assert.equal(resolveDisplayName({ displayName: 42 as never, displayNameLocalized: 'x' as never, firstName: 'A' }), 'A');
 	});
 
-	it('resolvePersonalName leaves the handle out', () => {
-		assert.equal(resolvePersonalName({ userName: 'mahmoud' }), '');
-		assert.equal(resolvePersonalName({ firstName: 'Mahmoud', lastName: 'Darwish', userName: 'm' }), 'Mahmoud Darwish');
-	});
 });
 
 describe('resolveUserDisplayName (Auth user records)', () => {
@@ -97,12 +92,15 @@ describe('resolveUserDisplayName (Auth user records)', () => {
 		assert.equal(resolveUserDisplayName({ name: ' ', metadata: { last_name: 'Darwish' } }), 'Darwish');
 	});
 
-	it('reads a display name, localized names and a handle from metadata', () => {
+	it('reads a display name and localized names from metadata', () => {
 		assert.equal(resolveUserDisplayName({ metadata: { displayName: 'Plain' } }), 'Plain');
 		assert.equal(resolveUserDisplayName({ metadata: { displayNameLocalized: { ar: 'محمود' } } }, 'en'), 'محمود');
 		assert.equal(resolveUserDisplayName({ metadata: { firstNameLocalized: { ar: 'محمود' }, firstName: 'Mahmoud' } }, 'ar'), 'محمود');
-		assert.equal(resolveUserDisplayName({ metadata: { userName: 'mahmoud' } }), '@mahmoud');
-		assert.equal(resolveUserDisplayName({ metadata: { handle: 'mahmoud' } }), '@mahmoud');
+	});
+
+	it('a handle in metadata is not a user name (handles belong to channels)', () => {
+		assert.equal(resolveUserDisplayName({ metadata: { userName: 'mahmoud' } }), '');
+		assert.equal(resolveUserDisplayName({ metadata: { handle: 'mahmoud' } }), '');
 	});
 
 	it('nothing at all is empty, never the email', () => {
