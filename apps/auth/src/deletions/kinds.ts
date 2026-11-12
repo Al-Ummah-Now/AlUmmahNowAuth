@@ -146,7 +146,8 @@ const user: KindHandler = {
 			.all<{ provider: string; provider_user_id: string }>()
 			.catch(() => ({ results: [] as { provider: string; provider_user_id: string }[] }));
 
-		// KV: the old user copies, the password credential and the cached permissions
+		// KV: the old user copies, the password credential, the email -> subject record and the
+		// cached permissions
 		const storage = authStorage(env);
 		await Storage.remove(storage, LEGACY_USER_KEYS.user(tenantId, userId));
 		for (const id of identities ?? []) await Storage.remove(storage, LEGACY_USER_KEYS.identity(tenantId, id.provider, id.provider_user_id));
@@ -156,7 +157,12 @@ const user: KindHandler = {
 			// The credential belongs to the email; another live account with it keeps it
 			const live = await db.prepare('SELECT 1 FROM users WHERE lower(email) = ? AND deleted_at IS NULL').bind(email).first();
 			if (!live) {
-				for (const e of new Set([email, found?.email ?? email])) await Storage.remove(storage, ['email', e, 'password']);
+				for (const e of new Set([email, found?.email ?? email])) {
+					await Storage.remove(storage, ['email', e, 'password']);
+					// The password provider writes it on every password sign-in (auth-storage.ts
+					// isSubjectRecord): left behind, the deleted person's email stayed in AUTH_STORAGE
+					await Storage.remove(storage, ['email', e, 'subject']);
+				}
 			}
 		}
 		await env.AUTH_STORAGE.delete(`permissions:${userId}`);
@@ -185,8 +191,8 @@ const user: KindHandler = {
 		}
 		for (const stmt of statements) await run(stmt);
 		await run(db.prepare('DELETE FROM users WHERE id = ? AND deleted_at IS NOT NULL').bind(userId));
-		// user_revocations / TOKEN_REVOCATIONS stay: they hold only the id and keep
-		// any token still in flight dead until the entry expires
+		// user_revocations / TOKEN_REVOCATIONS stay: they hold only the id, a time and a reason
+		// code (never the email) and keep any token still in flight dead until the entry expires
 	},
 };
 
