@@ -109,6 +109,8 @@ async function remove(email: string, request: Request, ip: string, env: RunUserR
 			}
 			if (await purgeItem(deletionEnv, 'user', user.id)) purged++;
 		}
+		// The invite link the E2E sink kept for the address (invites/routes.ts), if it was invited
+		await env.AUTH_STORAGE?.delete(`test:invite:${email}`);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		logger.error('E2E run account delete failed', { email, error: message });

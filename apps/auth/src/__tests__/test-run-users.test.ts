@@ -120,6 +120,13 @@ describe('POST /test/run-users/delete/:email', () => {
 		expect(vi.mocked(emitAuditEvent).mock.calls[0][0]).toMatchObject({ userId: 'e2e-teardown', ipAddress: '203.0.113.9' });
 	});
 
+	it('also drops the invite link the E2E sink kept for the address', async () => {
+		await addUser('run-u9', RUN_EMAIL);
+		await ENV.AUTH_STORAGE.put(`test:invite:${RUN_EMAIL}`, JSON.stringify({ link: 'https://auth.test/invite/x', at: 1 }));
+		expect((await del(RUN_EMAIL))?.status).toBe(200);
+		expect(await ENV.AUTH_STORAGE.get(`test:invite:${RUN_EMAIL}`)).toBeNull();
+	});
+
 	it('is idempotent: an unknown or already removed run account is a 200 with nothing found', async () => {
 		const res = await del(RUN_EMAIL);
 		expect(res?.status).toBe(200);
