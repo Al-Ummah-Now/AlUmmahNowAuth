@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { isWellKnownRequest, serveWellKnown } from './well-known-cache';
 import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from "@al-ummah-now/openauth/rbac/index";
 import { authStorage } from "./storage/auth-storage";
@@ -130,7 +131,14 @@ export default {
     const timedCtx = instrumentCtx(ctx, timer);
     let response: Response | undefined;
     try {
-      response = withRequestId(await handleFetch(request, instrumentEnv(env, timer), timedCtx, requestId, timer), requestId);
+      const timedEnv = instrumentEnv(env, timer);
+      // jwks / openid-configuration: edge-cached, last good copy when the issuer fails (well-known-cache.ts)
+      const handled = isWellKnownRequest(request.method, new URL(request.url))
+        ? await serveWellKnown(request, ctx, () =>
+            handleFetch(request.method === 'HEAD' ? new Request(request, { method: 'GET' }) : request, timedEnv, timedCtx, requestId, timer)
+          )
+        : await handleFetch(request, timedEnv, timedCtx, requestId, timer);
+      response = withRequestId(handled, requestId);
       return withServerTiming(response, timer);
     } finally {
       // Deliver any audit events buffered during this request
