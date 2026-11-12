@@ -36,11 +36,12 @@ export interface AppEntry {
   requiredRoles: readonly string[];
 }
 
+/** Names and order are the shared "Al Ummah Now apps" list (AlUmmahNow docs/design/NAV.md). */
 export const APP_CATALOG: readonly AppEntry[] = [
   {
     id: "www",
     category: "app",
-    name: { en: "Al Ummah Now (www)", ar: "الأمة الآن (الموقع)" },
+    name: { en: "Website", ar: "الموقع" },
     description: {
       en: "Articles, pages and what we do",
       ar: "المقالات والصفحات وما نقوم به",
@@ -57,7 +58,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
   {
     id: "videos",
     category: "app",
-    name: { en: "Al Ummah Now", ar: "الأمة الآن" },
+    name: { en: "Videos", ar: "المرئيات" },
     description: {
       en: "Watch and share videos",
       ar: "شاهد المرئيات وشاركها",
@@ -74,7 +75,7 @@ export const APP_CATALOG: readonly AppEntry[] = [
   {
     id: "profile",
     category: "app",
-    name: { en: "Profile", ar: "الملف الشخصي" },
+    name: { en: "Your profile", ar: "ملفك الشخصي" },
     description: {
       en: "Your account and sessions",
       ar: "حسابك وجلساتك",
@@ -89,27 +90,9 @@ export const APP_CATALOG: readonly AppEntry[] = [
     requiredRoles: [],
   },
   {
-    id: "content-admin",
-    category: "admin",
-    name: { en: "Al Ummah Now Admin", ar: "إدارة الأمة الآن" },
-    description: {
-      en: "Moderate videos, channels and reports",
-      ar: "الإشراف على المرئيات والقنوات والبلاغات",
-    },
-    icon: "shield",
-    urls: {
-      production: "https://admin.alummahnow.net",
-      qa: "https://admin.qa.alummahnow.net",
-      stage: null,
-      local: "http://localhost:3091",
-    },
-    // AlUmmahNow apps/admin-web/src/lib/roles.ts ADMIN_ROLES
-    requiredRoles: ["super_admin", "admin", "moderator"],
-  },
-  {
     id: "cms",
     category: "admin",
-    name: { en: "CMS", ar: "إدارة المحتوى" },
+    name: { en: "Content management", ar: "إدارة المحتوى" },
     description: {
       en: "Edit the website: pages, articles and featured videos",
       ar: "تحرير الموقع: الصفحات والمقالات والمرئيات المختارة",
@@ -125,9 +108,27 @@ export const APP_CATALOG: readonly AppEntry[] = [
     requiredRoles: ["super_admin", "admin", "moderator", "scholar"],
   },
   {
+    id: "content-admin",
+    category: "admin",
+    name: { en: "Videos admin", ar: "إدارة المرئيات" },
+    description: {
+      en: "Moderate videos, channels and reports",
+      ar: "الإشراف على المرئيات والقنوات والبلاغات",
+    },
+    icon: "shield",
+    urls: {
+      production: "https://admin.alummahnow.net",
+      qa: "https://admin.qa.alummahnow.net",
+      stage: null,
+      local: "http://localhost:3091",
+    },
+    // AlUmmahNow apps/admin-web/src/lib/roles.ts ADMIN_ROLES
+    requiredRoles: ["super_admin", "admin", "moderator"],
+  },
+  {
     id: "auth-admin",
     category: "admin",
-    name: { en: "Auth Admin", ar: "إدارة الحسابات" },
+    name: { en: "Accounts admin", ar: "إدارة الحسابات" },
     description: {
       en: "Users, roles and sign-in clients",
       ar: "المستخدمون والأدوار وتطبيقات الدخول",

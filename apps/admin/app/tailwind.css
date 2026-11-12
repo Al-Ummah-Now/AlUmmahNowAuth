@@ -32,6 +32,29 @@
   --radius: 0.5rem;
 }
 
+/* Fallbacks for the shared header account menu (NAV_CSS, AlUmmahNow docs/design/NAV.md) when
+   Auth's theme (root.tsx shellCss, which defines the real Fanous tokens) cannot be loaded */
+:root {
+  --fanous-c-nav-bg: rgb(var(--color-card));
+  --fanous-c-nav-text: rgb(var(--color-foreground));
+  --fanous-c-nav-icon: rgb(var(--color-muted-foreground));
+  --fanous-c-nav-hover: rgb(var(--color-muted));
+  --fanous-c-nav-border: rgb(var(--color-border));
+  --fanous-c-nav-search-border: rgb(var(--color-border));
+  --fanous-c-nav-active-text: rgb(var(--color-primary));
+  --fanous-c-menu-bg: rgb(var(--color-popover));
+  --fanous-c-menu-text: rgb(var(--color-popover-foreground));
+  --fanous-c-menu-muted: rgb(var(--color-muted-foreground));
+  --fanous-c-menu-hover: rgb(var(--color-muted));
+  --fanous-c-menu-border: rgb(var(--color-border));
+  --fanous-c-divider-line: rgb(var(--color-border));
+  --fanous-color-primary: rgb(var(--color-primary));
+  --fanous-color-on-primary: rgb(var(--color-background));
+  --fanous-color-link: rgb(var(--color-primary));
+  --fanous-color-focus-ring: rgb(var(--color-ring));
+  --fanous-color-error-text: rgb(248 113 113);
+}
+
 * {
   border-color: rgb(var(--color-border));
 }

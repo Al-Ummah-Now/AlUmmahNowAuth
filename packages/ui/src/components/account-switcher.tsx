@@ -4,8 +4,17 @@ import { ChevronDown, Check, Plus, LogOut } from "lucide-react";
 interface Account {
   id: string;
   email: string;
+  /** The account's name (auth's /session list); the email when there is none. */
+  name?: string;
   isActive: boolean;
   lastUsed?: string;
+}
+
+/** An entry of the account menu's "Al Ummah Now apps" section (AlUmmahNow docs/design/NAV.md). */
+export interface AccountMenuApp {
+  id: string;
+  label: string;
+  href: string;
 }
 
 export interface AccountSwitcherProps {
@@ -18,6 +27,8 @@ export interface AccountSwitcherProps {
    * return to) and `prompt` (`none` = silent, `login` = add an account).
    */
   loginPath?: string;
+  /** The other Al Ummah Now apps, in the shared order and labels (this app left out). */
+  apps?: AccountMenuApp[];
 }
 
 /** The app's login URL that returns to the current page. */
@@ -33,7 +44,7 @@ export function appLoginUrl(loginPath: string, prompt?: "none" | "login"): strin
  * and signs in to this app silently as it; signing out of the last account
  * is single sign-out (the app's /logout).
  */
-export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/login" }: AccountSwitcherProps) {
+export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/login", apps = [] }: AccountSwitcherProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,11 +73,12 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
         credentials: 'include',
       });
       if (response.ok) {
-        const data = await response.json() as { accounts?: Array<{ userId: string; email: string; isActive: boolean; lastUsed?: string }> };
+        const data = await response.json() as { accounts?: Array<{ userId: string; email: string; name?: string | null; isActive: boolean; lastUsed?: string }> };
         if (data.accounts && data.accounts.length > 0) {
-          accountsList = data.accounts.map((a: { userId: string; email: string; isActive: boolean; lastUsed?: string }) => ({
+          accountsList = data.accounts.map((a) => ({
             id: a.userId,
             email: a.email,
+            name: a.name?.trim() || undefined,
             isActive: a.isActive,
             lastUsed: a.lastUsed,
           }));
@@ -140,18 +152,11 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
     window.location.href = '/logout';
   }
 
-  function getInitial(email: string) {
-    return email.charAt(0).toUpperCase();
+  function getInitial(text: string) {
+    return (Array.from(text.trim())[0] ?? '?').toUpperCase();
   }
 
-  function getAvatarColor(email: string) {
-    const colors = [
-      'bg-blue-500', 'bg-green-500', 'bg-purple-500',
-      'bg-orange-500', 'bg-pink-500', 'bg-teal-500'
-    ];
-    const index = email.charCodeAt(0) % colors.length;
-    return colors[index];
-  }
+  const nameOf = (a?: Account) => a?.name || a?.email || '';
 
   function formatRelativeTime(dateStr?: string) {
     if (!dateStr) return '';
@@ -173,107 +178,111 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
   }
 
   const activeAccount = accounts.find(a => a.isActive) || accounts[0];
+  const name = nameOf(activeAccount);
+  const several = accounts.length > 1;
 
+  // The shared nav contract (AlUmmahNow docs/design/NAV.md, NAV_CSS): avatar + name, then
+  // who · your accounts · add · Al Ummah Now apps · sign out
   return (
     <div className="relative">
       <button
         type="button"
         data-testid="account-menu"
-        aria-label="Accounts"
+        aria-label={`Account menu: ${name}`}
+        aria-haspopup="menu"
         aria-expanded={isOpen}
-        className="inline-flex items-center justify-center gap-2 px-2 py-2 rounded-md text-sm font-medium transition-colors hover:bg-[rgb(var(--color-muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+        className="aun-acct-btn"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${getAvatarColor(activeAccount?.email || '')}`}>
-          {getInitial(activeAccount?.email || '')}
-        </div>
-        <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="aun-avatar" aria-hidden="true">{getInitial(name)}</span>
+        <span className="aun-acct-name" dir="auto">{name}</span>
+        <ChevronDown className="aun-caret" aria-hidden="true" />
       </button>
 
       {isOpen && (
         <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* Dropdown */}
-          <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))] rounded-lg shadow-lg z-50">
-            <div className="px-3 py-2 border-b border-[rgb(var(--color-border))]">
-              <p className="text-xs font-medium text-[rgb(var(--color-muted-foreground))]">
-                Signed in accounts
-              </p>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="aun-menu" role="menu" onKeyDown={(e) => e.key === 'Escape' && setIsOpen(false)}>
+            <div className="aun-menu-who">
+              <span className="aun-avatar aun-avatar--lg" aria-hidden="true">{getInitial(name)}</span>
+              <span className="aun-menu-who-text">
+                <span className="aun-menu-who-name" dir="auto">{name}</span>
+                {activeAccount && activeAccount.email !== name && <span className="aun-menu-who-sub" dir="ltr">{activeAccount.email}</span>}
+              </span>
             </div>
-
-            <div className="max-h-64 overflow-y-auto py-1">
-              {accounts.map((account) => (
-                <div
-                  key={account.id}
-                  data-testid="account-item"
-                  data-email={account.email}
-                  className={`group flex items-center gap-3 px-3 py-2 hover:bg-[rgb(var(--color-muted))] cursor-pointer ${account.isActive ? 'bg-[rgb(var(--color-muted))]/50' : ''}`}
-                  onClick={() => !(account.isActive && account.id === currentUser.id) && handleSwitchAccount(account.id)}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0 ${getAvatarColor(account.email)}`}>
-                    {getInitial(account.email)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[rgb(var(--color-foreground))] truncate">
-                      {account.email}
-                    </p>
-                    <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
-                      {account.isActive ? 'Active' : `Last used ${formatRelativeTime(account.lastUsed)}`}
-                    </p>
-                  </div>
-                  {account.isActive && (
-                    <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
-                  )}
-                  <button
-                    type="button"
-                    data-testid="account-sign-out"
-                    className="p-1 hover:bg-[rgb(var(--color-muted))] rounded opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSignOutAccount(account.id);
-                    }}
-                    title="Sign out"
-                    aria-label={`Sign out ${account.email}`}
-                  >
-                    <LogOut className="h-3 w-3 text-[rgb(var(--color-muted-foreground))]" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="border-t border-[rgb(var(--color-border))] py-1">
-              {accounts.length < 5 && (
-                <button
-                  type="button"
-                  data-testid="account-add"
-                  className="flex items-center gap-3 w-full px-3 py-2 hover:bg-[rgb(var(--color-muted))] text-left"
-                  onClick={handleAddAccount}
-                >
-                  <div className="w-8 h-8 rounded-full bg-[rgb(var(--color-muted))] flex items-center justify-center">
-                    <Plus className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
-                  </div>
-                  <span className="text-sm text-[rgb(var(--color-foreground))]">
-                    Add another account
-                  </span>
-                </button>
-              )}
-              <button
-                className="flex items-center gap-3 w-full px-3 py-2 hover:bg-[rgb(var(--color-muted))] text-left"
-                onClick={handleSignOutAll}
-              >
-                <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
-                  <LogOut className="h-4 w-4 text-red-500" />
-                </div>
-                <span className="text-sm text-red-500">
-                  Sign out of all accounts
-                </span>
+            <div className="aun-menu-sep" role="separator" />
+            {several && (
+              <>
+                <span className="aun-menu-label">Your accounts</span>
+                {accounts.map((account) => {
+                  const label = nameOf(account);
+                  const current = account.isActive && account.id === currentUser.id;
+                  return (
+                    <div key={account.id} className="aun-acct-row" data-testid="account-item" data-email={account.email}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="aun-menu-item"
+                        disabled={current}
+                        aria-current={account.isActive ? 'true' : undefined}
+                        aria-label={current ? undefined : `Switch to ${label}`}
+                        onClick={() => !current && handleSwitchAccount(account.id)}
+                      >
+                        <span className="aun-avatar" aria-hidden="true">{getInitial(label)}</span>
+                        <span className="aun-acct-text">
+                          <span className="aun-acct-label" dir="auto">{label}</span>
+                          {account.email !== label && <span className="aun-acct-email" dir="ltr">{account.email}</span>}
+                          <span className="aun-acct-current">{account.isActive ? 'Current account' : `Last used ${formatRelativeTime(account.lastUsed)}`}</span>
+                        </span>
+                        {account.isActive && <Check className="aun-menu-check" aria-hidden="true" />}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="account-sign-out"
+                        className="aun-acct-signout"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSignOutAccount(account.id);
+                        }}
+                        aria-label={`Sign out of ${label}`}
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            {accounts.length < 5 && (
+              <button type="button" role="menuitem" data-testid="account-add" className="aun-menu-item" onClick={handleAddAccount}>
+                <Plus className="aun-menu-icon" aria-hidden="true" />
+                <span className="aun-menu-text">Add another account</span>
               </button>
-            </div>
+            )}
+            {apps.length > 0 && (
+              <>
+                <div className="aun-menu-sep" role="separator" />
+                <div role="group" aria-labelledby="account-apps-label" data-testid="account-apps">
+                  <span className="aun-menu-label" id="account-apps-label">Al Ummah Now apps</span>
+                  {apps.map((app) => (
+                    <a key={app.id} role="menuitem" className="aun-menu-item" href={app.href} data-app={app.id}>
+                      <span className="aun-menu-text">{app.label}</span>
+                    </a>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="aun-menu-sep" role="separator" />
+            <button type="button" role="menuitem" data-testid="account-sign-out-current" className="aun-menu-item" onClick={() => handleSignOutAccount(currentUser.id)}>
+              <LogOut className="aun-menu-icon aun-flip" aria-hidden="true" />
+              <span className="aun-menu-text">Sign out</span>
+            </button>
+            {several && (
+              <button type="button" role="menuitem" className="aun-menu-item aun-menu-item--danger" onClick={handleSignOutAll}>
+                <LogOut className="aun-menu-icon aun-flip" aria-hidden="true" />
+                <span className="aun-menu-text">Sign out of all accounts</span>
+              </button>
+            )}
           </div>
         </>
       )}

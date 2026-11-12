@@ -1,7 +1,8 @@
 /**
  * The admin shell takes its look from Auth's theme for the admin app (its
  * client default, else the Auth default): the theme's `adminShell` section.
- * Only parts the theme sets are restyled; the rest keeps the admin's own look.
+ * Only parts the theme sets are restyled; the rest keeps the admin's own look. The theme's
+ * Fanous tokens always come along, for the shared header account menu (NAV_CSS).
  * Any failure keeps the admin as it is.
  */
 
@@ -23,7 +24,9 @@ const RULES: [key: string, css: (v: string) => string][] = [
 export function shellThemeCss(tokensCss: string): string {
   if (/<\/style|<!--/i.test(tokensCss)) return "";
   const rules = RULES.filter(([key]) => tokensCss.includes(`${VAR(key)}:`)).map(([key, css]) => css(`var(${VAR(key)})`));
-  if (!rules.length) return "";
+  // The header account button and menus (NAV_CSS, AlUmmahNow docs/design/NAV.md) read the theme's
+  // Fanous tokens: keep them even when the theme restyles no shell part
+  if (!rules.length && !tokensCss.includes("--fanous-c-menu-bg:")) return "";
   // only the theme's custom properties are needed here, not its font imports
   const start = tokensCss.indexOf(":root{");
   return `${start >= 0 ? tokensCss.slice(start) : tokensCss}\n${rules.join("\n")}`;

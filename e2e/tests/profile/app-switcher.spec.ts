@@ -1,10 +1,13 @@
 /**
- * E2E Test: Profile app switcher (header launcher + "Your apps" cards)
+ * E2E Test: Profile app switcher (the account menu's "Al Ummah Now apps" + "Your apps" cards)
  *
- * - A regular member sees the www site, Al Ummah Now and Profile.
- * - An admin also sees the CMS, Al Ummah Now Admin and Auth Admin.
+ * The shared nav (AlUmmahNow docs/design/NAV.md): the other apps live in the account menu, in the
+ * same order and labels as every app (Website, Videos, Your profile, Content management,
+ * Videos admin, Accounts admin); this app is left out.
+ * - A regular member sees Website and Videos.
+ * - An admin also sees Content management, Videos admin and Accounts admin.
  * - Links point at the environment's own hosts (QA links never go to prod).
- * - The launcher follows the menu-button keyboard pattern.
+ * - The account menu is keyboard accessible.
  * - Arabic renders RTL, including on a phone-sized viewport.
  *
  * Screenshots are written to each test's folder under test-results/ as app-switcher-*.png (uploaded by CI).
@@ -54,11 +57,11 @@ const shot = (page: Page, name: string) =>
   page.screenshot({ path: test.info().outputPath(`app-switcher-${name}.png`), fullPage: false });
 
 async function openLauncher(page: Page) {
-  const trigger = page.locator('#appsTrigger');
+  const trigger = page.locator('#accountTrigger');
   await expect(trigger).toBeVisible();
   await trigger.click();
-  await expect(page.locator('#appsMenu')).toBeVisible();
-  return page.locator('#appsMenu [role="menuitem"]');
+  await expect(page.locator('#accountDropdown')).toBeVisible();
+  return page.locator('#accountApps [role="menuitem"]');
 }
 
 async function promoteToAdmin(page: Page, email: string) {
@@ -73,7 +76,7 @@ async function promoteToAdmin(page: Page, email: string) {
 }
 
 test.describe('Profile app switcher', () => {
-  test('regular user sees www, Al Ummah Now and Profile, with env URLs', async ({ page }) => {
+  test('regular user sees Website and Videos, with env URLs', async ({ page }) => {
     const user = TEST_USERS.user();
     await login(page, user.email);
 
@@ -81,13 +84,14 @@ test.describe('Profile app switcher', () => {
     await expect(page.locator('#navMenu a:has-text("Admin")')).toHaveCount(0);
 
     const items = await openLauncher(page);
-    await expect(items).toHaveCount(3);
-    await expect(page.locator('#appsMenu [data-app]')).toHaveCount(3);
-    await expect(page.locator('#appsMenu [data-app="www"]')).toHaveAttribute('href', EXPECTED_URLS.www);
-    await expect(page.locator('#appsMenu [data-app="cms"]')).toHaveCount(0);
-    await expect(page.locator('#appsMenu [data-app="videos"]')).toHaveAttribute('href', EXPECTED_URLS.videos);
-    await expect(page.locator('#appsMenu [data-app="profile"]')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('#appsMenu')).not.toContainText('Admin');
+    await expect(items).toHaveCount(2);
+    await expect(items.first()).toHaveText('Website');
+    await expect(page.locator('#accountApps [data-app="www"]')).toHaveAttribute('href', EXPECTED_URLS.www);
+    await expect(page.locator('#accountApps [data-app="cms"]')).toHaveCount(0);
+    await expect(page.locator('#accountApps [data-app="videos"]')).toHaveAttribute('href', EXPECTED_URLS.videos);
+    // This app is left out of its own list
+    await expect(page.locator('#accountApps [data-app="profile"]')).toHaveCount(0);
+    await expect(page.locator('#accountApps')).not.toContainText('admin');
     await shot(page, 'member-desktop-menu');
 
     // "Your apps" cards: no admin apps for members, no greyed-out entries
@@ -99,32 +103,29 @@ test.describe('Profile app switcher', () => {
     await expect(page.locator('#yourApps')).not.toContainText('Administration');
   });
 
-  test('launcher is keyboard accessible (menu-button pattern)', async ({ page }) => {
+  test('the account menu is keyboard accessible', async ({ page }) => {
     const user = TEST_USERS.user();
     await login(page, user.email);
 
-    const trigger = page.locator('#appsTrigger');
-    const menu = page.locator('#appsMenu');
-    const items = menu.locator('[role="menuitem"]');
+    const trigger = page.locator('#accountTrigger');
+    const menu = page.locator('#accountDropdown');
+    const items = menu.locator('a:visible, button:visible');
 
-    await expect(trigger).toHaveAttribute('aria-haspopup', 'true');
+    await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await expect(trigger).toHaveAccessibleName(/apps/i);
 
+    // ArrowDown on the button opens the menu at its first item
     await trigger.focus();
-    await page.keyboard.press('Enter');
+    await page.keyboard.press('ArrowDown');
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
-    await expect(items.nth(0)).toBeFocused();
-
+    await expect(items.first()).toBeFocused();
     await page.keyboard.press('ArrowDown');
     await expect(items.nth(1)).toBeFocused();
-    await page.keyboard.press('ArrowDown');
-    await expect(items.nth(2)).toBeFocused();
-    await page.keyboard.press('ArrowDown'); // wraps
-    await expect(items.nth(0)).toBeFocused();
     await page.keyboard.press('End');
     await expect(items.last()).toBeFocused();
+    await page.keyboard.press('ArrowDown'); // wraps
+    await expect(items.first()).toBeFocused();
     await page.keyboard.press('Home');
     await expect(items.first()).toBeFocused();
 
@@ -133,21 +134,17 @@ test.describe('Profile app switcher', () => {
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     await expect(trigger).toBeFocused();
 
-    // ArrowUp opens on the last item
-    await page.keyboard.press('ArrowUp');
-    await expect(items.last()).toBeFocused();
-
-    // Enter follows the focused link in the same tab
-    await page.keyboard.press('Home');
+    // An app link opens in the same tab
+    await trigger.click();
     const [request] = await Promise.all([
       page.waitForRequest((r) => r.isNavigationRequest() && r.url().startsWith(EXPECTED_URLS.www), { timeout: 15000 }),
-      page.keyboard.press('Enter'),
+      page.locator('#accountApps [data-app="www"]').click(),
     ]);
     expect(request.url().startsWith(EXPECTED_URLS.www)).toBe(true);
     expect(page.context().pages()).toHaveLength(1);
   });
 
-  test('admin also sees the CMS, Al Ummah Now Admin and Auth Admin', async ({ page }) => {
+  test('admin also sees Content management, Videos admin and Accounts admin', async ({ page }) => {
     const admin = TEST_USERS.admin();
     await register(page, admin.email);
     await promoteToAdmin(page, admin.email);
@@ -158,12 +155,12 @@ test.describe('Profile app switcher', () => {
     await login(page, admin.email);
 
     const items = await openLauncher(page);
-    await expect(items).toHaveCount(6);
-    await expect(page.locator('#appsMenu [data-app="cms"]')).toHaveAttribute('href', EXPECTED_URLS.cms);
-    await expect(page.locator('#appsMenu [data-app="videos"]')).toHaveAttribute('href', EXPECTED_URLS.videos);
-    await expect(page.locator('#appsMenu [data-app="content-admin"]')).toHaveAttribute('href', EXPECTED_URLS['content-admin']);
-    await expect(page.locator('#appsMenu [data-app="auth-admin"]')).toHaveAttribute('href', EXPECTED_URLS['auth-admin']);
-    await expect(page.locator('#appsMenu [role="group"]')).toHaveCount(2);
+    // The shared order: Website, Videos, Content management, Videos admin, Accounts admin
+    await expect(items).toHaveText(['Website', 'Videos', 'Content management', 'Videos admin', 'Accounts admin']);
+    await expect(page.locator('#accountApps [data-app="cms"]')).toHaveAttribute('href', EXPECTED_URLS.cms);
+    await expect(page.locator('#accountApps [data-app="videos"]')).toHaveAttribute('href', EXPECTED_URLS.videos);
+    await expect(page.locator('#accountApps [data-app="content-admin"]')).toHaveAttribute('href', EXPECTED_URLS['content-admin']);
+    await expect(page.locator('#accountApps [data-app="auth-admin"]')).toHaveAttribute('href', EXPECTED_URLS['auth-admin']);
     await shot(page, 'admin-desktop-menu');
 
     await page.keyboard.press('Escape');
@@ -181,9 +178,9 @@ test.describe('Profile app switcher', () => {
     await shot(page, 'admin-mobile-ar');
 
     await openLauncher(page);
-    await expect(page.locator('#appsMenu [data-app="videos"]')).toContainText('الأمة الآن');
-    await expect(page.locator('#appsMenu [data-app="auth-admin"]')).toHaveAttribute('href', EXPECTED_URLS['auth-admin']);
-    const box = await page.locator('#appsMenu').boundingBox();
+    await expect(page.locator('#accountApps [data-app="videos"]')).toHaveText('المرئيات');
+    await expect(page.locator('#accountApps [data-app="auth-admin"]')).toHaveAttribute('href', EXPECTED_URLS['auth-admin']);
+    const box = await page.locator('#accountDropdown').boundingBox();
     expect(box).not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(390);
