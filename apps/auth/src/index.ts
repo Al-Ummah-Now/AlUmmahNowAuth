@@ -19,6 +19,10 @@ import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-h
 import { createRefreshCheck } from "./handlers/refresh-check";
 import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
 import { PasswordUI } from "@al-ummah-now/openauth/ui/password";
+import { PasskeyProvider } from "@al-ummah-now/openauth/provider/passkey";
+import { getCredential, touchCredential } from "./passkeys/store";
+import { passkeyDeadline } from "./passkeys/policy";
+import { rpId, rpOrigins } from "./passkeys/rp";
 import { getLocaleFromRequest } from "@al-ummah-now/openauth/ui/i18n";
 import { createSubjects } from "@al-ummah-now/openauth/subject";
 import * as v from 'valibot';
@@ -419,7 +423,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // the current access-token lifetime on their next refresh (#437)
       // Codes and device grants of suspended/deleted accounts (D1) are refused (#662)
       storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, revocationsDb: env.AUTH_DB, accessTtl, db: env.AUTH_DB }),
-      ...(accessTtl ? { ttl: { access: accessTtl } } : {}),
+      // Codes live 10 minutes (RFC 6749 maximum): the after-sign-in passkey card
+      // (AUTH-PASSKEYS) shows before the redirect that carries the code
+      ttl: { ...(accessTtl ? { access: accessTtl } : {}), code: 600 },
       // Codes of these clients are redeemed only with PKCE (OA-1, see pkce-clients.ts)
       pkce: { requireForCodeExchange: PKCE_REQUIRED_CLIENTS },
       sessionService,
@@ -465,6 +471,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
               storage,
             ),
             copy: passwordCopy,
+            // "Sign in with a passkey" and passkeys in the email autofill (AUTH-PASSKEYS)
+            passkey: true,
           }),
           // Every submitted email code is counted in D1: 5 tries, 15 minutes, single use
           checkCode: passwordGuard.checkCode,
@@ -473,12 +481,24 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
             await revokeOnPasswordChange(env.AUTH_DB, env.TOKEN_REVOCATIONS, email);
           },
         }),
+        // Passkey sign-in (AUTH-PASSKEYS): started from the password page; every
+        // lookup is by credential id. RP id = the issuer host without "auth."
+        passkey: PasskeyProvider({
+          rpID: (req) => rpId(env, req),
+          origins: (req) => rpOrigins(env, req),
+          store: {
+            get: (id) => getCredential(env.AUTH_DB, id),
+            touch: (id, counter) => touchCredential(env.AUTH_DB, id, counter),
+          },
+          onFailure: (reason) => logger.warn('[passkeys] Sign-in refused', { reason }),
+        }),
       },
       // Per request: OpenAuth renders each page with this request's theme and ?lang=
       theme: openauthTheme,
       // Every refresh: a deleted or suspended user is refused; the issuer then
       // re-reads the roles from RBAC, so refreshed tokens carry current roles
-      onRefresh: createRefreshCheck(userService),
+      // and the staff passkey deadline follows the admin setting (AUTH-PASSKEYS)
+      onRefresh: createRefreshCheck(userService, (userId, roles) => passkeyDeadline(env.AUTH_DB, userId, roles)),
       // Suspended/deleted accounts (D1) are refused with an en/ar page (#662)
       onSuccess: createOnSuccessHandler(userService, rbacService, {
         request,

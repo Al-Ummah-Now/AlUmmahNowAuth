@@ -29,12 +29,14 @@
 --   migrations/0035_writer_role.sql
 --   migrations/0036_admin_native_clients.sql
 --   migrations/0037_reviewer_roles.sql
+--   migrations/0038_webauthn_credentials.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
 CREATE TABLE admin_deletions (kind TEXT NOT NULL, item_id TEXT NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'default', label TEXT, deleted_at INTEGER NOT NULL, deleted_by TEXT NOT NULL, deleted_by_email TEXT, reason TEXT, purge_requested_at INTEGER, purge_requested_by TEXT, snapshot TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, PRIMARY KEY (kind, item_id));
 CREATE TABLE app_sessions (id TEXT PRIMARY KEY, app TEXT NOT NULL, user_json TEXT NOT NULL, access_token TEXT NOT NULL, refresh_token TEXT, expires_at INTEGER NOT NULL, revoked_at INTEGER, refresh_lock TEXT, refresh_lock_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE audit_events (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), timestamp TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info', user_id TEXT, ip_address TEXT, user_agent TEXT, request_id TEXT, metadata TEXT, success INTEGER NOT NULL DEFAULT 1, error_message TEXT, tenant_id TEXT NOT NULL DEFAULT 'default', FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+CREATE TABLE auth_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by TEXT);
 CREATE TABLE auth_theme_client_defaults (client_id TEXT PRIMARY KEY, theme_id TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by TEXT);
 CREATE TABLE auth_theme_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by TEXT);
 CREATE TABLE auth_themes (id TEXT PRIMARY KEY, name_en TEXT NOT NULL, name_ar TEXT NOT NULL, draft_key TEXT, draft_version TEXT, published_key TEXT, published_version TEXT, published_at INTEGER, created_at INTEGER NOT NULL, created_by TEXT, updated_at INTEGER NOT NULL, updated_by TEXT);
@@ -46,6 +48,7 @@ CREATE TABLE moderation_request_events (id TEXT PRIMARY KEY, request_id TEXT NOT
 CREATE TABLE moderation_requests (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'default', client_id TEXT NOT NULL, subject_user_id TEXT NOT NULL, action TEXT NOT NULL, reason_category TEXT NOT NULL, reason TEXT NOT NULL, evidence TEXT NOT NULL DEFAULT '[]', requested_by_id TEXT NOT NULL, requested_by_name TEXT NOT NULL, idempotency_key TEXT NOT NULL, payload_hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', decision_note TEXT, decided_by TEXT, decided_at INTEGER, actioned_at INTEGER, action_result TEXT, action_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, execution_status TEXT, execution_attempts INTEGER NOT NULL DEFAULT 0, execution_updated_at INTEGER, UNIQUE (client_id, idempotency_key));
 CREATE TABLE oauth_clients (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, client_secret_hash TEXT, grant_types TEXT DEFAULT '[]', scopes TEXT DEFAULT '[]', redirect_uris TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}', enabled INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, rotated_at INTEGER, previous_secret_hash TEXT, previous_secret_expires_at INTEGER, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE openauth_atomic (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER);
+CREATE TABLE passkey_setup_tickets (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER);
 CREATE TABLE password_codes (email TEXT PRIMARY KEY, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, window_start INTEGER NOT NULL DEFAULT 0, window_attempts INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
 CREATE TABLE password_login_attempts (email TEXT PRIMARY KEY, window_start INTEGER NOT NULL, failures INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE rbac_permissions (id TEXT PRIMARY KEY, name TEXT NOT NULL, client_id TEXT NOT NULL, description TEXT, resource TEXT NOT NULL, action TEXT NOT NULL, created_at INTEGER NOT NULL, FOREIGN KEY (client_id) REFERENCES oauth_clients(id) ON DELETE CASCADE);
@@ -61,6 +64,8 @@ CREATE TABLE user_identities (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant
 CREATE TABLE user_invites (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'default', user_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT, locale TEXT NOT NULL DEFAULT 'en', note TEXT, client_id TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}', continue_url TEXT, token_hash TEXT, token_used_at INTEGER, invited_by TEXT NOT NULL, invited_by_email TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, last_sent_at INTEGER, send_count INTEGER NOT NULL DEFAULT 0, accepted_at INTEGER, deleted_at INTEGER, deleted_by TEXT, deleted_by_email TEXT, deleted_reason TEXT, purge_requested_at INTEGER, purge_requested_by TEXT);
 CREATE TABLE user_revocations (user_id TEXT PRIMARY KEY, revoked_before INTEGER NOT NULL, reason TEXT, updated_at INTEGER NOT NULL);
 CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT, metadata TEXT, status TEXT NOT NULL DEFAULT 'active', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, last_login_at INTEGER, deleted_at INTEGER, password_reset_required INTEGER DEFAULT 0, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+CREATE TABLE webauthn_credentials (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, public_key TEXT NOT NULL, counter INTEGER NOT NULL DEFAULT 0, transports TEXT, device_type TEXT NOT NULL, backed_up INTEGER NOT NULL DEFAULT 0, aaguid TEXT, name TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER, deleted_at INTEGER);
+CREATE TABLE webauthn_prompts (user_id TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL);
 CREATE TABLE webhook_dlq (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', webhook_url TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, error_message TEXT, retry_count INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, next_retry_at INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE INDEX idx_migrations_applied ON _openauth_migrations(applied_at);
 CREATE INDEX idx_account_sessions_active ON account_sessions(browser_session_id, is_active);
@@ -105,6 +110,7 @@ CREATE INDEX idx_oauth_clients_tenant ON oauth_clients(tenant_id);
 CREATE UNIQUE INDEX idx_oauth_clients_tenant_name ON oauth_clients(tenant_id, name);
 CREATE INDEX idx_openauth_atomic_expires_at ON openauth_atomic(expires_at);
 CREATE INDEX idx_openauth_atomic_refresh_user ON openauth_atomic(json_extract(value, '$.properties.id')) WHERE key >= 'oauth:refresh' AND key < 'oauth:refresi';
+CREATE INDEX idx_passkey_setup_tickets_user ON passkey_setup_tickets(user_id);
 CREATE INDEX idx_rbac_permissions_client ON rbac_permissions(client_id);
 CREATE UNIQUE INDEX idx_rbac_permissions_name_client ON rbac_permissions(name, client_id);
 CREATE INDEX idx_rbac_permissions_resource ON rbac_permissions(resource);
@@ -152,6 +158,8 @@ CREATE INDEX idx_users_status ON users(tenant_id, status);
 CREATE INDEX idx_users_tenant ON users(tenant_id);
 CREATE UNIQUE INDEX idx_users_tenant_email ON users(tenant_id, email) WHERE deleted_at IS NULL;
 CREATE INDEX idx_users_updated ON users(tenant_id, updated_at);
+CREATE UNIQUE INDEX idx_webauthn_credentials_id ON webauthn_credentials(id);
+CREATE INDEX idx_webauthn_credentials_user ON webauthn_credentials(user_id);
 CREATE INDEX idx_webhook_dlq_next_retry ON webhook_dlq(next_retry_at);
 CREATE INDEX idx_webhook_dlq_status ON webhook_dlq(status);
 CREATE INDEX idx_webhook_dlq_tenant_id ON webhook_dlq(tenant_id);

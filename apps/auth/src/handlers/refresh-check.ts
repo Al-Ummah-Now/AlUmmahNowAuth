@@ -17,8 +17,19 @@ export interface RefreshUserLookup {
 	getUser(tenantId: string, userId: string): Promise<{ status: string; deleted_at: number | null } | null>;
 }
 
-export function createRefreshCheck(users: RefreshUserLookup) {
-	return async (input: { tenantId: string; userId?: string; clientID: string }): Promise<void | { revoke: true; reason: string }> => {
+/**
+ * Staff passkey policy (AUTH-PASSKEYS): the token's `passkey_deadline`, or
+ * undefined to remove it. Called with the roles the token carries.
+ */
+export type PasskeyDeadlineLookup = (userId: string, roles: string[]) => Promise<number | undefined>;
+
+export function createRefreshCheck(users: RefreshUserLookup, passkeyDeadline?: PasskeyDeadlineLookup) {
+	return async (input: {
+		tenantId: string;
+		userId?: string;
+		clientID: string;
+		properties?: Record<string, unknown>;
+	}): Promise<void | { revoke: true; reason: string } | { properties: Record<string, unknown> }> => {
 		// Not a user (no id in the token): nothing to check
 		if (!input.userId) return;
 		const user = await users.getUser(input.tenantId, input.userId);
@@ -29,6 +40,11 @@ export function createRefreshCheck(users: RefreshUserLookup) {
 		if (user.status !== 'active') {
 			logger.info('[refresh] Refused: the user is not active', { userId: input.userId, status: user.status, clientId: input.clientID });
 			return { revoke: true, reason: `user_${user.status}` };
+		}
+		// The staff passkey deadline follows the setting on every refresh (undefined removes it)
+		if (passkeyDeadline) {
+			const roles = Array.isArray(input.properties?.roles) ? (input.properties!.roles as string[]) : [];
+			return { properties: { passkey_deadline: await passkeyDeadline(input.userId, roles) } };
 		}
 	};
 }

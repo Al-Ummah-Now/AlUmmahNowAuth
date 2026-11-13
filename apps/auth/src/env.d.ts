@@ -80,6 +80,10 @@ declare global {
     CF_VERSION_METADATA?: { id?: string; tag?: string };
     // 64-character hex string (32 bytes) for encrypting browser session cookies
     SESSION_SECRET?: string;
+    /** "on": offer the add-a-passkey card after sign-in (AUTH-PASSKEYS PK1) */
+    PASSKEY_PROMPT?: string;
+    /** WebAuthn RP id override (default: the issuer host without "auth.") */
+    WEBAUTHN_RP_ID?: string;
     /** Workers Rate Limiting: POST /password/* per client IP (AU-2) */
     PASSWORD_IP_LIMITER?: RateLimit;
     /** Workers Rate Limiting: POST /password/* per email (AU-2) */

@@ -23,6 +23,8 @@ import type { Theme } from '@al-ummah-now/openauth/ui/theme';
 import { claimInvitedAccount } from '../invites/service';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import type { RequestTimer } from '../utils/request-timing';
+import { passkeyDeadline } from '../passkeys/policy';
+import { afterSignInCard } from '../passkeys/card';
 
 /** Times `fn` as a stage of the request when there is a timer (#804). */
 function staged<T>(timer: RequestTimer | undefined, name: string, fn: () => Promise<T>): Promise<T> {
@@ -84,7 +86,7 @@ export interface UserServiceLike {
 export interface OpenAuthContext {
 	subject: (
 		type: string,
-		properties: { id: string; email: string; roles: string[] }
+		properties: { id: string; email: string; roles: string[]; passkey_deadline?: number }
 	) => Promise<Response>;
 }
 
@@ -102,6 +104,8 @@ export interface TenantInfo {
 export interface EnterpriseAuthResult {
 	provider: string;
 	userID?: string;
+	/** RFC 8176 methods of this sign-in (pwd, passkey, ...) */
+	amr?: string[];
 	type?: string;
 	properties?: Record<string, unknown>;
 	refresh?: string;
@@ -191,7 +195,16 @@ export function createOnSuccessHandler(
 		_tenant: TenantInfo | undefined
 	): Promise<Response> => {
 		// Enterprise issuer: email can be in properties (from password provider) or directly on value
-		const email = String(value.properties?.email || value.email || '');
+		let email = String(value.properties?.email || value.email || '');
+		// Passkey sign-in: the account is the credential's owner, never an email typed on the page
+		if (value.provider === 'passkey') {
+			const passkeyUserId = String(value.userID ?? '');
+			const row = db && passkeyUserId
+				? await db.prepare('SELECT email FROM users WHERE id = ?1 AND deleted_at IS NULL').bind(passkeyUserId).first<{ email: string }>()
+				: null;
+			if (!row) return await refuse('', passkeyUserId, 'deleted', 'passkey');
+			email = row.email;
+		}
 		logger.info('Authentication successful', { email, provider: value.provider });
 
 		// DEBUG: Log the full value object and tenant
@@ -304,6 +317,8 @@ export function createOnSuccessHandler(
 			});
 
 			const user = { id: existingUser.id, roles };
+			// Staff passkey policy (AUTH-PASSKEYS): the deadline consumers enforce
+			const deadline = db ? await staged(timer, 'onsuccess.passkey', () => passkeyDeadline(db, user.id, roles)) : undefined;
 
 			// Emit login success audit event (use outer ctx for waitUntil)
 			const clientIP = getClientIP(request);
@@ -336,6 +351,7 @@ export function createOnSuccessHandler(
 					id: user.id,
 					email,
 					roles: user.roles,
+					...(deadline !== undefined ? { passkey_deadline: deadline } : {}),
 				})
 			);
 
@@ -384,6 +400,28 @@ export function createOnSuccessHandler(
 					contentType: subjectResponse.headers.get('Content-Type'),
 					body: body.slice(0, 1000),
 				});
+			}
+
+			// After an interactive sign-in: offer to add a passkey (PK1) before going on to the app
+			if (db && isRedirect) {
+				const card = await staged(timer, 'onsuccess.card', () =>
+					afterSignInCard({
+						db,
+						env: env as { PASSKEY_PROMPT?: string },
+						provider: String(value.provider ?? ''),
+						userId: user.id,
+						email,
+						roles: user.roles,
+						deadline,
+						locale: getLocaleFromRequest(request) === 'ar' ? 'ar' : 'en',
+						theme,
+						redirect: subjectResponse,
+					})
+				).catch((error: unknown) => {
+					logger.error('[passkeys] Could not build the after-sign-in card', { error: error instanceof Error ? error.message : String(error) });
+					return null;
+				});
+				if (card) return card;
 			}
 
 			return subjectResponse;

@@ -1,7 +1,22 @@
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 
 export default defineWorkersConfig({
+  // @simplewebauthn/server (passkeys, via @al-ummah-now/openauth) pulls in tslib,
+  // whose ESM entry re-exports its CJS file, which workerd can't load unbundled:
+  // resolve "tslib" to its own ESM build, from each importer
+  plugins: [
+    {
+      name: "tslib-esm",
+      enforce: "pre",
+      async resolveId(id, importer) {
+        if (id !== "tslib") return null;
+        return this.resolve("tslib/tslib.es6.mjs", importer, { skipSelf: true });
+      },
+    },
+  ],
   test: {
+    // Through Vite (so the plugin above applies), not workerd's module fallback
+    server: { deps: { inline: [/@simplewebauthn/, /@peculiar/, /tsyringe/, /asn1js/, /pvtsutils/, /@levischuck/, /@hexagon/] } },
     // Run test files sequentially to prevent race conditions
     fileParallelism: false,
     poolOptions: {
