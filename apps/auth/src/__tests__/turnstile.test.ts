@@ -136,7 +136,9 @@ describe('injectTurnstile', () => {
 		expect(html.match(/data-aun-turnstile /g)?.length).toBe(1);
 		expect(html.indexOf('data-aun-turnstile ')).toBeLessThan(html.indexOf('</form>'));
 		expect(html).toContain('data-sitekey="k&quot;&lt;"');
-		expect(html).toContain('<script src="/turnstile/stub.js?onload=aunTurnstileReady&amp;render=explicit" async defer></script></body>');
+		expect(html).toContain('s.src="/turnstile/stub.js?onload=aunTurnstileReady&render=explicit"');
+		expect(html).toContain('s.onerror=fail');
+		expect(html.indexOf('</script></body>')).toBeGreaterThan(0);
 		expect(html).toContain('role="status"');
 		expect(injectTurnstile(html, { siteKey: 'k', scriptUrl: 's', action: 'a', lang: 'en' })).toBe(html);
 	});

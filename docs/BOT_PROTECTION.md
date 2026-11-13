@@ -17,8 +17,8 @@ The widget is Cloudflare Turnstile in *managed* mode, rendered with
 `appearance: "interaction-only"`: almost every visitor sees nothing; only a visitor
 Cloudflare is unsure about gets a one-click check. A form submitted before the token is
 ready waits for it (status line "Checking that you are not a robot…", `role="status"`)
-and is then sent. When the widget cannot run (blocked script, offline) the form is sent
-without a token and the server decides. Copy is English or Arabic with the page.
+and is then sent. When the widget cannot run (script blocked or failed to load, widget error)
+or no token arrives within 10 seconds, the form is sent without a token and the server decides. Copy is English or Arabic with the page.
 
 A refused post re-renders the same form with "Please confirm that you are not a robot,
 then try again." and HTTP 400. A refused sign-in does not use up an attempt.
@@ -36,7 +36,7 @@ native apps (okhttp, CFNetwork, Ktor) and crawlers are not affected.
 | --- | --- | --- | --- |
 | local / unit tests | `off` (tests set their own) | test `1x00000000000000000000AA` | test secret (plain var) |
 | QA, stage | `enforce` | test `1x00000000000000000000AA` | `turnstile-secret-test` (Cloudflare's public always-pass secret) |
-| production | `off` → `monitor` → `enforce` | `0x4AAAAAAF_3KPNkPlEGf_dP` (widget "al-ummah-now-production", domains alummahnow.net/.org/.com/.app) | `turnstile-secret` |
+| production | `monitor` (since 2026-11-13; `enforce` once the Abuse panel shows only bots failing) | `0x4AAAAAAF_3KPNkPlEGf_dP` (widget "al-ummah-now-production", domains alummahnow.net/.org/.com/.app) | `turnstile-secret` |
 
 Test keys never reach Cloudflare: the server answers the test secrets itself and the
 page loads `/turnstile/stub.js` (served outside production only) instead of
@@ -45,8 +45,8 @@ test keys (the mode reads as `off` and an error is logged).
 
 ### Rollout in production
 
-1. Merged with `TURNSTILE_MODE: "off"` in `env.production`.
-2. Set `"monitor"`: the widget runs and passes/failures show on the videos admin
+1. Merged with `TURNSTILE_MODE: "off"` in `env.production` (#358), verified on stage.
+2. `"monitor"` (2026-11-13): the widget runs and passes/failures show on the videos admin
    **Abuse** panel; nothing is refused.
 3. When the failure rate looks like bots only, set `"enforce"`.
 
