@@ -115,7 +115,7 @@ const STYLES = `
             padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;
             cursor: pointer; border: none; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; font-family: inherit;
         }
-        .btn-primary { background: var(--auth-profile-button-background, linear-gradient(135deg, var(--fanous-color-primary) 0%, var(--fanous-color-primary-hover) 100%)); color: var(--auth-profile-button-text, white); box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3); }
+        .btn-primary { background: var(--auth-profile-button-background, linear-gradient(135deg, var(--fanous-color-primary) 0%, var(--fanous-color-primary-hover) 100%)); color: var(--auth-profile-button-text, var(--fanous-color-on-primary)); box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3); }
         .btn-primary:hover { background: linear-gradient(135deg, var(--fanous-color-primary-hover) 0%, var(--fanous-color-primary-pressed) 100%); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(14, 165, 233, 0.4); }
         .btn-secondary { background: rgba(255, 255, 255, 0.1); color: var(--fanous-color-text-primary); border: 1px solid rgba(255, 255, 255, 0.2); }
         .btn-secondary:hover { background: rgba(255, 255, 255, 0.2); color: white; }
@@ -127,7 +127,7 @@ const STYLES = `
             background: linear-gradient(135deg, var(--fanous-color-primary) 0%, #06b6d4 100%);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
         }
-        .hero p { font-size: 1.25rem; color: #cbd5e1; max-width: 600px; margin: 0 auto; line-height: 1.6; }
+        .hero p { font-size: 1.25rem; color: var(--fanous-color-text-secondary); max-width: 600px; margin: 0 auto; line-height: 1.6; }
         .profile-card {
             background: var(--auth-profile-card-background, linear-gradient(135deg, var(--fanous-color-surface-raised) 0%, var(--fanous-color-surface) 100%)); padding: 2rem; border-radius: var(--auth-profile-card-radius, 12px);
             border: 1px solid var(--auth-profile-card-border, color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent)); box-shadow: var(--auth-profile-card-shadow, 0 4px 20px rgba(0, 0, 0, 0.4)); max-width: 600px; margin: 0 auto;
@@ -147,7 +147,7 @@ const STYLES = `
         }
         .welcome-message h3 { color: #10b981; margin-bottom: 0.5rem; font-size: 1.5rem; }
         .error-message {
-            background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; color: #fca5a5;
+            background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; color: var(--fanous-color-error-text);
         }
         /* The lantern street shows behind the page: tinted notices get a solid surface under their tint */
         html.fanous-street .welcome-message { background: linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%), var(--fanous-color-surface); }
