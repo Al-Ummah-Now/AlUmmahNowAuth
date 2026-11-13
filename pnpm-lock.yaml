@@ -13,8 +13,8 @@ importers:
   .:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.50
-        version: 1.0.50(arctic@3.7.0)(hono@4.13.16)
+        specifier: 1.0.51
+        version: 1.0.51(arctic@3.7.0)(hono@4.13.16)
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.10.11
@@ -65,8 +65,8 @@ importers:
   apps/admin:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.50
-        version: 1.0.50(arctic@3.7.0)(hono@4.13.16)
+        specifier: 1.0.51
+        version: 1.0.51(arctic@3.7.0)(hono@4.13.16)
       '@al-ummah-now/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -192,8 +192,8 @@ importers:
   apps/audit-consumer:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.50
-        version: 1.0.50(arctic@3.7.0)(hono@4.13.16)
+        specifier: 1.0.51
+        version: 1.0.51(arctic@3.7.0)(hono@4.13.16)
       '@types/node':
         specifier: ^24.8.1
         version: 24.10.1
@@ -220,8 +220,8 @@ importers:
   apps/auth:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.50
-        version: 1.0.50(arctic@3.7.0)(hono@4.13.16)
+        specifier: 1.0.51
+        version: 1.0.51(arctic@3.7.0)(hono@4.13.16)
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
@@ -260,8 +260,8 @@ importers:
   apps/profile:
     dependencies:
       '@al-ummah-now/openauth':
-        specifier: 1.0.50
-        version: 1.0.50(arctic@3.7.0)(hono@4.13.16)
+        specifier: 1.0.51
+        version: 1.0.51(arctic@3.7.0)(hono@4.13.16)
       valibot:
         specifier: ^1.4.2
         version: 1.5.0(typescript@5.9.3)
@@ -313,8 +313,8 @@ packages:
       arctic: ^2.2.2
       hono: '>=4.12.25'
 
-  '@al-ummah-now/openauth@1.0.50':
-    resolution: {integrity: sha1-c2QJK8kFQZzLAq36NohSBIOBNZ0=, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.50/7364092bc905419ccb02adfa368852048381359d}
+  '@al-ummah-now/openauth@1.0.51':
+    resolution: {integrity: sha1-jCIme0bp3ND7rbikztVhVIWjOF0=, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.51/8c22267b46e9dcd0fbadb8a4ced5615485a3385d}
     hasBin: true
     peerDependencies:
       arctic: ^2.2.2
@@ -3944,7 +3944,7 @@ snapshots:
       hono: 4.13.16
       jose: 5.9.6
 
-  '@al-ummah-now/openauth@1.0.50(arctic@3.7.0)(hono@4.13.16)':
+  '@al-ummah-now/openauth@1.0.51(arctic@3.7.0)(hono@4.13.16)':
     dependencies:
       '@simplewebauthn/server': 13.2.2
       '@standard-schema/spec': 1.0.0-beta.3
