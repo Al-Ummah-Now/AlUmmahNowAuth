@@ -350,10 +350,13 @@ export class AdminEnterpriseRoutes {
 
       const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-      // Count total matching records
-      const countQuery = `SELECT COUNT(*) as total FROM audit_events ${whereClause}`;
-      const countResult = await this.db.prepare(countQuery).bind(...bindParams).first<{ total: number }>();
+      // Count matching records, at most 20 pages past this one. An uncapped COUNT(*) read every
+      // audit event (270k rows on QA, 125M rows/day); `capped` tells the page the total is a floor.
+      const countCap = offset + limit * 20;
+      const countQuery = `SELECT COUNT(*) as total FROM (SELECT 1 FROM audit_events ${whereClause} LIMIT ?)`;
+      const countResult = await this.db.prepare(countQuery).bind(...bindParams, countCap).first<{ total: number }>();
       const total = countResult?.total || 0;
+      const capped = total >= countCap;
 
       // Fetch paginated results
       const dataQuery = `
@@ -371,6 +374,7 @@ export class AdminEnterpriseRoutes {
           limit,
           total,
           pages: Math.ceil(total / limit),
+          capped,
         },
       }), {
         status: 200,
