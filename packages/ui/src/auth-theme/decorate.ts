@@ -1,9 +1,10 @@
 /**
  * Finishes a rendered Auth page for its theme: names the theme and the page on
  * <html> (sections are scoped by data-auth-page), puts the header graphic on
- * the card, gives the account switcher its rules, and makes every link inside
- * the sign-in flow keep the theme the flow started with.
+ * the card, gives the account switcher its rules, loads the lantern street,
+ * and makes every link inside the sign-in flow keep the theme the flow started with.
  */
+import { streetHeadTags, streetOn } from '../fanous-street/index.ts';
 import type { CompiledTheme, Scheme } from './types.ts';
 
 export type AuthPage = 'sign-in' | 'register' | 'code' | 'reset' | 'consent' | 'account-switcher' | 'other';
@@ -28,6 +29,8 @@ export interface DecorateOptions {
 	carryTheme?: string;
 	/** Admin preview: render as this scheme whatever the viewer's device uses. */
 	forceScheme?: Scheme;
+	/** Live pages: load the lantern street when the theme switches it on (the admin preview runs no scripts). */
+	street?: boolean;
 }
 
 export function decorateHtml(html: string, compiled: CompiledTheme, opts: DecorateOptions): string {
@@ -45,6 +48,8 @@ export function decorateHtml(html: string, compiled: CompiledTheme, opts: Decora
 	}
 
 	if (opts.page === 'account-switcher') out = out.replace(/<\/head>/i, `<style data-auth-theme>${compiled.pickerCss}</style></head>`);
+
+	if (opts.street && streetOn(compiled.tokensCss)) out = out.replace(/<\/head>/i, `${streetHeadTags()}</head>`);
 
 	if (opts.carryTheme) {
 		const id = encodeURIComponent(opts.carryTheme);

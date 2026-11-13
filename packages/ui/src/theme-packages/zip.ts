@@ -65,9 +65,25 @@ export function createZip(files: Record<string, Uint8Array>): Uint8Array {
   return out;
 }
 
-async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+/** Inflates at most `limit` bytes: a zip bomb is stopped as soon as it outgrows its declared size. */
+async function inflateRaw(data: Uint8Array, limit: number): Promise<Uint8Array> {
+  const reader = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      throw new Error('a file in the zip is larger than it says');
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.byteLength; }
+  return out;
 }
 
 export const MAX_ZIP_ENTRIES = 300;
@@ -106,7 +122,7 @@ export async function readZip(zip: Uint8Array): Promise<Record<string, Uint8Arra
     const compressed = zip.subarray(dataAt, dataAt + compSize);
     let data: Uint8Array;
     if (method === 0) data = compressed.slice();
-    else if (method === 8) data = await inflateRaw(compressed);
+    else if (method === 8) data = await inflateRaw(compressed, size);
     else throw new Error(`zip compression method ${method} is not supported`);
     if (data.length !== size) throw new Error(`${name} is damaged`);
     files[name] = data;

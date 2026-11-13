@@ -5,11 +5,13 @@
  * link, and the account switcher's rules.
  *
  * Auth's pages follow the device's colour scheme, so tokens are emitted per
- * prefers-color-scheme (the platform's own compiler keys them on `.dark`).
+ * prefers-color-scheme (the platform's own compiler keys them on `.dark`). That
+ * includes the lantern street's tokens (--fanous-street-*, read by the shared
+ * street module) and the components' light-only styles (`lightStyle`).
  */
 import { BASE } from '../theme-packages/base.generated.ts';
 import { BRAND_NAMES, ELEVATION_NAMES, MATERIAL_VARS, RADIUS_NAMES, get } from '../theme-packages/components.ts';
-import { resolvedColors } from '../theme-packages/compile.ts';
+import { lightPath, resolvedColors } from '../theme-packages/compile.ts';
 import { kebab as fanousKebab, toCss } from '../theme-packages/refs.ts';
 import { SECTIONS, SPEC_SLOTS, kebab, type SectionDef } from './catalog.ts';
 import { sanitizeSvg } from './svg.ts';
@@ -70,6 +72,13 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 		for (const { part } of BASE.parts) decl[s].push(`--fanous-c-${part.split('.').map(fanousKebab).join('-')}: ${colors[s].parts[part]}`);
 		const gv = (t.signIn as { graphicVars?: Record<Scheme, Record<string, string>> } | undefined)?.graphicVars?.[s] ?? {};
 		for (const [name, v] of Object.entries(gv)) decl[s].push(`--${name}: ${value(v)}`);
+		decl[s].push(...streetTokens(t, s, fileUrl));
+	}
+	// Light-only component styles: the same material properties again in the light scheme
+	for (const [path, prop] of MATERIAL_VARS) {
+		if (!path.startsWith('components.')) continue;
+		const v = get(t, lightPath(path));
+		if (v !== undefined && v !== '') decl.light.push(`${prop}: ${value(String(v))}`);
 	}
 
 	// ---- sections: a value that differs per scheme becomes a variable
@@ -120,6 +129,8 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 
 	// ---- photos behind the card, header graphic
 	const backgrounds = (x.photos?.light ?? []).map(imageUrl);
+	// The street paints the page colour on <html>; the sign-in root wrapper must let it through
+	const streetCss = t.street?.enabled ? `html.fanous-street [data-component="root"] { background: transparent !important; }\n` : '';
 	const bgCss = backgrounds.length
 		? `[data-component="root"] { background-image: url('${BG_PLACEHOLDER}'); background-size: cover; background-position: center; background-repeat: no-repeat; }\n`
 		: '';
@@ -155,7 +166,7 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 			logo: logo ? { light: fileUrl(logo.light), dark: fileUrl(logo.dark) } : undefined,
 			radius: x.radius ?? 'md',
 			font: body ? { family: fontStack(body.latin) } : undefined,
-			css: `${fontCss}${tokens}\n${bgCss}${graphicCss}${openauthRules}`,
+			css: `${fontCss}${tokens}\n${bgCss}${graphicCss}${openauthRules}${streetCss}`,
 		},
 		backgrounds,
 		graphic,
@@ -163,6 +174,22 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 		pickerCss: `${fontCss}${tokens}\n${pickerRules}`,
 		email,
 	};
+}
+
+/**
+ * The lantern street's tokens for one scheme (the shared street module reads them):
+ * --fanous-street-on 1 switches it on; a theme without a street sets 0.
+ */
+export function streetTokens(t: StoredPackage['theme'], s: Scheme, fileUrl: (path: string) => string): string[] {
+	const street = t.street;
+	if (!street) return ['--fanous-street-on: 0'];
+	return [
+		`--fanous-street-on: ${street.enabled ? 1 : 0}`,
+		`--fanous-street-line: ${street.line[s].toLowerCase()}`,
+		`--fanous-street-window: ${street.window[s].toLowerCase()}`,
+		`--fanous-street-glow: ${street.glow[s]}`,
+		`--fanous-street-lights: url("${fileUrl(street.lights[s])}")`,
+	];
 }
 
 /** OpenAuth's theme for one page: picks one of the theme's photos. */

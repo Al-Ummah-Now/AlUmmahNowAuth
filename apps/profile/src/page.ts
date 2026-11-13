@@ -3,6 +3,7 @@ import { dirFor, MESSAGES } from "./i18n";
 import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
 import { NAV_CSS } from '../../../packages/ui/src/nav/aun-nav.generated.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
+import { streetHeadTags, streetOn } from '../../../packages/ui/src/fanous-street/index.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
 
@@ -21,6 +22,8 @@ export interface HomePageOptions {
   theme?: { id: string; css: string };
   /** APP_ENV: picks the tab icon (QA and stage get a corner dot). */
   environment?: string;
+  /** Live page: load the lantern street when the theme switches it on (the admin preview runs no scripts). */
+  street?: boolean;
 }
 
 /** JSON for embedding inside <script>: escapes "<" so "</script>" in data can't end the block. */
@@ -146,6 +149,9 @@ const STYLES = `
         .error-message {
             background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; color: #fca5a5;
         }
+        /* The lantern street shows behind the page: tinted notices get a solid surface under their tint */
+        html.fanous-street .welcome-message { background: linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%), var(--fanous-color-surface); }
+        html.fanous-street .error-message { background: linear-gradient(rgba(220, 38, 38, 0.1), rgba(220, 38, 38, 0.1)), var(--fanous-color-surface); }
         .footer {
             background: linear-gradient(135deg, var(--fanous-color-background) 0%, var(--fanous-color-surface-raised) 100%); padding: 2rem;
             border-top: 1px solid color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent); text-align: center; color: var(--fanous-color-text-secondary);
@@ -198,6 +204,7 @@ export function renderHomePage(o: HomePageOptions): string {
     <title>${e(t.pageTitle)}</title>
     ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
     <style>${theme.css}${NAV_CSS}${STYLES}</style>
+    ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
 </head>
 <body>
     <header class="navbar">

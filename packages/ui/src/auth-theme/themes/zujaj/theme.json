@@ -428,7 +428,7 @@
     },
     "card": {
       "style": {
-        "background": "linear-gradient(135deg,color-mix(in srgb,white 16%,transparent),transparent 46%),color-mix(in srgb,{color.surface} 84%,transparent)",
+        "background": "linear-gradient(135deg,color-mix(in srgb,white 16%,transparent),transparent 46%),linear-gradient(color-mix(in srgb,{color.surface} 84%,transparent),color-mix(in srgb,{color.surface} 84%,transparent))",
         "border": "linear-gradient(transparent,transparent)",
         "edge": "inset 0 0 0 1px color-mix(in srgb,white 26%,transparent),inset 0 1px 0 color-mix(in srgb,white 46%,transparent),0 18px 36px -24px rgb(5 40 48/.6)"
       }
@@ -523,7 +523,7 @@
         }
       },
       "style": {
-        "background": "linear-gradient(135deg,color-mix(in srgb,white 14%,transparent),transparent 50%),color-mix(in srgb,{color.surfaceRaised} 92%,transparent)",
+        "background": "linear-gradient(135deg,color-mix(in srgb,white 14%,transparent),transparent 50%),linear-gradient(color-mix(in srgb,{color.surfaceRaised} 92%,transparent),color-mix(in srgb,{color.surfaceRaised} 92%,transparent))",
         "edge": "inset 0 0 0 1px color-mix(in srgb,white 30%,transparent),0 24px 44px -18px rgb(5 40 48/.6)"
       }
     },

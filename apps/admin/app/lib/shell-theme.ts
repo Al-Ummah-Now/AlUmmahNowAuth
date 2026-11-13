@@ -20,25 +20,54 @@ const RULES: [key: string, css: (v: string) => string][] = [
   ["accent", (v) => `[data-shell="page"] a:focus-visible,[data-shell="page"] button:focus-visible{outline-color:${v}}[data-shell="header"]{border-bottom-color:${v}}`],
 ];
 
-/** The style for the admin shell from a resolved theme's token CSS ("" when the theme sets no shell parts). */
+/**
+ * The style for the admin shell from a resolved theme's token CSS ("" when the theme sets no
+ * shell parts, no menu tokens and no lantern street). The street comes last, so its dark-scheme
+ * values win over the theme's own street tokens.
+ */
 export function shellThemeCss(tokensCss: string): string {
   if (/<\/style|<!--/i.test(tokensCss)) return "";
   const rules = RULES.filter(([key]) => tokensCss.includes(`${VAR(key)}:`)).map(([key, css]) => css(`var(${VAR(key)})`));
+  const street = adminStreetCss(tokensCss);
   // The header account button and menus (NAV_CSS, AlUmmahNow docs/design/NAV.md) read the theme's
   // Fanous tokens: keep them even when the theme restyles no shell part
-  if (!rules.length && !tokensCss.includes("--fanous-c-menu-bg:")) return "";
+  const menu = tokensCss.includes("--fanous-c-menu-bg:");
+  if (!rules.length && !menu && !street) return "";
   // only the theme's custom properties are needed here, not its font imports
   const start = tokensCss.indexOf(":root{");
-  return `${start >= 0 ? tokensCss.slice(start) : tokensCss}\n${rules.join("\n")}`;
+  const tokens = rules.length || menu ? `${start >= 0 ? tokensCss.slice(start) : tokensCss}\n${rules.join("\n")}` : "";
+  return [tokens, street].filter(Boolean).join("\n");
+}
+
+/** The street tokens the shared module reads, and the primary colour its lantern glow uses. */
+const STREET_DECL = /^--fanous-(?:street-[a-z-]+|color-primary):/;
+
+/**
+ * The Fanous lantern street in the admin (design: AlUmmahNow docs/design/FAWANEES-STREET.md).
+ * The admin is a dark app whatever the device's setting, so it takes the theme's dark-scheme
+ * street, over its own page colour (html paints it; the page wrapper lets it through).
+ * "" when the theme has no street.
+ */
+export function adminStreetCss(tokensCss: string): string {
+  const dark = /@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)\s*\{\s*:root\s*\{([^}]*)\}\s*\}/.exec(tokensCss);
+  if (!dark) return "";
+  const decls = dark[1].split(";").map((d) => d.trim()).filter((d) => STREET_DECL.test(d));
+  if (!decls.some((d) => /^--fanous-street-on:\s*1$/.test(d))) return "";
+  return (
+    `:root{${decls.join(";")};--fanous-color-background:var(${VAR("page-background")},rgb(var(--color-background)))}\n` +
+    `html.fanous-street [data-shell="page"]{background:transparent}`
+  );
 }
 
 const TIMEOUT_MS = 500;
 const TTL_SECONDS = 30;
 
-export async function fetchShellTheme(authServerUrl: string, clientId: string, fetcher: typeof fetch = fetch): Promise<string> {
+export async function fetchShellTheme(authServerUrl: string, clientId: string, fetcher: typeof fetch = fetch, requested?: string | null): Promise<string> {
   try {
     const url = new URL("/themes/resolve", authServerUrl);
     url.searchParams.set("client_id", clientId);
+    // A theme the link asks for (?theme=, if Auth publishes it), like the profile app
+    if (requested && /^[a-z][a-z0-9-]{1,39}$/.test(requested)) url.searchParams.set("theme", requested);
     const response = await fetcher(url.toString(), {
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cf: { cacheTtl: TTL_SECONDS, cacheEverything: true },

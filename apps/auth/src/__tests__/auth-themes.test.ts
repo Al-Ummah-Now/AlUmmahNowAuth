@@ -13,6 +13,8 @@ import type { AuthThemeJson, StoredPackage } from '../../../../packages/ui/src/a
 import { referencedAssets, validateTheme } from '../../../../packages/ui/src/auth-theme/validate.ts';
 import { SCHEMA } from '../../../../packages/ui/src/theme-packages/schema.generated.ts';
 import { packageToZip, zipToPackage } from '../../../../packages/ui/src/theme-packages/zip.ts';
+import { STREET_CSS_PATH, STREET_JS_PATH, STREET_START_JS, streetAsset, streetHeadTags, streetOn, streetResponse } from '../../../../packages/ui/src/fanous-street/index.ts';
+import { STREET_CSS, STREET_JS } from '../../../../packages/ui/src/fanous-street/street.generated.ts';
 import { getVerificationCodeTemplate } from '../email-templates';
 
 const BASE = 'https://auth.example';
@@ -122,6 +124,90 @@ describe('compileTheme', () => {
 		const c = compileBuiltin('lantern', BASE)!;
 		expect(c.graphic!.light).toMatch(/^<svg/);
 		expect(c.graphic!.light).not.toMatch(/<script/i);
+	});
+});
+
+describe('the lantern street (Fawanees 1.2.0)', () => {
+	/** The declarations of one colour scheme's :root block. */
+	const scheme = (css: string, s: 'light' | 'dark') => {
+		const m = new RegExp(`@media\\(prefers-color-scheme:${s}\\)\\{:root\\{([^}]*)\\}\\}`).exec(css);
+		expect(m, `${s} block`).not.toBeNull();
+		return m![1].split(';').map((d) => d.trim());
+	};
+
+	it('Fawanees switches the street on in both schemes, with each scheme\'s colours and lights', () => {
+		const pkg = builtinPackage('fawanees')!;
+		expect(pkg.theme.version).toBe('1.2.0');
+		const css = compileBuiltin('fawanees', BASE)!.tokensCss;
+		const light = scheme(css, 'light');
+		const dark = scheme(css, 'dark');
+		const url = (path: string) => `url("${BASE}/themes/assets/${pkg.assets[path]!.hash}")`;
+		expect(light).toEqual(expect.arrayContaining(['--fanous-street-on: 1', '--fanous-street-line: #d8cebdff', '--fanous-street-window: #f4ae3a29', '--fanous-street-glow: 0.34', `--fanous-street-lights: ${url('assets/street-lights.svg')}`]));
+		expect(dark).toEqual(expect.arrayContaining(['--fanous-street-on: 1', '--fanous-street-line: #f5cf9242', '--fanous-street-window: #fbc661b8', '--fanous-street-glow: 0.6', `--fanous-street-lights: ${url('assets/street-lights-dark.svg')}`]));
+		expect(streetOn(css)).toBe(true);
+	});
+
+	it('Fawanees light is the approved palette', () => {
+		const light = scheme(compileBuiltin('fawanees', BASE)!.tokensCss, 'light');
+		expect(light).toEqual(expect.arrayContaining(['--fanous-color-background: #f3eee5', '--fanous-color-surface: #fffdf9', '--fanous-color-surface-raised: #ffffff', '--fanous-color-text-primary: #16232b', '--fanous-color-link: #7a4300', '--fanous-color-primary: #f4ae3a', '--fanous-color-outline: #7a7468', '--fanous-color-divider: #e4ded3']));
+	});
+
+	it.each(['classic', 'lantern', 'nahas', 'zujaj'])('%s has no street (switched off explicitly in both schemes)', (id) => {
+		const c = compileBuiltin(id, BASE)!;
+		expect(scheme(c.tokensCss, 'light')).toContain('--fanous-street-on: 0');
+		expect(scheme(c.tokensCss, 'dark')).toContain('--fanous-street-on: 0');
+		expect(c.tokensCss).not.toContain('--fanous-street-lights');
+		expect(streetOn(c.tokensCss)).toBe(false);
+		expect(c.openauth.css).not.toContain('fanous-street [data-component');
+	});
+
+	it('a disabled street stays off', () => {
+		const pkg = fawanees();
+		pkg.theme.street!.enabled = false;
+		const c = compileTheme(pkg, { assetUrl: (_p, h) => `${BASE}/themes/assets/${h}` });
+		expect(scheme(c.tokensCss, 'light')).toContain('--fanous-street-on: 0');
+		expect(streetOn(c.tokensCss)).toBe(false);
+		expect(c.openauth.css).not.toContain('fanous-street [data-component');
+	});
+
+	it('light-only component styles override the shared ones in the light scheme only', () => {
+		const css = compileBuiltin('fawanees', BASE)!.tokensCss;
+		const shared = /^:root\{([^}]*)\}/.exec(css.slice(css.indexOf(':root{')))![1];
+		// shared (dark) primary button: the sheen gradient; light: flat primary
+		expect(shared).toMatch(/--m-primary: linear-gradient\(180deg/);
+		expect(scheme(css, 'light')).toContain('--m-primary: linear-gradient(var(--fanous-color-primary),var(--fanous-color-primary))');
+		expect(scheme(css, 'dark').some((d) => d.startsWith('--m-primary:'))).toBe(false);
+		// only components with a lightStyle: lantern gets none
+		expect(scheme(compileBuiltin('lantern', BASE)!.tokensCss, 'light').some((d) => d.startsWith('--m-'))).toBe(false);
+	});
+
+	it('the sign-in root wrapper lets the street through (html paints the page colour)', () => {
+		expect(compileBuiltin('fawanees', BASE)!.openauth.css).toContain('html.fanous-street [data-component="root"] { background: transparent !important; }');
+	});
+
+	it('pages load the street module same-origin when the theme has one, never in the preview', () => {
+		const html = '<html lang="en"><head><style>x</style></head><body><div data-component="center"></div></body></html>';
+		const live = decorateHtml(html, compileBuiltin('fawanees', BASE)!, { page: 'sign-in', street: true });
+		expect(live).toContain(`${streetHeadTags()}</head>`);
+		expect(live.indexOf('<style>x</style>')).toBeLessThan(live.indexOf(STREET_CSS_PATH));
+		expect(streetHeadTags()).toBe(`<link rel="stylesheet" href="${STREET_CSS_PATH}" data-fanous-street><script type="module" src="${STREET_JS_PATH}" data-fanous-street></script>`);
+		expect(decorateHtml(html, compileBuiltin('lantern', BASE)!, { page: 'sign-in', street: true })).not.toContain('fanous-street');
+		expect(decorateHtml(html, compileBuiltin('fawanees', BASE)!, { page: 'sign-in' })).not.toContain(STREET_JS_PATH);
+	});
+
+	it('serves the module and its start call under hashed, immutable paths', async () => {
+		expect(STREET_CSS_PATH).toMatch(/^\/fanous-street\/street\.[0-9a-f]{12}\.css$/);
+		expect(STREET_JS_PATH).toMatch(/^\/fanous-street\/start\.[0-9a-f]{12}\.js$/);
+		expect(STREET_START_JS.startsWith(STREET_JS)).toBe(true);
+		expect(STREET_START_JS.trimEnd().endsWith('startStreet();')).toBe(true);
+		expect(STREET_JS).toContain('export function startStreet(');
+		expect(STREET_CSS).toContain('html.fanous-street');
+		expect(streetAsset(STREET_CSS_PATH)!.type).toBe('text/css; charset=utf-8');
+		expect(streetAsset('/fanous-street/start.000000000000.js')).toBeUndefined();
+		const res = streetResponse(STREET_JS_PATH)!;
+		expect(res.headers.get('Content-Type')).toBe('text/javascript; charset=utf-8');
+		expect(res.headers.get('Cache-Control')).toContain('immutable');
+		expect(await res.text()).toBe(STREET_START_JS);
 	});
 });
 

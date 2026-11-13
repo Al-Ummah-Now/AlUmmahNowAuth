@@ -3,7 +3,7 @@
   "format": "alummahnow.theme-package",
   "formatVersion": 1,
   "id": "fawanees",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": {
     "en": "Fawanees",
     "ar": "فوانيس"
@@ -25,15 +25,15 @@
     },
     "color": {
       "light": {
-        "background": "#fff1c4",
-        "surface": "#f6d67f",
-        "surfaceRaised": "#f9df97",
-        "heroStart": "#efc65f",
-        "heroEnd": "#fff1c4",
-        "textPrimary": "#0b2534",
-        "textSecondary": "#143a4c",
-        "textMuted": "#24505f",
-        "link": "#6a4200",
+        "background": "#f3eee5",
+        "surface": "#fffdf9",
+        "surfaceRaised": "#ffffff",
+        "heroStart": "#ebe4d6",
+        "heroEnd": "#f3eee5",
+        "textPrimary": "#16232b",
+        "textSecondary": "#35434b",
+        "textMuted": "#4b5860",
+        "link": "#7a4300",
         "successText": "#0f5a2c",
         "errorText": "#b00020",
         "primary": "#f4ae3a",
@@ -42,11 +42,11 @@
         "onPrimaryHover": "#09151e",
         "primaryPressed": "#e0962a",
         "onPrimaryPressed": "#09151e",
-        "primaryDisabled": "#efc65f",
-        "onPrimaryDisabled": "#3c3008",
+        "primaryDisabled": "#ebe6dc",
+        "onPrimaryDisabled": "#4b5860",
         "primaryEdge": "#8a5a12",
         "primarySheen": "#ffe6a8",
-        "motif": "#8a5a12",
+        "motif": "#b98c52",
         "secondary": "#8e6c53",
         "onSecondary": "#ffffff",
         "verifiedFill": "#166534",
@@ -55,12 +55,12 @@
         "onErrorFill": "#ffffff",
         "live": "#fbc661",
         "onLive": "#09151e",
-        "accent": "#a85600",
-        "focusRing": "#93612a",
+        "accent": "#9a5200",
+        "focusRing": "#8a5a12",
         "focusGlow": "#a85600",
         "verifiedIcon": "#0f5a2c",
-        "outline": "#7a6326",
-        "divider": "#d9b356"
+        "outline": "#7a7468",
+        "divider": "#e4ded3"
       },
       "dark": {
         "background": "#09151e",
@@ -150,6 +150,9 @@
     "page": {
       "style": {
         "background": "radial-gradient(38% 36% at 16% 8%,color-mix(in srgb,{color.primary} 22%,transparent),transparent 72%),radial-gradient(38% 36% at 84% 14%,color-mix(in srgb,{color.primary} 18%,transparent),transparent 72%),linear-gradient(180deg,{color.heroStart},{color.background} 46%)"
+      },
+      "lightStyle": {
+        "background": "{color.background}"
       }
     },
     "header": {
@@ -167,7 +170,7 @@
           "searchBorder": "#8ba3ae",
           "searchText": "#fbefd0",
           "searchPlaceholder": "#d6dfe2",
-          "menuBg": "{color.surface}",
+          "menuBg": "{color.background}",
           "menuText": "{color.textPrimary}",
           "menuHover": "{color.heroStart}"
         },
@@ -197,11 +200,11 @@
     "drawer": {
       "colors": {
         "light": {
-          "bg": "{color.surface}",
+          "bg": "{color.background}",
           "text": "{color.textPrimary}",
           "icon": "{color.textSecondary}",
           "activeBg": "{color.heroStart}",
-          "activeText": "{color.link}",
+          "activeText": "{color.textPrimary}",
           "divider": "{color.divider}"
         },
         "dark": {
@@ -229,6 +232,15 @@
         "selectionEdge": "none",
         "selectionBar": "{color.primaryEdge}",
         "selectionGlow": "0 0 6px color-mix(in srgb,{color.primary} 40%,transparent)"
+      },
+      "lightStyle": {
+        "background": "{color.background}",
+        "edge": "inset -1px 0 0 {color.divider}",
+        "active": "linear-gradient({color.heroStart},{color.heroStart})",
+        "selection": "{color.heroStart}",
+        "selectionEdge": "none",
+        "indicator": "{color.primary}",
+        "indicatorShadow": "0 0 16px {material.glow}"
       }
     },
     "buttonPrimary": {
@@ -259,6 +271,12 @@
         "hover": "linear-gradient(180deg,{color.primarySheen},{color.primaryHover})",
         "pressed": "{color.primaryPressed}",
         "edge": "inset 0 1px 0 color-mix(in srgb,{color.primarySheen} 90%,transparent),0 0 22px -4px {material.glow}"
+      },
+      "lightStyle": {
+        "background": "linear-gradient({color.primary},{color.primary})",
+        "hover": "linear-gradient({color.primaryHover},{color.primaryHover})",
+        "pressed": "{color.primaryPressed}",
+        "edge": "inset 0 0 0 1px color-mix(in srgb,{color.primaryEdge} 50%,transparent),0 4px 12px -4px rgb(150 95 15/.5),0 0 26px -4px color-mix(in srgb,{color.primary} 75%,transparent)"
       }
     },
     "buttonSecondary": {
@@ -390,7 +408,7 @@
           "sectionBorder": "{color.divider}",
           "label": "{color.textPrimary}",
           "help": "{color.textSecondary}",
-          "inputBg": "{color.surface}",
+          "inputBg": "{color.surfaceRaised}",
           "inputBorder": "{color.outline}",
           "inputText": "{color.textPrimary}",
           "placeholder": "{color.textMuted}",
@@ -425,6 +443,9 @@
       "style": {
         "background": "{color.background}",
         "edge": "inset 0 0 0 1px color-mix(in srgb,{color.primary} 10%,transparent)"
+      },
+      "lightStyle": {
+        "background": "{color.surfaceRaised}"
       }
     },
     "card": {
@@ -432,6 +453,11 @@
         "background": "radial-gradient(80% 60% at 50% 0%,color-mix(in srgb,{color.primary} 11%,transparent),transparent 70%),linear-gradient(180deg,{color.surfaceRaised},{color.surface})",
         "border": "linear-gradient(120deg,{color.primary},color-mix(in srgb,{color.primary} 18%,transparent) 42%,color-mix(in srgb,{color.primary} 18%,transparent) 62%,{color.primaryHover})",
         "edge": "0 18px 34px -24px {material.glow}"
+      },
+      "lightStyle": {
+        "background": "linear-gradient({color.surface},{color.surface})",
+        "border": "linear-gradient({color.divider},{color.divider})",
+        "edge": "0 0 0 1px rgb(80 60 30/.08),0 1px 2px rgb(80 60 30/.08),0 12px 26px -16px rgb(80 60 30/.34)"
       }
     },
     "videoCard": {
@@ -451,6 +477,9 @@
       },
       "style": {
         "thumbnailEdge": "0 0 0 1px {color.primary},0 0 30px -6px {material.glow}"
+      },
+      "lightStyle": {
+        "thumbnailEdge": "0 0 0 1px rgb(80 60 30/.08)"
       }
     },
     "channelCard": {
@@ -470,6 +499,9 @@
     "hero": {
       "style": {
         "background": "radial-gradient(50% 130% at 82% 0%,color-mix(in srgb,{color.primary} 34%,transparent),transparent 70%),linear-gradient(120deg,{color.surfaceRaised},{color.heroStart})"
+      },
+      "lightStyle": {
+        "background": "linear-gradient({color.surface},{color.surface})"
       }
     },
     "tabs": {
@@ -509,7 +541,7 @@
     "menu": {
       "colors": {
         "light": {
-          "bg": "{color.surface}",
+          "bg": "{color.background}",
           "text": "{color.textPrimary}",
           "muted": "{color.textMuted}",
           "hover": "{color.heroStart}",
@@ -526,12 +558,16 @@
       "style": {
         "background": "linear-gradient(180deg,{color.surfaceRaised},{color.surface})",
         "edge": "0 0 0 1px color-mix(in srgb,{color.primary} 56%,transparent),0 26px 50px -18px {material.glow}"
+      },
+      "lightStyle": {
+        "background": "linear-gradient({color.background},{color.background})",
+        "edge": "0 0 0 1px {color.outline},0 20px 44px -18px rgb(60 40 15/.38)"
       }
     },
     "dialog": {
       "colors": {
         "light": {
-          "bg": "{color.surface}",
+          "bg": "{color.surfaceRaised}",
           "text": "{color.textPrimary}",
           "muted": "{color.textSecondary}",
           "border": "{color.divider}"
@@ -542,6 +578,14 @@
           "muted": "{color.textSecondary}",
           "border": "{color.divider}"
         }
+      },
+      "style": {
+        "line": "color-mix(in srgb,{color.primary} 56%,{component.dialog.bg})",
+        "shadow": "0 26px 50px -18px {material.glow}"
+      },
+      "lightStyle": {
+        "line": "{color.divider}",
+        "shadow": "0 26px 50px -18px rgb(22 35 43/.32)"
       }
     },
     "toast": {
@@ -608,6 +652,7 @@
         "bar": "radial-gradient(45% 170% at 50% 118%,rgb(244 174 58/.32),transparent 72%),linear-gradient(0deg,rgb(5 12 20/.97),rgb(9 21 30/.88) 62%,rgb(9 21 30/.44) 82%,transparent)",
         "bar-edge": "none",
         "bar-pad": "44px 12px 6px",
+        "bar-pad-compact": "14px 8px 2px",
         "bar-inset": "0",
         "bar-radius": "0",
         "blur": "none",
@@ -642,6 +687,10 @@
         "menu-selected": "rgb(251 198 97/.2)",
         "live": "#c81e1e",
         "live-text": "#ffffff"
+      },
+      "lightStyle": {
+        "frame": "0 0 0 1px rgb(80 60 30/.08),0 22px 44px -22px rgb(40 28 10/.5)",
+        "ring": "inset 0 0 0 1px {color.divider}"
       }
     },
     "footer": {
@@ -742,12 +791,31 @@
   },
   "browser": {
     "themeColor": {
-      "light": "#efe2cc",
+      "light": "#f3eee5",
       "dark": "#111827"
     },
     "manifest": {
       "background": "#ffffff",
       "theme": "#ffffff"
+    }
+  },
+  "street": {
+    "enabled": true,
+    "lights": {
+      "light": "assets/street-lights.svg",
+      "dark": "assets/street-lights-dark.svg"
+    },
+    "line": {
+      "light": "#d8cebdff",
+      "dark": "#f5cf9242"
+    },
+    "window": {
+      "light": "#f4ae3a29",
+      "dark": "#fbc661b8"
+    },
+    "glow": {
+      "light": 0.34,
+      "dark": 0.6
     }
   },
   "description": {

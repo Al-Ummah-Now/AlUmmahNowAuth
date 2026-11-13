@@ -5,6 +5,7 @@
  */
 
 import { Hono } from 'hono';
+import { STREET_BASE, streetResponse } from '../../../packages/ui/src/fanous-street/index.ts';
 import { adminThemeRoutes, handlePublicThemeList, handleThemeAsset, handleThemeResolve } from './themes/routes';
 import { logger } from './logger';
 import { isAllowedOrigin } from './utils/cors';
@@ -643,6 +644,11 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 
 	if (pathname.startsWith('/themes/assets/') && request.method === 'GET') {
 		return handleThemeAsset(rctx.env, pathname.slice('/themes/assets/'.length));
+	}
+
+	// The Fanous lantern street (shared module, served same-origin for the sign-in pages' CSP)
+	if (pathname.startsWith(`${STREET_BASE}/`) && request.method === 'GET') {
+		return streetResponse(pathname) ?? new Response('Not found', { status: 404 });
 	}
 
 	if (pathname.startsWith('/session/')) {

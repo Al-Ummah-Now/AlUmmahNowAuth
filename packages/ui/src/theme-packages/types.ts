@@ -10,7 +10,22 @@ export interface Elevation { color: string; offsetX: string; offsetY: string; bl
 export interface ComponentSection {
   colors?: ByMode<Record<string, string>>;
   style?: Record<string, string>;
+  /** Light mode only: replaces the same `style` fields in light mode (dark keeps `style`). */
+  lightStyle?: Record<string, string>;
   chrome?: Record<string, string>;
+}
+
+/** The lantern street (drawn by the apps' shared street module; the package only switches it on and gives its colours and art). */
+export interface StreetSection {
+  enabled: boolean;
+  /** Tiling SVG of the soft distant lights behind the content. */
+  lights: ByMode<string>;
+  /** Strings and lantern outlines, #rrggbbaa. */
+  line: ByMode<string>;
+  /** Lantern windows, #rrggbbaa. */
+  window: ByMode<string>;
+  /** Opacity of the glow behind each lantern, 0–1. */
+  glow: ByMode<number>;
 }
 
 export interface ThemePackage {
@@ -47,6 +62,7 @@ export interface ThemePackage {
   browser?: { themeColor: ByMode<string>; manifest: { background: string; theme: string } };
   email?: Record<string, string>;
   banner?: { enabled: boolean; text?: Localized };
+  street?: StreetSection;
   [extension: `x-${string}`]: unknown;
 }
 

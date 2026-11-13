@@ -1,5 +1,6 @@
 import { createRequestHandler } from "react-router";
 import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
+import { streetResponse } from "../../../packages/ui/src/fanous-street/index.ts";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -19,6 +20,11 @@ const requestHandler = createRequestHandler(
 export default {
   async fetch(request, env, ctx) {
     applyLogLevel(env.LOG_LEVEL);
+    // The Fanous lantern street's files (shared module), served from this origin
+    if (request.method === "GET") {
+      const street = streetResponse(new URL(request.url).pathname);
+      if (street) return street;
+    }
     return requestHandler(request, {
       cloudflare: { env, ctx },
     });

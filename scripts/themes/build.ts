@@ -8,10 +8,11 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { SCHEMA } from '../../packages/ui/src/theme-packages/schema.generated.ts';
 import { AUTH_EXTENSION_SCHEMA, assetTypeFor, formatIssues, validateTheme } from '../../packages/ui/src/auth-theme/validate.ts';
 
-const root = resolve(new URL('../..', import.meta.url).pathname);
+const root = fileURLToPath(new URL('../..', import.meta.url));
 const dir = join(root, 'packages/ui/src/auth-theme');
 const TEXT = /\.svg$/;
 
@@ -66,7 +67,7 @@ export function build(): { files: Record<string, string>; problems: string[] } {
 	};
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
 	const { files, problems } = build();
 	const check = process.argv.includes('--check');
