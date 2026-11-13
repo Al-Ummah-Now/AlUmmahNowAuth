@@ -29,6 +29,9 @@ describe("role filtering", () => {
 
   it("a Moderator sees the content admin and the CMS but not the auth admin (matches each app's guard)", () => {
     expect(ids(["Moderator"])).toEqual(["www", "videos", "profile", "cms", "content-admin"]);
+    // Video review roles (AUN-VIDEO-REVIEW VR7): the videos admin, where they see only the review queue
+    expect(ids(["Content reviewer"])).toEqual(["www", "videos", "profile", "content-admin"]);
+    expect(ids(["Senior reviewer"])).toEqual(["www", "videos", "profile", "content-admin"]);
   });
 
   it("a member never sees the CMS; every allowed role does", () => {
