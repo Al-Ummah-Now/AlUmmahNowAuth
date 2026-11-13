@@ -1,5 +1,6 @@
 import { createRequestHandler } from "react-router";
 import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
+import { noIndexWorker } from '../../../packages/ui/src/crawlers.ts';
 import { streetResponse } from "../../../packages/ui/src/fanous-street/index.ts";
 
 declare module "react-router" {
@@ -17,7 +18,7 @@ const requestHandler = createRequestHandler(
   import.meta.env.MODE,
 );
 
-export default {
+const worker = {
   async fetch(request, env, ctx) {
     applyLogLevel(env.LOG_LEVEL);
     // The Fanous lantern street's files (shared module), served from this origin
@@ -30,6 +31,9 @@ export default {
     });
   },
 } satisfies ExportedHandler<Env>;
+
+/** Nothing on this host is for search engines: robots.txt Disallow: / and X-Robots-Tag: noindex (packages/ui/src/crawlers.ts) */
+export default noIndexWorker(worker);
 
 interface Env {
   AUTH_STORAGE: KVNamespace;

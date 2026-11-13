@@ -40,6 +40,7 @@ import { routeRequest, type RouterContext } from "./router";
 import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers/account-picker-signout";
 import { deepHealth } from "./health";
 import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
+import { noIndexWorker } from '../../../packages/ui/src/crawlers.ts';
 import { resolveUserDisplayName } from "../../../packages/ui/src/display-name.ts";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
@@ -99,7 +100,7 @@ function healthResponse(method: string): Response {
   });
 }
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     applyLogLevel(env.LOG_LEVEL);
     const requestId = resolveRequestId(request);
@@ -189,6 +190,9 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+/** Nothing on this host is for search engines: robots.txt Disallow: / and X-Robots-Tag: noindex (packages/ui/src/crawlers.ts) */
+export default noIndexWorker(worker);
 
 function withServerTiming(response: Response, timer: RequestTimer): Response {
   if (response.status === 101) return response;

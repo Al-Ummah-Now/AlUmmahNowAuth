@@ -35,6 +35,7 @@ import { APP_ICONS as PROFILE_ICONS } from '../../../packages/ui/src/app-icons/p
 import { iconServer } from '../../../packages/ui/src/app-icons/serve.ts';
 import { NAV_ICONS } from '../../../packages/ui/src/nav/aun-nav-icons.generated.ts';
 import { applyLogLevel } from '../../../packages/ui/src/log-level.ts';
+import { noIndexWorker } from '../../../packages/ui/src/crawlers.ts';
 import { streetResponse } from '../../../packages/ui/src/fanous-street/index.ts';
 
 /** Account's tab and app icons (the owner's account lantern, cropped and downscaled by AlUmmahNow packages/app-icons). */
@@ -184,7 +185,7 @@ const INVALID_STATE_PAGE = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     applyLogLevel(env.LOG_LEVEL);
     const alias = aliasRedirect(request.url, env.APP_URL);
@@ -460,3 +461,6 @@ export default {
     return new Response('Not Found', { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
+
+/** Nothing on this host is for search engines: robots.txt Disallow: / and X-Robots-Tag: noindex (packages/ui/src/crawlers.ts) */
+export default noIndexWorker(worker);
