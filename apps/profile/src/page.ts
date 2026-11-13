@@ -281,7 +281,7 @@ export function renderHomePage(o: HomePageOptions): string {
     </main>
 
     <footer class="footer">
-        <p>${e(t.footer)}</p>
+        <p>${e(t.footer.replace("{year}", String(new Date().getUTCFullYear())))}</p>
     </footer>
 
     <dialog class="confirm-dialog" id="confirmDialog" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
