@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
+    "./menu-fit": {
+      "types": "./src/nav/menu-fit.ts",
+      "import": "./src/nav/menu-fit.ts"
+    },
     "./account-switcher": {
       "types": "./src/components/account-switcher.tsx",
       "import": "./src/components/account-switcher.tsx"

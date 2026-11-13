@@ -16,7 +16,8 @@
  * shows a skeleton while loading, a note when there is nothing and a retry when it fails. The
  * current value is marked when the admin changes it.
  */
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { fitToViewport } from "@al-ummah-now/ui/menu-fit";
 import { flushSync } from "react-dom";
 import { Input } from "./ui/input";
 import {
@@ -229,6 +230,11 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
 
   const showChip = mode === "pick" && picked && !editing;
   const expanded = state.open && !showChip && (state.options.length > 0 || state.status !== "idle");
+  // Never past the screen's edge (AlUmmahNow docs/design/NAV.md): the popup is min-w-72 from the box's start
+  const popupRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (expanded) fitToViewport(popupRef.current);
+  }, [expanded]);
   const suggestionCount = state.options.filter((o) => o.type === "suggestion").length;
   // The box shows the initial list (nothing, or one character, typed)
   const showingInitial = initialOn && state.query.trim().length < MIN_QUERY;
@@ -302,8 +308,9 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
             data-testid={testId ? `${testId}-input` : undefined}
           />
           <div
+            ref={popupRef}
             hidden={!expanded}
-            className="absolute start-0 top-full z-50 mt-1 w-full min-w-72 overflow-hidden rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-popover))] text-[rgb(var(--color-popover-foreground))] shadow-lg"
+            className="absolute start-0 top-full z-50 mt-1 w-full min-w-72 overflow-y-auto rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-popover))] text-[rgb(var(--color-popover-foreground))] shadow-lg"
             data-testid={testId ? `${testId}-popup` : undefined}
             // A press on the list (its scrollbar too) must not blur the input and close it
             onMouseDown={(e) => e.preventDefault()}

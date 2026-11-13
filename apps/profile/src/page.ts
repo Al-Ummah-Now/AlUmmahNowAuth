@@ -6,6 +6,7 @@ import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { streetHeadTags, streetOn } from '../../../packages/ui/src/fanous-street/index.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
+import { FIT_TO_VIEWPORT_ES5 } from '../../../packages/ui/src/nav/menu-fit-es5.ts';
 
 /** The logo's night sky (the manifest's theme_color), for the browser chrome. */
 const PROFILE_THEME_COLOR = '#09273a';
@@ -327,9 +328,12 @@ export function renderHomePage(o: HomePageOptions): string {
             return prompt ? url + '&prompt=' + prompt : url;
         }
 
+        // The menu never leaves the screen (AlUmmahNow docs/design/NAV.md): fit it once shown
+        ${FIT_TO_VIEWPORT_ES5}
         function setAccountDropdown(open) {
             dropdownOpen = open;
             document.getElementById('accountDropdown').hidden = !open;
+            if (open) fitToViewport(document.getElementById('accountDropdown'));
             document.getElementById('accountTrigger').setAttribute('aria-expanded', open ? 'true' : 'false');
         }
         function menuItems() {

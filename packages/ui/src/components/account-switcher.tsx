@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { fitToViewport } from "../nav/menu-fit";
 import { ChevronDown, LogIn, LogOut } from "lucide-react";
 
 interface Account {
@@ -47,6 +48,11 @@ export function appLoginUrl(loginPath: string, prompt?: "none" | "login"): strin
 export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/login", apps = [] }: AccountSwitcherProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  // The menu never leaves the screen (AlUmmahNow docs/design/NAV.md)
+  const menuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (isOpen) fitToViewport(menuRef.current);
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -204,7 +210,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="aun-menu" role="menu" onKeyDown={(e) => e.key === 'Escape' && setIsOpen(false)}>
+          <div ref={menuRef} className="aun-menu" role="menu" onKeyDown={(e) => e.key === 'Escape' && setIsOpen(false)}>
             {/* The current account, only here (the Google pattern); the others follow under "More accounts" */}
             <div className="aun-menu-who" data-testid="account-who">
               <span className="aun-avatar aun-avatar--lg" aria-hidden="true">{getInitial(name)}</span>
