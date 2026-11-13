@@ -34,6 +34,7 @@ describe("admin shell theme", () => {
     const dark = builtinPackage("fawanees")!.assets["assets/street-lights-dark.svg"]!.hash;
     expect(street).toContain(`--fanous-street-lights: url("https://auth.example/themes/assets/${dark}")`);
     expect(street).toContain('html.fanous-street [data-shell="page"]{background:transparent}');
+    expect(street).toContain('html.fanous-street [data-shell="page"]>main{min-height:100vh;padding-bottom:96px}');
     // the street block carries no other theme colours
     expect(street).not.toMatch(/--fanous-color-(?!primary)/);
   });

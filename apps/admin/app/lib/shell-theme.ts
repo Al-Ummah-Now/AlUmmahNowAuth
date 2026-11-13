@@ -55,7 +55,9 @@ export function adminStreetCss(tokensCss: string): string {
   if (!decls.some((d) => /^--fanous-street-on:\s*1$/.test(d))) return "";
   return (
     `:root{${decls.join(";")}}\n` +
-    `html.fanous-street [data-shell="page"]{background:transparent}`
+    `html.fanous-street [data-shell="page"]{background:transparent}\n` +
+    // Room for garlands: below short pages, and one band at the end of every page
+    `html.fanous-street [data-shell="page"]>main{min-height:100vh;padding-bottom:96px}`
   );
 }
 
