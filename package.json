@@ -96,7 +96,7 @@
     "wrangler": "^4.55.0"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.49"
+    "@al-ummah-now/openauth": "1.0.50"
   },
   "pnpm": {
     "overrides": {
