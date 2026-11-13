@@ -1,6 +1,12 @@
 name: QA Deploy and E2E
 
-# Called from test.yml. The caller job holds the `auth-qa-deploy` concurrency
+# Called from test.yml on pushes to main only (each push to main is also an Auth release). Owner rule
+# (2026-11-13): tests run against the deployed QA only with releases, never on pull requests, and at
+# most once per release (QA's D1 read volume). So this runs only the specs the release's stage E2E
+# leaves out: admin, profile and integration, plus the "code delivery failure" specs of auth/ and
+# release/ (stage greps them out). Stage runs the rest of e2e/tests/auth and e2e/tests/release.
+#
+# The caller job holds the `auth-qa-deploy` concurrency
 # group for this whole workflow (deploy + all E2E shards), because every run
 # shares the single QA environment: a newer run must not redeploy the QA workers
 # while another run's E2E jobs are still testing them.
@@ -421,7 +427,7 @@ jobs:
 
   e2e-auth:
     runs-on: ubuntu-24.04  # Playwright has no browser builds for ubuntu-latest (26.04)
-    name: E2E Auth (${{ matrix.shard }}/2)
+    name: E2E Auth + release, code delivery failure (${{ matrix.shard }}/2)
     needs: [deploy-qa]
     strategy:
       fail-fast: false
@@ -454,7 +460,7 @@ jobs:
           runner: npx
           browsers: chromium
       - name: Run Auth tests (shard ${{ matrix.shard }}/2)
-        run: pnpm exec playwright test e2e/tests/auth/ --shard=${{ matrix.shard }}/2
+        run: pnpm exec playwright test e2e/tests/auth/ e2e/tests/release/ --grep "code delivery failure" --pass-with-no-tests --shard=${{ matrix.shard }}/2
         env:
           CI: true
           SKIP_WEB_SERVER: true
@@ -492,7 +498,7 @@ jobs:
 
   e2e-profile-integration:
     runs-on: ubuntu-24.04  # Playwright has no browser builds for ubuntu-latest (26.04)
-    name: E2E Profile, Integration & Release
+    name: E2E Profile & Integration
     needs: [deploy-qa]
     steps:
       - name: Checkout code
@@ -520,8 +526,8 @@ jobs:
         with:
           runner: npx
           browsers: chromium
-      - name: Run Profile, Integration & Release regression tests
-        run: pnpm exec playwright test e2e/tests/profile/ e2e/tests/integration/ e2e/tests/release/
+      - name: Run Profile & Integration tests
+        run: pnpm exec playwright test e2e/tests/profile/ e2e/tests/integration/
         env:
           CI: true
           SKIP_WEB_SERVER: true

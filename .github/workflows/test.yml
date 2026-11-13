@@ -207,8 +207,12 @@ jobs:
   # concurrency group: GitHub keeps one pending run per group, so every newly
   # queued run cancelled the waiting one, and from 2026-11-10 18:55 no main push
   # got its QA deploy at all. Waiting runs now take their turn; none is dropped.
+  # Pushes to main only: a pull request never deploys to QA or tests against it (owner rule
+  # 2026-11-13: tests run against QA only with releases; QA follows main). PRs rely on the unit,
+  # type and release checks above; each merge's release runs E2E on stage before production.
   qa-lock:
     name: QA lock
+    if: github.event_name == 'push'
     needs: [lint-and-type-check, unit-tests, release-checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 300
