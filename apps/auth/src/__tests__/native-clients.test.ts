@@ -9,10 +9,14 @@ import worker from '../index';
 import { setupDatabase } from '../test-setup';
 import qaMigration from '../../migrations-qa/0013_native_clients.sql?raw';
 import prodMigration from '../../migrations/0013_native_clients.sql?raw';
+import adminQaMigration from '../../migrations-qa/0036_admin_native_clients.sql?raw';
+import adminProdMigration from '../../migrations/0036_admin_native_clients.sql?raw';
 
 const VIEWER_MOBILE = '31389afb-d4f8-4c26-9492-4c77f4d07e65';
 const VIEWER_DESKTOP = 'ce7de8a4-59dd-4682-ab4d-105399105294';
 const STUDIO_MOBILE = '45364a42-21f4-4359-a76c-0a1e6615fd7b';
+const ADMIN_IOS = '77330b47-5747-4058-ba00-921e159f1ced';
+const ADMIN_MAC = '1c230211-7b90-4d0a-be9d-3068ebd79d5b';
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
 
 const statements = (sql: string) =>
@@ -39,7 +43,7 @@ async function authorize(clientId: string, redirect: string, pkce = true) {
 describe('native app clients (worker)', () => {
 	beforeAll(async () => {
 		await setupDatabase();
-		for (const s of statements(qaMigration)) await (env as unknown as Env).AUTH_DB.prepare(s).run();
+		for (const s of [...statements(qaMigration), ...statements(adminQaMigration)]) await (env as unknown as Env).AUTH_DB.prepare(s).run();
 	});
 
 	it('a custom-scheme redirect with PKCE gets the sign-in form', async () => {
@@ -66,6 +70,19 @@ describe('native app clients (worker)', () => {
 	it('desktop loopback redirects may use any port, nothing else varies', async () => {
 		expect((await authorize(VIEWER_DESKTOP, 'http://127.0.0.1:49152/auth/callback')).status).toBe(302);
 		expect((await authorize(VIEWER_DESKTOP, 'http://127.0.0.1:49152/elsewhere')).status).toBe(400);
+	});
+
+	it('the admin app signs in only on alummahnow-admin://auth/callback, with PKCE', async () => {
+		for (const id of [ADMIN_IOS, ADMIN_MAC]) {
+			const res = await authorize(id, 'alummahnow-admin://auth/callback');
+			expect(res.status).toBe(302);
+			expect(res.headers.get('location')).toContain('/password/authorize');
+			expect((await authorize(id, 'alummahnow-studio://auth/callback')).status).toBe(400);
+			expect((await authorize(id, 'http://127.0.0.1:49152/auth/callback')).status).toBe(400);
+			const noPkce = new URL((await authorize(id, 'alummahnow-admin://auth/callback', false)).headers.get('location')!);
+			expect(noPkce.searchParams.get('error')).toBe('invalid_request');
+		}
+		expect((await authorize(STUDIO_MOBILE, 'alummahnow-admin://auth/callback')).status).toBe(400);
 	});
 
 	it("rejects another app's scheme and unregistered URIs (exact match)", async () => {
@@ -100,6 +117,27 @@ describe('native client migrations', () => {
 			expect(r.filter((c) => c.grants.includes('urn:ietf:params:oauth:grant-type:device_code'))).toHaveLength(1);
 		});
 	}
+
+	for (const [env, sql] of [
+		['qa', adminQaMigration],
+		['prod', adminProdMigration],
+	] as const) {
+		it(`${env}: Admin (iOS) and Admin (macOS) are public native PKCE clients on the admin scheme only`, () => {
+			const r = rows(sql);
+			expect(r).toHaveLength(2);
+			for (const c of r) {
+				expect(c.secret).toBe('NULL');
+				expect(c.metadata).toMatchObject({ type: 'native', pkce: 'required' });
+				expect(c.grants).toEqual(['authorization_code', 'refresh_token']);
+				expect(c.redirects).toEqual(['alummahnow-admin://auth/callback']);
+			}
+		});
+	}
+
+	it('admin client ids differ between QA and prod', () => {
+		const qa = rows(adminQaMigration).map((c) => c.id);
+		expect(rows(adminProdMigration).some((c) => qa.includes(c.id))).toBe(false);
+	});
 
 	it('prod universal links use the prod host, QA the QA host', () => {
 		expect(rows(prodMigration).flatMap((c) => c.redirects).some((u) => u.includes('.qa.'))).toBe(false);
