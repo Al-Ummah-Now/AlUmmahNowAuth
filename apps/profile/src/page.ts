@@ -189,9 +189,9 @@ const STYLES = `
         .btn-danger:hover { background: #b91c1c; }
 `;
 
-const ICON_PLUS = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>';
-const ICON_SESSIONS = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.5 3A1.5 1.5 0 013 1.5h10A1.5 1.5 0 0114.5 3v10a1.5 1.5 0 01-1.5 1.5H3A1.5 1.5 0 011.5 13V3zM3 2.5a.5.5 0 00-.5.5v10a.5.5 0 00.5.5h10a.5.5 0 00.5-.5V3a.5.5 0 00-.5-.5H3z"/></svg>';
-const ICON_SIGNOUT = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2.75A.75.75 0 012.75 2h10.5a.75.75 0 010 1.5H2.75A.75.75 0 012 2.75zm0 10.5a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2.75 7a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5z"/></svg>';
+const ICON_SIGNIN = '<svg class="aun-menu-icon aun-flip" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>';
+const ICON_SESSIONS = '<svg class="aun-menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
+const ICON_SIGNOUT = '<svg class="aun-menu-icon aun-flip" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>';
 
 export function renderHomePage(o: HomePageOptions): string {
   const theme = o.theme ?? { id: BUILTIN_DEFAULT_THEME, css: compileBuiltin(BUILTIN_DEFAULT_THEME, o.authServerUrl)!.tokensCss };
@@ -231,9 +231,9 @@ export function renderHomePage(o: HomePageOptions): string {
                     <div class="account-dropdown aun-menu" id="accountDropdown" role="menu" hidden>
                         <div class="aun-menu-who" id="accountWho"></div>
                         <div class="aun-menu-sep" role="separator"></div>
-                        <span class="dropdown-header aun-menu-label" id="accountsLabel">${e(t.signedInAccounts)}</span>
+                        <span class="dropdown-header aun-menu-label" id="accountsLabel">${e(t.moreAccounts)}</span>
                         <div class="accounts-list" id="accountsList" role="group" aria-labelledby="accountsLabel"></div>
-                        <button type="button" class="dropdown-action aun-menu-item" role="menuitem" id="addAccountBtn" onclick="handleAddAccount()">${ICON_PLUS}<span class="aun-menu-text">${e(t.addAccount)}</span></button>
+                        <button type="button" class="dropdown-action aun-menu-item" role="menuitem" id="addAccountBtn" onclick="handleAddAccount()">${ICON_SIGNIN}<span class="aun-menu-text">${e(t.addAccount)}</span></button>
                         <div class="aun-menu-sep" role="separator"></div>
                         <button type="button" class="dropdown-action aun-menu-item" role="menuitem" onclick="handleManageSessions()">${ICON_SESSIONS}<span class="aun-menu-text">${e(t.manageSessions)}</span></button>
                         ${renderAppsSection(o.apps, t)}
@@ -303,6 +303,7 @@ export function renderHomePage(o: HomePageOptions): string {
         var appUrl = ${scriptJson(o.appUrl)};
         var clientId = ${scriptJson(o.clientId)};
         var T = ${scriptJson(t)};
+        var SIGNOUT_ICON = ${scriptJson(ICON_SIGNOUT)};
 
         var accounts = [];
         var dropdownOpen = false;
@@ -403,24 +404,22 @@ export function renderHomePage(o: HomePageOptions): string {
                 '<span class="aun-menu-who-text"><span class="aun-menu-who-name" dir="auto">' + esc(name) + '</span>' +
                 (displayAccount.email && displayAccount.email !== name ? '<span class="aun-menu-who-sub" dir="ltr">' + esc(displayAccount.email) + '</span>' : '') + '</span>';
 
-            // Your accounts: listed when there are two or more
+            // More accounts (the Google pattern): the current account is the top of the menu; the
+            // other accounts are listed here, each with a sign-out icon button
+            var others = accounts.filter(function (a) { return !(a.isActive && a.userId === currentUser.id); });
             var several = accounts.length > 1;
-            document.getElementById('accountsLabel').hidden = !several;
-            document.getElementById('accountsList').innerHTML = !several ? '' : accounts.map(function (account) {
+            document.getElementById('accountsLabel').hidden = others.length === 0;
+            document.getElementById('accountsList').innerHTML = others.map(function (account) {
                 var id = esc(account.userId);
                 var label = nameOf(account);
-                // Clickable unless it is both auth's active account and the one this page shows
-                var current = account.isActive && account.userId === currentUser.id;
-                // Name, then the email when it differs, then "Current account" or when it was last used
                 var lines = (account.email && account.email !== label ? '<span class="aun-acct-email" dir="ltr">' + esc(account.email) + '</span>' : '') +
-                    '<span class="aun-acct-current status">' + esc(account.isActive ? T.active : T.lastUsed + ' ' + formatRelativeTime(account.lastUsed)) + '</span>';
+                    (account.isActive ? '<span class="aun-acct-current status">' + esc(T.active) + '</span>' : '');
                 return '<div class="account-item aun-acct-row' + (account.isActive ? ' active' : '') + '" data-user-id="' + id + '" data-testid="account-item">' +
-                    '<button type="button" class="aun-menu-item" role="menuitem"' + (current ? ' aria-current="true" disabled' : ' onclick="handleSwitchAccount(this.parentNode.dataset.userId)"') + '>' +
+                    '<button type="button" class="aun-menu-item" role="menuitem" aria-label="' + esc(T.switchTo.replace('{name}', label)) + '" onclick="handleSwitchAccount(this.parentNode.dataset.userId)">' +
                     '<span class="aun-avatar" aria-hidden="true">' + esc(initialOf(label)) + '</span>' +
                     '<span class="aun-acct-text account-details"><span class="aun-acct-label email" dir="auto">' + esc(label) + '</span>' + lines + '</span>' +
-                    (account.isActive ? '<svg class="aun-menu-check active-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>' : '') +
                     '</button>' +
-                    '<button type="button" class="sign-out-btn aun-acct-signout" data-user-id="' + id + '" onclick="event.stopPropagation(); requestSignOutAccount(this.dataset.userId)" aria-label="' + esc(T.signOutAccount + ' ' + label) + '">' + esc(T.signOutAccount) + '</button>' +
+                    '<button type="button" class="sign-out-btn aun-acct-signout" data-user-id="' + id + '" onclick="event.stopPropagation(); requestSignOutAccount(this.dataset.userId)" aria-label="' + esc(T.signOutAccount + ' ' + label) + '" title="' + esc(T.signOutAccount + ' ' + label) + '">' + SIGNOUT_ICON + '</button>' +
                     '</div>';
             }).join('');
             document.getElementById('addAccountBtn').style.display = accounts.length < MAX_ACCOUNTS ? 'flex' : 'none';

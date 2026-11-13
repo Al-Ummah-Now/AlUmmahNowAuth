@@ -128,11 +128,12 @@ test.describe('Signed in once, signed in everywhere (profile + auth admin)', () 
     await submitSignIn(page, bob);
     expect(await profileEmail(page)).toBe(bob);
 
-    // 4. The profile menu lists both; switching back to Alice is silent
+    // 4. The profile menu shows Bob at the top and Alice under "More accounts" (the Google pattern);
+    // switching back to Alice is silent
     const formsBefore = forms.length;
-    let items = await profileMenu(page, 2);
+    let items = await profileMenu(page, 1);
     await expect(items.filter({ hasText: alice })).toHaveCount(1);
-    await expect(items.filter({ hasText: bob })).toHaveCount(1);
+    await expect(page.locator('#accountWho')).toContainText(bob);
     await switchTo(page, items.filter({ hasText: alice }), new URL('/callback', profile()));
     await expect(page.locator('#userEmail')).toHaveText(alice, { timeout: 20000 });
     expect(forms.length, 'switching shows no form').toBe(formsBefore);
@@ -140,19 +141,21 @@ test.describe('Signed in once, signed in everywhere (profile + auth admin)', () 
     // 5. The auth admin: signed in as auth's active account (Alice), menu lists both, switch to Bob
     await page.goto(TEST_URLS.adminDashboard);
     await expect(page.locator('a:has-text("Users")')).toBeVisible({ timeout: 20000 });
-    items = await adminMenu(page, 2);
-    await expect(items.filter({ hasText: alice })).toContainText('Current account');
+    // The current account is the top of the menu; Bob is under "More accounts"
+    items = await adminMenu(page, 1);
+    await expect(page.getByTestId('account-who')).toContainText(alice);
     await switchTo(page, items.filter({ hasText: bob }), new URL('/auth/callback', admin()));
     await expect(page.locator('a:has-text("Users")')).toBeVisible({ timeout: 20000 });
     expect(new URL(page.url()).origin).toBe(admin());
-    items = await adminMenu(page, 2);
-    await expect(items.filter({ hasText: bob })).toContainText('Current account');
+    items = await adminMenu(page, 1);
+    await expect(page.getByTestId('account-who')).toContainText(bob);
     expect(forms.length, 'switching shows no form').toBe(formsBefore);
 
     // ...and the profile menu (auth's list) now marks Bob as the active account
     await page.goto(TEST_URLS.profileApp);
-    items = await profileMenu(page, 2);
-    await expect(items.filter({ hasText: bob })).toHaveClass(/active/);
+    items = await profileMenu(page, 1);
+    await expect(page.locator('#accountWho')).toContainText(bob);
+    await expect(items.filter({ hasText: alice })).toHaveCount(1);
 
     // 6. Single sign-out: every app shows the sign-in form again
     await page.goto(`${profile()}/logout`);

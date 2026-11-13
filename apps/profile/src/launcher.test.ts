@@ -9,7 +9,7 @@ describe("renderAppsSection (account menu, AlUmmahNow docs/design/NAV.md)", () =
   const member = renderAppsSection(appsForUser(["Member"], "qa", "en"), MESSAGES.en);
 
   it("lists the other apps in the shared order and labels, never this one", () => {
-    const ids = [...admin.matchAll(/data-app="([a-z-]+)"/g)].map((m) => m[1]);
+    const ids = [...admin.matchAll(/<a role="menuitem"[^>]*data-app="([a-z-]+)"/g)].map((m) => m[1]);
     expect(ids).toEqual(["www", "videos", "cms", "content-admin", "auth-admin"]);
     expect(admin).toContain(">Website<");
     expect(admin).toContain(">Content management<");
@@ -18,12 +18,14 @@ describe("renderAppsSection (account menu, AlUmmahNow docs/design/NAV.md)", () =
     expect(admin).not.toContain('data-app="profile"');
     expect(admin).toMatch(/<span class="aun-menu-label" id="appsLabel">Al Ummah Now apps<\/span>/);
     expect(admin.match(/role="menuitem"/g)).toHaveLength(5);
+    // Each app with its own icon (the shared nav's ids: the content admin is "admin")
+    expect(admin).toContain('<span class="aun-app-icon" data-app="admin" aria-hidden="true"></span>');
   });
 
   it("shows staff apps only to staff", () => {
     expect(admin).toContain("https://admin.auth.qa.alummahnow.net");
     expect(member).not.toContain("admin.");
-    expect([...member.matchAll(/data-app="([a-z-]+)"/g)].map((m) => m[1])).toEqual(["www", "videos"]);
+    expect([...member.matchAll(/<a role="menuitem"[^>]*data-app="([a-z-]+)"/g)].map((m) => m[1])).toEqual(["www", "videos"]);
   });
 
   it("opens apps in the same tab, and renders nothing when there is nothing else", () => {

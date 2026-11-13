@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChevronDown, Check, Plus, LogOut } from "lucide-react";
+import { ChevronDown, LogIn, LogOut } from "lucide-react";
 
 interface Account {
   id: string;
@@ -180,6 +180,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
   const activeAccount = accounts.find(a => a.isActive) || accounts[0];
   const name = nameOf(activeAccount);
   const several = accounts.length > 1;
+  const others = accounts.filter((a) => a !== activeAccount);
 
   // The shared nav contract (AlUmmahNow docs/design/NAV.md, NAV_CSS): avatar + name, then
   // who · your accounts · add · Al Ummah Now apps · sign out
@@ -204,7 +205,8 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="aun-menu" role="menu" onKeyDown={(e) => e.key === 'Escape' && setIsOpen(false)}>
-            <div className="aun-menu-who">
+            {/* The current account, only here (the Google pattern); the others follow under "More accounts" */}
+            <div className="aun-menu-who" data-testid="account-who">
               <span className="aun-avatar aun-avatar--lg" aria-hidden="true">{getInitial(name)}</span>
               <span className="aun-menu-who-text">
                 <span className="aun-menu-who-name" dir="auto">{name}</span>
@@ -212,30 +214,25 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
               </span>
             </div>
             <div className="aun-menu-sep" role="separator" />
-            {several && (
+            {others.length > 0 && (
               <>
-                <span className="aun-menu-label">Your accounts</span>
-                {accounts.map((account) => {
+                <span className="aun-menu-label">More accounts</span>
+                {others.map((account) => {
                   const label = nameOf(account);
-                  const current = account.isActive && account.id === currentUser.id;
                   return (
                     <div key={account.id} className="aun-acct-row" data-testid="account-item" data-email={account.email}>
                       <button
                         type="button"
                         role="menuitem"
                         className="aun-menu-item"
-                        disabled={current}
-                        aria-current={account.isActive ? 'true' : undefined}
-                        aria-label={current ? undefined : `Switch to ${label}`}
-                        onClick={() => !current && handleSwitchAccount(account.id)}
+                        aria-label={`Switch to ${label}`}
+                        onClick={() => handleSwitchAccount(account.id)}
                       >
                         <span className="aun-avatar" aria-hidden="true">{getInitial(label)}</span>
                         <span className="aun-acct-text">
                           <span className="aun-acct-label" dir="auto">{label}</span>
                           {account.email !== label && <span className="aun-acct-email" dir="ltr">{account.email}</span>}
-                          <span className="aun-acct-current">{account.isActive ? 'Current account' : `Last used ${formatRelativeTime(account.lastUsed)}`}</span>
                         </span>
-                        {account.isActive && <Check className="aun-menu-check" aria-hidden="true" />}
                       </button>
                       <button
                         type="button"
@@ -246,8 +243,9 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
                           handleSignOutAccount(account.id);
                         }}
                         aria-label={`Sign out of ${label}`}
+                        title={`Sign out of ${label}`}
                       >
-                        Sign out
+                        <LogOut className="aun-flip" aria-hidden="true" />
                       </button>
                     </div>
                   );
@@ -256,7 +254,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
             )}
             {accounts.length < 5 && (
               <button type="button" role="menuitem" data-testid="account-add" className="aun-menu-item" onClick={handleAddAccount}>
-                <Plus className="aun-menu-icon" aria-hidden="true" />
+                <LogIn className="aun-menu-icon aun-flip" aria-hidden="true" />
                 <span className="aun-menu-text">Add another account</span>
               </button>
             )}
@@ -267,6 +265,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
                   <span className="aun-menu-label" id="account-apps-label">Al Ummah Now apps</span>
                   {apps.map((app) => (
                     <a key={app.id} role="menuitem" className="aun-menu-item" href={app.href} data-app={app.id}>
+                      <span className="aun-app-icon" data-app={app.id} aria-hidden="true" />
                       <span className="aun-menu-text">{app.label}</span>
                     </a>
                   ))}
