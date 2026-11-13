@@ -36,7 +36,8 @@ interface UserTokenClaims extends JWTPayload {
 	type?: string;
 	client_id?: string;
 	auth_time?: number;
-	properties?: { id?: string; email?: string };
+	amr?: unknown;
+	properties?: { id?: string; email?: string; roles?: unknown; passkey_deadline?: unknown };
 }
 
 export interface VerifiedUser {
@@ -45,6 +46,9 @@ export interface VerifiedUser {
 	subject?: string;
 	clientId?: string;
 	authTime?: number;
+	/** RFC 8176 methods of the sign-in behind the token (AUTH-PASSKEYS) */
+	amr?: string[];
+	roles?: string[];
 	jti?: string;
 	exp?: number;
 }
@@ -95,6 +99,8 @@ export async function verifyUserToken(token: string, env: Env): Promise<Verified
 		subject: typeof claims.sub === 'string' ? claims.sub : undefined,
 		clientId: typeof claims.aud === 'string' ? claims.aud : undefined,
 		authTime: typeof claims.auth_time === 'number' ? claims.auth_time : undefined,
+		amr: Array.isArray(claims.amr) ? claims.amr.filter((m): m is string => typeof m === 'string') : undefined,
+		roles: Array.isArray(claims.properties.roles) ? claims.properties.roles.filter((r): r is string => typeof r === 'string') : undefined,
 		jti: typeof claims.jti === 'string' ? claims.jti : undefined,
 		exp: typeof claims.exp === 'number' ? claims.exp : undefined,
 	};

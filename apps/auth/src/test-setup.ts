@@ -9,6 +9,7 @@ import adminDeletionsSql from "../migrations/0027_admin_deletions.sql?raw";
 import userInvitesSql from "../migrations/0030_user_invites.sql?raw";
 import signinIndexesSql from "../migrations/0031_signin_scan_indexes.sql?raw";
 import appSessionsUserIndexSql from "../migrations/0032_app_sessions_user_index.sql?raw";
+import webauthnSql from "../migrations/0038_webauthn_credentials.sql?raw";
 
 /** Statements of a migration file (comments stripped). */
 function sqlStatements(sql: string): string[] {
@@ -330,6 +331,11 @@ export async function setupDatabase() {
   // Indexes for the sign-in path's lookups (#804); the tables above are rebuilt, so recreate them
   for (const stmt of sqlStatements(signinIndexesSql)) await env.AUTH_DB.prepare(stmt).run();
   for (const stmt of sqlStatements(appSessionsUserIndexSql)) await env.AUTH_DB.prepare(stmt).run();
+  // Passkeys (AUTH-PASSKEYS)
+  for (const t of ['webauthn_credentials', 'webauthn_prompts', 'passkey_setup_tickets', 'auth_settings']) {
+    await env.AUTH_DB.prepare(`DROP TABLE IF EXISTS ${t}`).run();
+  }
+  for (const stmt of sqlStatements(webauthnSql)) await env.AUTH_DB.prepare(stmt).run();
   await env.AUTH_DB.prepare(`DELETE FROM admin_deletions`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_codes`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_login_attempts`).run();

@@ -119,6 +119,11 @@ export enum AuditEventType {
   USER_INVITE_RESTORED = 'user.invite.restored',
   USER_INVITE_PURGE_REQUESTED = 'user.invite.purge_requested',
   USER_INVITE_PURGED = 'user.invite.purged',
+  // Passkeys (AUTH-PASSKEYS)
+  PASSKEY_ADDED = 'passkey.added',
+  PASSKEY_REMOVED = 'passkey.removed',
+  PASSKEY_SETUP_LINK_SENT = 'passkey.setup_link_sent',
+  PASSKEY_ENFORCEMENT_CHANGED = 'passkey.enforcement_changed',
 }
 
 /**

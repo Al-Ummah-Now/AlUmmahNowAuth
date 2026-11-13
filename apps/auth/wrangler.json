@@ -56,6 +56,7 @@
   },
   "vars": {
     "ENVIRONMENT": "development",
+    "PASSKEY_PROMPT": "off",
     "TURNSTILE_MODE": "off",
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
     "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
@@ -139,6 +140,7 @@
       "vars": {
         "ERRORS_INGEST_URL": "https://admin.api.alummahnow.net/internal/errors",
         "ENVIRONMENT": "production",
+        "PASSKEY_PROMPT": "on",
         "TURNSTILE_MODE": "monitor",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAF_3KPNkPlEGf_dP",
         "AUDIT_SAMPLE": "",
@@ -255,6 +257,7 @@
       "vars": {
         "ERRORS_INGEST_URL": "https://admin.api.stage.alummahnow.net/internal/errors",
         "ENVIRONMENT": "stage",
+        "PASSKEY_PROMPT": "on",
         "TURNSTILE_MODE": "enforce",
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
         "AUDIT_SAMPLE": "auth.login.success=0.1,admin.item.*=0.1",

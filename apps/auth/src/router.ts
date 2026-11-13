@@ -33,6 +33,7 @@ import adminSessionRoutes from './routes/admin-session-routes';
 import adminStatsRoutes from './routes/admin-stats-routes';
 import { BrowserSessionService } from './services/browser-session.service';
 import { parseSessionCookie } from './utils/session-cookie';
+import { routePasskeys } from './passkeys/routes';
 import { requireAdmin } from './middleware/admin-auth';
 import { verifyAdminAuth } from './auth-middleware';
 import { routeModerationClient } from './moderation/client-routes';
@@ -572,6 +573,11 @@ async function enforceAdmin(rctx: RouterContext): Promise<Response | null> {
 	return addSecurityHeaders(m2m, rctx.isProduction);
 }
 
+/** The passkey pages use Auth's default sign-in theme, like the invite page. */
+function passkeyPageTheme(url: URL) {
+	return openauthThemeFor(compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!);
+}
+
 export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	const { url, request } = rctx;
 	const { pathname } = url;
@@ -579,6 +585,12 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	if (isAdminOnlyPath(pathname)) {
 		const denied = await enforceAdmin(rctx);
 		if (denied) return denied;
+	}
+
+	// Passkeys (AUTH-PASSKEYS): setup page and ceremonies, the hub's list, the admin's recovery
+	if (pathname.startsWith('/passkeys/') || pathname === '/account/passkeys' || pathname.startsWith('/account/passkeys/') || pathname === '/admin/settings/staff-passkeys' || /^\/admin\/users\/[^/]+\/passkeys/.test(pathname)) {
+		const response = await routePasskeys({ request, env: rctx.env as never, ctx: rctx.ctx, requestId: rctx.requestId, theme: passkeyPageTheme(url) });
+		if (response) return addSecurityHeaders(response, rctx.isProduction);
 	}
 
 	// Handle exact path matches first
