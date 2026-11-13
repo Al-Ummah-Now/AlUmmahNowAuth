@@ -40,11 +40,14 @@ function groups(apps: VisibleApp[], t: Messages) {
  * this account may open, in the shared order and labels; this app is left out. Empty when there
  * is nothing else to open.
  */
+/** The shared nav's icon ids (AlUmmahNow packages/shared-types app-links): the content admin is "admin". */
+const NAV_ICON: Record<string, string> = { www: "www", videos: "videos", profile: "profile", cms: "cms", "content-admin": "admin", "auth-admin": "auth-admin" };
+
 export function renderAppsSection(apps: VisibleApp[], t: Messages): string {
   const others = apps.filter((a) => !a.current);
   if (others.length === 0) return "";
   const items = others
-    .map((a) => `<a role="menuitem" class="aun-menu-item" href="${escapeHtml(a.url)}" data-app="${a.id}"><span class="aun-menu-text">${escapeHtml(a.name)}</span></a>`)
+    .map((a) => `<a role="menuitem" class="aun-menu-item" href="${escapeHtml(a.url)}" data-app="${a.id}"><span class="aun-app-icon" data-app="${NAV_ICON[a.id]}" aria-hidden="true"></span><span class="aun-menu-text">${escapeHtml(a.name)}</span></a>`)
     .join("\n");
   return `<div class="aun-menu-sep" role="separator"></div>
     <div role="group" aria-labelledby="appsLabel" id="accountApps">
