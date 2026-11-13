@@ -8,11 +8,13 @@
  * - /test/promote/:email - Promote user to admin role
  * - /test/tokens/:email - Get token info for a user
  * - /test/run-users/delete/:email, /test/run-users/stale - E2E run accounts (test-run-users.ts)
+ * - POST /test/report-error - a marked test error through the reporter (admin Errors page, #341)
  */
 
 import { logger } from '../logger';
 import { isAuthorizedTestRequest, sinkKey } from '../utils/e2e-sink';
 import { routeRunUsers, type RunUserRoutesEnv } from './test-run-users';
+import { buildErrorEvent, sendEvents, type ErrorReportEnv } from '../errors/report';
 
 interface TestRoutesEnv extends Partial<Omit<RunUserRoutesEnv, 'AUTH_DB' | 'AUTH_STORAGE' | 'TEST_PROMOTE_SECRET' | 'ENVIRONMENT' | 'OPENAUTH_ISSUER' | 'E2E_CODE_SINK_SECRET'>> {
 	AUTH_STORAGE: KVNamespace;
@@ -531,6 +533,18 @@ export async function routeTestEndpoints(
 	if (runUsers) {
 		ctx.waitUntil(logger.finalizeRequest());
 		return runUsers;
+	}
+
+	// POST /test/report-error: a marked test error through the real reporter (#341): proves Auth's
+	// reports reach the admin Errors page in this env. Never alerts (test), gone after a day.
+	if (url.pathname === '/test/report-error' && request.method === 'POST') {
+		const event = buildErrorEvent(new Error(`Auth error-reporting probe ${new Date().toISOString()}`), { route: '/test/report-error', method: 'POST', test: true }, env as ErrorReportEnv);
+		const ingest = await sendEvents(env as ErrorReportEnv, [event]);
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response(JSON.stringify({ reference: event.ref, ingest }), {
+			status: ingest === 202 ? 200 : 502,
+			headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+		});
 	}
 
 	// GET /test/debug/roles - Debug endpoint for roles

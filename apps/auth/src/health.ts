@@ -91,6 +91,15 @@ export async function deepHealth(env: Env): Promise<DeepHealth> {
 				async () => RATE_LIMIT_BINDINGS.every((name) => typeof (raw[name] as RateLimit | undefined)?.limit === 'function')
 			),
 		],
+		// Unexpected errors reach the videos admin Errors page (#341): the ingest URL is set and its key
+		// resolves. A deploy without them must not pass the release smoke (errors would be invisible).
+		[
+			'errorReporting',
+			probe('errorReporting', async () => {
+				if (environment === 'development') return true;
+				return typeof raw.ERRORS_INGEST_URL === 'string' && raw.ERRORS_INGEST_URL.startsWith('https://') && (await secretResolves(raw.INTERNAL_API_KEY));
+			}),
+		],
 		...REQUIRED_SECRETS.map(
 			(name) => [`secret:${name}`, probe(`secret:${name}`, () => secretResolves(raw[name]))] as [string, Promise<boolean>]
 		),
