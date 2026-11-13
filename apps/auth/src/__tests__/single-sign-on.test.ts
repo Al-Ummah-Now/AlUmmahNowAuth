@@ -21,6 +21,8 @@ const PASSWORD = 'Sso-Test-123!';
 
 class Browser {
 	jar = new Map<string, string>();
+	/** The last Set-Cookie header seen for each cookie name, attributes included. */
+	setCookies = new Map<string, string>();
 	async fetch(path: string, init: RequestInit = {}) {
 		const headers = new Headers(init.headers);
 		headers.set('host', new URL(ISSUER).host);
@@ -32,6 +34,7 @@ class Browser {
 			const [pair] = c.split(';');
 			const i = pair.indexOf('=');
 			const value = pair.slice(i + 1);
+			this.setCookies.set(pair.slice(0, i), c);
 			if (!value || /max-age=0/i.test(c)) this.jar.delete(pair.slice(0, i));
 			else this.jar.set(pair.slice(0, i), value);
 		}
@@ -79,6 +82,16 @@ describe('single sign-on (worker)', () => {
 		expect(toAdmin.origin + toAdmin.pathname).toBe(ADMIN.redirect);
 		expect(toAdmin.searchParams.get('code')).toBeTruthy();
 		expect(toAdmin.searchParams.get('state')).toBe(ADMIN.id);
+	});
+
+	it('on a localhost issuer the SSO cookie is set and cleared without Secure (WebKit drops Secure cookies over http, #1093)', async () => {
+		const browser = new Browser();
+		await browser.signIn(PROFILE);
+		expect(browser.setCookies.get('__session')).toMatch(/HttpOnly/i);
+		expect(browser.setCookies.get('__session')).not.toMatch(/;\s*Secure/i);
+		await browser.fetch(`/logout?return=${encodeURIComponent('http://localhost:5175/')}`);
+		expect(browser.setCookies.get('__session')).toMatch(/max-age=0/i);
+		expect(browser.setCookies.get('__session')).not.toMatch(/;\s*Secure/i);
 	});
 
 	it('logout ends the shared sign-in, walks every app, and the apps need a sign-in again', async () => {
