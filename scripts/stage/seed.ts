@@ -12,6 +12,7 @@
  *   4. client redirect URIs: prod's live values (read-only) with stage hosts
  *   5. optionally: the admin dashboard's M2M client secret (hash stored in D1)
  */
+import { fileURLToPath } from 'node:url';
 import { pbkdf2Sync, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -127,7 +128,7 @@ function setAdminSecret(): void {
 	process.stdout.write(`  admin client ${clientId}: secret hash updated\n`);
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	assertStageTarget();
 	process.stdout.write('1-2/5 openauth and app migrations\n');
