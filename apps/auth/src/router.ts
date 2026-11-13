@@ -4,6 +4,7 @@
  * Handles all pathname-based routing logic, delegating to appropriate handlers.
  */
 
+import { STUB_SCRIPT_PATH, stubScriptResponse } from './security/turnstile';
 import { Hono } from 'hono';
 import { STREET_BASE, streetResponse } from '../../../packages/ui/src/fanous-street/index.ts';
 import { adminThemeRoutes, handlePublicThemeList, handleThemeAsset, handleThemeResolve } from './themes/routes';
@@ -649,6 +650,11 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 
 	if (pathname.startsWith('/themes/assets/') && request.method === 'GET') {
 		return handleThemeAsset(rctx.env, pathname.slice('/themes/assets/'.length));
+	}
+
+	// Turnstile stand-in for the test site keys; production answers 404 (security/turnstile.ts)
+	if (pathname === STUB_SCRIPT_PATH && request.method === 'GET') {
+		return stubScriptResponse(rctx.env) ?? new Response('Not found', { status: 404 });
 	}
 
 	// The Fanous lantern street (shared module, served same-origin for the sign-in pages' CSP)

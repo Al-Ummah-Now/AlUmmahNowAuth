@@ -92,6 +92,14 @@ export async function checkCode(db: D1Database, email: string, code: string, now
 
 /** Takes a sign-in slot for `email`; false when the window's failures are used up. */
 export async function reserveLoginAttempt(db: D1Database, email: string, now = nowSeconds()): Promise<boolean> {
+	return (await reserveLoginSlot(db, email, now)) !== null;
+}
+
+/**
+ * Takes a sign-in slot for `email` and returns the window's count including this
+ * attempt ("failed + in flight"); null when the failures are used up.
+ */
+export async function reserveLoginSlot(db: D1Database, email: string, now = nowSeconds()): Promise<number | null> {
 	const windowExpired = now - LOGIN_WINDOW_SECONDS;
 	const row = await db
 		.prepare(
@@ -104,7 +112,7 @@ export async function reserveLoginAttempt(db: D1Database, email: string, now = n
 		)
 		.bind(email.toLowerCase(), now, windowExpired, MAX_LOGIN_FAILURES)
 		.first<{ failures: number }>();
-	return !!row;
+	return row ? row.failures : null;
 }
 
 /** Gives back the slot of a sign-in that succeeded. */

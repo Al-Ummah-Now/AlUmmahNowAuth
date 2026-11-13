@@ -53,6 +53,16 @@ declare global {
     /** Approved moderation requests' actions (moderation/queue.ts); consumed by this worker */
     MODERATION_QUEUE?: Queue;
     AUTH_ANALYTICS?: AnalyticsEngineDataset;
+    /** Bot protection (security/turnstile.ts, docs/BOT_PROTECTION.md): "off" | "monitor" | "enforce" */
+    TURNSTILE_MODE?: string;
+    /** Public Turnstile site key (test key outside production) */
+    TURNSTILE_SITE_KEY?: string;
+    /** Turnstile secret: Secrets Store in production, the public test secret elsewhere */
+    TURNSTILE_SECRET?: SecretBinding;
+    /** Signs X-AUN-Bot-Bypass for E2E; never bound in production */
+    BOT_BYPASS_SECRET?: SecretBinding;
+    /** Abuse counters (Turnstile outcomes, rate-limit hits) for the videos admin Abuse panel */
+    ABUSE_EVENTS?: AnalyticsEngineDataset;
     TEST_PROMOTE_SECRET?: string;
     ACCESS_TOKEN_EXPIRY?: number;
     /**
