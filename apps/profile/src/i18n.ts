@@ -48,7 +48,7 @@ const en = {
   signOutAccountTitle: "Sign out of this account?",
   signOutAccountMessage: "{email} is signed out of this browser.",
   authError: "Authentication Error:",
-  footer: "© 2025 Al Ummah Now.",
+  footer: "© {year} Al Ummah Now.",
 };
 
 export type Messages = typeof en;
@@ -100,7 +100,7 @@ const ar: Messages = {
   signOutAccountTitle: "تسجيل الخروج من هذا الحساب؟",
   signOutAccountMessage: "سيتم تسجيل خروج {email} من هذا المتصفح.",
   authError: "خطأ في المصادقة:",
-  footer: "© 2025 الأمة الآن.",
+  footer: "© {year} الأمة الآن.",
 };
 
 export const MESSAGES: Record<Locale, Messages> = { en, ar };
