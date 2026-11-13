@@ -114,8 +114,8 @@ export const APP_CATALOG: readonly AppEntry[] = [
       stage: null,
       local: "http://localhost:3091",
     },
-    // AlUmmahNow apps/admin-web/src/lib/roles.ts ADMIN_ROLES
-    requiredRoles: ["super_admin", "admin", "moderator"],
+    // AlUmmahNow apps/admin-web/src/lib/roles.ts ADMIN_ROLES; reviewers see only the review queue there
+    requiredRoles: ["super_admin", "admin", "moderator", "content_reviewer", "senior_reviewer"],
   },
   {
     id: "auth-admin",
