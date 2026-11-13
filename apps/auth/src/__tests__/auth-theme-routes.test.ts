@@ -10,6 +10,7 @@ import { clearJWKSCache, SIGNING_KEY_KV_KEY } from '../utils/jwks-cache';
 import { adminThemeRoutes, handlePublicThemeList, handleThemeAsset, handleThemeResolve } from '../themes/routes';
 import { invalidateThemeSettings, resolveRequestTheme } from '../themes/runtime';
 import { ThemeStore } from '../themes/store';
+import { builtinPackage } from '../../../../packages/ui/src/auth-theme/builtin.ts';
 import { PROFILE, registerTestClients } from './helpers/clients';
 
 const audit = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -110,7 +111,7 @@ describe('a custom theme from duplicate to delete', () => {
 		expect(await res.json()).toMatchObject({ id: ID, kind: 'custom', status: 'draft', basedOn: null });
 		expect(audit).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'theme.created', userId: ADMIN_USER }));
 		const got = await (await call('GET', `/${ID}`)).json<{ theme: Record<string, unknown> }>();
-		expect(got.theme).toMatchObject({ id: ID, kind: 'custom', version: '1.0.0', basedOn: 'fawanees@1.1.0' });
+		expect(got.theme).toMatchObject({ id: ID, kind: 'custom', version: '1.0.0', basedOn: `fawanees@${builtinPackage('fawanees')!.theme.version}` });
 	});
 
 	it('cannot change or delete a built-in', async () => {

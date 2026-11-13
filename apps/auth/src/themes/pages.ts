@@ -33,6 +33,6 @@ export async function finishThemedResponse(response: Response, compiled: Compile
 	const html = await response.text();
 	const headers = new Headers(response.headers);
 	headers.delete('Content-Length');
-	const body = decorateHtml(html, compiled, { page: pageKind(url.pathname, html), carryTheme: compiled.id });
+	const body = decorateHtml(html, compiled, { page: pageKind(url.pathname, html), carryTheme: compiled.id, street: true });
 	return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }

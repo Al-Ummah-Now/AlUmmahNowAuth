@@ -1,0 +1,15 @@
+{
+  "repo": "Al-Ummah-Now/AlUmmahNow",
+  "ref": "2a4c3d6e114715f434a79465cb5742b0c14d0df5",
+  "sources": {
+    "packages/fanous-tokens/street/fanous-street.js": "366cba742a8c5fb38bd8c82b53cac967fe93c382ee165735b6dcbbf1fbeeb650",
+    "packages/fanous-tokens/street/fanous-street.d.ts": "ecf39ee928049a5bac79658ca70d99f8e16c83d64d83314085d6297623bd12a0",
+    "packages/fanous-tokens/street/fanous-street.css": "27bef820c749af50d3fd8e73ad7d275ca2080958bf6ffb52b7bb30dbc295af48"
+  },
+  "outputs": {
+    "packages/ui/src/fanous-street/fanous-street.js": "844b9937bbcf8af0f00bfd96739bdd164661c546e5a6402b69ad9997dd701993",
+    "packages/ui/src/fanous-street/fanous-street.d.ts": "368037d39848eb0ce8f219e649f37b4d77c884d381087117b5def7fa4a0084ca",
+    "packages/ui/src/fanous-street/fanous-street.css": "477af6c702ff68c20538de65283b2e9290a26cad74306b38e273e547f16f0788",
+    "packages/ui/src/fanous-street/street.generated.ts": "b61753b3cb867beb29a60a31c06035c3eb9cc51b6c95eada1049480a646bf44a"
+  }
+}

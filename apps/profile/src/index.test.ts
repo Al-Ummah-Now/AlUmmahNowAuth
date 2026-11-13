@@ -8,6 +8,7 @@ import { FakeKV, NOW_MS, NOW_S, fakeD1, jwt } from "./test-helpers";
 import { LOGIN_COOKIE, PKCE_COOKIE } from "./sign-in";
 import { validatePKCE } from "@al-ummah-now/openauth/pkce";
 import { getSession, sessionId } from "./session-store";
+import { STREET_CSS_PATH, STREET_JS_PATH, STREET_START_JS } from "../../../packages/ui/src/fanous-street/index.ts";
 
 const client = { exchange: vi.fn(), verify: vi.fn(), refresh: vi.fn() };
 vi.mock("@al-ummah-now/openauth/client", () => ({ createClient: () => client }));
@@ -59,6 +60,14 @@ describe("profile sign-in routing", () => {
     client.exchange.mockReset();
     client.verify.mockReset();
     client.refresh.mockReset();
+  });
+
+  it("serves the lantern street's files without a session (same origin as the page)", async () => {
+    const js = await get(STREET_JS_PATH);
+    expect(js.status).toBe(200);
+    expect(js.headers.get("Content-Type")).toBe("text/javascript; charset=utf-8");
+    expect(await js.text()).toBe(STREET_START_JS);
+    expect((await get(STREET_CSS_PATH)).headers.get("Content-Type")).toBe("text/css; charset=utf-8");
   });
 
   it("no session -> 302 into /login (no landing page), keeping the path", async () => {

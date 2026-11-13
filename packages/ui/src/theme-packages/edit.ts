@@ -1,12 +1,16 @@
 // Small edits a theme builder makes: duplicating a package and bumping its version.
+import { linkBrandColors } from './brand-links.ts';
 import type { Localized, ThemePackage } from './types.ts';
 
 export const ID_PATTERN = /^[a-z][a-z0-9-]{1,39}$/;
 
-/** A standalone copy under a new id and name, at 1.0.0, marked custom and based on the source. */
+/**
+ * A standalone copy under a new id and name, at 1.0.0, marked custom and based on the source. Its
+ * colours that equal a brand colour reference it, so the copy's brand swatches drive the theme.
+ */
 export function duplicatePackage(source: ThemePackage, id: string, name: Localized, author: string): ThemePackage {
   if (!ID_PATTERN.test(id)) throw new Error('id must be 2-40 lowercase letters, digits or dashes, starting with a letter');
-  const copy = structuredClone(source);
+  const copy = linkBrandColors(source);
   delete copy.$schema;
   return { ...copy, id, name, author, version: '1.0.0', kind: 'custom', basedOn: `${source.id}@${source.version}` };
 }

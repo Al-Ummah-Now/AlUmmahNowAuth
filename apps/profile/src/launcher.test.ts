@@ -3,6 +3,8 @@ import { appsForUser } from "./apps";
 import { MESSAGES } from "./i18n";
 import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
 import { renderHomePage, scriptJson } from "./page";
+import { compileBuiltin } from "../../../packages/ui/src/auth-theme/builtin.ts";
+import { STREET_CSS_PATH, STREET_JS_PATH, streetHeadTags } from "../../../packages/ui/src/fanous-street/index.ts";
 
 describe("renderAppsSection (account menu, AlUmmahNow docs/design/NAV.md)", () => {
   const admin = renderAppsSection(appsForUser(["Admin"], "qa", "en"), MESSAGES.en);
@@ -94,6 +96,19 @@ describe("renderHomePage", () => {
     expect(html).toContain('onclick="requestSignOutAll()"');
     expect(html).toContain("requestSignOutAccount(this.dataset.userId)");
     expect(html).not.toMatch(/(?<![\w$.])(?:window\.)?(?:confirm|alert|prompt)\s*\(|beforeunload/);
+  });
+
+  it("loads the lantern street (same-origin files) on the live page when the theme has one", () => {
+    const fawanees = { id: "fawanees", css: compileBuiltin("fawanees", base.authServerUrl)!.tokensCss };
+    const live = renderHomePage({ ...base, locale: "en", theme: fawanees, street: true });
+    expect(live).toContain(`${streetHeadTags()}\n</head>`);
+    expect(live.indexOf("<style>")).toBeLessThan(live.indexOf(STREET_CSS_PATH));
+    // the admin preview (no street option) and themes without a street load nothing
+    expect(renderHomePage({ ...base, locale: "en", theme: fawanees })).not.toContain(STREET_JS_PATH);
+    const lantern = { id: "lantern", css: compileBuiltin("lantern", base.authServerUrl)!.tokensCss };
+    expect(renderHomePage({ ...base, locale: "en", theme: lantern, street: true })).not.toContain(STREET_JS_PATH);
+    // tinted notices sit on a solid surface when the street shows behind the page
+    expect(live).toContain("html.fanous-street .welcome-message { background: linear-gradient(");
   });
 
   it("words the dialog in Arabic for Arabic pages", () => {

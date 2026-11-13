@@ -10,6 +10,7 @@ import {
 import { getAuthServerUrl, getOAuthClientId } from "./lib/config";
 import { fetchShellTheme } from "./lib/shell-theme";
 import { NAV_CSS } from "../../../packages/ui/src/nav/aun-nav.generated";
+import { STREET_CSS_PATH, STREET_JS_PATH, streetOn } from "../../../packages/ui/src/fanous-street/index.ts";
 import { environmentOfHost, tabIconLinks } from "../../../packages/ui/src/app-icons/serve";
 
 import "./tailwind.css";
@@ -35,7 +36,7 @@ export const links: LinksFunction = () => [
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_ID?: string } | undefined;
   return {
-    shellCss: await fetchShellTheme(getAuthServerUrl(request, env), getOAuthClientId(env)),
+    shellCss: await fetchShellTheme(getAuthServerUrl(request, env), getOAuthClientId(env), fetch, new URL(request.url).searchParams.get("theme")),
     // QA and stage tabs get a corner dot (SVG); production the ICO and exact-size PNGs. One build
     // serves stage and production, so read the host
     tabIcons: tabIconLinks(environmentOfHost(new URL(request.url).hostname)),
@@ -63,6 +64,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* The shared header account button and menus (AlUmmahNow docs/design/NAV.md) */}
         <style data-nav dangerouslySetInnerHTML={{ __html: NAV_CSS }} />
         {shellCss ? <style data-shell-theme dangerouslySetInnerHTML={{ __html: shellCss }} /> : null}
+        {/* The Fanous lantern street (shared module, served by this app's worker) when the theme switches it on */}
+        {shellCss && streetOn(shellCss) ? (
+          <>
+            <link rel="stylesheet" href={STREET_CSS_PATH} data-fanous-street="" />
+            <script type="module" src={STREET_JS_PATH} data-fanous-street="" />
+          </>
+        ) : null}
       </head>
       <body>
         {children}

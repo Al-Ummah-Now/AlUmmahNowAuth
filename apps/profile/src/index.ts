@@ -35,6 +35,7 @@ import { APP_ICONS as PROFILE_ICONS } from '../../../packages/ui/src/app-icons/p
 import { iconServer } from '../../../packages/ui/src/app-icons/serve.ts';
 import { NAV_ICONS } from '../../../packages/ui/src/nav/aun-nav-icons.generated.ts';
 import { applyLogLevel } from '../../../packages/ui/src/log-level.ts';
+import { streetResponse } from '../../../packages/ui/src/fanous-street/index.ts';
 
 /** Account's tab and app icons (the owner's account lantern, cropped and downscaled by AlUmmahNow packages/app-icons). */
 // and the account menu's app icons (every app's favicon, /aun-nav/icons/<id>.webp; never inlined in the CSS)
@@ -192,6 +193,12 @@ export default {
     // Tab and app icons: public, no session needed
     const icon = serveIcon(new URL(request.url).pathname, request.method);
     if (icon) return icon;
+
+    // The Fanous lantern street's files (shared module), served from this origin
+    if (request.method === 'GET') {
+      const street = streetResponse(new URL(request.url).pathname);
+      if (street) return street;
+    }
 
     const url = new URL(request.url);
     const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
@@ -438,6 +445,7 @@ export default {
         appUrl: getAppUrl(request, env),
         clientId: PROFILE_CLIENT_ID,
         analyticsToken: env.CF_WEB_ANALYTICS_TOKEN,
+        street: true,
       });
 
       const headers = new Headers({

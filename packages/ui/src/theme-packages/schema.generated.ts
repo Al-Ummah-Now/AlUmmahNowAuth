@@ -286,6 +286,16 @@ export const SCHEMA: Record<string, any> = {
                 "background"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -330,6 +340,19 @@ export const SCHEMA: Record<string, any> = {
                 "edge"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -429,6 +452,52 @@ export const SCHEMA: Record<string, any> = {
                 "indicatorShape"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "active": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "activeEdge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "selection": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "selectionEdge": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "selectionBar": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "selectionGlow": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicator": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicatorWidth": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicatorHeight": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicatorShadow": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "indicatorShape": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -481,6 +550,25 @@ export const SCHEMA: Record<string, any> = {
                 "edge"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "hover": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "pressed": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -661,6 +749,19 @@ export const SCHEMA: Record<string, any> = {
                 "edge"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -693,6 +794,22 @@ export const SCHEMA: Record<string, any> = {
                 "edge"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "border": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -733,6 +850,16 @@ export const SCHEMA: Record<string, any> = {
                 "thumbnailEdge"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "thumbnailEdge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -784,6 +911,16 @@ export const SCHEMA: Record<string, any> = {
                 "background"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -882,6 +1019,19 @@ export const SCHEMA: Record<string, any> = {
                 "edge"
               ],
               "description": "Material: CSS values (gradients, borders, shadows). Reference tokens with {color.*}, {brand.*}, {component.*}, {material.*}, {radius.*}; images with {asset:assets/...}."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "background": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "edge": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -910,13 +1060,39 @@ export const SCHEMA: Record<string, any> = {
                 "dark"
               ],
               "description": "Colours for `dialog.*`, per mode. A hex value or a reference such as {color.surface}."
+            },
+            "style": {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "shadow": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Optional material. `line`: the dialog's 1px edge colour (an opaque colour reads as one continuous line around the rounded corners). `shadow`: its shadow and glow, without an edge ring. Absent: dialogs use the menu's raised edge."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "shadow": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
           "required": [
             "colors"
           ],
-          "description": "Dialogs."
+          "description": "Dialogs. They share the menu's raised surface; `style` gives them their own edge line and shadow."
         },
         "toast": {
           "type": "object",
@@ -1024,6 +1200,10 @@ export const SCHEMA: Record<string, any> = {
                 },
                 "bar-pad": {
                   "$ref": "#/$defs/cssValue"
+                },
+                "bar-pad-compact": {
+                  "$ref": "#/$defs/cssValue",
+                  "description": "Control bar padding on players under 540px wide. Optional: bar-pad is used when it is absent."
                 },
                 "bar-inset": {
                   "$ref": "#/$defs/cssValue"
@@ -1169,6 +1349,22 @@ export const SCHEMA: Record<string, any> = {
                 "live-text"
               ],
               "description": "Player controls over the video. One value for both modes, because the chrome sits on video."
+            },
+            "lightStyle": {
+              "type": "object",
+              "properties": {
+                "frame": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "inner": {
+                  "$ref": "#/$defs/cssValue"
+                },
+                "ring": {
+                  "$ref": "#/$defs/cssValue"
+                }
+              },
+              "additionalProperties": false,
+              "description": "Light mode only: replaces the same fields of `style` in light mode (dark keeps `style`). Use it to keep light flat while dark keeps its glow gradients."
             }
           },
           "additionalProperties": false,
@@ -1703,6 +1899,91 @@ export const SCHEMA: Record<string, any> = {
       "additionalProperties": false,
       "required": [
         "enabled"
+      ]
+    },
+    "street": {
+      "type": "object",
+      "description": "The lantern street: whole lanterns hung on strings in the page's free gaps and soft distant lights behind the content. Drawn by the apps' shared street module (no code in the package); the package switches it on and gives its colours and art.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "lights": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/svgAsset"
+            },
+            "dark": {
+              "$ref": "#/$defs/svgAsset"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "line": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/hexColorAlpha"
+            },
+            "dark": {
+              "$ref": "#/$defs/hexColorAlpha"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "window": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/hexColorAlpha"
+            },
+            "dark": {
+              "$ref": "#/$defs/hexColorAlpha"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "glow": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "dark": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "lights",
+        "line",
+        "window",
+        "glow"
       ]
     }
   },

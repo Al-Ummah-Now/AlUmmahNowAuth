@@ -755,6 +755,16 @@ export const BASE = {
       4.5
     ],
     [
+      "drawer.activeText",
+      "drawer.bg",
+      4.5
+    ],
+    [
+      "drawer.icon",
+      "drawer.bg",
+      3
+    ],
+    [
       "form.label",
       "form.sectionBg",
       4.5
