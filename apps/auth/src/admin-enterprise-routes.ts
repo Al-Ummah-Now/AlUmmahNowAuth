@@ -245,9 +245,9 @@ export class AdminEnterpriseRoutes {
 
       if (params.search) {
         // Search in user_id, client_id, and ip_address
-        whereConditions.push('(user_id LIKE ? OR client_id LIKE ? OR ip_address LIKE ?)');
-        const searchPattern = `%${params.search}%`;
-        bindParams.push(searchPattern, searchPattern, searchPattern);
+        // instr, not LIKE: D1 refuses LIKE patterns over 50 bytes (a long id or client id was a 500)
+        whereConditions.push('(instr(user_id, ?) > 0 OR instr(client_id, ?) > 0 OR instr(ip_address, ?) > 0)');
+        bindParams.push(params.search, params.search, params.search);
       }
 
       const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';

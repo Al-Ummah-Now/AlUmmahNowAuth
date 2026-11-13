@@ -461,8 +461,9 @@ export class InviteService {
 		if (params.userId) where.push(`user_id = ${bind(params.userId)}`);
 		const q = params.q?.trim().toLowerCase();
 		if (q) {
-			const like = bind(`%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
-			where.push(`(email LIKE ${like} ESCAPE '\\' OR lower(COALESCE(name, '')) LIKE ${like} ESCAPE '\\' OR id = ${bind(q)} OR user_id = ${bind(params.q!.trim())})`);
+			// instr, not LIKE: D1 refuses LIKE patterns over 50 bytes, and an invited address can be longer
+			const text = bind(q);
+			where.push(`(instr(lower(email), ${text}) > 0 OR instr(lower(COALESCE(name, '')), ${text}) > 0 OR id = ${text} OR user_id = ${bind(params.q!.trim())})`);
 		}
 		if (params.cursor) {
 			const [at, id] = params.cursor.split('|');
