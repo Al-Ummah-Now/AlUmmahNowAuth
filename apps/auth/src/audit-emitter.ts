@@ -625,6 +625,47 @@ export class QueueSink implements AuditEventSink {
 }
 
 /**
+ * Durable-sink sampling for non-production (AUDIT_SAMPLE), e.g.
+ * "auth.login.success=0.1,admin.item.*=0.1": a matching event reaches the durable
+ * sinks (queue / D1 / webhook) with that probability and always reaches stdout.
+ * Warning-or-worse and failed events are never sampled out. QA and stage E2E sign in
+ * and tear down thousands of run accounts an hour, and every audit row costs ~7 D1
+ * row writes (the table has five indexes). Production sets no AUDIT_SAMPLE.
+ */
+export interface AuditSampleRule {
+  /** Exact event type, or a prefix ending in `*` */
+  pattern: string;
+  rate: number;
+}
+
+export function parseAuditSample(spec: string | undefined): AuditSampleRule[] {
+  if (!spec) return [];
+  const rules: AuditSampleRule[] = [];
+  for (const part of spec.split(',')) {
+    const [pattern, rateText] = part.split('=').map((x) => x.trim());
+    const rate = Number(rateText);
+    if (!pattern || !Number.isFinite(rate) || rate < 0 || rate > 1) {
+      console.warn('[AuditEmitter] ignoring invalid AUDIT_SAMPLE rule', { rule: part });
+      continue;
+    }
+    rules.push({ pattern, rate });
+  }
+  return rules;
+}
+
+const NEVER_SAMPLED = new Set<string>([AuditEventSeverity.WARNING, AuditEventSeverity.ERROR, AuditEventSeverity.CRITICAL]);
+
+/** The sample rate for an event, or 1 when no rule matches (first matching rule wins). */
+export function auditSampleRate(event: AuditEvent, rules: AuditSampleRule[]): number {
+  if (rules.length === 0 || event.success === false || NEVER_SAMPLED.has(event.severity)) return 1;
+  for (const { pattern, rate } of rules) {
+    const hit = pattern.endsWith('*') ? event.eventType.startsWith(pattern.slice(0, -1)) : event.eventType === pattern;
+    if (hit) return rate;
+  }
+  return 1;
+}
+
+/**
  * Audit Event Emitter
  *
  * Manages multiple sinks and emits events to all of them
@@ -632,6 +673,14 @@ export class QueueSink implements AuditEventSink {
 export class AuditEmitter {
   private sinks: AuditEventSink[] = [];
   private ctx: ExecutionContext | null = null;
+  private sampleRules: AuditSampleRule[] = [];
+  private random: () => number = Math.random;
+
+  /** Durable-sink sampling rules (see parseAuditSample); `random` is for tests. */
+  setSampling(rules: AuditSampleRule[], random: () => number = Math.random): void {
+    this.sampleRules = rules;
+    this.random = random;
+  }
 
   /**
    * Add a sink to the emitter
@@ -657,8 +706,11 @@ export class AuditEmitter {
    * Emit an audit event to all sinks
    */
   async emit(event: AuditEvent): Promise<void> {
-    // Emit to all sinks in parallel
-    const promises = this.sinks.map(sink =>
+    const rate = auditSampleRate(event, this.sampleRules);
+    const durable = rate >= 1 || this.random() < rate;
+    const sinks = durable ? this.sinks : this.sinks.filter(sink => sink.name === 'stdout');
+    // Emit to the sinks in parallel
+    const promises = sinks.map(sink =>
       sink.emit(event).catch(error => {
         console.error(`Sink ${sink.name} failed to emit event:`, error);
       })
@@ -720,6 +772,8 @@ export interface AuditEmitterOptions {
     batchSize?: number;
     maxQueueSize?: number;
   };
+  /** AUDIT_SAMPLE (non-production only): see parseAuditSample */
+  sample?: string;
 }
 
 /**
@@ -756,6 +810,8 @@ function buildEmitter(options: AuditEmitterOptions): AuditEmitter {
     emitter.addSink(new D1Sink(options.db, options.d1Config));
   }
 
+  emitter.setSampling(parseAuditSample(options.sample));
+
   if (options.ctx) {
     emitter.setContext(options.ctx);
   }
@@ -783,6 +839,7 @@ export function ensureAuditEmitter(options: AuditEmitterOptions): AuditEmitter {
     webhook: options.webhookUrl || null,
     queue: !!options.queue,
     db: !!options.db,
+    sample: options.sample || null,
   });
   if (!globalAuditEmitter || globalEmitterKey !== key) {
     const previous = globalAuditEmitter;

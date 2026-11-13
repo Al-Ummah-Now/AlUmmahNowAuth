@@ -82,6 +82,8 @@ function setupAuditEmitter(env: Env, ctx: ExecutionContext) {
     webhookSecret: env.AUDIT_WEBHOOK_SECRET,
     db: env.AUTH_DB,
     queue: env.AUDIT_QUEUE,
+    // Never sampled in production, whatever the config says.
+    sample: env.ENVIRONMENT === 'production' ? undefined : env.AUDIT_SAMPLE,
     ctx,
     d1Config: {
       batchSize: 1,  // Write events immediately when falling back to direct D1
