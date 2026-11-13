@@ -58,6 +58,11 @@ declare global {
     REFRESH_TOKEN_EXPIRY?: number;
     // Environment identifier: "production", "qa", or "development"
     ENVIRONMENT?: string;
+    /** admin-api's error ingest (videos admin Errors page), e.g. https://admin.api.alummahnow.net/internal/errors */
+    ERRORS_INGEST_URL?: string;
+    /** Key for the error ingest: Secrets Store internal-api-key[-stage|-qa], shared with the videos Workers */
+    INTERNAL_API_KEY?: SecretBinding;
+    CF_VERSION_METADATA?: { id?: string; tag?: string };
     // 64-character hex string (32 bytes) for encrypting browser session cookies
     SESSION_SECRET?: string;
     /** Workers Rate Limiting: POST /password/* per client IP (AU-2) */

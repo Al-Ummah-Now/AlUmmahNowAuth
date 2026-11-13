@@ -11,6 +11,7 @@ import { hexToSecret } from "./utils/crypto";
 import { isAllowedOrigin } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
+import { reportAuthError } from "./errors/report";
 import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
 import { withPreviewRedirects } from "./utils/preview-redirects";
 import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-handlers";
@@ -139,7 +140,7 @@ const worker = {
             handleFetch(request.method === 'HEAD' ? new Request(request, { method: 'GET' }) : request, timedEnv, timedCtx, requestId, timer)
           )
         : await handleFetch(request, timedEnv, timedCtx, requestId, timer);
-      response = withRequestId(handled, requestId);
+      response = withRequestId(reportUnreported5xx(handled, request, env, ctx, requestId), requestId);
       return withServerTiming(response, timer);
     } finally {
       // Deliver any audit events buffered during this request
@@ -193,6 +194,23 @@ const worker = {
 
 /** Nothing on this host is for search engines: robots.txt Disallow: / and X-Robots-Tag: noindex (packages/ui/src/crawlers.ts) */
 export default noIndexWorker(worker);
+
+/**
+ * A 5xx answered without a report (a route that returned 500/503 itself, not by throwing):
+ * reported as an http error so it shows on the Errors page too (AlUmmahNowAuth#341).
+ */
+function reportUnreported5xx(res: Response, request: Request, env: Env, ctx: ExecutionContext, requestId: string): Response {
+  if (res.status < 500 || res.headers.has('X-Error-Ref')) return res;
+  const ref = reportAuthError(env, ctx, null, { kind: 'http', status: res.status, route: new URL(request.url).pathname, method: request.method, requestId });
+  try {
+    res.headers.set('X-Error-Ref', ref);
+    return res;
+  } catch {
+    const copy = new Response(res.body, res);
+    copy.headers.set('X-Error-Ref', ref);
+    return copy;
+  }
+}
 
 function withServerTiming(response: Response, timer: RequestTimer): Response {
   if (response.status === 101) return response;
@@ -409,6 +427,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // friendly en/ar "Start sign-in again" page; this is where it links when the
       // sign-in's app is unknown.
       restart: { fallbackUrl: signInFallbackUrl(env) },
+      // Unexpected issuer errors (storage, a dependency, a bug) go to the videos admin Errors page
+      // with their stack; the browser gets the en/ar "Something went wrong / Try again" page with the
+      // reference (AlUmmahNowAuth#341), never raw JSON
+      onServerError: (error, req) =>
+        reportAuthError(env, ctx, error, { route: new URL(req.url).pathname, method: req.method, requestId }),
       // Unknown/disabled clients and unregistered redirect_uris (exact match)
       // get a clear error page (enforce) or are only logged (report)
       clientRegistry: clientRegistryMode(env),
@@ -599,7 +622,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // Finalize logging
       ctx.waitUntil(logger.finalizeRequest());
 
-      // Return user-friendly error page with original URL preserved
-      return addSecurityHeaders(renderErrorPage(error, requestId, request.url, request), isProduction);
+      // To the admin Errors page; the page shows the reference to quote (AlUmmahNowAuth#341)
+      const ref = reportAuthError(env, ctx, error, { route: url.pathname, method: request.method, requestId });
+      const page = addSecurityHeaders(renderErrorPage(error, ref, request.url, request), isProduction);
+      page.headers.set('X-Error-Ref', ref);
+      return page;
     }
 }

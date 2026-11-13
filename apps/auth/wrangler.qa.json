@@ -56,6 +56,7 @@
     ]
   },
   "vars": {
+    "ERRORS_INGEST_URL": "https://admin.api.qa.alummahnow.net/internal/errors",
     "ENVIRONMENT": "qa",
     "LOG_LEVEL": "warn",
     "E2E_RUN_USERS": "enabled",
@@ -90,6 +91,11 @@
     }
   ],
   "secrets_store_secrets": [
+    {
+      "binding": "INTERNAL_API_KEY",
+      "store_id": "f8eddc9944d041919ed8dc7d08d32308",
+      "secret_name": "internal-api-key-qa"
+    },
     {
       "binding": "CLIENT_SECRET_SALT",
       "store_id": "f8eddc9944d041919ed8dc7d08d32308",
