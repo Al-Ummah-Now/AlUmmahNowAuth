@@ -24,7 +24,7 @@ import { getAuditEmitter } from './audit-emitter';
 import { createRateLimitExceededEvent } from './audit-events';
 import { trackEvent } from './utils/analytics';
 import { readTokenRequestFields, tokenRateLimitBuckets } from './utils/token-rate-limit-subject';
-import { handleAccountExport, handleDeleteAccount, handleSignOutAll } from './routes/account-routes';
+import { handleAccountExport, handleDeleteAccount, handleSetAccountName, handleSignOutAll } from './routes/account-routes';
 import { AdminEnterpriseRoutes } from './admin-enterprise-routes';
 import { AdminTenantRoutes } from './admin-tenant-routes';
 import { routeAdminDLQ } from './admin-dlq-routes';
@@ -630,6 +630,11 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 		case '/account/export':
 			if (request.method !== 'GET') return methodNotAllowed('GET');
 			return handleAccountExport(request, rctx.env);
+
+		// The caller's own names (display, first, last): the videos profile sends them here
+		case '/account/name':
+			if (request.method !== 'PUT') return methodNotAllowed('PUT');
+			return handleSetAccountName(request, rctx.env);
 
 		// Sign out of all devices (#437): revokes every sign-in of the caller
 		case '/account/sign-out-all':

@@ -212,6 +212,44 @@ describe('self-service account endpoints (worker)', () => {
 		const res = await call('/account/export', { headers: { Authorization: `Bearer ${await userToken('usr_alice')}` } });
 		expect(res.status).toBe(404);
 	});
+
+	describe('PUT /account/name (names saved in videos reach every Auth-backed menu)', () => {
+		const put = (t: string, body: unknown) =>
+			call('/account/name', { method: 'PUT', headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		const nameRow = (id: string) => E.AUTH_DB.prepare('SELECT name, metadata FROM users WHERE id = ?').bind(id).first<{ name: string | null; metadata: string | null }>();
+
+		it('stores first + last for the caller only, and the account switcher then names them', async () => {
+			await E.AUTH_DB.prepare('UPDATE users SET name = NULL, metadata = NULL WHERE id IN (?, ?)').bind('usr_alice', 'usr_bob').run();
+			const res = await put(await userToken('usr_alice'), { displayName: '', firstName: ' Mahmoud ', lastName: 'Darwish', firstNameLocalized: { ar: 'محمود' } });
+			expect(res.status).toBe(200);
+			const row = (await nameRow('usr_alice'))!;
+			expect(row.name).toBeNull();
+			expect(JSON.parse(row.metadata!)).toMatchObject({ firstName: 'Mahmoud', lastName: 'Darwish', firstNameLocalized: { ar: 'محمود' } });
+			const { resolveUserDisplayName } = await import('../../../../packages/ui/src/display-name.ts');
+			expect(resolveUserDisplayName(row)).toBe('Mahmoud Darwish');
+			expect((await nameRow('usr_bob'))!.metadata).toBeNull();
+		});
+
+		it('a display name wins, null clears a field, other metadata stays', async () => {
+			await E.AUTH_DB.prepare('UPDATE users SET name = NULL, metadata = ? WHERE id = ?').bind(JSON.stringify({ theme: 'x', firstName: 'A' }), 'usr_alice').run();
+			expect((await put(await userToken('usr_alice'), { displayName: 'Abu Ahmad', firstName: null })).status).toBe(200);
+			const row = (await nameRow('usr_alice'))!;
+			expect(row.name).toBe('Abu Ahmad');
+			expect(JSON.parse(row.metadata!)).toEqual({ theme: 'x' });
+		});
+
+		it('rejects no token, a non-user token, an empty body and bad values', async () => {
+			expect((await call('/account/name', { method: 'PUT', body: '{}' })).status).toBe(401);
+			const m2m = await token({ type: 'user', client_id: 'svc', properties: { id: 'usr_alice' } });
+			expect((await put(m2m, { firstName: 'X' })).status).toBe(401);
+			const t = await userToken('usr_alice');
+			expect((await put(t, {})).status).toBe(400);
+			expect((await put(t, { firstName: 5 })).status).toBe(400);
+			expect((await put(t, { firstName: 'x'.repeat(101) })).status).toBe(400);
+			expect((await put(t, { firstNameLocalized: { 'not a lang': 'x' } })).status).toBe(400);
+			expect((await call('/account/name', { method: 'GET', headers: { Authorization: `Bearer ${t}` } })).status).toBe(405);
+		});
+	});
 });
 
 describe('requireRecentSignIn', () => {
