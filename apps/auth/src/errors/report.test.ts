@@ -1,6 +1,7 @@
 /** Auth errors reach the videos admin Errors page (AlUmmahNowAuth#341). */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildErrorEvent, newErrorRef, reportAuthError, resetErrorReporter } from './report';
+import { buildErrorEvent, newErrorRef, reportAuthError, resetErrorReporter, sendEvents } from './report';
+import { logger } from '../logger';
 
 const env = { ERRORS_INGEST_URL: 'https://admin.api.qa.alummahnow.net/internal/errors', INTERNAL_API_KEY: 'k', ENVIRONMENT: 'qa' };
 
@@ -39,5 +40,22 @@ describe('auth error reporter', () => {
 		expect(fetchImpl).not.toHaveBeenCalled();
 		expect(() => reportAuthError(env, { waitUntil: () => { throw new Error('no ctx'); } }, new Error('y'), {}, (() => { throw new Error('net'); }) as unknown as typeof fetch)).not.toThrow();
 		expect(newErrorRef()).not.toBe(newErrorRef());
+	});
+
+	it('without the key or URL it says so loudly, once per isolate, instead of dropping silently', async () => {
+		const spy = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+		const fetchImpl = vi.fn();
+		expect(await sendEvents({ ...env, INTERNAL_API_KEY: undefined }, [buildErrorEvent(new Error('a'), {}, env)], fetchImpl as unknown as typeof fetch)).toBe('no-key');
+		expect(await sendEvents({ ...env, INTERNAL_API_KEY: undefined }, [buildErrorEvent(new Error('b'), {}, env)], fetchImpl as unknown as typeof fetch)).toBe('no-key');
+		reportAuthError({ ENVIRONMENT: 'qa' }, undefined, new Error('c'));
+		expect(fetchImpl).not.toHaveBeenCalled();
+		const warnings = spy.mock.calls.filter(([m]) => String(m).startsWith('ERROR REPORTING DISABLED'));
+		expect(warnings).toHaveLength(1);
+		spy.mockRestore();
+	});
+
+	it('a probe event is marked test (never alerts)', () => {
+		expect(buildErrorEvent(new Error('probe'), { test: true }, env).test).toBe(true);
+		expect(buildErrorEvent(new Error('real'), {}, env).test).toBeUndefined();
 	});
 });

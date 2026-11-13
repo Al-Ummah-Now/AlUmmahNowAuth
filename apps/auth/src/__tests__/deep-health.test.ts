@@ -16,6 +16,8 @@ function deployedEnv(overrides: Record<string, unknown> = {}): Env {
     KEY_ENCRYPTION_MASTER_KEY: secret('key'),
     RESEND_API_KEY: secret('re_test'),
     SESSION_SECRET: 'ab'.repeat(32),
+    ERRORS_INGEST_URL: 'https://admin.api.alummahnow.net/internal/errors',
+    INTERNAL_API_KEY: secret('internal'),
     CF_VERSION_METADATA: { id: 'version-under-test', tag: '', timestamp: '' },
     ...overrides,
   } as unknown as Env;
@@ -35,12 +37,21 @@ describe('deepHealth', () => {
         kv: true,
         queue: true,
         ratelimit: true,
+        errorReporting: true,
         'secret:CLIENT_SECRET_SALT': true,
         'secret:KEY_ENCRYPTION_MASTER_KEY': true,
         'secret:RESEND_API_KEY': true,
         'secret:SESSION_SECRET': true,
       },
     });
+  });
+
+  it('is degraded when errors cannot reach the admin Errors page (#341)', async () => {
+    for (const overrides of [{ INTERNAL_API_KEY: undefined }, { INTERNAL_API_KEY: { get: async () => '' } }, { ERRORS_INGEST_URL: undefined }]) {
+      const report = await deepHealth(deployedEnv(overrides));
+      expect(report.status).toBe('degraded');
+      expect(report.checks.errorReporting).toBe(false);
+    }
   });
 
   it('is degraded when a password rate-limit binding is missing (AU-2)', async () => {

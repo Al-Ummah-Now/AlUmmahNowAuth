@@ -12,10 +12,19 @@
  * failing dependency cannot flood the ingest.
  */
 import { getSecret } from '../utils/secrets';
+import { logger } from '../logger';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const DEDUPE_MS = 10_000;
 const recent = new Map<string, { at: number; suppressed: number }>();
+/** Warned once per isolate that reporting is off (never silent: an unreported 500 is invisible). */
+let warnedDisabled = false;
+
+function warnDisabled(reason: string, env: ErrorReportEnv): void {
+	if (warnedDisabled) return;
+	warnedDisabled = true;
+	logger.error('ERROR REPORTING DISABLED: Auth errors are not reaching the admin Errors page', { reason, environment: env.ENVIRONMENT });
+}
 
 export interface ErrorReportEnv {
 	ERRORS_INGEST_URL?: string;
@@ -30,6 +39,8 @@ export interface ErrorDetails {
 	status?: number;
 	requestId?: string;
 	kind?: 'unhandled' | 'http';
+	/** E2E / probe errors: grouped as test, never alert, deleted after a day */
+	test?: boolean;
 	extra?: Record<string, string | number | boolean | null>;
 }
 
@@ -43,6 +54,7 @@ export function newErrorRef(): string {
 /** Exposed for tests. */
 export function resetErrorReporter(): void {
 	recent.clear();
+	warnedDisabled = false;
 }
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
@@ -68,6 +80,7 @@ export function buildErrorEvent(error: unknown, d: ErrorDetails, env: ErrorRepor
 		workerVersion: env.CF_VERSION_METADATA?.id,
 		occurredAt: new Date().toISOString(),
 		extra: d.extra,
+		test: d.test || undefined,
 		count: 1,
 	};
 }
@@ -86,7 +99,10 @@ export function reportAuthError(
 	try {
 		const event = buildErrorEvent(error, details, env);
 		const url = env?.ERRORS_INGEST_URL;
-		if (!url) return event.ref;
+		if (!url) {
+			if (env?.ENVIRONMENT && env.ENVIRONMENT !== 'development') warnDisabled('ERRORS_INGEST_URL is not set', env);
+			return event.ref;
+		}
 		const fp = `${event.kind}|${event.name}|${event.message.replace(/\d+/g, '#').slice(0, 200)}|${event.route}`;
 		const now = Date.now();
 		const seen = recent.get(fp);
@@ -97,15 +113,7 @@ export function reportAuthError(
 		event.count = 1 + (seen?.suppressed ?? 0);
 		recent.set(fp, { at: now, suppressed: 0 });
 		if (recent.size > 500) recent.delete(recent.keys().next().value as string);
-		const work = (async () => {
-			const key = await getSecret(env.INTERNAL_API_KEY, 'INTERNAL_API_KEY');
-			if (!key) return;
-			await fetchImpl(url, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
-				body: JSON.stringify({ events: [event] }),
-			});
-		})().catch(() => undefined);
+		const work = sendEvents(env, [event], fetchImpl).catch(() => undefined);
 		try {
 			ctx?.waitUntil(work);
 		} catch {
@@ -115,4 +123,28 @@ export function reportAuthError(
 	} catch {
 		return newErrorRef();
 	}
+}
+
+/**
+ * Posts events to the ingest now; returns its HTTP status, or a reason it could not
+ * (used by the QA/stage probe route to prove reports arrive). Warns once when off.
+ */
+export async function sendEvents(env: ErrorReportEnv, events: ReturnType<typeof buildErrorEvent>[], fetchImpl: typeof fetch = fetch): Promise<number | 'no-url' | 'no-key'> {
+	const url = env?.ERRORS_INGEST_URL;
+	if (!url) {
+		warnDisabled('ERRORS_INGEST_URL is not set', env ?? {});
+		return 'no-url';
+	}
+	const key = await getSecret(env.INTERNAL_API_KEY, 'INTERNAL_API_KEY');
+	if (!key) {
+		warnDisabled('INTERNAL_API_KEY is not bound or empty', env);
+		return 'no-key';
+	}
+	const res = await fetchImpl(url, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+		body: JSON.stringify({ events }),
+	});
+	if (res.status >= 400) logger.error('Error report refused by the ingest', { status: res.status });
+	return res.status;
 }
