@@ -84,16 +84,6 @@ const STYLES = `
         .app-card-name { font-weight: 600; font-size: 15px; }
         .app-card-desc { font-size: 13px; color: var(--fanous-color-text-secondary); margin-top: 2px; }
 
-        .app-tile {
-            width: 40px; height: 40px; border-radius: 10px;
-            display: inline-flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;
-        }
-        .app-tile-www { background: linear-gradient(135deg, #14b8a6, #0f766e); }
-        .app-tile-cms { background: linear-gradient(135deg, #ef4444, #b91c1c); }
-        .app-tile-videos { background: linear-gradient(135deg, var(--fanous-color-primary), var(--fanous-color-primary-pressed)); }
-        .app-tile-profile { background: linear-gradient(135deg, #10b981, #047857); }
-        .app-tile-content-admin { background: linear-gradient(135deg, #f59e0b, #b45309); }
-        .app-tile-auth-admin { background: linear-gradient(135deg, #8b5cf6, #5b21b6); }
 
         /* Your apps */
         .apps-section { max-width: 600px; margin: 0 auto 2rem; }

@@ -35,6 +35,15 @@ describe("renderAppsSection (account menu, AlUmmahNow docs/design/NAV.md)", () =
 });
 
 describe("renderAppCards", () => {
+  it("shows each app's own favicon, the same image as the account menu (no drawn icon or colour tile)", () => {
+    const cards = renderAppCards(appsForUser(["Admin"], "qa", "en"), MESSAGES.en);
+    for (const id of ["www", "videos", "cms", "admin", "auth-admin"]) {
+      expect(cards).toContain(`<span class="aun-app-icon aun-app-icon--card" data-app="${id}" aria-hidden="true"></span>`);
+    }
+    expect(cards).not.toContain("<svg class=\"app-icon-svg\"");
+    expect(cards).not.toContain("app-tile");
+  });
+
   it("omits the current app and returns nothing when there is nothing else", () => {
     const cards = renderAppCards(appsForUser(["Member"], "qa", "en"), MESSAGES.en);
     expect(cards).toContain("https://videos.qa.alummahnow.net");
