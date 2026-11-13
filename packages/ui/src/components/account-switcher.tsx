@@ -210,7 +210,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
               <span className="aun-avatar aun-avatar--lg" aria-hidden="true">{getInitial(name)}</span>
               <span className="aun-menu-who-text">
                 <span className="aun-menu-who-name" dir="auto">{name}</span>
-                {activeAccount && activeAccount.email !== name && <span className="aun-menu-who-sub" dir="ltr">{activeAccount.email}</span>}
+                {activeAccount && activeAccount.email !== name && <EmailText email={activeAccount.email} className="aun-menu-who-sub" />}
               </span>
             </div>
             <div className="aun-menu-sep" role="separator" />
@@ -231,7 +231,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
                         <span className="aun-avatar" aria-hidden="true">{getInitial(label)}</span>
                         <span className="aun-acct-text">
                           <span className="aun-acct-label" dir="auto">{label}</span>
-                          {account.email !== label && <span className="aun-acct-email" dir="ltr">{account.email}</span>}
+                          {account.email !== label && <EmailText email={account.email} className="aun-acct-email" />}
                         </span>
                       </button>
                       <button
@@ -255,7 +255,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
             {accounts.length < 5 && (
               <button type="button" role="menuitem" data-testid="account-add" className="aun-menu-item" onClick={handleAddAccount}>
                 <LogIn className="aun-menu-icon aun-flip" aria-hidden="true" />
-                <span className="aun-menu-text">Add another account</span>
+                <span className="aun-menu-text">Sign in to another account</span>
               </button>
             )}
             {apps.length > 0 && (
@@ -287,5 +287,20 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * An email that keeps its domain when it does not fit (AlUmmahNow docs/design/NAV.md): the local
+ * part shrinks with an ellipsis, "@domain" stays whole, and the full address is the tooltip.
+ */
+function EmailText({ email, className }: { email: string; className: string }) {
+  const at = email.lastIndexOf('@');
+  if (at <= 0) return <span className={className} dir="ltr" title={email}>{email}</span>;
+  return (
+    <span className={`${className} aun-email`} dir="ltr" title={email}>
+      <span className="aun-email-local">{email.slice(0, at)}</span>
+      <span className="aun-email-domain">{email.slice(at)}</span>
+    </span>
   );
 }

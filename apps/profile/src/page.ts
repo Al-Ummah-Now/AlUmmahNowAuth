@@ -387,6 +387,13 @@ export function renderHomePage(o: HomePageOptions): string {
         }
 
         function initialOf(text) { return (Array.from(String(text || '?').trim())[0] || '?').toUpperCase(); }
+        // An email that keeps its domain when it does not fit (AlUmmahNow docs/design/NAV.md): the
+        // local part shrinks with an ellipsis, "@domain" stays whole, the full address is the tooltip
+        function emailHtml(email, cls) {
+            var at = email.lastIndexOf('@');
+            if (at <= 0) return '<span class="' + cls + '" dir="ltr" title="' + esc(email) + '">' + esc(email) + '</span>';
+            return '<span class="' + cls + ' aun-email" dir="ltr" title="' + esc(email) + '"><span class="aun-email-local">' + esc(email.slice(0, at)) + '</span><span class="aun-email-domain">' + esc(email.slice(at)) + '</span></span>';
+        }
         // The account's name (auth's /session list carries it), else the email
         function nameOf(account) { return (account && account.name && String(account.name).trim()) || (account && account.email) || ''; }
 
@@ -402,7 +409,7 @@ export function renderHomePage(o: HomePageOptions): string {
             document.getElementById('accountWho').innerHTML =
                 '<span class="aun-avatar aun-avatar--lg" aria-hidden="true">' + esc(initialOf(name)) + '</span>' +
                 '<span class="aun-menu-who-text"><span class="aun-menu-who-name" dir="auto">' + esc(name) + '</span>' +
-                (displayAccount.email && displayAccount.email !== name ? '<span class="aun-menu-who-sub" dir="ltr">' + esc(displayAccount.email) + '</span>' : '') + '</span>';
+                (displayAccount.email && displayAccount.email !== name ? emailHtml(displayAccount.email, 'aun-menu-who-sub') : '') + '</span>';
 
             // More accounts (the Google pattern): the current account is the top of the menu; the
             // other accounts are listed here, each with a sign-out icon button
@@ -412,14 +419,14 @@ export function renderHomePage(o: HomePageOptions): string {
             document.getElementById('accountsList').innerHTML = others.map(function (account) {
                 var id = esc(account.userId);
                 var label = nameOf(account);
-                var lines = (account.email && account.email !== label ? '<span class="aun-acct-email" dir="ltr">' + esc(account.email) + '</span>' : '') +
+                var lines = (account.email && account.email !== label ? emailHtml(account.email, 'aun-acct-email') : '') +
                     (account.isActive ? '<span class="aun-acct-current status">' + esc(T.active) + '</span>' : '');
                 return '<div class="account-item aun-acct-row' + (account.isActive ? ' active' : '') + '" data-user-id="' + id + '" data-testid="account-item">' +
                     '<button type="button" class="aun-menu-item" role="menuitem" aria-label="' + esc(T.switchTo.replace('{name}', label)) + '" onclick="handleSwitchAccount(this.parentNode.dataset.userId)">' +
                     '<span class="aun-avatar" aria-hidden="true">' + esc(initialOf(label)) + '</span>' +
                     '<span class="aun-acct-text account-details"><span class="aun-acct-label email" dir="auto">' + esc(label) + '</span>' + lines + '</span>' +
                     '</button>' +
-                    '<button type="button" class="sign-out-btn aun-acct-signout" data-user-id="' + id + '" onclick="event.stopPropagation(); requestSignOutAccount(this.dataset.userId)" aria-label="' + esc(T.signOutAccount + ' ' + label) + '" title="' + esc(T.signOutAccount + ' ' + label) + '">' + SIGNOUT_ICON + '</button>' +
+                    '<button type="button" class="sign-out-btn aun-acct-signout" data-user-id="' + id + '" onclick="event.stopPropagation(); requestSignOutAccount(this.dataset.userId)" aria-label="' + esc(T.signOutOf.replace('{name}', label)) + '" title="' + esc(T.signOutOf.replace('{name}', label)) + '">' + SIGNOUT_ICON + '</button>' +
                     '</div>';
             }).join('');
             document.getElementById('addAccountBtn').style.display = accounts.length < MAX_ACCOUNTS ? 'flex' : 'none';
