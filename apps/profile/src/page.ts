@@ -90,6 +90,18 @@ const STYLES = `
 
 
         /* Your apps */
+        .passkey-list { list-style: none; padding: 0; margin: 1rem 0 0; display: flex; flex-direction: column; gap: .75rem; }
+        .passkey-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: .75rem 1rem; border: 1px solid var(--fanous-color-border, rgba(127,127,127,.35)); border-radius: 10px; }
+        .passkey-item .passkey-name { font-weight: 600; overflow-wrap: anywhere; }
+        .passkey-item .passkey-meta { color: var(--fanous-color-text-secondary); font-size: .875rem; }
+        .passkey-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+        .passkey-actions .btn, .passkey-toast .btn { padding: .4rem .8rem; font-size: .875rem; }
+        .passkey-rename { display: flex; gap: .5rem; flex-wrap: wrap; width: 100%; }
+        .passkey-rename input { flex: 1; min-width: 10rem; padding: .4rem .6rem; border-radius: 8px; border: 1px solid var(--fanous-color-border, rgba(127,127,127,.5)); background: transparent; color: inherit; }
+        .passkey-status { min-height: 1.25rem; font-size: .9rem; color: var(--fanous-color-text-secondary); }
+        .passkey-status[data-tone="error"] { color: var(--fanous-color-danger, #c0392b); }
+        .passkey-toast { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: .5rem; }
+        .passkey-toast[hidden] { display: none; }
         .apps-section { max-width: 600px; margin: 0 auto 2rem; }
         .apps-section h2 { font-size: 1.25rem; color: var(--auth-profile-heading-text, var(--fanous-color-text-primary)); }
         .apps-section-sub { color: var(--fanous-color-text-secondary); font-size: 0.95rem; margin: 0.25rem 0 1rem; }
@@ -277,6 +289,22 @@ export function renderHomePage(o: HomePageOptions): string {
                     <button type="button" onclick="handleLogout()" class="btn btn-secondary">🚪 ${e(t.signOut)}</button>
                 </div>
             </div>
+
+            <section class="profile-card passkeys-card" id="passkeys" aria-labelledby="passkeysHeading">
+                <h2 id="passkeysHeading">🔑 ${e(t.passkeysHeading)}</h2>
+                <p class="apps-section-sub">${e(t.passkeysIntro)}</p>
+                <p class="apps-section-sub" id="passkeysStaffNote" hidden>${e(t.passkeysStaffNote)}</p>
+                <ul class="passkey-list" id="passkeyList" aria-live="polite"></ul>
+                <p class="apps-section-sub" id="passkeysEmpty" hidden>${e(t.passkeysEmpty)}</p>
+                <p class="passkey-status" id="passkeyStatus" role="status"></p>
+                <div class="passkey-toast" id="passkeyToast" role="status" hidden>
+                    <span id="passkeyToastText">${e(t.passkeyRemoved)}</span>
+                    <button type="button" class="btn btn-secondary" id="passkeyUndo">${e(t.passkeyUndo)}</button>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <a class="btn btn-primary" id="passkeyAdd" href="/passkeys/add${o.locale === "ar" ? "?lang=ar" : ""}">${e(t.passkeyAdd)}</a>
+                </div>
+            </section>
         </div>
     </main>
 
@@ -303,6 +331,8 @@ export function renderHomePage(o: HomePageOptions): string {
         var clientId = ${scriptJson(o.clientId)};
         var T = ${scriptJson(t)};
         var SIGNOUT_ICON = ${scriptJson(ICON_SIGNOUT)};
+        var PAGE_LANG = ${scriptJson(o.locale)};
+
 
         var accounts = [];
         var dropdownOpen = false;
@@ -477,6 +507,84 @@ export function renderHomePage(o: HomePageOptions): string {
                 else document.getElementById('accountTrigger').focus();
             });
         })();
+        // ---------- Passkeys (AUTH-PASSKEYS) ----------
+        var passkeyUndoTimer = null;
+        var passkeyUndoId = null;
+        function pkApi(path, method, body) {
+            var q = PAGE_LANG === 'ar' ? '?lang=ar' : '';
+            return fetch('/api/passkeys' + path + q, { method: method || 'GET', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+                .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j.__status = r.status; return j; }); });
+        }
+        function pkDate(ms) { return new Intl.DateTimeFormat(PAGE_LANG === 'ar' ? 'ar' : 'en-GB', { dateStyle: 'medium' }).format(new Date(ms)); }
+        function pkSay(msg, tone) { var el = document.getElementById('passkeyStatus'); el.textContent = msg || ''; if (tone) el.setAttribute('data-tone', tone); else el.removeAttribute('data-tone'); }
+        function renderPasskeys(data) {
+            var list = document.getElementById('passkeyList');
+            var items = (data && data.passkeys) || [];
+            document.getElementById('passkeysEmpty').hidden = items.length > 0;
+            document.getElementById('passkeysStaffNote').hidden = !(data && data.staff);
+            document.getElementById('passkeyAdd').hidden = data && items.length >= (data.max || 10);
+            list.innerHTML = '';
+            items.forEach(function (p) {
+                var li = document.createElement('li');
+                li.className = 'passkey-item';
+                li.setAttribute('data-passkey-id', p.id);
+                var info = document.createElement('div');
+                var name = document.createElement('div'); name.className = 'passkey-name'; name.setAttribute('dir', 'auto'); name.textContent = p.name;
+                var meta = document.createElement('div'); meta.className = 'passkey-meta';
+                meta.textContent = [p.synced ? T.passkeySynced : T.passkeyDevice, T.passkeyCreated.replace('{date}', pkDate(p.createdAt)), p.lastUsedAt ? T.passkeyLastUsed.replace('{date}', pkDate(p.lastUsedAt)) : T.passkeyNeverUsed].join(' · ');
+                info.appendChild(name); info.appendChild(meta);
+                var actions = document.createElement('div'); actions.className = 'passkey-actions';
+                var rename = document.createElement('button'); rename.type = 'button'; rename.className = 'btn btn-secondary'; rename.textContent = T.passkeyRename;
+                rename.setAttribute('aria-label', T.passkeyRename + ': ' + p.name);
+                rename.addEventListener('click', function () { startRename(li, p); });
+                var remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-danger'; remove.textContent = T.passkeyRemove;
+                remove.setAttribute('aria-label', T.passkeyRemove + ': ' + p.name);
+                remove.addEventListener('click', function () {
+                    askToConfirm(T.passkeyRemoveTitle, T.passkeyRemoveMessage.replace('{name}', function () { return p.name; }), T.passkeyRemove, function () { removePasskey(p); });
+                });
+                actions.appendChild(rename); actions.appendChild(remove);
+                li.appendChild(info); li.appendChild(actions);
+                list.appendChild(li);
+            });
+        }
+        function loadPasskeys() {
+            if (!isLoggedIn) return;
+            pkApi('').then(function (j) { if (j.__status === 200) renderPasskeys(j); else pkSay(T.passkeyError, 'error'); }, function () { pkSay(T.passkeyError, 'error'); });
+        }
+        function startRename(li, p) {
+            var form = document.createElement('form'); form.className = 'passkey-rename';
+            var input = document.createElement('input'); input.value = p.name; input.maxLength = 64; input.setAttribute('aria-label', T.passkeyRenameLabel); input.setAttribute('dir', 'auto');
+            var save = document.createElement('button'); save.type = 'submit'; save.className = 'btn btn-primary'; save.textContent = T.passkeySave;
+            var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn btn-secondary'; cancel.textContent = T.passkeyCancel;
+            cancel.addEventListener('click', loadPasskeys);
+            form.addEventListener('submit', function (ev) {
+                ev.preventDefault();
+                pkApi('/' + encodeURIComponent(p.id), 'PATCH', { name: input.value }).then(function (j) { if (j.__status === 200) { pkSay(''); loadPasskeys(); } else pkSay(T.passkeyError, 'error'); });
+            });
+            form.appendChild(input); form.appendChild(save); form.appendChild(cancel);
+            li.innerHTML = ''; li.appendChild(form); input.focus(); input.select();
+        }
+        function removePasskey(p) {
+            pkApi('/' + encodeURIComponent(p.id), 'DELETE').then(function (j) {
+                if (j.__status === 200) {
+                    loadPasskeys();
+                    passkeyUndoId = p.id;
+                    var toast = document.getElementById('passkeyToast'); toast.hidden = false;
+                    document.getElementById('passkeyUndo').focus();
+                    clearTimeout(passkeyUndoTimer);
+                    passkeyUndoTimer = setTimeout(function () { toast.hidden = true; passkeyUndoId = null; }, 30000);
+                } else if (j.error === 'last_staff_passkey') pkSay(T.passkeyLastStaff, 'error');
+                else pkSay(T.passkeyError, 'error');
+            });
+        }
+        document.getElementById('passkeyUndo').addEventListener('click', function () {
+            if (!passkeyUndoId) return;
+            var id = passkeyUndoId; passkeyUndoId = null; clearTimeout(passkeyUndoTimer);
+            document.getElementById('passkeyToast').hidden = true;
+            pkApi('/' + encodeURIComponent(id) + '/restore', 'POST').then(function (j) { if (j.__status !== 200) pkSay(j.error === 'limit' ? T.passkeyLimit.replace('{n}', '10') : T.passkeyError, 'error'); loadPasskeys(); });
+        });
+        loadPasskeys();
+
         function requestSignOutAll() {
             askToConfirm(T.signOutAllTitle, T.signOutAllMessage, T.signOutAllAction, handleSignOutAll);
         }

@@ -277,6 +277,40 @@ const worker = {
       }
     }
 
+    // Passkeys (AUTH-PASSKEYS): the hub's list, rename, remove and undo, through
+    // the user's own token; adding one happens on the auth host (/passkeys/setup)
+    if (url.pathname === '/passkeys/add' && request.method === 'GET') {
+      const target = new URL('/passkeys/setup', authServerUrl);
+      const back = new URL('/', url.origin);
+      back.hash = 'passkeys';
+      const lang = url.searchParams.get('lang');
+      if (lang === 'ar') { target.searchParams.set('lang', 'ar'); back.searchParams.set('lang', 'ar'); }
+      target.searchParams.set('return_to', url.searchParams.get('return_to') || back.toString());
+      const ticket = url.searchParams.get('ticket');
+      if (ticket) target.searchParams.set('ticket', ticket);
+      return new Response(null, { status: 302, headers: { Location: target.toString(), 'Cache-Control': 'no-store' } });
+    }
+    if (url.pathname === '/api/passkeys' || url.pathname.startsWith('/api/passkeys/')) {
+      const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+      // Changes only from this app's own page (CSRF)
+      if (request.method !== 'GET' && request.headers.get('Origin') !== url.origin) return json({ error: 'forbidden' }, 403);
+      const { session } = await getFreshSession(request, env, authServerUrl);
+      if (!session || !session.user?.id) return json({ error: 'Not authenticated' }, 401);
+      const rest = url.pathname.slice('/api/passkeys'.length);
+      if (rest && !/^\/[A-Za-z0-9_-]{1,512}(\/restore)?$/.test(rest)) return json({ error: 'not_found' }, 404);
+      const upstream = new URL(`/account/passkeys${rest}`, authServerUrl);
+      const lang = url.searchParams.get('lang');
+      if (lang === 'ar') upstream.searchParams.set('lang', 'ar');
+      const init: RequestInit = {
+        method: request.method,
+        headers: { Authorization: `Bearer ${session.tokens.access}`, 'Content-Type': 'application/json' },
+      };
+      if (request.method === 'PATCH') init.body = await request.text();
+      const res = await fetch(upstream.toString(), init);
+      return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+    }
+
     // API endpoint to get user info from session (roles come from JWT)
     if (url.pathname === '/api/me') {
       const { session } = await getFreshSession(request, env, authServerUrl);

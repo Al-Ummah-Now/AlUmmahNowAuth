@@ -4,6 +4,7 @@ import { loginPath, type LoginPrompt } from "./sign-in";
 import { getAppUrl } from "./config";
 import { getOpenAuthClient, subjects } from "./openauth.client.server";
 import { ensureFreshTokens, getSession, type SessionStores } from "./session-tokens.server";
+import { passkeyBlocked, passkeyGraceUntil, stepUpNeeded, STEP_UP_MAX_AGE_SECONDS, type PasskeyClaims } from "../../../../packages/ui/src/passkey-policy.ts";
 
 /** The bindings sessions need: the auth D1, and KV for sessions from before AD-1. */
 export interface SessionEnv {
@@ -182,11 +183,22 @@ export async function requireAuth(
         throw await redirectToAuthWithSelect(request, env);
       }
 
+      // Staff passkeys (AUTH-PASSKEYS): past the deadline without a passkey
+      // sign-in, the admin shows the "Passkey needed" page instead
+      const claims = tokenClaims(fresh.tokens.access);
+      if (passkeyBlocked(claims)) {
+        const url = new URL(request.url);
+        throw Response.redirect(new URL(`/passkey-needed?redirect=${encodeURIComponent(url.pathname + url.search)}`, url.origin).toString(), 302);
+      }
+
       // Return user with fresh roles from token
       return {
         id: sessionData.user.id,
         email: sessionData.user.email,
-        roles: userRoles
+        roles: userRoles,
+        /** epoch s: the grace end, while this staff member has no passkey sign-in */
+        passkeyGraceUntil: passkeyGraceUntil(claims),
+        claims,
       };
     } catch (error) {
       // If error is already a Response (redirect), rethrow it
@@ -203,4 +215,29 @@ export async function requireAuth(
   }
 
   return sessionData.user;
+}
+
+/**
+ * Step-up for high-risk actions (AD5, AUTH-PASSKEYS): a real sign-in within
+ * 15 minutes. Otherwise throws the redirect to sign in again with
+ * prompt=login&max_age=900, returning to `returnTo` (the page, for a POST).
+ */
+export function requireStepUp(user: object, request: Request, returnTo?: string): void {
+  const claims = (user as { claims?: PasskeyClaims }).claims;
+  if (claims && !stepUpNeeded(claims)) return;
+  const url = new URL(request.url);
+  const back = returnTo ?? url.pathname + url.search;
+  throw Response.redirect(new URL(loginPath(back, "login", STEP_UP_MAX_AGE_SECONDS), url.origin).toString(), 302);
+}
+
+/** The payload of an access token that `client.verify` already checked. */
+export function tokenClaims(accessToken: string): PasskeyClaims {
+  try {
+    const part = accessToken.split(".")[1] ?? "";
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = Uint8Array.from(json, (c) => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)) as PasskeyClaims;
+  } catch {
+    return {};
+  }
 }

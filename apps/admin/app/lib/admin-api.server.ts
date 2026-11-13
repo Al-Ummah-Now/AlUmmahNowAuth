@@ -1129,3 +1129,57 @@ export async function m2mFetch(
   if (response.status === 401) clearTokenCache();
   return response;
 }
+
+// ============================================================================
+// Passkeys (AUTH-PASSKEYS)
+// ============================================================================
+
+export interface PasskeySummary {
+  id: string;
+  name: string;
+  synced: boolean;
+  deviceType: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+export interface StaffPasskeySettings {
+  enforced: boolean;
+  enforcedAt: number | null;
+  graceDays: number;
+  staff: number;
+  withoutPasskey: { id: string; email: string }[];
+  capped: boolean;
+  actorHasPasskey: boolean;
+}
+
+/** GET /admin/users/:id/passkeys */
+export async function listUserPasskeys(env: ApiEnv, actingUser: ActingUser, userId: string, request?: Request) {
+  return m2mRequest<{ passkeys: PasskeySummary[]; staff: boolean }>(env, `/admin/users/${encodeURIComponent(userId)}/passkeys`, actingUser, { method: 'GET' }, request);
+}
+
+/** DELETE /admin/users/:id/passkeys/:cid (soft delete; the user is emailed) */
+export async function removeUserPasskey(env: ApiEnv, actingUser: ActingUser, userId: string, credentialId: string) {
+  return m2mRequest<SuccessResponse>(env, `/admin/users/${encodeURIComponent(userId)}/passkeys/${encodeURIComponent(credentialId)}`, actingUser, { method: 'DELETE' });
+}
+
+/** POST /admin/users/:id/passkeys/setup-link: emails a one-time setup link (24 h) */
+export async function sendPasskeySetupLink(env: ApiEnv, actingUser: ActingUser, userId: string, locale: 'en' | 'ar') {
+  return m2mRequest<{ ok: boolean; sent: boolean; expiresAt: number }>(env, `/admin/users/${encodeURIComponent(userId)}/passkeys/setup-link`, actingUser, {
+    method: 'POST',
+    body: JSON.stringify({ locale }),
+  });
+}
+
+/** GET /admin/settings/staff-passkeys */
+export async function getStaffPasskeySettings(env: ApiEnv, actingUser: ActingUser, request?: Request) {
+  return m2mRequest<StaffPasskeySettings>(env, `/admin/settings/staff-passkeys`, actingUser, { method: 'GET' }, request);
+}
+
+/** PUT /admin/settings/staff-passkeys (Super Admin; refused unless the admin has a passkey) */
+export async function setStaffPasskeyEnforcement(env: ApiEnv, actingUser: ActingUser, enforced: boolean) {
+  return m2mRequest<{ enforced: boolean; enforcedAt: number | null; graceDays: number }>(env, `/admin/settings/staff-passkeys`, actingUser, {
+    method: 'PUT',
+    body: JSON.stringify({ enforced }),
+  });
+}

@@ -59,7 +59,7 @@ describe("requireAuth(…, true) token refresh", () => {
 
     const user = await requireAuth(request(), env(), true);
 
-    expect(user).toEqual({ id: "u1", email: "admin@example.com", roles: ["Admin"] });
+    expect(user).toMatchObject({ id: "u1", email: "admin@example.com", roles: ["Admin"] });
     expect(client.refresh).toHaveBeenCalledWith("user:r0");
     expect(client.verify).toHaveBeenCalledWith({}, fresh);
     expect(await tokensNow()).toEqual({ access: fresh, refresh: "user:r1" });

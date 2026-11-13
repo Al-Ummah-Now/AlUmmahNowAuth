@@ -12,6 +12,7 @@ import {
   X,
   Palette,
   Trash2,
+  KeyRound,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { AccountSwitcher } from "@al-ummah-now/ui";
@@ -35,15 +36,18 @@ const navItems: NavItem[] = [
   { label: "Moderation", href: "/moderation", icon: <Flag className="h-5 w-5" /> },
   { label: "Sign-in themes", href: "/themes", icon: <Palette className="h-5 w-5" /> },
   { label: "Recently deleted", href: "/deleted", icon: <Trash2 className="h-5 w-5" /> },
+  { label: "Security", href: "/security", icon: <KeyRound className="h-5 w-5" /> },
 ];
 
 interface AdminLayoutProps {
   children: React.ReactNode;
   user?: { id: string; email: string } | null;
   authServerUrl?: string;
+  /** epoch s: staff grace end while this admin has no passkey sign-in (AUTH-PASSKEYS) */
+  passkeyGraceUntil?: number;
 }
 
-export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps) {
+export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }: AdminLayoutProps) {
   const location = useLocation();
   // Use lazy initializer to load from localStorage - avoids effect-based setState
   const [collapsed, setCollapsed] = useState(() => {
@@ -184,6 +188,12 @@ export function AdminLayout({ children, user, authServerUrl }: AdminLayoutProps)
         )}
       >
         <div className="p-6">
+          {passkeyGraceUntil ? (
+            <div role="status" data-testid="passkey-grace-banner" className="mb-4 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-muted))] p-3 text-sm text-[rgb(var(--color-foreground))]">
+              Add a passkey by {new Date(passkeyGraceUntil * 1000).toLocaleDateString("en-GB", { dateStyle: "long", timeZone: "UTC" })}: after that, the admin tools need a passkey sign-in.{" "}
+              <Link className="font-semibold underline" to="/passkey-needed?mode=grace">Add a passkey</Link>
+            </div>
+          ) : null}
           {children}
         </div>
       </main>

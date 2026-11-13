@@ -3,7 +3,7 @@ import { redirect, useLoaderData } from "react-router";
 import { getAppUrl } from "../lib/config";
 import { getOpenAuthClient } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
-import { loginCookie, loginPath, parsePrompt, safeReturnPath, withPrompt, pkceCookie } from "../lib/sign-in";
+import { loginCookie, loginPath, parseMaxAge, parsePrompt, safeReturnPath, withPrompt, pkceCookie } from "../lib/sign-in";
 
 /**
  * Straight to the auth server, no page of our own. No prompt by default: a
@@ -38,7 +38,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const appUrl = getAppUrl(request, env);
   const client = getOpenAuthClient(request, env);
   const { url: baseAuthorizeUrl, challenge } = await client.authorize(`${appUrl}/auth/callback`, "code", { pkce: true });
-  const authorizeUrl = withPrompt(baseAuthorizeUrl, parsePrompt(url.searchParams.get("prompt")));
+  // Step-up (AUTH-PASSKEYS): prompt=login&max_age=900 asks for a fresh sign-in
+  const authorizeUrl = withPrompt(baseAuthorizeUrl, parsePrompt(url.searchParams.get("prompt")), parseMaxAge(url.searchParams.get("max_age")));
   logger.info('Redirecting to auth server', { authorizeUrl });
 
   const headers = new Headers({ "Cache-Control": "no-store" });

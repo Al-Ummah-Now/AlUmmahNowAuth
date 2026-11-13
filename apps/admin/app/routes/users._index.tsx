@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useNavigate, useRevalidator, useSearchParams } from "react-router";
-import { Plus, Settings, Trash2, Mail, User, Pencil } from "lucide-react";
+import { Plus, Settings, Trash2, Mail, User, Pencil, KeyRound } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -22,7 +22,7 @@ import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { UserRoleManager } from "../components/user-role-manager";
 import { AdminLayout } from "../components/admin-layout";
 import { UserAutocomplete } from "../components/autocomplete";
-import { requireAuth } from "../lib/auth.server";
+import { requireAuth, requireStepUp } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { LoadErrorBanner } from "../components/load-error-banner";
 import { logger } from "../lib/logger.server";
@@ -180,6 +180,12 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
+
+  // High-risk (AUTH-PASSKEYS, AD5): role changes and deletes need a sign-in
+  // within 15 minutes; otherwise sign in again and come back here
+  if (["assignRole", "removeRole", "editUser", "deleteUser"].includes(intent)) {
+    requireStepUp(currentUser, request, "/users");
+  }
 
   try {
     if (intent === "assignRole") {
@@ -747,6 +753,12 @@ export default function Users() {
                             title="Manage Roles"
                           >
                             <Settings className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" asChild title="Passkeys">
+                            <a href={`/users/${encodeURIComponent(user.id)}/passkeys`}>
+                              <KeyRound className="h-4 w-4 mr-1" />
+                              Passkeys
+                            </a>
                           </Button>
                           <Button
                             variant="ghost"
