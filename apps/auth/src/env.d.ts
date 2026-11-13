@@ -27,6 +27,8 @@ declare global {
     /** Token revocation list shared with the resource servers (u:<usr_id>). */
     TOKEN_REVOCATIONS?: KVNamespace;
     AUDIT_WEBHOOK_URL: string;
+    /** Non-production audit sampling, e.g. "auth.login.success=0.1,admin.item.*=0.1" (audit-emitter parseAuditSample) */
+    AUDIT_SAMPLE?: string;
     AUDIT_WEBHOOK_SECRET: string;
     PROFILE_APP_URL: string;
     /** Auth theme packages and their files, by content hash (themes/store.ts) */
