@@ -17,7 +17,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createCfClient, d1Query, type CfClient } from '../release/cf-api.ts';
 import { parseJsonc } from '../release/jsonc.ts';
 import { resolveEnv, type WranglerConfig } from '../release/wrangler-config.ts';
@@ -78,7 +78,7 @@ export async function mintSetupLink(
 	return { link: setupLink(target.host, token), userId, expiresAt };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	const argv = process.argv.slice(2);
 	const env = argv[argv.indexOf('--env') + 1] as AuthEnv;
 	const email = argv.find((a, i) => !a.startsWith('--') && argv[i - 1] !== '--env');
