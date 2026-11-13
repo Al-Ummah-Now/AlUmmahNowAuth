@@ -185,7 +185,8 @@ export async function handleLogout(
 	}
 	// Clear the cookies on every step (cheap, and covers a cookie re-set mid-chain)
 	const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-	headers.append('Set-Cookie', clearSessionCookieHeader(SESSION_COOKIE));
+	// Not Secure on localhost, matching how the issuer set it there (WebKit ignores Secure cookies over http)
+	headers.append('Set-Cookie', clearSessionCookieHeader(SESSION_COOKIE, undefined, !isLocalhost));
 	headers.append('Set-Cookie', clearSessionCookie(isLocalhost));
 	headers.set('Cache-Control', 'no-store');
 
