@@ -33,10 +33,9 @@ describe("admin shell theme", () => {
     expect(street).not.toContain("#d8cebdff");
     const dark = builtinPackage("fawanees")!.assets["assets/street-lights-dark.svg"]!.hash;
     expect(street).toContain(`--fanous-street-lights: url("https://auth.example/themes/assets/${dark}")`);
-    expect(street).toContain("--fanous-color-background:var(--auth-adminShell-page-background,rgb(var(--color-background)))");
     expect(street).toContain('html.fanous-street [data-shell="page"]{background:transparent}');
     // the street block carries no other theme colours
-    expect(street).not.toMatch(/--fanous-color-(?!primary|background)/);
+    expect(street).not.toMatch(/--fanous-color-(?!primary)/);
   });
 
   it("keeps the street next to the shell parts when a theme has both", () => {

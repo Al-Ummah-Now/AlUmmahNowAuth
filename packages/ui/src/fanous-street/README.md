@@ -14,6 +14,6 @@ How Auth uses it:
   when the theme switches the street on: sign-in pages (`decorateHtml`, `street: true`), the
   profile page (`renderHomePage`, `street: true`), the accounts admin (`root.tsx`). The admin
   preview loads nothing (it runs no scripts).
-- Page colour wrappers become transparent under `html.fanous-street`: the sign-in root
+- The body keeps a flat page colour; wrappers that paint it become transparent under `html.fanous-street`: the sign-in root
   (`[data-component="root"]`, in the compiled theme) and the admin page (`[data-shell="page"]`).
   The admin is dark whatever the device's setting, so it takes the theme's dark-scheme street.

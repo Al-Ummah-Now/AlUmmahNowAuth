@@ -149,7 +149,8 @@ const STYLES = `
         .error-message {
             background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; color: var(--fanous-color-error-text);
         }
-        /* The lantern street shows behind the page: tinted notices get a solid surface under their tint */
+        /* The lantern street shows behind the page: a flat page colour, and tinted notices get a solid surface under their tint */
+        html.fanous-street body { background: var(--auth-profile-page-background, var(--fanous-color-background)); }
         html.fanous-street .welcome-message { background: linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%), var(--fanous-color-surface); }
         html.fanous-street .error-message { background: linear-gradient(rgba(220, 38, 38, 0.1), rgba(220, 38, 38, 0.1)), var(--fanous-color-surface); }
         .footer {

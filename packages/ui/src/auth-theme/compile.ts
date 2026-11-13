@@ -129,8 +129,15 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 
 	// ---- photos behind the card, header graphic
 	const backgrounds = (x.photos?.light ?? []).map(imageUrl);
-	// The street paints the page colour on <html>; the sign-in root wrapper must let it through
-	const streetCss = t.street?.enabled ? `html.fanous-street [data-component="root"] { background: transparent !important; }\n` : '';
+	// The street draws between the body's background and the page: the body paints the page colour
+	// (the sign-in page background) and the root wrapper, which paints it otherwise, lets the street through
+	const pageRaw = get(t, SPEC_SLOTS['page.background']) as SchemeValue | undefined;
+	const pagePaint = pageRaw === undefined
+		? 'var(--fanous-color-background)'
+		: value(schemeOf(pageRaw, 'light')) !== value(schemeOf(pageRaw, 'dark')) ? 'var(--auth-base-page-background)' : value(schemeOf(pageRaw, 'light'));
+	const streetCss = t.street?.enabled
+		? `html.fanous-street body { background: ${pagePaint}; }\nhtml.fanous-street [data-component="root"] { background: transparent !important; }\n`
+		: '';
 	const bgCss = backgrounds.length
 		? `[data-component="root"] { background-image: url('${BG_PLACEHOLDER}'); background-size: cover; background-position: center; background-repeat: no-repeat; }\n`
 		: '';

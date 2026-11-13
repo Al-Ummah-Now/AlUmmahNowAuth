@@ -181,8 +181,12 @@ describe('the lantern street (Fawanees 1.2.0)', () => {
 		expect(scheme(compileBuiltin('lantern', BASE)!.tokensCss, 'light').some((d) => d.startsWith('--m-'))).toBe(false);
 	});
 
-	it('the sign-in root wrapper lets the street through (html paints the page colour)', () => {
-		expect(compileBuiltin('fawanees', BASE)!.openauth.css).toContain('html.fanous-street [data-component="root"] { background: transparent !important; }');
+	it('the body paints the flat page colour and the sign-in root wrapper lets the street through', () => {
+		const css = compileBuiltin('fawanees', BASE)!.openauth.css;
+		expect(css).toContain('html.fanous-street body { background: var(--fanous-color-background); }');
+		expect(css).toContain('html.fanous-street [data-component="root"] { background: transparent !important; }');
+		// Fawanees' page is flat in both modes
+		expect(builtinPackage('fawanees')!.theme.components.page).toEqual({ style: { background: '{color.background}' } });
 	});
 
 	it('pages load the street module same-origin when the theme has one, never in the preview', () => {

@@ -149,9 +149,6 @@
   "components": {
     "page": {
       "style": {
-        "background": "radial-gradient(38% 36% at 16% 8%,color-mix(in srgb,{color.primary} 22%,transparent),transparent 72%),radial-gradient(38% 36% at 84% 14%,color-mix(in srgb,{color.primary} 18%,transparent),transparent 72%),linear-gradient(180deg,{color.heroStart},{color.background} 46%)"
-      },
-      "lightStyle": {
         "background": "{color.background}"
       }
     },
