@@ -34,11 +34,12 @@ import { parseCookie, decryptSessionCookie } from '@al-ummah-now/openauth/sessio
 import { clearSessionCookieHeader } from '@al-ummah-now/openauth/session/middleware';
 import { getLocaleFromRequest } from '@al-ummah-now/openauth/ui/i18n';
 import { renderSignOutConfirmPage } from '../ui/sign-out-confirm-page';
+import { isSiteReturnUrl, type SiteRedirectEnv } from '../utils/site-redirects';
 
 const SESSION_COOKIE = '__session';
 const MAX_STEPS = 10;
 
-interface LogoutEnv {
+interface LogoutEnv extends SiteRedirectEnv {
 	AUTH_STORAGE: KVNamespace;
 	AUTH_DB?: D1Database;
 	AUTH_ANALYTICS?: AnalyticsEngineDataset;
@@ -82,6 +83,14 @@ export function logoutReturnUrl(env: LogoutEnv, requested: string | null, authOr
 		if (u) allowed.add(u.origin);
 	}
 	return allowed.has(target.origin) ? target.toString() : fallback;
+}
+
+/** logoutReturnUrl, plus the pages of live scholar sites (their sign-out ends here). */
+export async function logoutReturnUrlWithSites(env: LogoutEnv, requested: string | null, authOrigin: string, fetcher?: (u: string, i: RequestInit) => Promise<Response>): Promise<string> {
+	const plain = logoutReturnUrl(env, requested, authOrigin);
+	const target = requested ? httpUrl(requested) : null;
+	if (!target || plain === target.toString()) return plain;
+	return (await isSiteReturnUrl(env, target, fetcher)) ? target.toString() : plain;
 }
 
 /**
@@ -143,10 +152,10 @@ export async function handleLogout(
 			dest: request.headers.get('Sec-Fetch-Dest'),
 		});
 		ctx.waitUntil(logger.finalizeRequest());
-		const page = await renderSignOutConfirmPage(getLocaleFromRequest(request), logoutReturnUrl(env, requestedReturn, url.origin));
+		const page = await renderSignOutConfirmPage(getLocaleFromRequest(request), await logoutReturnUrlWithSites(env, requestedReturn, url.origin));
 		return addSecurityHeaders(page, isProduction);
 	}
-	const returnTo = logoutReturnUrl(env, requestedReturn, url.origin);
+	const returnTo = await logoutReturnUrlWithSites(env, requestedReturn, url.origin);
 
 	const headers = new Headers();
 	if (step === 0) {

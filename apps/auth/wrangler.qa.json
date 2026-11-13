@@ -65,6 +65,8 @@
     "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
     "ALLOWED_ORIGINS": "*.qa.alummahnow.net,https://profile.auth.qa.alummahnow.net,https://admin.auth.qa.alummahnow.net",
     "OPENAUTH_ISSUER": "https://auth.qa.alummahnow.net",
+    "SITES_CLIENT_ID": "0abd9eac-e47e-4a1a-90bd-18cffec0303c",
+    "SITES_REGISTRY_URL": "https://videos.api.qa.alummahnow.net",
     "ACCESS_TOKEN_TTL": "900",
     "AUDIT_WEBHOOK_URL": "",
     "AUDIT_WEBHOOK_SECRET": "",

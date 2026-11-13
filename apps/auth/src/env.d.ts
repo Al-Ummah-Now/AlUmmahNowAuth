@@ -40,6 +40,9 @@ declare global {
     /** "enforce" | "report": check /authorize against oauth_clients */
     CLIENT_REGISTRY_MODE?: string;
     PREVIEW_WEB_CLIENT_ID?: string;
+    /** Scholar sites' public PKCE client (one per env) and the site registry it is checked against (site-redirects.ts) */
+    SITES_CLIENT_ID?: string;
+    SITES_REGISTRY_URL?: string;
     PREVIEW_WORKERS_SUBDOMAIN?: string;
     PROFILE_CLIENT_ID?: string;
     RESEND_API_KEY: SecretBinding;
