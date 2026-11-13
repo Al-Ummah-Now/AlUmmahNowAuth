@@ -1,7 +1,7 @@
 {
   "repo": "Al-Ummah-Now/AlUmmahNow",
-  "ref": "3bac491fa1d6671c91eeb808796acd651aaf697b",
+  "ref": "81c2c64640f3989c48e8cb415fb98afab07e2914",
   "source": "packages/fanous-tokens/nav/aun-nav.css",
-  "sourceSha256": "39d5de9dbced7b66ffb82413ae814cdf4d99d67dc8c6958b564564226efa5d60",
-  "output": "515e29024e1e4d6f6615c89881245ef4209526e9e91d0023231d89e02f88813c"
+  "sourceSha256": "a2725613ba99b090f8579bf179fc39af443fa6c24541b4162a1bc3203c867bf8",
+  "output": "3038683bc4f9bd8c241b8d8f5600ad28ad546d017721445a30fc665e03b453f7"
 }
