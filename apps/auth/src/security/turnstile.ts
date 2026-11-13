@@ -267,18 +267,22 @@ export function injectTurnstile(html: string, opts: { siteKey: string; scriptUrl
 	const widget =
 		`<div data-aun-turnstile data-sitekey="${esc(opts.siteKey)}" data-action="${esc(opts.action)}" data-lang="${lang}" style="display:flex;justify-content:center;min-height:0"></div>` +
 		`<p data-aun-turnstile-status role="status" aria-live="polite" style="margin:0;font-size:.875rem;min-height:0"></p>`;
+	// The widget script is added from this inline script so a blocked or failed load is seen
+	// (onerror); a form waiting for a token is sent anyway after 10 s. The server decides then.
 	const script =
 		`<script>(function(){var el=document.querySelector('[data-aun-turnstile]');if(!el)return;` +
 		`var st=document.querySelector('[data-aun-turnstile-status]');var token='';var pending=null;var broken=false;` +
 		`var say=function(t){if(st)st.textContent=t;};` +
 		`var send=function(f){var i=f.querySelector('input[name="${TURNSTILE_FIELD}"]');if(!i){i=document.createElement('input');i.type='hidden';i.name='${TURNSTILE_FIELD}';f.appendChild(i);}i.value=token;HTMLFormElement.prototype.submit.call(f);};` +
+		`var flush=function(){if(pending){var f=pending;pending=null;send(f);}};` +
+		`var fail=function(){broken=true;say(${JSON.stringify(WIDGET_COPY.failed[lang])});flush();};` +
 		`window.aunTurnstileReady=function(){try{window.turnstile.render(el,{sitekey:el.dataset.sitekey,action:el.dataset.action,language:el.dataset.lang,appearance:'interaction-only','response-field':false,'refresh-expired':'auto',` +
-		`callback:function(t){token=t;say('');if(pending){var f=pending;pending=null;send(f);}},` +
+		`callback:function(t){token=t;say('');flush();},` +
 		`'expired-callback':function(){token='';},` +
-		`'error-callback':function(){broken=true;say(${JSON.stringify(WIDGET_COPY.failed[lang])});if(pending){var f=pending;pending=null;send(f);}return true;}});}catch(e){broken=true;}};` +
+		`'error-callback':function(){fail();return true;}});}catch(e){fail();}};` +
 		`document.addEventListener('submit',function(e){var f=e.target;if(!(f instanceof HTMLFormElement)||f.method.toLowerCase()!=='post')return;e.preventDefault();` +
-		`if(token||broken){send(f);return;}pending=f;say(${JSON.stringify(WIDGET_COPY.checking[lang])});},true);})();</script>` +
-		`<script src="${esc(opts.scriptUrl)}?onload=aunTurnstileReady&amp;render=explicit" async defer></script>`;
+		`if(token||broken){send(f);return;}pending=f;say(${JSON.stringify(WIDGET_COPY.checking[lang])});setTimeout(function(){if(pending&&!token){broken=true;flush();}},10000);},true);` +
+		`var s=document.createElement('script');s.src=${JSON.stringify(opts.scriptUrl + '?onload=aunTurnstileReady&render=explicit')};s.async=true;s.onerror=fail;document.head.appendChild(s);})();</script>`;
 	const formEnd = html.indexOf('</form>');
 	let out = html.slice(0, formEnd) + widget + html.slice(formEnd);
 	const bodyEnd = out.lastIndexOf('</body>');

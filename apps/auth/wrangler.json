@@ -139,7 +139,7 @@
       "vars": {
         "ERRORS_INGEST_URL": "https://admin.api.alummahnow.net/internal/errors",
         "ENVIRONMENT": "production",
-        "TURNSTILE_MODE": "off",
+        "TURNSTILE_MODE": "monitor",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAF_3KPNkPlEGf_dP",
         "AUDIT_SAMPLE": "",
         "LOG_LEVEL": "debug",

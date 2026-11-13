@@ -133,7 +133,7 @@ describe('Turnstile on sign-up', () => {
 		expect(html).toContain('data-aun-turnstile');
 		expect(html).toContain(`data-sitekey="${TEST_SITE_KEYS.pass}"`);
 		expect(html).toContain('data-action="sign_up"');
-		expect(html).toContain('/turnstile/stub.js?onload=aunTurnstileReady');
+		expect(html).toContain('"/turnstile/stub.js?onload=aunTurnstileReady&render=explicit"');
 		expect(html).not.toContain('challenges.cloudflare.com/turnstile/v0/api.js');
 		const csp = res.headers.get('Content-Security-Policy')!;
 		expect(csp).toContain("script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com");
