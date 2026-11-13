@@ -13,7 +13,8 @@ import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
 import { reportAuthError } from "./errors/report";
 import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
-import { withPreviewRedirects } from "./utils/preview-redirects";
+import { withAddedRedirect, withPreviewRedirects } from "./utils/preview-redirects";
+import { allowedSiteRedirect } from "./utils/site-redirects";
 import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-handlers";
 import { createRefreshCheck } from "./handlers/refresh-check";
 import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
@@ -405,6 +406,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       : compileBuiltin(BUILTIN_DEFAULT_THEME, issuerOrigin)!;
 
     const openauthTheme = { ...openauthThemeFor(theme), favicon: signInFavicon(theme, env.ENVIRONMENT) };
+    // Scholar sites: the one exact callback of a live site's primary host (site-redirects.ts)
+    const siteRedirect = await allowedSiteRedirect(env, request);
     const { app } = createMultiTenantIssuer({
       // Pin the issuer: used for the `iss` claim, discovery documents and token
       // verification instead of the request Host / X-Forwarded-* headers.
@@ -421,8 +424,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       sessionSecret,
       subjects,
       rbacService,
-      // QA only: per-PR web previews (see preview-redirects.ts)
-      clientDb: withPreviewRedirects(env.AUTH_DB, env, request),
+      // QA only: per-PR web previews (see preview-redirects.ts); every env: scholar sites (site-redirects.ts)
+      clientDb: siteRedirect
+        ? withAddedRedirect(env.AUTH_DB, siteRedirect.clientId, siteRedirect.redirectUri)
+        : withPreviewRedirects(env.AUTH_DB, env, request),
       // Unrecoverable sign-in state (stale tab, bookmark, cookies cleared) shows a
       // friendly en/ar "Start sign-in again" page; this is where it links when the
       // sign-in's app is unknown.

@@ -32,18 +32,16 @@ function withRedirect(row: unknown, redirectUri: string): unknown {
 	return { ...stored, redirect_uris: JSON.stringify([...list, redirectUri]) };
 }
 
-/** The database the client registry reads for this request. */
-export function withPreviewRedirects<T extends D1Database>(db: T, env: PreviewRedirectEnv, request: Request): T {
-	const url = new URL(request.url);
-	const clientId = url.searchParams.get('client_id');
-	const redirectUri = url.searchParams.get('redirect_uri');
-	if (url.pathname !== '/authorize' || !isPreviewRedirect(env, clientId, redirectUri)) return db;
-
+/**
+ * The database the client registry reads, with ONE exact redirect_uri added to ONE client's
+ * registered list for this request only (the preview and scholar-site checks decide which).
+ */
+export function withAddedRedirect<T extends D1Database>(db: T, clientId: string, redirectUri: string): T {
 	const wrap = (statement: D1PreparedStatement): D1PreparedStatement =>
 		new Proxy(statement, {
 			get(target, property) {
 				if (property === 'first') {
-					return async (...args: unknown[]) => withRedirect(await (target.first as (...a: unknown[]) => Promise<unknown>)(...args), redirectUri as string);
+					return async (...args: unknown[]) => withRedirect(await (target.first as (...a: unknown[]) => Promise<unknown>)(...args), redirectUri);
 				}
 				if (property === 'bind') {
 					return (...values: unknown[]) => (values[0] === clientId ? wrap(target.bind(...values)) : target.bind(...values));
@@ -65,4 +63,13 @@ export function withPreviewRedirects<T extends D1Database>(db: T, env: PreviewRe
 			return typeof value === 'function' ? value.bind(target) : value;
 		},
 	});
+}
+
+/** The database the client registry reads for this request. */
+export function withPreviewRedirects<T extends D1Database>(db: T, env: PreviewRedirectEnv, request: Request): T {
+	const url = new URL(request.url);
+	const clientId = url.searchParams.get('client_id');
+	const redirectUri = url.searchParams.get('redirect_uri');
+	if (url.pathname !== '/authorize' || !isPreviewRedirect(env, clientId, redirectUri)) return db;
+	return withAddedRedirect(db, clientId as string, redirectUri as string);
 }

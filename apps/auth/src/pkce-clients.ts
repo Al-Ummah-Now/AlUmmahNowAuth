@@ -24,4 +24,6 @@ export const PKCE_REQUIRED_CLIENTS: readonly string[] = [
 	'd34701ed-03de-43f8-95a8-91cd1e1874bb', // www (stage, production)
 	'0e613f49-674b-490a-93e5-97a35d586da1', // CMS (QA)
 	'd06fd65a-5b79-45bc-8bfd-a856b8502330', // CMS (stage, production)
+	'0abd9eac-e47e-4a1a-90bd-18cffec0303c', // scholar sites (QA)
+	'81f2bb95-15c6-4896-b414-be2c24155a74', // scholar sites (stage, production)
 ];
