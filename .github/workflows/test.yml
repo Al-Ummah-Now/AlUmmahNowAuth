@@ -23,7 +23,7 @@ jobs:
     name: Lint and Type Check
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -57,7 +57,7 @@ jobs:
     name: Security Check
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -91,7 +91,7 @@ jobs:
     name: Documentation Check
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Check required documentation
         run: |
@@ -117,7 +117,7 @@ jobs:
     name: Release Checks (config, migrations, schema)
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -161,7 +161,7 @@ jobs:
     name: Unit Tests
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -218,7 +218,7 @@ jobs:
     outputs:
       holder: ${{ steps.lock.outputs.holder }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/ci
           persist-credentials: false
@@ -248,7 +248,7 @@ jobs:
       contents: write
       actions: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/ci
           persist-credentials: false
