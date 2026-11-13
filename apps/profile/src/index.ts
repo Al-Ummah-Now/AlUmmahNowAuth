@@ -33,10 +33,12 @@ import { fetchAuthTheme } from './theme';
 // only this app's set, so the sign-in icons are not bundled into the profile Worker
 import { APP_ICONS as PROFILE_ICONS } from '../../../packages/ui/src/app-icons/profile.generated.ts';
 import { iconServer } from '../../../packages/ui/src/app-icons/serve.ts';
+import { NAV_ICONS } from '../../../packages/ui/src/nav/aun-nav-icons.generated.ts';
 import { applyLogLevel } from '../../../packages/ui/src/log-level.ts';
 
 /** Account's tab and app icons (the owner's account lantern, cropped and downscaled by AlUmmahNow packages/app-icons). */
-const serveIcon = iconServer(PROFILE_ICONS);
+// and the account menu's app icons (every app's favicon, /aun-nav/icons/<id>.webp; never inlined in the CSS)
+const serveIcon = iconServer({ ...PROFILE_ICONS, ...NAV_ICONS });
 
 const PROFILE_CLIENT_ID = "109a1087-6626-40f7-8a7f-7f42f83f4f30";
 

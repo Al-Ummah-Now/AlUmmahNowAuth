@@ -34,7 +34,7 @@ export function renderAppsSection(apps: VisibleApp[], t: Messages): string {
   const others = apps.filter((a) => !a.current);
   if (others.length === 0) return "";
   const items = others
-    .map((a) => `<a role="menuitem" class="aun-menu-item" href="${escapeHtml(a.url)}" data-app="${a.id}"><span class="aun-app-icon" data-app="${NAV_ICON[a.id]}" aria-hidden="true"></span><span class="aun-menu-text">${escapeHtml(a.name)}</span></a>`)
+    .map((a) => `<a role="menuitem" class="aun-menu-item" href="${escapeHtml(a.url)}" data-app="${a.id}"><img class="aun-app-icon" data-app="${NAV_ICON[a.id]}" src="/aun-nav/icons/${NAV_ICON[a.id]}.webp" width="32" height="32" alt="" loading="lazy" decoding="async"><span class="aun-menu-text">${escapeHtml(a.name)}</span></a>`)
     .join("\n");
   return `<div class="aun-menu-sep" role="separator"></div>
     <div role="group" aria-labelledby="appsLabel" id="accountApps">
@@ -53,7 +53,7 @@ export function renderAppCards(apps: VisibleApp[], t: Messages): string {
       const cards = g.items
         .map(
           (a) => `<li><a class="app-card" href="${escapeHtml(a.url)}" data-app="${a.id}">
-            <span class="aun-app-icon aun-app-icon--card" data-app="${NAV_ICON[a.id]}" aria-hidden="true"></span>
+            <img class="aun-app-icon aun-app-icon--card" data-app="${NAV_ICON[a.id]}" src="/aun-nav/icons/${NAV_ICON[a.id]}.webp" width="48" height="48" alt="" loading="lazy" decoding="async">
             <span class="app-card-text"><span class="app-card-name">${escapeHtml(a.name)}</span><span class="app-card-desc">${escapeHtml(a.description)}</span></span>
             <svg class="app-card-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>
           </a></li>`,
