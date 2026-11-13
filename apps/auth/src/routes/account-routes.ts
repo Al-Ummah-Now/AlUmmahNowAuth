@@ -272,7 +272,7 @@ export async function handleAccountExport(request: Request, env: Env): Promise<R
 	if (!row || row.status === 'deleted') return json({ error: 'not_found', error_description: 'Account not found' }, 404);
 
 	const db = env.AUTH_DB;
-	const [roles, identities, sessions, refreshTokens, audit] = await Promise.all([
+	const [roles, identities, sessions, refreshTokens, audit, passkeys] = await Promise.all([
 		db
 			.prepare(
 				`SELECT r.name AS role, ur.assigned_at, ur.expires_at FROM rbac_user_roles ur
@@ -296,6 +296,11 @@ export async function handleAccountExport(request: Request, env: Env): Promise<R
 			)
 			.bind(row.id)
 			.all(),
+		// Passkeys (AUTH-PASSKEYS): never the public key
+		db
+			.prepare('SELECT name, device_type, backed_up, created_at, last_used_at, deleted_at FROM webauthn_credentials WHERE user_id = ? ORDER BY created_at ASC')
+			.bind(row.id)
+			.all(),
 	]);
 
 	const body = {
@@ -315,6 +320,7 @@ export async function handleAccountExport(request: Request, env: Env): Promise<R
 		sessions: sessions.results,
 		refreshTokens: refreshTokens.results,
 		auditEvents: audit.results,
+		passkeys: passkeys.results,
 	};
 	return json(body, 200, { 'Content-Disposition': 'attachment; filename="alummahnow-account.json"' });
 }
