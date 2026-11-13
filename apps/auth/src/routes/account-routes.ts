@@ -312,3 +312,94 @@ export async function handleAccountExport(request: Request, env: Env): Promise<R
 	};
 	return json(body, 200, { 'Content-Disposition': 'attachment; filename="alummahnow-account.json"' });
 }
+
+/** The name fields a user may set on their own Auth record (the platform's name rule reads them). */
+const NAME_FIELDS = ['displayName', 'firstName', 'lastName'] as const;
+const LOCALIZED_NAME_FIELDS = ['displayNameLocalized', 'firstNameLocalized', 'lastNameLocalized'] as const;
+const NAME_MAX = 100;
+
+function cleanName(v: unknown): string | null | undefined {
+	if (v === undefined) return undefined;
+	if (v === null) return null;
+	if (typeof v !== 'string') throw new Error('a name must be a string');
+	const s = v.replace(/\s+/g, ' ').trim();
+	if (s.length > NAME_MAX) throw new Error(`a name is at most ${NAME_MAX} characters`);
+	return s || null;
+}
+
+function cleanLocalized(v: unknown): Record<string, string> | null | undefined {
+	if (v === undefined) return undefined;
+	if (v === null) return null;
+	if (typeof v !== 'object' || Array.isArray(v)) throw new Error('a localized name is an object of language → name');
+	const out: Record<string, string> = {};
+	for (const [lang, name] of Object.entries(v as Record<string, unknown>)) {
+		if (!/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(lang)) throw new Error(`unknown language ${lang}`);
+		const s = cleanName(name);
+		if (s) out[lang] = s;
+	}
+	return Object.keys(out).length ? out : null;
+}
+
+/**
+ * PUT /account/name: the caller's own names (display name, first and last, and their localized
+ * forms) on their Auth record, so every app that names accounts from Auth (the account switcher,
+ * profile, accounts admin, www, the CMS) follows the platform rule: display name, else first + last,
+ * else the email. The videos app keeps the names in its profile and sends them here whenever they
+ * change (2026-11-13: names saved in videos never reached Auth, so every Auth-backed menu showed
+ * the email). Only the fields sent change; null clears one. The display name is the users.name
+ * column; first/last and the localized forms live in metadata.
+ */
+export async function handleSetAccountName(request: Request, env: Env): Promise<Response> {
+	const user = await verifyUserAccessToken(request, env);
+	if (user instanceof Response) return user;
+	let body: Record<string, unknown>;
+	try {
+		const parsed: unknown = await request.json();
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('a JSON object is required');
+		body = parsed as Record<string, unknown>;
+	} catch (error) {
+		return json({ error: 'invalid_request', error_description: error instanceof Error ? error.message : 'invalid JSON' }, 400);
+	}
+	const updates: Record<string, string | Record<string, string> | null> = {};
+	try {
+		for (const f of NAME_FIELDS) {
+			const v = cleanName(body[f]);
+			if (v !== undefined) updates[f] = v;
+		}
+		for (const f of LOCALIZED_NAME_FIELDS) {
+			const v = cleanLocalized(body[f]);
+			if (v !== undefined) updates[f] = v;
+		}
+	} catch (error) {
+		return json({ error: 'invalid_request', error_description: (error as Error).message }, 400);
+	}
+	if (!Object.keys(updates).length) return json({ error: 'invalid_request', error_description: 'no name field was sent' }, 400);
+
+	const row = await env.AUTH_DB.prepare('SELECT id, name, metadata, status FROM users WHERE id = ?')
+		.bind(user.userId)
+		.first<{ id: string; name: string | null; metadata: string | null; status: string }>();
+	if (!row || row.status === 'deleted') return json({ error: 'not_found', error_description: 'Account not found' }, 404);
+
+	let meta: Record<string, unknown> = {};
+	try {
+		const parsed: unknown = row.metadata ? JSON.parse(row.metadata) : {};
+		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) meta = parsed as Record<string, unknown>;
+	} catch {
+		// unreadable metadata is replaced by the names alone
+	}
+	for (const [k, v] of Object.entries(updates)) {
+		if (k === 'displayName') continue;
+		if (v === null) delete meta[k];
+		else meta[k] = v;
+	}
+	const name = 'displayName' in updates ? (updates.displayName as string | null) : row.name;
+	const metadata = Object.keys(meta).length ? JSON.stringify(meta) : null;
+	await env.AUTH_DB.prepare('UPDATE users SET name = ?, metadata = ?, updated_at = ? WHERE id = ?')
+		.bind(name, metadata, Date.now(), row.id)
+		.run();
+	return json({
+		name,
+		firstName: (meta.firstName as string | undefined) ?? null,
+		lastName: (meta.lastName as string | undefined) ?? null,
+	});
+}
