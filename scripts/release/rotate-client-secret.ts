@@ -20,6 +20,7 @@
  * running this: anything you leave out stops authenticating once the grace
  * period ends.
  */
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { createCfClient, d1Query, type CfClient } from './cf-api.ts';
@@ -205,7 +206,7 @@ export async function rotate(args: RotateArgs, cf: CfClient = createCfClient()):
 	}
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	try {
 		await rotate(parseArgs(process.argv.slice(2)));

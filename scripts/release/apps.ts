@@ -18,6 +18,8 @@ const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'secrets_store_secrets', name: 'CLIENT_SECRET_SALT' },
 	{ kind: 'secrets_store_secrets', name: 'KEY_ENCRYPTION_MASTER_KEY' },
 	{ kind: 'secrets_store_secrets', name: 'RESEND_API_KEY' },
+	// Unexpected errors to the videos admin Errors page (#341)
+	{ kind: 'secrets_store_secrets', name: 'INTERNAL_API_KEY' },
 	// Password brute-force limits (AU-2)
 	{ kind: 'ratelimits', name: 'PASSWORD_IP_LIMITER' },
 	{ kind: 'ratelimits', name: 'PASSWORD_EMAIL_LIMITER' },

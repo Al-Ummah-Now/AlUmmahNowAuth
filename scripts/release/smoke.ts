@@ -9,6 +9,7 @@
  * the checks run on that (0%-traffic) version with production bindings, and the
  * auth deep-health check asserts the response came from it.
  */
+import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 export type SmokeEnv = 'qa' | 'stage' | 'production';
@@ -184,7 +185,7 @@ function parseArgs(argv: string[]): SmokeOptions {
 	return opts;
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const opts = parseArgs(process.argv.slice(2));
 	const results = await runSmoke(opts);

@@ -13,6 +13,7 @@
  *
  * Also run by .github/workflows/rollback.yml (the one-click version).
  */
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { releaseApps, type ReleaseEnv } from './promote.ts';
@@ -83,7 +84,7 @@ export function rollbackCommands(root: string, args: RollbackArgs): { worker: st
 		}));
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const args = parseRollbackArgs(process.argv.slice(2));
 	const root = resolve(new URL('../..', import.meta.url).pathname);

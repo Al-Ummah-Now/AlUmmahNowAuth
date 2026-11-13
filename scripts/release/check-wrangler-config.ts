@@ -3,6 +3,7 @@
  *   node --experimental-strip-types scripts/release/check-wrangler-config.ts
  * Exits 1 and lists every problem if a deployed config or deploy command is wrong.
  */
+import { fileURLToPath } from 'node:url';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { APPS } from './apps.ts';
@@ -39,7 +40,7 @@ export function runCheck(root: string): string[] {
 	return errors;
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const root = resolve(process.argv[2] ?? process.cwd());
 	const errors = runCheck(root);

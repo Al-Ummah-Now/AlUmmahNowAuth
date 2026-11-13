@@ -10,6 +10,7 @@
  *
  *   node --experimental-strip-types scripts/release/d1-migrate.ts --env production
  */
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -76,7 +77,7 @@ export function migrateAuthDb(env: DbEnv, log: (l: string) => void = (l) => proc
 	log(`  app: ${out.includes('No migrations to apply') ? 'up to date' : out.trim().split('\n').slice(-3).join(' ')}`);
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const env = process.argv[process.argv.indexOf('--env') + 1];
 	if (env !== 'stage' && env !== 'production') {

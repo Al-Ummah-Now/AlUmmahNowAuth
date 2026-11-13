@@ -38,6 +38,7 @@ const AUTH_SECRETS: RequiredSecret[] = [
 	{ name: 'CLIENT_SECRET_SALT', purpose: 'Secrets Store; legacy, required by deep health but read by no code (client secrets use per-secret PBKDF2 salts)' },
 	{ name: 'KEY_ENCRYPTION_MASTER_KEY', purpose: 'Secrets Store; encrypts JWT signing keys at rest in D1' },
 	{ name: 'RESEND_API_KEY', purpose: 'Secrets Store; sends sign-in / verification email' },
+	{ name: 'INTERNAL_API_KEY', purpose: 'Secrets Store (internal-api-key[-stage|-qa], shared with the videos Workers); reports unexpected errors to the videos admin Errors page (#341)' },
 	{ name: 'SESSION_SECRET', purpose: 'worker secret, 64 hex chars; encrypts the __session SSO cookie' },
 ];
 
