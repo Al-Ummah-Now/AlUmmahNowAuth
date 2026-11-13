@@ -16,20 +16,9 @@ import { getSetting, putSetting } from './store';
 export const STAFF_PASSKEYS_SETTING = 'staff_passkeys';
 export const DEFAULT_GRACE_DAYS = 7;
 
-/** Normalised staff role names (lower-case, spaces → `_`). */
-export const STAFF_ROLES = ['super_admin', 'admin', 'moderator', 'writer', 'content_reviewer', 'senior_reviewer'] as const;
+import { STAFF_ROLES, isStaff, isStaffRole, normaliseRole, passkeyBlocked } from '../../../../packages/ui/src/passkey-policy.ts';
 
-export function normaliseRole(name: string): string {
-	return name.trim().toLowerCase().replace(/[\s-]+/g, '_');
-}
-
-export function isStaffRole(name: string): boolean {
-	return (STAFF_ROLES as readonly string[]).includes(normaliseRole(name));
-}
-
-export function isStaff(roles: readonly string[] | undefined | null): boolean {
-	return !!roles && roles.some((r) => typeof r === 'string' && isStaffRole(r));
-}
+export { STAFF_ROLES, isStaff, isStaffRole, normaliseRole, passkeyBlocked };
 
 export interface StaffPasskeySetting {
 	enforced: boolean;
@@ -113,15 +102,4 @@ export async function passkeyDeadline(db: D1Database, userId: string, roles: rea
 	const setting = await readStaffPasskeySetting(db);
 	if (!setting.enforced) return undefined;
 	return deadlineFor(setting, await staffRoleAssignedAt(db, userId), roles);
-}
-
-/** Consumer rule (also used by Auth's own admin): is staff access blocked right now? */
-export function passkeyBlocked(claims: { amr?: unknown; properties?: { passkey_deadline?: unknown; roles?: unknown } }, nowSeconds = Math.floor(Date.now() / 1000)): boolean {
-	const deadline = claims.properties?.passkey_deadline;
-	if (typeof deadline !== 'number') return false;
-	const roles = Array.isArray(claims.properties?.roles) ? (claims.properties!.roles as string[]) : [];
-	if (!isStaff(roles)) return false;
-	const amr = Array.isArray(claims.amr) ? claims.amr : [];
-	if (amr.includes('passkey')) return false;
-	return nowSeconds >= deadline;
 }

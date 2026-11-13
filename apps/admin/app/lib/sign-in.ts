@@ -34,18 +34,26 @@ export function parsePrompt(raw: string | null | undefined): LoginPrompt | undef
   return raw === "none" || raw === "login" ? raw : undefined;
 }
 
-/** The app's /login URL for `returnTo` (and an optional prompt). */
-export function loginPath(returnTo: string, prompt?: LoginPrompt): string {
+/** The app's /login URL for `returnTo` (and an optional prompt and OIDC max_age in seconds). */
+export function loginPath(returnTo: string, prompt?: LoginPrompt, maxAge?: number): string {
   const params = new URLSearchParams({ redirect: safeReturnPath(returnTo) });
   if (prompt) params.set("prompt", prompt);
+  if (maxAge !== undefined) params.set("max_age", String(maxAge));
   return `/login?${params}`;
 }
 
+/** OIDC max_age from /login's query: whole seconds, else undefined. */
+export function parseMaxAge(raw: string | null | undefined): number | undefined {
+  if (!raw || !/^\d{1,7}$/.test(raw)) return undefined;
+  return Number(raw);
+}
+
 /** Adds the prompt (if any) to an authorize URL built by the openauth client. */
-export function withPrompt(authorizeUrl: string, prompt?: LoginPrompt): string {
-  if (!prompt) return authorizeUrl;
+export function withPrompt(authorizeUrl: string, prompt?: LoginPrompt, maxAge?: number): string {
+  if (!prompt && maxAge === undefined) return authorizeUrl;
   const url = new URL(authorizeUrl);
-  url.searchParams.set("prompt", prompt);
+  if (prompt) url.searchParams.set("prompt", prompt);
+  if (maxAge !== undefined) url.searchParams.set("max_age", String(maxAge));
   return url.toString();
 }
 

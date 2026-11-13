@@ -240,3 +240,56 @@ describe("account menu app icons", () => {
     }
   });
 });
+
+describe("passkeys in the hub (AUTH-PASSKEYS)", () => {
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW_MS);
+    kv = new FakeKV();
+    db = await fakeD1();
+  });
+
+  it("Add a passkey goes to the auth host's setup page, back to the hub", async () => {
+    const res = await get("/passkeys/add?lang=ar");
+    expect(res.status).toBe(302);
+    const to = new URL(res.headers.get("location")!);
+    expect(to.origin + to.pathname).toBe(`${AUTH}/passkeys/setup`);
+    expect(to.searchParams.get("lang")).toBe("ar");
+    expect(to.searchParams.get("return_to")).toBe(`${APP}/?lang=ar#passkeys`);
+  });
+
+  it("the list needs a session, and changes need this app's origin", async () => {
+    expect((await get("/api/passkeys")).status).toBe(401);
+    const cross = await worker.fetch(
+      new Request(`${APP}/api/passkeys/abc`, { method: "DELETE", headers: { Origin: "https://evil.example" } }),
+      env() as never,
+      {} as ExecutionContext,
+    );
+    expect(cross.status).toBe(403);
+  });
+
+  it("forwards to Auth with the user's own token", async () => {
+    const cookie = await seedSession(jwt(NOW_S + 900));
+    client.refresh.mockReset();
+    const calls: Array<{ url: string; auth: string | null; method: string }> = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo, init?: RequestInit) => {
+      calls.push({ url: String(input), auth: new Headers(init?.headers).get("Authorization"), method: init?.method ?? "GET" });
+      return new Response(JSON.stringify({ passkeys: [] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const res = await worker.fetch(
+        new Request(`${APP}/api/passkeys/cred_1`, { method: "DELETE", headers: { Cookie: cookie, Origin: APP } }),
+        env() as never,
+        {} as ExecutionContext,
+      );
+      expect(res.status).toBe(200);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].url).toBe(`${AUTH}/account/passkeys/cred_1`);
+      expect(calls[0].method).toBe("DELETE");
+      expect(calls[0].auth).toMatch(/^Bearer /);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
