@@ -53,6 +53,15 @@ describe('GET /admin/users?search=', () => {
 		expect((await search('aisha@')).ids).toEqual(['usr_bbb222']);
 	});
 
+	it('a run account address longer than D1\'s 50-byte LIKE limit is found, by search and by ?email= (QA 500s)', async () => {
+		const long = 'e2e+43400000000-1-admin-web-local-1-moderator@e2e.alummahnow.net';
+		await seed('usr_long555', long, null);
+		expect((await search(long)).ids).toEqual(['usr_long555']);
+		const res = await app().request(`/?email=${encodeURIComponent(long.toUpperCase())}&limit=8`);
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as { users: { id: string }[] }).users.map((u) => u.id)).toEqual(['usr_long555']);
+	});
+
 	it('matches an exact id', async () => {
 		expect((await search('usr_bbb222')).ids).toEqual(['usr_bbb222']);
 	});

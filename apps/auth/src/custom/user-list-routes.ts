@@ -90,14 +90,17 @@ export function userListRoutes(db: D1Database) {
       }
 
       if (email) {
-        conditions.push('email LIKE ?');
-        bindings.push(`%${email.toLowerCase()}%`);
+        // instr, not LIKE: D1 refuses LIKE patterns over 50 bytes, and a run account's address
+        // alone is longer ("LIKE or GLOB pattern too complex", a 500 on QA)
+        conditions.push('instr(lower(email), ?) > 0');
+        bindings.push(email.toLowerCase());
       }
 
       // search: the admin's autocomplete (name, email or an exact id), wildcards in the text escaped
       const search = url.searchParams.get('search')?.trim().slice(0, 100);
-      const searchLike = search ? `%${search.toLowerCase().replace(/[\\%_]/g, (ch) => `\\${ch}`)}%` : '';
-      const SEARCH_SQL = "(lower(email) LIKE ? ESCAPE '\\' OR lower(COALESCE(name, '')) LIKE ? ESCAPE '\\' OR id = ?)";
+      // Substring match with instr (no wildcards to escape, no D1 50-byte LIKE pattern limit)
+      const searchLike = search ? search.toLowerCase() : '';
+      const SEARCH_SQL = "(instr(lower(email), ?) > 0 OR instr(lower(COALESCE(name, '')), ?) > 0 OR id = ?)";
       if (search) {
         conditions.push(SEARCH_SQL);
         bindings.push(searchLike, searchLike, search);
@@ -148,12 +151,12 @@ export function userListRoutes(db: D1Database) {
         SELECT COUNT(*) as count FROM users
         WHERE tenant_id = ? AND deleted_at IS NULL
         ${status ? 'AND status = ?' : ''}
-        ${email ? 'AND email LIKE ?' : ''}
+        ${email ? 'AND instr(lower(email), ?) > 0' : ''}
         ${search ? `AND ${SEARCH_SQL}` : ''}
       `;
       const countBindingsSimple: (string | number)[] = [tenantId];
       if (status) countBindingsSimple.push(status);
-      if (email) countBindingsSimple.push(`%${email.toLowerCase()}%`);
+      if (email) countBindingsSimple.push(email.toLowerCase());
       if (search) countBindingsSimple.push(searchLike, searchLike, search);
 
       let totalCount: number | null = null;
