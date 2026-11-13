@@ -140,6 +140,31 @@ describe('clients and roles', () => {
 });
 
 describe('cleanup', () => {
+	it("a purge removes the user's pending OpenAuth codes, used-code markers and device approvals (#348)", async () => {
+		await addUser('del-u348', 'del-u348@example.com');
+		const put = (key: string, value: object, expires = Date.now() + DAY) =>
+			db().prepare('INSERT OR REPLACE INTO openauth_atomic (key, value, expires_at) VALUES (?, ?, ?)').bind(key, JSON.stringify(value), expires).run();
+		const props = (id: string) => ({ id, email: `${id}@example.com`, roles: [] });
+		// The user's: an unexchanged code, the marker of a used one, an approved TV sign-in, a refresh token
+		await put('oauth:code::c-gone', { type: 'user', properties: props('del-u348'), subject: 'user:s348', clientID: 'c' });
+		await put('oauth:code_used::u-gone', { family: 'f', subject: 'user:s348', clientID: 'c' });
+		await put('oauth:device::d-gone', { clientID: 'tv', status: 'approved', grant: { type: 'user', properties: props('del-u348'), subject: 'user:s348' } });
+		await put('oauth:refresh::user:s348::t', { type: 'user', properties: props('del-u348'), subject: 'user:s348' });
+		// Someone else's of each kind stays
+		await put('oauth:code::c-kept', { type: 'user', properties: props('del-other'), subject: 'user:sother', clientID: 'c' });
+		await put('oauth:code_used::u-kept', { family: 'f', subject: 'user:sother', clientID: 'c' });
+		await put('oauth:device::d-kept', { clientID: 'tv', status: 'approved', grant: { type: 'user', properties: props('del-other'), subject: 'user:sother' } });
+
+		const t0 = Date.now();
+		await softDelete(ENV, 'user', 'del-u348', ADMIN, { now: t0 });
+		const due = await purgeDeleted(ENV, { now: t0 + RETENTION_MS + 1 });
+		expect(due.purged.user).toBe(1);
+
+		const left = await db().prepare("SELECT key FROM openauth_atomic WHERE key LIKE 'oauth:%' AND (value LIKE '%del-u348%' OR value LIKE '%s348%' OR key LIKE '%-kept') ORDER BY key").all<{ key: string }>();
+		expect(left.results.map((r) => r.key)).toEqual(['oauth:code::c-kept', 'oauth:code_used::u-kept', 'oauth:device::d-kept']);
+		await db().prepare("DELETE FROM openauth_atomic WHERE key LIKE '%-kept'").run();
+	});
+
 	it('purges nothing before 30 days, then everything of the user; idempotent', async () => {
 		await addUser('del-u4', 'del-u4@example.com');
 		await db().prepare(`INSERT INTO user_identities (id, user_id, tenant_id, provider, provider_user_id, created_at) VALUES ('del-i4', 'del-u4', 'default', 'google', 'g-4', 1)`).run();

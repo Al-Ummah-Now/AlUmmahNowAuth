@@ -16,6 +16,7 @@
  * D1 does not support `DELETE ... LIMIT`, so batches use `WHERE id IN (SELECT ... LIMIT ?)`.
  */
 
+import { CODE_RANGE, CODE_USED_RANGE, DEVICE_RANGE } from '../storage/atomic-ranges';
 /** Rows deleted per statement */
 export const CLEANUP_BATCH_SIZE = 1000;
 /** Keep token usage analytics for 90 days */
@@ -116,6 +117,22 @@ export class TokenCleanupService {
 	 * Runs a batched DELETE until fewer than CLEANUP_BATCH_SIZE rows are affected
 	 * or the time box is exhausted. The statement's last bind parameter must be the LIMIT.
 	 */
+	/**
+	 * Expired authorization codes, used-code markers and device-flow records (#348), every 10
+	 * minutes: they carry a user's properties or subject, and the hourly cleanup left an expired
+	 * code for up to 70 minutes. Served by idx_openauth_atomic_expires_at (expired rows only).
+	 */
+	static async sweepExpiredCodes(env: Env, now: number = Date.now()): Promise<number> {
+		const ranges = [CODE_RANGE, CODE_USED_RANGE, DEVICE_RANGE].map(([from, to]) => `(key >= '${from}' AND key < '${to}')`).join(' OR ');
+		return this.batchDelete(
+			env,
+			`DELETE FROM openauth_atomic
+			 WHERE key IN (SELECT key FROM openauth_atomic WHERE expires_at IS NOT NULL AND expires_at <= ? AND (${ranges}) LIMIT ?)`,
+			[now],
+			Date.now(),
+		);
+	}
+
 	private static async batchDelete(
 		env: Env,
 		sql: string,
