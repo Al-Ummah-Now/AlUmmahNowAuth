@@ -8,7 +8,8 @@
  *   - every lantern on screen is drawn whole (the screen with and without the street, compared
  *     by pixels: a lantern drawn less than 85% of its height is cut by something in front of it);
  *   - garlands hang in the gaps around the sign-in card;
- * the other themes draw no street; and with reduced motion the distant lights stand still.
+ * the other themes draw no street; with reduced motion the distant lights stand still; and the
+ * street runs no CSS animations.
  * Read-only: nothing is created, so there is nothing to clean up.
  */
 import { test, expect, type Page } from '@playwright/test';
@@ -48,6 +49,8 @@ async function openProfile(page: Page, theme: string, lang: string): Promise<voi
 /** Waits until the module has drawn for the current scheme and stopped re-measuring. */
 async function settle(page: Page): Promise<void> {
 	await page.waitForTimeout(400);
+	// The module measures when the browser is idle: wait for its drawing when the theme switches the street on
+	await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--fanous-street-on').trim() !== '1' || !!document.getElementById('fanous-street'), undefined, { timeout: 5000 }).catch(() => {});
 	await page.waitForFunction(() => document.documentElement.classList.contains('fanous-street') === (getComputedStyle(document.documentElement).getPropertyValue('--fanous-street-on').trim() === '1'));
 	let last = '';
 	for (let i = 0; i < 20; i++) {
@@ -70,7 +73,7 @@ function seeThrough(page: Page) {
 			return alpha(st.backgroundColor) === 1 || st.backgroundImage !== 'none' || /^(IMG|VIDEO|CANVAS|PICTURE|IFRAME)$/.test(e.tagName);
 		};
 		return Array.from(document.querySelectorAll('body *')).filter((el) => {
-			if (el.tagName === 'IMG' || el.closest('#fanous-street')) return false;
+			if (el.tagName === 'IMG' || el.closest('#fanous-street, #fanous-street-lights')) return false;
 			const r = el.getBoundingClientRect();
 			if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight) return false;
 			const a = alpha(getComputedStyle(el).backgroundColor);
@@ -85,7 +88,7 @@ function seeThrough(page: Page) {
 /** Lanterns fully inside the window, and those drawn less than 85% of their height (cut by something in front). */
 async function lanterns(page: Page): Promise<{ inView: number; cut: string[] }> {
 	const boxes = await page.evaluate(() => {
-		const chrome = Array.from(document.querySelectorAll('body *')).filter((e) => !e.closest('#fanous-street') && ['fixed', 'sticky'].includes(getComputedStyle(e).position))
+		const chrome = Array.from(document.querySelectorAll('body *')).filter((e) => !e.closest('#fanous-street, #fanous-street-lights') && ['fixed', 'sticky'].includes(getComputedStyle(e).position))
 			.map((e) => e.getBoundingClientRect()).filter((r) => r.width && r.height && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight);
 		const hit = (b: { x: number; y: number; w: number; h: number }) => chrome.some((r) => b.x < r.right && b.x + b.w > r.left && b.y < r.bottom && b.y + b.h > r.top);
 		return Array.from(document.querySelectorAll('#fanous-street .fs-l use')).map((u) => { const r = u.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })
@@ -123,6 +126,8 @@ async function checkStreet(page: Page, where: string): Promise<{ problems: strin
 		await page.emulateMedia({ colorScheme: mode });
 		await settle(page);
 		await expect(page.locator('html'), `${where} ${mode}`).toHaveClass(/fanous-street/);
+		// the page keeps its own flat, opaque page colour on the body (the street draws above it)
+		expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), `${where} ${mode} body`).toMatch(/^rgb\(/);
 		for (const s of await seeThrough(page)) problems.push(`${where} ${mode} see-through: ${s}`);
 		const l = await lanterns(page);
 		inView[mode] = l.inView;
@@ -165,26 +170,27 @@ test.describe('Fawanees lantern street', () => {
 	});
 
 	for (const motion of ['reduce', 'no-preference'] as const) {
-		test(`distant lights ${motion === 'reduce' ? 'stand still with reduced motion' : 'move at 0.2x the scroll'}`, async ({ browser }) => {
+		test(`distant lights ${motion === 'reduce' ? 'stand still with reduced motion' : 'drift at 0.2x the scroll'}; no animations`, async ({ browser }) => {
 			// A short window so the profile page scrolls
 			const context = await browser.newContext({ reducedMotion: motion, viewport: { width: 1280, height: 400 }, colorScheme: 'light' });
 			const page = await context.newPage();
 			await openProfile(page, 'fawanees', 'en');
 			await settle(page);
 			await expect(page.locator('html')).toHaveClass(/fanous-street/);
-			const pos = () => page.evaluate(() => getComputedStyle(document.documentElement).backgroundPositionY.split(',')[0].trim());
-			const sway = () => page.evaluate(() => { const g = document.querySelector('#fanous-street .fs-l'); return g ? getComputedStyle(g).animationName : 'none'; });
+			await expect(page.locator('#fanous-street-lights')).toHaveCount(1);
+			const pos = () => page.evaluate(() => getComputedStyle(document.getElementById('fanous-street-lights')!).backgroundPositionY);
 			expect(await pos()).toBe('0px');
 			const y = await page.evaluate(() => Math.min(300, document.documentElement.scrollHeight - innerHeight));
 			expect(y, 'the page scrolls').toBeGreaterThanOrEqual(100);
 			await page.evaluate((to) => window.scrollTo(0, to), y);
-			await page.waitForTimeout(300);
-			if (motion === 'reduce') {
-				expect(await pos()).toBe('0px');
-				expect(await sway()).toBe('none');
-			} else {
-				expect(await pos()).toBe(`${-y * 0.2}px`);
-			}
+			// the module sets whole pixels
+			await expect.poll(pos).toBe(motion === 'reduce' ? '0px' : `${Math.round(-y * 0.2)}px`);
+			// No CSS animations of its own (pages and tests that wait for every animation must not hang)
+			const ours = await page.evaluate(() => document.getAnimations().filter((a) => {
+				const t = (a.effect as KeyframeEffect | null)?.target as Element | null;
+				return !!t && (t === document.documentElement || !!t.closest('#fanous-street, #fanous-street-lights'));
+			}).length);
+			expect(ours).toBe(0);
 			await context.close();
 		});
 	}

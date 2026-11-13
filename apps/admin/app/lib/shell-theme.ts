@@ -45,7 +45,7 @@ const STREET_DECL = /^--fanous-(?:street-[a-z-]+|color-primary):/;
 /**
  * The Fanous lantern street in the admin (design: AlUmmahNow docs/design/FAWANEES-STREET.md).
  * The admin is a dark app whatever the device's setting, so it takes the theme's dark-scheme
- * street, over its own page colour (html paints it; the page wrapper lets it through).
+ * street, over its own page colour (the body paints it; the page wrapper lets the street through).
  * "" when the theme has no street.
  */
 export function adminStreetCss(tokensCss: string): string {
@@ -54,7 +54,7 @@ export function adminStreetCss(tokensCss: string): string {
   const decls = dark[1].split(";").map((d) => d.trim()).filter((d) => STREET_DECL.test(d));
   if (!decls.some((d) => /^--fanous-street-on:\s*1$/.test(d))) return "";
   return (
-    `:root{${decls.join(";")};--fanous-color-background:var(${VAR("page-background")},rgb(var(--color-background)))}\n` +
+    `:root{${decls.join(";")}}\n` +
     `html.fanous-street [data-shell="page"]{background:transparent}`
   );
 }

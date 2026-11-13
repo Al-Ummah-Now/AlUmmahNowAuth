@@ -14,6 +14,8 @@ const STILL = '*:not(html),*::before,*::after{transition:none!important;animatio
 
 async function settle(page: Page): Promise<void> {
 	await page.waitForTimeout(400);
+	// The module measures when the browser is idle: wait for its drawing when the theme switches the street on
+	await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--fanous-street-on').trim() !== '1' || !!document.getElementById('fanous-street'), undefined, { timeout: 5000 }).catch(() => {});
 	let last = '';
 	for (let i = 0; i < 20; i++) {
 		const now = await page.evaluate(() => `${document.documentElement.className}:${document.getElementById('fanous-street')?.innerHTML.length}:${document.documentElement.scrollHeight}`);
@@ -47,7 +49,7 @@ function seeThrough(page: Page) {
 /** Lanterns on screen drawn less than 85% of their height (the screen with and without the street). */
 async function cutLanterns(page: Page): Promise<{ inView: number; cut: string[] }> {
 	const boxes = await page.evaluate(() => {
-		const chrome = Array.from(document.querySelectorAll('body *')).filter((e) => !e.closest('#fanous-street') && ['fixed', 'sticky'].includes(getComputedStyle(e).position))
+		const chrome = Array.from(document.querySelectorAll('body *')).filter((e) => !e.closest('#fanous-street, #fanous-street-lights') && ['fixed', 'sticky'].includes(getComputedStyle(e).position))
 			.map((e) => e.getBoundingClientRect()).filter((r) => r.width && r.height && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight);
 		const hit = (b: { x: number; y: number; w: number; h: number }) => chrome.some((r) => b.x < r.right && b.x + b.w > r.left && b.y < r.bottom && b.y + b.h > r.top);
 		return Array.from(document.querySelectorAll('#fanous-street .fs-l use')).map((u) => { const r = u.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })
@@ -92,8 +94,8 @@ test.describe('Fawanees lantern street in the accounts admin', () => {
 			await expect(page.locator('html'), mode).toHaveClass(/fanous-street/);
 			// the admin stays dark: the dark street's colours, the admin's own page colour
 			expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fanous-street-line').trim())).toBe('#f5cf9242');
-			// never the Fawanees light page colour (#f3eee5) under the admin's light-on-dark text
-			expect(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).toBe(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--color-background').trim() ? `rgb(${getComputedStyle(document.body).getPropertyValue('--color-background').trim().split(/\s+/).join(', ')})` : ''));
+			// the admin keeps its own dark page colour on the body (never the Fawanees light page)
+			expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(await page.evaluate(() => `rgb(${getComputedStyle(document.body).getPropertyValue('--color-background').trim().split(/\s+/).join(', ')})`));
 			for (const s of await seeThrough(page)) problems.push(`${mode} see-through: ${s}`);
 			const l = await cutLanterns(page);
 			for (const c of l.cut) problems.push(`${mode} ${c}`);
