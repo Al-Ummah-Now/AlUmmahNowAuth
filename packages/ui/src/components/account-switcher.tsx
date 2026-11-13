@@ -265,7 +265,8 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
                   <span className="aun-menu-label" id="account-apps-label">Al Ummah Now apps</span>
                   {apps.map((app) => (
                     <a key={app.id} role="menuitem" className="aun-menu-item" href={app.href} data-app={app.id}>
-                      <span className="aun-app-icon" data-app={app.id} aria-hidden="true" />
+                      {/* The app's own favicon: a separate file (never inlined in the CSS), loaded when the menu shows it */}
+                      <img className="aun-app-icon" data-app={app.id} src={`/aun-nav/icons/${app.id}.webp`} width={32} height={32} alt="" loading="lazy" decoding="async" />
                       <span className="aun-menu-text">{app.label}</span>
                     </a>
                   ))}

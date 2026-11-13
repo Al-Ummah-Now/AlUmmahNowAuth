@@ -214,3 +214,20 @@ describe("profile sign-in routing", () => {
     expect((await get("/", "profile_session=sid-1")).headers.get("location")).toBe("/login?return=%2F");
   });
 });
+
+describe("account menu app icons", () => {
+  beforeEach(async () => {
+    kv = new FakeKV();
+    db = await fakeD1();
+  });
+
+  it("serves every app's favicon as a separate WebP file, without a session", async () => {
+    for (const id of ["www", "videos", "profile", "cms", "admin", "auth-admin"]) {
+      const res = await get(`/aun-nav/icons/${id}.webp`);
+      expect(res.status, id).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/webp");
+      const body = new Uint8Array(await res.arrayBuffer());
+      expect(new TextDecoder().decode(body.subarray(8, 12))).toBe("WEBP");
+    }
+  });
+});

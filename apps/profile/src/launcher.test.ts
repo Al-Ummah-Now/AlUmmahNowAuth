@@ -19,7 +19,7 @@ describe("renderAppsSection (account menu, AlUmmahNow docs/design/NAV.md)", () =
     expect(admin).toMatch(/<span class="aun-menu-label" id="appsLabel">Al Ummah Now apps<\/span>/);
     expect(admin.match(/role="menuitem"/g)).toHaveLength(5);
     // Each app with its own icon (the shared nav's ids: the content admin is "admin")
-    expect(admin).toContain('<span class="aun-app-icon" data-app="admin" aria-hidden="true"></span>');
+    expect(admin).toContain('<img class="aun-app-icon" data-app="admin" src="/aun-nav/icons/admin.webp" width="32" height="32" alt="" loading="lazy" decoding="async">');
   });
 
   it("shows staff apps only to staff", () => {
@@ -38,7 +38,7 @@ describe("renderAppCards", () => {
   it("shows each app's own favicon, the same image as the account menu (no drawn icon or colour tile)", () => {
     const cards = renderAppCards(appsForUser(["Admin"], "qa", "en"), MESSAGES.en);
     for (const id of ["www", "videos", "cms", "admin", "auth-admin"]) {
-      expect(cards).toContain(`<span class="aun-app-icon aun-app-icon--card" data-app="${id}" aria-hidden="true"></span>`);
+      expect(cards).toContain(`<img class="aun-app-icon aun-app-icon--card" data-app="${id}" src="/aun-nav/icons/${id}.webp" width="48" height="48" alt="" loading="lazy" decoding="async">`);
     }
     expect(cards).not.toContain("<svg class=\"app-icon-svg\"");
     expect(cards).not.toContain("app-tile");
