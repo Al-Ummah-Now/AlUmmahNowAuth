@@ -391,7 +391,8 @@ export function renderHomePage(o: HomePageOptions): string {
             var switcher = document.getElementById('accountSwitcher');
             if (!isLoggedIn || !currentUser) { switcher.style.display = 'none'; return; }
             switcher.style.display = 'inline-block';
-            var activeAccount = accounts.find(function (a) { return a.isActive; });
+            // The current account: auth's active one, else this app's own user
+            var activeAccount = accounts.find(function (a) { return a.isActive; }) || accounts.find(function (a) { return a.userId === currentUser.id; });
             var displayAccount = activeAccount || { email: currentUser.email };
             var name = nameOf(displayAccount);
             document.getElementById('activeAvatar').textContent = initialOf(name);
@@ -403,7 +404,7 @@ export function renderHomePage(o: HomePageOptions): string {
 
             // More accounts (the Google pattern): the current account is the top of the menu; the
             // other accounts are listed here, each with a sign-out icon button
-            var others = accounts.filter(function (a) { return !(a.isActive && a.userId === currentUser.id); });
+            var others = accounts.filter(function (a) { return a !== activeAccount; });
             var several = accounts.length > 1;
             document.getElementById('accountsLabel').hidden = others.length === 0;
             document.getElementById('accountsList').innerHTML = others.map(function (account) {
