@@ -48,6 +48,7 @@ import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
 import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
+import { injectTurnstile, widgetScriptUrl } from "./security/turnstile";
 import { handleModerationBatch, type ModerationQueueMessage } from './moderation/queue';
 import { createActionRunner } from './moderation/actions';
 import { openauthThemeFor } from '../../../packages/ui/src/auth-theme/compile.ts';
@@ -497,6 +498,19 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     let issuerResponse = await timer.stage('guard.finish', () => passwordGuard.finish(issued));
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
     if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin));
+    // Turnstile on sign-up, reset and (after failures) sign-in pages (security/turnstile.ts)
+    if (isPage && passwordGuard.widget && (issuerResponse.headers.get('Content-Type') ?? '').includes('text/html') && env.TURNSTILE_SITE_KEY) {
+      const widget = passwordGuard.widget;
+      const html = injectTurnstile(await issuerResponse.text(), {
+        siteKey: env.TURNSTILE_SITE_KEY,
+        scriptUrl: widgetScriptUrl(env),
+        action: widget.action,
+        lang: getLocaleFromRequest(request) === 'ar' ? 'ar' : 'en',
+      });
+      const headers = new Headers(issuerResponse.headers);
+      headers.delete('Content-Length');
+      issuerResponse = new Response(html, { status: issuerResponse.status, statusText: issuerResponse.statusText, headers });
+    }
 
     // Picker "Sign out" of the last account: single sign-out (#219)
     if (request.method === 'POST' && url.pathname === ACCOUNT_PICKER_REMOVE_PATH) {

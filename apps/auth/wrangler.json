@@ -56,6 +56,9 @@
   },
   "vars": {
     "ENVIRONMENT": "development",
+    "TURNSTILE_MODE": "off",
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+    "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
     "PROFILE_APP_URL": "http://localhost:3302/",
     "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
     "ALLOWED_ORIGINS": "localhost,127.0.0.1",
@@ -75,7 +78,8 @@
     {
       "binding": "AUTH_ANALYTICS",
       "dataset": "auth_events"
-    }
+    },
+    { "binding": "ABUSE_EVENTS", "dataset": "al_ummah_now_abuse_dev" }
   ],
   "tail_consumers": [],
   "env": {
@@ -135,6 +139,8 @@
       "vars": {
         "ERRORS_INGEST_URL": "https://admin.api.alummahnow.net/internal/errors",
         "ENVIRONMENT": "production",
+        "TURNSTILE_MODE": "off",
+        "TURNSTILE_SITE_KEY": "0x4AAAAAAF_3KPNkPlEGf_dP",
         "AUDIT_SAMPLE": "",
         "LOG_LEVEL": "debug",
         "PROFILE_APP_URL": "https://profile.auth.alummahnow.net/",
@@ -160,10 +166,12 @@
         {
           "binding": "AUTH_ANALYTICS",
           "dataset": "auth_events"
-        }
+        },
+        { "binding": "ABUSE_EVENTS", "dataset": "al_ummah_now_abuse" }
       ],
       "tail_consumers": [],
       "secrets_store_secrets": [
+        { "binding": "TURNSTILE_SECRET", "store_id": "f8eddc9944d041919ed8dc7d08d32308", "secret_name": "turnstile-secret" },
         {
           "binding": "INTERNAL_API_KEY",
           "store_id": "f8eddc9944d041919ed8dc7d08d32308",
@@ -247,6 +255,8 @@
       "vars": {
         "ERRORS_INGEST_URL": "https://admin.api.stage.alummahnow.net/internal/errors",
         "ENVIRONMENT": "stage",
+        "TURNSTILE_MODE": "enforce",
+        "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
         "AUDIT_SAMPLE": "auth.login.success=0.1,admin.item.*=0.1",
         "LOG_LEVEL": "warn",
         "E2E_RUN_USERS": "enabled",
@@ -273,10 +283,13 @@
         {
           "binding": "AUTH_ANALYTICS",
           "dataset": "auth_events_stage"
-        }
+        },
+        { "binding": "ABUSE_EVENTS", "dataset": "al_ummah_now_abuse_stage" }
       ],
       "tail_consumers": [],
       "secrets_store_secrets": [
+        { "binding": "BOT_BYPASS_SECRET", "store_id": "f8eddc9944d041919ed8dc7d08d32308", "secret_name": "bot-bypass-secret-nonprod" },
+        { "binding": "TURNSTILE_SECRET", "store_id": "f8eddc9944d041919ed8dc7d08d32308", "secret_name": "turnstile-secret-test" },
         {
           "binding": "INTERNAL_API_KEY",
           "store_id": "f8eddc9944d041919ed8dc7d08d32308",

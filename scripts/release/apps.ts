@@ -5,7 +5,8 @@
 import type { AppRule, Binding } from './wrangler-config.ts';
 
 // E2E_RUN_USERS: the flag that enables the E2E run-account routes (QA/stage only)
-const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET', 'E2E_RUN_USERS'];
+// BOT_BYPASS_SECRET: signs the E2E Turnstile bypass header; production never has a bypass
+const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET', 'E2E_RUN_USERS', 'BOT_BYPASS_SECRET'];
 
 const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'd1_databases', name: 'AUTH_DB' },
@@ -29,6 +30,9 @@ const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'ratelimits', name: 'SEND_CODE_LIMITER' },
 	{ kind: 'ratelimits', name: 'ADMIN_LIMITER' },
 	{ kind: 'ratelimits', name: 'ADMIN_SENSITIVE_LIMITER' },
+	// Turnstile on sign-up, reset and sign-in (src/security/turnstile.ts) and the abuse counters
+	{ kind: 'secrets_store_secrets', name: 'TURNSTILE_SECRET' },
+	{ kind: 'analytics_engine_datasets', name: 'ABUSE_EVENTS' },
 ];
 
 export const APPS: AppRule[] = [

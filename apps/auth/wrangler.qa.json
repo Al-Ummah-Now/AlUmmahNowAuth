@@ -58,6 +58,8 @@
   "vars": {
     "ERRORS_INGEST_URL": "https://admin.api.qa.alummahnow.net/internal/errors",
     "ENVIRONMENT": "qa",
+    "TURNSTILE_MODE": "enforce",
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
     "AUDIT_SAMPLE": "auth.login.success=0.1,admin.item.*=0.1",
     "LOG_LEVEL": "warn",
     "E2E_RUN_USERS": "enabled",
@@ -92,9 +94,12 @@
     {
       "binding": "AUTH_ANALYTICS",
       "dataset": "auth_events_qa"
-    }
+    },
+    { "binding": "ABUSE_EVENTS", "dataset": "al_ummah_now_abuse_qa" }
   ],
   "secrets_store_secrets": [
+    { "binding": "BOT_BYPASS_SECRET", "store_id": "f8eddc9944d041919ed8dc7d08d32308", "secret_name": "bot-bypass-secret-nonprod" },
+    { "binding": "TURNSTILE_SECRET", "store_id": "f8eddc9944d041919ed8dc7d08d32308", "secret_name": "turnstile-secret-test" },
     {
       "binding": "INTERNAL_API_KEY",
       "store_id": "f8eddc9944d041919ed8dc7d08d32308",

@@ -52,7 +52,9 @@ export function addSecurityHeaders(
 	headers.set(
 		'Content-Security-Policy',
 		"default-src 'self'; " +
-			"script-src 'self' 'unsafe-inline'; " +
+			// Cloudflare Turnstile: api.js and its challenge iframe (security/turnstile.ts)
+			"script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; " +
+			"frame-src https://challenges.cloudflare.com; " +
 			"style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; " +
 			"img-src 'self' data: https:; " +
 			"font-src 'self' https://fonts.gstatic.com; " +
