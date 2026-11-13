@@ -17,15 +17,12 @@ export type Locale = "en" | "ar";
 
 export type AppId = "www" | "videos" | "content-admin" | "cms" | "auth-admin" | "profile";
 
-export type AppIcon = "globe" | "play" | "shield" | "pencil" | "key" | "user";
-
 export interface AppEntry {
   id: AppId;
   /** "app" = product apps everyone can use; "admin" = staff tools */
   category: "app" | "admin";
   name: Record<Locale, string>;
   description: Record<Locale, string>;
-  icon: AppIcon;
   /** null = the app has no deployment in that environment, so it is hidden there */
   urls: Record<AppEnv, string | null>;
   /**
@@ -46,7 +43,6 @@ export const APP_CATALOG: readonly AppEntry[] = [
       en: "Articles, pages and what we do",
       ar: "المقالات والصفحات وما نقوم به",
     },
-    icon: "globe",
     urls: {
       production: "https://www.alummahnow.net",
       qa: "https://www.qa.alummahnow.net",
@@ -63,7 +59,6 @@ export const APP_CATALOG: readonly AppEntry[] = [
       en: "Watch and share videos",
       ar: "شاهد المرئيات وشاركها",
     },
-    icon: "play",
     urls: {
       production: "https://videos.alummahnow.net",
       qa: "https://videos.qa.alummahnow.net",
@@ -80,7 +75,6 @@ export const APP_CATALOG: readonly AppEntry[] = [
       en: "Your account and sessions",
       ar: "حسابك وجلساتك",
     },
-    icon: "user",
     urls: {
       production: "https://profile.auth.alummahnow.net",
       qa: "https://profile.auth.qa.alummahnow.net",
@@ -97,7 +91,6 @@ export const APP_CATALOG: readonly AppEntry[] = [
       en: "Edit the website: pages, articles and featured videos",
       ar: "تحرير الموقع: الصفحات والمقالات والمرئيات المختارة",
     },
-    icon: "pencil",
     urls: {
       production: "https://cms.alummahnow.net",
       qa: "https://cms.qa.alummahnow.net",
@@ -115,7 +108,6 @@ export const APP_CATALOG: readonly AppEntry[] = [
       en: "Moderate videos, channels and reports",
       ar: "الإشراف على المرئيات والقنوات والبلاغات",
     },
-    icon: "shield",
     urls: {
       production: "https://admin.alummahnow.net",
       qa: "https://admin.qa.alummahnow.net",
@@ -133,7 +125,6 @@ export const APP_CATALOG: readonly AppEntry[] = [
       en: "Users, roles and sign-in clients",
       ar: "المستخدمون والأدوار وتطبيقات الدخول",
     },
-    icon: "key",
     urls: {
       production: "https://admin.auth.alummahnow.net",
       qa: "https://admin.auth.qa.alummahnow.net",
@@ -178,7 +169,6 @@ export interface VisibleApp {
   category: AppEntry["category"];
   name: string;
   description: string;
-  icon: AppIcon;
   url: string;
   current: boolean;
 }
@@ -204,7 +194,6 @@ export function appsForUser(
       category: app.category,
       name: app.name[locale],
       description: app.description[locale],
-      icon: app.icon,
       // The current app links to its own root so a misconfigured env can't
       // send the user elsewhere.
       url: app.id === currentId ? "/" : (app.urls[env as AppEnv] as string),
