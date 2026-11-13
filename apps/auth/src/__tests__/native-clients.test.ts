@@ -11,12 +11,15 @@ import qaMigration from '../../migrations-qa/0013_native_clients.sql?raw';
 import prodMigration from '../../migrations/0013_native_clients.sql?raw';
 import adminQaMigration from '../../migrations-qa/0036_admin_native_clients.sql?raw';
 import adminProdMigration from '../../migrations/0036_admin_native_clients.sql?raw';
+import adminWindowsQaMigration from '../../migrations-qa/0039_admin_windows_client.sql?raw';
+import adminWindowsProdMigration from '../../migrations/0039_admin_windows_client.sql?raw';
 
 const VIEWER_MOBILE = '31389afb-d4f8-4c26-9492-4c77f4d07e65';
 const VIEWER_DESKTOP = 'ce7de8a4-59dd-4682-ab4d-105399105294';
 const STUDIO_MOBILE = '45364a42-21f4-4359-a76c-0a1e6615fd7b';
 const ADMIN_IOS = '77330b47-5747-4058-ba00-921e159f1ced';
 const ADMIN_MAC = '1c230211-7b90-4d0a-be9d-3068ebd79d5b';
+const ADMIN_WINDOWS = '306b6f10-d9f0-4609-84a1-23c92da978e9';
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
 
 const statements = (sql: string) =>
@@ -43,7 +46,7 @@ async function authorize(clientId: string, redirect: string, pkce = true) {
 describe('native app clients (worker)', () => {
 	beforeAll(async () => {
 		await setupDatabase();
-		for (const s of [...statements(qaMigration), ...statements(adminQaMigration)]) await (env as unknown as Env).AUTH_DB.prepare(s).run();
+		for (const s of [...statements(qaMigration), ...statements(adminQaMigration), ...statements(adminWindowsQaMigration)]) await (env as unknown as Env).AUTH_DB.prepare(s).run();
 	});
 
 	it('a custom-scheme redirect with PKCE gets the sign-in form', async () => {
@@ -73,7 +76,7 @@ describe('native app clients (worker)', () => {
 	});
 
 	it('the admin app signs in only on alummahnow-admin://auth/callback, with PKCE', async () => {
-		for (const id of [ADMIN_IOS, ADMIN_MAC]) {
+		for (const id of [ADMIN_IOS, ADMIN_MAC, ADMIN_WINDOWS]) {
 			const res = await authorize(id, 'alummahnow-admin://auth/callback');
 			expect(res.status).toBe(302);
 			expect(res.headers.get('location')).toContain('/password/authorize');
@@ -134,9 +137,25 @@ describe('native client migrations', () => {
 		});
 	}
 
+	for (const [env, sql] of [
+		['qa', adminWindowsQaMigration],
+		['prod', adminWindowsProdMigration],
+	] as const) {
+		it(`${env}: Admin (Windows) is a public native PKCE client on the admin scheme only`, () => {
+			const r = rows(sql);
+			expect(r).toHaveLength(1);
+			expect(r[0].secret).toBe('NULL');
+			expect(r[0].metadata).toEqual({ type: 'native', pkce: 'required', platforms: ['windows'] });
+			expect(r[0].grants).toEqual(['authorization_code', 'refresh_token']);
+			expect(r[0].redirects).toEqual(['alummahnow-admin://auth/callback']);
+		});
+	}
+
 	it('admin client ids differ between QA and prod', () => {
-		const qa = rows(adminQaMigration).map((c) => c.id);
-		expect(rows(adminProdMigration).some((c) => qa.includes(c.id))).toBe(false);
+		const qa = [...rows(adminQaMigration), ...rows(adminWindowsQaMigration)].map((c) => c.id);
+		const prod = [...rows(adminProdMigration), ...rows(adminWindowsProdMigration)].map((c) => c.id);
+		expect(prod.some((id) => qa.includes(id))).toBe(false);
+		expect(new Set([...qa, ...prod]).size).toBe(qa.length + prod.length);
 	});
 
 	it('prod universal links use the prod host, QA the QA host', () => {
