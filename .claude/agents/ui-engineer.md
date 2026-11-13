@@ -130,7 +130,7 @@ app/
 export function VideoCard({ lang }: { lang: 'en' | 'ar' }) {
   return (
     <div className="card">
-      <h2>{lang === 'en' ? 'Video Title' : 'عنوان الفيديو'}</h2>
+      <h2>{lang === 'en' ? 'Video Title' : 'عنوان المرئي'}</h2>
     </div>
   );
 }
