@@ -872,6 +872,7 @@ export interface AuditLogsResponse {
     limit: number;
     total: number;
     pages: number;
+    capped?: boolean;
   };
 }
 

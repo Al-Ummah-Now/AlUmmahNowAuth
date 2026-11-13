@@ -40,7 +40,7 @@ interface RoleRow {
 }
 
 /** The unfiltered live-user count per tenant, per isolate (a dashboard figure, not a ledger). */
-const TOTAL_TTL_MS = 30_000;
+const TOTAL_TTL_MS = 5 * 60_000; // each miss reads every live user (48k rows on QA)
 const totals = new Map<string, { at: number; count: number }>();
 
 function cachedTotal(tenantId: string): number | undefined {

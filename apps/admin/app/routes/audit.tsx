@@ -45,6 +45,8 @@ interface LoaderData {
     limit: number;
     total: number;
     pages: number;
+    /** The total stopped counting at a cap: more events exist. */
+    capped?: boolean;
   };
   filters: {
     event_type?: string;
@@ -465,7 +467,7 @@ export default function AuditLogs() {
                 {pagination.pages > 1 && (
                   <div className="flex items-center justify-between mt-6 pt-6 border-t border-[rgb(var(--color-border))]">
                     <div className="text-sm text-[rgb(var(--color-muted-foreground))]">
-                      Page {pagination.page} of {pagination.pages} ({pagination.total} total events)
+                      Page {pagination.page} of {pagination.pages}{pagination.capped ? "+" : ""} ({pagination.total}{pagination.capped ? "+" : ""} total events)
                     </div>
                     <div className="flex gap-2">
                       <Button
