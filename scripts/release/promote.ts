@@ -12,6 +12,7 @@
  * Writes the result (previous and new version per worker) to release-result.json,
  * which the rollback workflow can use.
  */
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -201,7 +202,7 @@ export async function waitForAuthVersion(env: SmokeEnv, worker: string, version:
 	throw new Error(`${worker} did not serve ${version} within ${timeoutMs / 1000}s (last: ${last})`);
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const argv = process.argv.slice(2);
 	const env = (argv[argv.indexOf('--env') + 1] ?? '') as ReleaseEnv;

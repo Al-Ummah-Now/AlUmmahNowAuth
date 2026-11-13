@@ -9,6 +9,7 @@
  * queue: it does not exercise the auth worker's AUDIT_QUEUE producer binding.
  * Each release leaves one row of type release.audit_pipeline_check.
  */
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { createCfClient, d1Query, type CfClient } from './cf-api.ts';
@@ -85,7 +86,7 @@ export async function runAuditCheck(cf: CfClient, opts: AuditCheckOptions): Prom
 	throw new Error(`canary ${canaryId} did not reach audit_events within ${timeoutMs / 1000}s: check the consumer on ${queueName} and its DLQ`);
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const i = process.argv.indexOf('--env');
 	const env = process.argv[i + 1] as AuditCheckEnv;

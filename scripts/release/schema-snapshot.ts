@@ -6,6 +6,7 @@
  * Snapshots live next to (not inside) the migrations dirs: wrangler applies every
  * .sql file in a migrations dir.
  */
+import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { buildSchema, type MigrationSource } from './d1-schema.ts';
@@ -41,7 +42,8 @@ export function snapshotDiffs(root: string): { file: string; expected: string; a
 	return out;
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+// fileURLToPath: a checkout path with a space is %20 in the URL's pathname, and the script then did nothing
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const root = process.cwd();
 	const write = process.argv.includes('--write');

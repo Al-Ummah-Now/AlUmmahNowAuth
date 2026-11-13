@@ -8,6 +8,7 @@
  * set unless --force, because replacing e.g. SESSION_SECRET signs every user out.
  * For OAuth client secrets use rotate-client-secret.ts instead (D1 hash + consumers).
  */
+import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { createCfClient, getWorkerBindings } from './cf-api.ts';
@@ -51,7 +52,7 @@ async function main(argv: string[]): Promise<void> {
 	}
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	main(process.argv.slice(2)).catch((error) => {
 		console.error(`seed-worker-secret: ${error instanceof Error ? error.message : String(error)}`);

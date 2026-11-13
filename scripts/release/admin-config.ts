@@ -7,6 +7,7 @@
  *   node --experimental-strip-types scripts/release/admin-config.ts stage
  *   → apps/admin/build/server/wrangler.stage.json
  */
+import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseJsonc } from './jsonc.ts';
@@ -27,7 +28,7 @@ export function deriveEnvConfig(built: Record<string, unknown>, source: { env?: 
 	return out;
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const envName = process.argv[2];
 	if (!envName) {

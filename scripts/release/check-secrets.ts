@@ -16,6 +16,7 @@
  * (locally, `wrangler login` is enough). Same file in AlUmmahNow and AlUmmahNowAuth;
  * only secrets-manifest.ts differs.
  */
+import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { createCfClient, d1Query, getWorkerBindings, type CfClient, type WorkerBinding } from './cf-api.ts';
 import { AUTH_DBS, SECRETS_MANIFEST, type EnvName, type WorkerSecrets } from './secrets-manifest.ts';
@@ -130,7 +131,7 @@ function parse(argv: string[]): { env?: EnvName; json: boolean } {
 	return out;
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	try {
 		const args = parse(process.argv.slice(2));

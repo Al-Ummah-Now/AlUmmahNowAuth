@@ -5,6 +5,7 @@
  *
  *   node --experimental-strip-types scripts/release/migration-guard.ts <base-ref>
  */
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
@@ -58,7 +59,7 @@ export function checkMigrations(changes: Change[], baseFiles: string[]): string[
 	return errors;
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const base = process.argv[2];
 	if (!base) {

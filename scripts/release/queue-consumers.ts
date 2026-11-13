@@ -10,6 +10,7 @@
  * CLOUDFLARE_API_TOKEN with Queues:Edit (locally, `wrangler login`).
  * Same file in AlUmmahNow and AlUmmahNowAuth.
  */
+import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createCfClient, type CfClient } from './cf-api.ts';
@@ -92,7 +93,7 @@ export async function ensureConsumers(cf: CfClient, specs: ConsumerSpec[], dryRu
 	return lines;
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const args = process.argv.slice(2);
 	const value = (flag: string) => {
