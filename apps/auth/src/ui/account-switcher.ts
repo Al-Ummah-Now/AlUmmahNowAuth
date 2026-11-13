@@ -148,7 +148,7 @@ export function renderAccountSwitcher(props: AccountSwitcherProps): string {
       overflow-hidden
       z-50
     "
-    style="display: none;"
+    style="display: none; max-width: calc(100vw - 1rem)"
     role="menu"
     aria-orientation="vertical"
   >
