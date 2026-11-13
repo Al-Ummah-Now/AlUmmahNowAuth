@@ -380,7 +380,7 @@ jobs:
           runner: npx
           browsers: chromium
       - name: Run Admin User tests (shard ${{ matrix.shard }}/2)
-        run: pnpm exec playwright test e2e/tests/admin/user-create.spec.ts e2e/tests/admin/user-edit.spec.ts e2e/tests/admin/user-delete.spec.ts e2e/tests/admin/moderation-requests.spec.ts e2e/tests/admin/themes.spec.ts --shard=${{ matrix.shard }}/2
+        run: pnpm exec playwright test e2e/tests/admin/user-create.spec.ts e2e/tests/admin/user-edit.spec.ts e2e/tests/admin/user-delete.spec.ts e2e/tests/admin/moderation-requests.spec.ts e2e/tests/admin/themes.spec.ts e2e/tests/admin/street.spec.ts --shard=${{ matrix.shard }}/2
         env:
           CI: true
           SKIP_WEB_SERVER: true
