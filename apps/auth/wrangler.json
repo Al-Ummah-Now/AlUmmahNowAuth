@@ -149,7 +149,8 @@
       },
       "triggers": {
         "crons": [
-          "0 * * * *"
+          "0 * * * *",
+          "*/10 * * * *"
         ]
       },
       "analytics_engine_datasets": [
@@ -258,7 +259,8 @@
       },
       "triggers": {
         "crons": [
-          "0 * * * *"
+          "0 * * * *",
+          "*/10 * * * *"
         ]
       },
       "analytics_engine_datasets": [

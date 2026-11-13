@@ -17,19 +17,22 @@ import { purgeRevokedInvites } from '../invites/service';
 import { D1AtomicStorage } from '../storage/d1-atomic';
 import { adoptLegacyRefreshTokens } from '../storage/legacy-refresh';
 
-export type CronJobName = 'token-cleanup';
+export type CronJobName = 'token-cleanup' | 'code-sweep';
 
 /**
  * Cron expression -> job. Keep in sync with `triggers.crons` in the wrangler configs.
  */
 export const CRON_SCHEDULE: Readonly<Record<string, CronJobName>> = {
 	'0 * * * *': 'token-cleanup', // hourly
+	// Expired authorization codes and device records carry user data: gone within 10 minutes (#348)
+	'*/10 * * * *': 'code-sweep',
 };
 
 /** Legacy job names accepted for manual invocation */
 const JOB_ALIASES: Readonly<Record<string, CronJobName>> = {
 	'token-cleanup': 'token-cleanup',
 	'token-maintenance': 'token-cleanup',
+	'code-sweep': 'code-sweep',
 };
 
 /**
@@ -60,6 +63,11 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 
 	try {
 		switch (job) {
+			case 'code-sweep': {
+				const deleted = await TokenCleanupService.sweepExpiredCodes(env);
+				if (deleted) logger.info('Expired authorization codes swept', { deleted });
+				break;
+			}
 			case 'token-cleanup': {
 				const result = await TokenCleanupService.runCleanup(env);
 				logger.info('Token cleanup completed', { ...result });

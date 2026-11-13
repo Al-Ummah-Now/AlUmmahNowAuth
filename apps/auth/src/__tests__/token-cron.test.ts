@@ -29,6 +29,7 @@ async function count(table: string): Promise<number> {
 describe('cron schedule mapping', () => {
   it('maps the configured cron expression to the cleanup job', () => {
     expect(resolveCronJob('0 * * * *')).toBe('token-cleanup');
+    expect(resolveCronJob('*/10 * * * *')).toBe('code-sweep');
   });
 
   it('accepts legacy job names', () => {
@@ -109,5 +110,32 @@ describe('TokenCleanupService (real schema)', () => {
     await insertBrowserSession('bs-idle', Date.now() - BROWSER_SESSION_MAX_IDLE_MS - DAY);
     await expect(handleTokenCron(env, '*/5 * * * *')).resolves.toBeNull();
     expect(await count('browser_sessions')).toBe(1);
+  });
+});
+
+describe('code sweep (#348)', () => {
+  beforeAll(async () => {
+    await setupDatabase();
+  });
+
+  it('every 10 minutes deletes expired codes, used-code markers and device records; keeps live ones and other families', async () => {
+    const now = Date.now();
+    const put = (key: string, expiresAt: number | null) =>
+      env.AUTH_DB.prepare('INSERT OR REPLACE INTO openauth_atomic (key, value, expires_at) VALUES (?, ?, ?)').bind(key, '{"properties":{"id":"usr_x"}}', expiresAt).run();
+    await put('oauth:code::sw-expired', now - 1000);
+    await put('oauth:code::sw-live', now + 600_000);
+    await put('oauth:code_used::sw-expired', now - 1000);
+    await put('oauth:device::sw-expired', now - 1000);
+    await put('oauth:refresh::user:sw::expired', now - 1000);
+    await put('oauth:key::sw-forever', null);
+    expect(await handleTokenCron(env as unknown as Env, '*/10 * * * *')).toBe('code-sweep');
+    const left = await env.AUTH_DB.prepare("SELECT key FROM openauth_atomic WHERE key LIKE '%sw%' ORDER BY key").all<{ key: string }>();
+    // Refresh tokens and keys are the hourly cleanup's (or never expire)
+    expect(left.results.map((r) => r.key)).toEqual(['oauth:code::sw-live', 'oauth:key::sw-forever', 'oauth:refresh::user:sw::expired']);
+    const plan = await env.AUTH_DB.prepare(
+      "EXPLAIN QUERY PLAN SELECT key FROM openauth_atomic WHERE expires_at IS NOT NULL AND expires_at <= ? AND ((key >= 'oauth:code::' AND key < 'oauth:code:;')) LIMIT 10"
+    ).bind(now).all<{ detail: string }>();
+    expect(plan.results.map((r) => r.detail).join(' ')).not.toMatch(/^SCAN openauth_atomic$/);
+    await env.AUTH_DB.prepare("DELETE FROM openauth_atomic WHERE key LIKE '%sw%'").run();
   });
 });

@@ -21,6 +21,7 @@
  */
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { authStorage } from '../storage/auth-storage';
+import { CODE_RANGE, CODE_USED_RANGE, DEVICE_RANGE } from '../storage/atomic-ranges';
 import { LEGACY_USER_KEYS } from '../services/d1-user-service';
 import { revokeUser } from '../revocation/revocation-list';
 import { endBrowserSignIns } from '../revocation/lifecycle';
@@ -30,6 +31,7 @@ import { ThemeService } from '../themes/service';
 import { invalidateThemeSettings } from '../themes/runtime';
 import { logger } from '../logger';
 import type { DeletionKind, DeletionRow } from './store';
+
 
 export class DeletionError extends Error {
 	constructor(
@@ -167,6 +169,19 @@ const user: KindHandler = {
 		}
 		await env.AUTH_STORAGE.delete(`permissions:${userId}`);
 
+		// The user's OpenAuth subjects (type:<hash of properties>): used-code markers name only the
+		// subject. Read from the codes and refresh tokens before they are deleted below (#348).
+		const { results: subjectRows } = await db
+			.prepare(
+				`SELECT DISTINCT json_extract(value, '$.subject') AS subject FROM openauth_atomic
+				 WHERE ((key >= '${CODE_RANGE[0]}' AND key < '${CODE_RANGE[1]}') OR (key >= 'oauth:refresh' AND key < 'oauth:refresi'))
+				   AND json_extract(value, '$.properties.id') = ?`
+			)
+			.bind(userId)
+			.all<{ subject: string | null }>()
+			.catch(() => ({ results: [] as { subject: string | null }[] }));
+		const subjects = subjectRows.map((r) => r.subject).filter((s): s is string => typeof s === 'string' && s.length > 0);
+
 		// D1: every row keyed by the user, then the user (FK cascades cover the rest)
 		const statements = [
 			db.prepare('DELETE FROM rbac_user_roles WHERE user_id = ?').bind(userId),
@@ -186,7 +201,24 @@ const user: KindHandler = {
 			db.prepare(
 				`DELETE FROM openauth_atomic WHERE key >= 'oauth:refresh' AND key < 'oauth:refresi' AND json_extract(value, '$.properties.id') = ?`
 			).bind(userId),
+			// Authorization codes issued but never exchanged (#348): they carry the user's properties
+			// until they expire (10 min). A key range of short-lived rows, never a table scan.
+			db.prepare(
+				`DELETE FROM openauth_atomic WHERE key >= '${CODE_RANGE[0]}' AND key < '${CODE_RANGE[1]}' AND json_extract(value, '$.properties.id') = ?`
+			).bind(userId),
+			// Device-flow approvals waiting for the TV to poll: the grant carries the user's properties
+			db.prepare(
+				`DELETE FROM openauth_atomic WHERE key >= '${DEVICE_RANGE[0]}' AND key < '${DEVICE_RANGE[1]}' AND json_extract(value, '$.grant.properties.id') = ?`
+			).bind(userId),
 		];
+		// Used-code markers (24 h) name the user's subject and what the code was exchanged for
+		for (const subject of subjects) {
+			statements.push(
+				db
+					.prepare(`DELETE FROM openauth_atomic WHERE key >= '${CODE_USED_RANGE[0]}' AND key < '${CODE_USED_RANGE[1]}' AND json_extract(value, '$.subject') = ?`)
+					.bind(subject)
+			);
+		}
 		if (email && !(await db.prepare('SELECT 1 FROM users WHERE lower(email) = ? AND id != ?').bind(email, userId).first())) {
 			statements.push(db.prepare('DELETE FROM password_codes WHERE email = ?').bind(email));
 			statements.push(db.prepare('DELETE FROM password_login_attempts WHERE email = ?').bind(email));
