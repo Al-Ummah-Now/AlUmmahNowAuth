@@ -326,7 +326,9 @@ pnpm deploy:auth
 
 Every merge to `main` runs `release.yml` (above): build once → stage → E2E →
 secrets check → production at 0% → smoke → 100% → smoke. There are no per-PR preview deployments;
-PRs are tested on QA (`test.yml` → QA Deploy and E2E).
+PRs never deploy to QA or test against it (owner rule 2026-11-13: tests run against QA only with
+releases). A push to `main` deploys QA (`test.yml` → `qa-e2e.yml`) and runs there only the specs
+stage E2E leaves out (admin, profile, integration, the "code delivery failure" specs).
 
 Manual production deploys (`pnpm deploy:auth` etc.) bypass stage. Use them only
 to recover when the workflow itself is broken.

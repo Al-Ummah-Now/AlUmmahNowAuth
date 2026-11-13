@@ -503,4 +503,4 @@ Test users get `@e2e.alummahnow.net` addresses (`generateTestEmail`). On local, 
 - Without `E2E_CODE_SINK_SECRET`, the helpers fall back to the Resend API (`RESEND_API_KEY`).
 - Every `/test/*` route needs the header and answers 404 without it. None of them exist in production. Design and guarantees: `docs/release-pipeline.md`.
 
-Release regression specs live in `e2e/tests/release/` and run in the QA E2E job.
+Release regression specs live in `e2e/tests/release/` and run in the release's stage E2E (the "code delivery failure" ones on QA after a push to `main`).
