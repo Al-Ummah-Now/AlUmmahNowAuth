@@ -13,7 +13,7 @@ import { sinkKey } from '../utils/e2e-sink';
 import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
-import { isSameOriginPath, safePasswordChangeRequest } from '../security/password-change-redirect';
+import { isPasswordChangePath, isSameOriginPath, safePasswordChangeRequest } from '../security/password-change-redirect';
 
 const ORIGIN = 'http://localhost';
 const FALLBACK = 'https://profile.example.test/';
@@ -54,11 +54,11 @@ const form = (fields: Record<string, string>): RequestInit => ({
 });
 
 /** Runs a whole forgot-password reset opened with `query`; returns where the browser is sent at the end. */
-async function resetAndFollow(query: string): Promise<string | null> {
+async function resetAndFollow(query: string, path = '/password/change'): Promise<string | null> {
 	const email = `redir-${crypto.randomUUID().slice(0, 8)}@e2e.alummahnow.net`;
 	await Storage.set(CloudflarePatchedStorage({ namespace: env.AUTH_STORAGE }), ['email', email, 'password'], await ScryptHasher().hash('Original-pass-123'));
 	const jar: Jar = new Map();
-	expect((await call(`/password/change?${query}`, jar)).status).toBe(200);
+	expect((await call(`${path}?${query}`, jar)).status).toBe(200);
 	await call('/password/change', jar, form({ action: 'code', email }));
 	const { code } = JSON.parse((await env.AUTH_STORAGE.get(sinkKey(email)))!);
 	await call('/password/change', jar, form({ action: 'verify', code }));
@@ -84,6 +84,11 @@ describe('/password/change redirect_uri (#206)', () => {
 
 	it('a foreign URL is refused even with a real client_id', async () => {
 		expect(await resetAndFollow(q({ client_id: PROFILE.id, redirect_uri: 'https://evil.example/steal' }))).toBe(FALLBACK);
+	});
+
+	it('an encoded or trailing-slash spelling of the page gets the same rule', async () => {
+		expect(await resetAndFollow(q({ redirect_uri: 'https://evil.example/steal' }), '/password/%63hange')).toBe(FALLBACK);
+		expect(await resetAndFollow(q({ redirect_uri: 'https://evil.example/steal' }), '/password/change/')).toBe(FALLBACK);
 	});
 
 	it('a protocol-relative or backslash path is refused', async () => {
@@ -117,6 +122,22 @@ describe('safePasswordChangeRequest', () => {
 		const out = new URL((await fix(`/password/change?lang=ar&redirect_uri=${encodeURIComponent('https://evil.example')}`)).url);
 		expect(out.searchParams.get('lang')).toBe('ar');
 		expect(out.searchParams.get('redirect_uri')).toBe(FALLBACK);
+	});
+
+	it.each(['/password/change', '/password/change/', '/password/%63hange', '//password//change', '/Password/Change'])(
+		'treats %s as the change-password page',
+		(p) => expect(isPasswordChangePath(p)).toBe(true)
+	);
+	it.each(['/password/authorize', '/password/changes', '/password/change/x'])('not the change-password page: %s', (p) =>
+		expect(isPasswordChangePath(p)).toBe(false)
+	);
+
+	it('an encoded path or a trailing slash still gets the fallback', async () => {
+		const evil = encodeURIComponent('https://evil.example');
+		for (const path of ['/password/%63hange', '/password/change/']) {
+			expect(new URL((await fix(`${path}?redirect_uri=${evil}`)).url).searchParams.get('redirect_uri')).toBe(FALLBACK);
+		}
+		expect(new URL((await fix(`/password/change?redirect_uri=${evil}`, 'HEAD')).url).searchParams.get('redirect_uri')).toBe(FALLBACK);
 	});
 
 	it.each(['/', '/a?b=c', '/password/authorize'])('same-origin path %s', (p) => expect(isSameOriginPath(p)).toBe(true));

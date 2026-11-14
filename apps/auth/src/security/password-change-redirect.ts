@@ -27,6 +27,22 @@ export function isSameOriginPath(value: string): boolean {
 	return true;
 }
 
+/**
+ * The router decodes percent-escapes and ignores a trailing slash, so
+ * "/password/%63hange/" reaches the same page: compare the path the way it does
+ * (decoded, repeated and trailing slashes collapsed, any case).
+ */
+export function isPasswordChangePath(pathname: string): boolean {
+	let path = pathname;
+	try {
+		path = decodeURIComponent(pathname);
+	} catch {
+		// Malformed escapes: compare as given
+	}
+	path = path.replace(/\/{2,}/g, '/').replace(/\/+$/, '').toLowerCase();
+	return path === PASSWORD_CHANGE_PATH;
+}
+
 /** Whether the change-password page may send the browser to `redirectUri` afterwards. */
 export async function isAllowedPasswordChangeRedirect(
 	db: D1Database,
@@ -62,9 +78,9 @@ function registeredRedirects(raw: string | null | undefined): string[] {
  * replaced with the sign-in fallback.
  */
 export async function safePasswordChangeRequest(request: Request, env: RedirectEnv): Promise<Request> {
-	if (request.method !== 'GET') return request;
+	if (request.method !== 'GET' && request.method !== 'HEAD') return request;
 	const url = new URL(request.url);
-	if (url.pathname !== PASSWORD_CHANGE_PATH) return request;
+	if (!isPasswordChangePath(url.pathname)) return request;
 	const redirectUri = url.searchParams.get('redirect_uri');
 	if (redirectUri === null) return request;
 	if (await isAllowedPasswordChangeRedirect(env.AUTH_DB, redirectUri, url.searchParams.get('client_id'))) {
