@@ -10,7 +10,7 @@
  * (X-Acting-User-Id and an admin session); then role grants (API and the D1
  * trigger), the admin views and the flag itself.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { Hono } from 'hono';
 import { exportSPKI, generateKeyPair, SignJWT } from 'jose';
@@ -42,7 +42,11 @@ const PERSON = 'usr_sys_person';
 const ADMIN = 'usr_sys_admin';
 const SUPER = 'usr_sys_super';
 
-let fetchSpy: ReturnType<typeof vi.spyOn>;
+// Other files replace globalThis.fetch with their own mock at import time (all files are
+// imported into one isolate first), so it is swapped and put back as the same object,
+// never spied on and restored to the real fetch.
+const originalFetch = globalThis.fetch;
+let fetchSpy: ReturnType<typeof vi.fn>;
 let auditSpy: ReturnType<typeof vi.spyOn>;
 
 /** The needs-action items posted to the Errors page ingest since the last reset. */
@@ -96,14 +100,18 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	resetErrorReporter();
-	fetchSpy?.mockRestore();
 	auditSpy?.mockRestore();
-	fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(null, { status: 202 }));
+	fetchSpy = vi.fn(async () => new Response(null, { status: 202 }));
+	globalThis.fetch = fetchSpy as unknown as typeof fetch;
 	auditSpy = vi.spyOn(getAuditEmitter(), 'emit').mockResolvedValue(undefined);
 });
 
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+});
+
 afterAll(() => {
-	fetchSpy?.mockRestore();
+	globalThis.fetch = originalFetch;
 	auditSpy?.mockRestore();
 });
 
