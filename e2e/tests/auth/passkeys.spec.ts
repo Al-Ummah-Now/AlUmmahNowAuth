@@ -9,79 +9,14 @@
  * against deployed QA/stage. Every test signs up its own account and deletes it in
  * afterEach, pass or fail (keyed deletes on the local D1 only).
  */
-import { execFileSync } from 'node:child_process';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { register } from '../../fixtures/auth';
-import { setupEmailInterception } from '../../utils/email-interceptor';
-import { fillSecret } from '../../utils/secret-input';
-import { TEST_PASSWORD } from '../../utils/test-credentials';
-import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
+import { addVirtualAuthenticator, deleteLocalAccount, isLocalStack, signOutClean, signUpToCard } from '../../utils/passkey-local';
+import { generateTestEmail } from '../../utils/test-data';
 
 test.use({ trace: 'off' });
 
-const AUTH_APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../apps/auth');
-const isLocal = /^http:\/\/localhost[:/]/.test(TEST_URLS.authServer);
-
-test.skip(({ browserName }) => browserName !== 'chromium' || !isLocal, 'virtual authenticator: Chromium on the local stack only');
-
-/** A platform authenticator with user verification, as a phone or laptop has. */
-async function addVirtualAuthenticator(context: BrowserContext, page: Page): Promise<void> {
-  const cdp = await context.newCDPSession(page);
-  await cdp.send('WebAuthn.enable');
-  await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      automaticPresenceSimulation: true,
-    },
-  });
-}
-
-/** Keyed deletes of one account and everything passkey-related on the local D1. */
-function deleteLocalAccount(email: string): void {
-  const e = email.replace(/'/g, "''");
-  const uid = `(SELECT id FROM users WHERE email = '${e}')`;
-  const sql = [
-    `DELETE FROM webauthn_credentials WHERE user_id = ${uid}`,
-    `DELETE FROM webauthn_prompts WHERE user_id = ${uid}`,
-    `DELETE FROM passkey_setup_tickets WHERE user_id = ${uid}`,
-    `DELETE FROM account_sessions WHERE user_id = ${uid}`,
-    `DELETE FROM refresh_tokens WHERE user_id = ${uid}`,
-    `DELETE FROM user_identities WHERE user_id = ${uid}`,
-    `DELETE FROM rbac_user_roles WHERE user_id = ${uid}`,
-    `DELETE FROM users WHERE email = '${e}'`,
-    `DELETE FROM password_codes WHERE email = '${e}'`,
-  ].join('; ');
-  try {
-    execFileSync('npx', ['wrangler', 'd1', 'execute', 'AUTH_DB', '--local', '--command', sql], { cwd: AUTH_APP, stdio: 'pipe' });
-  } catch (error) {
-    console.warn(`Could not delete ${email}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`);
-  }
-}
-
-/** Sign-up through the form, stopping where the after-sign-in card shows. */
-async function signUpToCard(page: Page, email: string): Promise<void> {
-  const inbox = setupEmailInterception();
-  await page.goto(TEST_URLS.profileApp);
-  await expect(page).toHaveURL(new RegExp(TEST_URLS.authServer));
-  await page.click('a:has-text("Register")');
-  await page.fill('input[type="email"]', email);
-  const passwords = page.locator('input[type="password"]');
-  await fillSecret(passwords.nth(0), TEST_PASSWORD);
-  await fillSecret(passwords.nth(1), TEST_PASSWORD);
-  await page.click('button:has-text("Continue")');
-  await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 20000 });
-  const code = await inbox.getLastLoginCode(email);
-  if (!code) throw new Error('No verification code in the local sink');
-  await fillSecret(page.locator('input[name="code"]').first(), code);
-  await page.click('button:has-text("Continue")');
-  await expect(page.locator('[data-page="passkey"]')).toBeVisible({ timeout: 20000 });
-}
+test.skip(({ browserName }) => browserName !== 'chromium' || !isLocalStack, 'virtual authenticator: Chromium on the local stack only');
 
 /**
  * The hub's Passkeys card shows no error: the list loaded (empty text or rows) and the
@@ -93,16 +28,6 @@ async function expectCardHealthy(page: Page): Promise<void> {
   await expect(card.locator('#passkeysEmpty:visible, #passkeyList [data-passkey-id]').first()).toBeVisible({ timeout: 15000 });
   await expect(card.locator('#passkeyStatus[data-tone="error"]')).toHaveCount(0);
   await expect(card.locator('[data-tone="error"], .error-message')).toHaveCount(0);
-}
-
-/** Sign out of the profile app, drop every cookie and open it again (it sends the browser to sign-in). */
-async function signOutClean(page: Page, context: BrowserContext): Promise<void> {
-  await Promise.all([
-    page.waitForURL(new RegExp(TEST_URLS.authServer), { timeout: 15000, waitUntil: 'commit' }),
-    page.locator('#loggedInView button:has-text("Sign Out")').first().click(),
-  ]);
-  await context.clearCookies();
-  await page.goto(TEST_URLS.profileApp);
 }
 
 const accounts: string[] = [];
