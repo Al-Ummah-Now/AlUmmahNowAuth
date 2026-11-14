@@ -40,6 +40,7 @@ export default defineWorkersConfig({
             SEND_CODE_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
             ADMIN_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
             ADMIN_SENSITIVE_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
+            NATIVE_PASSKEY_LIMITER: { simple: { limit: 1_000_000, period: 60 } },
             // Test-only: a real (miniflare) limiter with a small limit
             TEST_LIMITER: { simple: { limit: 10, period: 60 } },
           },

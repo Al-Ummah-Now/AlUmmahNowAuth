@@ -84,6 +84,13 @@ declare global {
     PASSKEY_PROMPT?: string;
     /** WebAuthn RP id override (default: the issuer host without "auth.") */
     WEBAUTHN_RP_ID?: string;
+    /**
+     * Android signing certificates accepted as native passkey origins (android:apk-key-hash:),
+     * JSON { "<package>": ["AA:BB:… SHA-256", …] }. Same value as the www Worker's (assetlinks.json).
+     */
+    ANDROID_APP_CERTS?: string;
+    /** Workers Rate Limiting: /native/passkey/* per route, client IP and client id */
+    NATIVE_PASSKEY_LIMITER?: RateLimit;
     /** Workers Rate Limiting: POST /password/* per client IP (AU-2) */
     PASSWORD_IP_LIMITER?: RateLimit;
     /** Workers Rate Limiting: POST /password/* per email (AU-2) */

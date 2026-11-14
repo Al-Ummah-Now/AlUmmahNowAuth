@@ -39,7 +39,8 @@
     { "name": "ADMIN_LIMITER", "namespace_id": "3006", "simple": { "limit": 120, "period": 60 } },
     { "name": "ADMIN_SENSITIVE_LIMITER", "namespace_id": "3007", "simple": { "limit": 10, "period": 60 } },
     { "name": "PASSWORD_IP_LIMITER", "namespace_id": "3001", "simple": { "limit": 100, "period": 60 } },
-    { "name": "PASSWORD_EMAIL_LIMITER", "namespace_id": "3002", "simple": { "limit": 10, "period": 60 } }
+    { "name": "PASSWORD_EMAIL_LIMITER", "namespace_id": "3002", "simple": { "limit": 10, "period": 60 } },
+    { "name": "NATIVE_PASSKEY_LIMITER", "namespace_id": "3008", "simple": { "limit": 30, "period": 60 } }
   ],
   "queues": {
     "producers": [
@@ -122,7 +123,8 @@
         { "name": "ADMIN_LIMITER", "namespace_id": "3106", "simple": { "limit": 120, "period": 60 } },
         { "name": "ADMIN_SENSITIVE_LIMITER", "namespace_id": "3107", "simple": { "limit": 10, "period": 60 } },
         { "name": "PASSWORD_IP_LIMITER", "namespace_id": "3101", "simple": { "limit": 100, "period": 60 } },
-        { "name": "PASSWORD_EMAIL_LIMITER", "namespace_id": "3102", "simple": { "limit": 10, "period": 60 } }
+        { "name": "PASSWORD_EMAIL_LIMITER", "namespace_id": "3102", "simple": { "limit": 10, "period": 60 } },
+        { "name": "NATIVE_PASSKEY_LIMITER", "namespace_id": "3108", "simple": { "limit": 30, "period": 60 } }
       ],
       "queues": {
         "producers": [
@@ -141,6 +143,7 @@
         "ERRORS_INGEST_URL": "https://admin.api.alummahnow.net/internal/errors",
         "ENVIRONMENT": "production",
         "PASSKEY_PROMPT": "on",
+        "ANDROID_APP_CERTS": "{\"net.alummahnow.studio\": [\"5A:1B:3D:2B:57:6E:9A:2D:F0:BF:1B:E3:F1:8C:40:20:13:F9:5C:09:EA:EE:7C:F7:31:10:C4:2F:B5:69:DD:C0\"]}",
         "TURNSTILE_MODE": "monitor",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAF_3KPNkPlEGf_dP",
         "AUDIT_SAMPLE": "",
@@ -239,7 +242,8 @@
         { "name": "ADMIN_LIMITER", "namespace_id": "3206", "simple": { "limit": 120, "period": 60 } },
         { "name": "ADMIN_SENSITIVE_LIMITER", "namespace_id": "3207", "simple": { "limit": 10, "period": 60 } },
         { "name": "PASSWORD_IP_LIMITER", "namespace_id": "3201", "simple": { "limit": 100, "period": 60 } },
-        { "name": "PASSWORD_EMAIL_LIMITER", "namespace_id": "3202", "simple": { "limit": 10, "period": 60 } }
+        { "name": "PASSWORD_EMAIL_LIMITER", "namespace_id": "3202", "simple": { "limit": 10, "period": 60 } },
+        { "name": "NATIVE_PASSKEY_LIMITER", "namespace_id": "3208", "simple": { "limit": 30, "period": 60 } }
       ],
       "queues": {
         "producers": [
@@ -258,6 +262,7 @@
         "ERRORS_INGEST_URL": "https://admin.api.stage.alummahnow.net/internal/errors",
         "ENVIRONMENT": "stage",
         "PASSKEY_PROMPT": "on",
+        "ANDROID_APP_CERTS": "{\"net.alummahnow.studio\": [\"5A:1B:3D:2B:57:6E:9A:2D:F0:BF:1B:E3:F1:8C:40:20:13:F9:5C:09:EA:EE:7C:F7:31:10:C4:2F:B5:69:DD:C0\"]}",
         "TURNSTILE_MODE": "enforce",
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
         "AUDIT_SAMPLE": "auth.login.success=0.1,admin.item.*=0.1",

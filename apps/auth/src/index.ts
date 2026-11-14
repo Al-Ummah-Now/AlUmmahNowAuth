@@ -25,6 +25,7 @@ import { PasskeyProvider } from "@al-ummah-now/openauth/provider/passkey";
 import { getCredential, touchCredential } from "./passkeys/store";
 import { passkeyDeadline } from "./passkeys/policy";
 import { rpId, rpOrigins } from "./passkeys/rp";
+import { nativePasskeyOptions, routeNativePasskeys } from "./passkeys/native";
 import { getLocaleFromRequest } from "@al-ummah-now/openauth/ui/i18n";
 import { createSubjects } from "@al-ummah-now/openauth/subject";
 import * as v from 'valibot';
@@ -364,6 +365,13 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       return routedResponse;
     }
 
+    // Native apps add a passkey with their access token (AUTH-PASSKEYS "Native apps");
+    // native sign-in itself is the issuer's /native/passkey/options and /verify below
+    const nativeRegistration = routeNativePasskeys({ request, env: env as never, ctx, requestId, storage });
+    if (nativeRegistration) {
+      return addSecurityHeaders(await nativeRegistration, isProduction);
+    }
+
     // Token endpoints (/token, /token/introspect) are handled by the OpenAuth
     // issuer with consistent JWKS keys. /token/revoke is ours (#437): the
     // issuer's needs client authentication our public clients don't have.
@@ -467,6 +475,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       tenantResolver: {
         customDomains: tenantCustomDomains(env.OPENAUTH_ISSUER),
       },
+      // Native passkey sign-in for the Studio and Admin apps: platform passkey API, then a
+      // code for /token with PKCE (AUTH-PASSKEYS "Native apps", passkeys/native.ts)
+      nativePasskey: nativePasskeyOptions(env as never, ctx, requestId),
       providers: {
         password: PasswordProvider({
           ...PasswordUI({
