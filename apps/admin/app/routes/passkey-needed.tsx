@@ -18,7 +18,7 @@ const COPY = {
   en: {
     title: "Passkey needed",
     grace: "Add a passkey",
-    body: "Staff sign in to the admin tools with a passkey: your face, fingerprint or screen lock, or a security key.",
+    body: "Staff sign in to the admin tools with a passkey, saved on this device, in your password manager, on your phone or on a security key.",
     hint: "If you already have a passkey, sign in with it. Otherwise add one now; it takes a few seconds.",
     add: "Add a passkey",
     signIn: "Sign in with a passkey",
@@ -28,7 +28,7 @@ const COPY = {
   ar: {
     title: "يلزم مفتاح مرور",
     grace: "أضف مفتاح مرور",
-    body: "يسجّل فريق العمل الدخول إلى أدوات الإدارة بمفتاح مرور: بوجهك أو ببصمتك أو بقفل الشاشة أو بمفتاح أمان.",
+    body: "يسجّل فريق العمل الدخول إلى أدوات الإدارة بمفتاح مرور محفوظ على هذا الجهاز أو في مدير كلمات المرور أو على هاتفك أو على مفتاح أمان.",
     hint: "إن كان لديك مفتاح مرور فسجّل الدخول به، وإلا فأضف مفتاحًا الآن؛ فالأمر يستغرق ثواني.",
     add: "إضافة مفتاح مرور",
     signIn: "الدخول بمفتاح مرور",

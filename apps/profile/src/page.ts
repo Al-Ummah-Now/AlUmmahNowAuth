@@ -146,6 +146,9 @@ const STYLES = `
             border: 1px solid var(--auth-profile-card-border, color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent)); box-shadow: var(--auth-profile-card-shadow, 0 4px 20px rgba(0, 0, 0, 0.4)); max-width: 600px; margin: 0 auto;
         }
         .profile-card h2 { color: var(--auth-profile-heading-text, var(--fanous-color-primary)); margin-bottom: 1.5rem; font-size: 1.75rem; }
+        /* Signed-in page: one vertical rhythm between every block (welcome, apps, profile, passkeys) */
+        #loggedInView > * { margin-block: 0; margin-inline: auto; }
+        #loggedInView > * + * { margin-block-start: var(--auth-profile-stack-gap, 2rem); }
         .profile-field { margin-bottom: 1rem; padding: 1rem; background: rgba(15, 23, 42, 0.6); border-radius: 8px; }
         .profile-field label {
             display: block; color: var(--fanous-color-text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
@@ -547,16 +550,21 @@ export function renderHomePage(o: HomePageOptions): string {
                 list.appendChild(li);
             });
         }
-        function loadPasskeys() {
+        function loadPasskeys(retried) {
             if (!isLoggedIn) return;
-            pkApi('').then(function (j) { if (j.__status === 200) renderPasskeys(j); else pkSay(T.passkeyError, 'error'); }, function () { pkSay(T.passkeyError, 'error'); });
+            // The list is a read: one quiet retry on a server or network hiccup before showing the error
+            var failed = function (status) {
+                if (!retried && (status === 0 || status >= 500)) { setTimeout(function () { loadPasskeys(true); }, 800); return; }
+                pkSay(T.passkeyError, 'error');
+            };
+            pkApi('').then(function (j) { if (j.__status === 200) renderPasskeys(j); else failed(j.__status); }, function () { failed(0); });
         }
         function startRename(li, p) {
             var form = document.createElement('form'); form.className = 'passkey-rename';
             var input = document.createElement('input'); input.value = p.name; input.maxLength = 64; input.setAttribute('aria-label', T.passkeyRenameLabel); input.setAttribute('dir', 'auto');
             var save = document.createElement('button'); save.type = 'submit'; save.className = 'btn btn-primary'; save.textContent = T.passkeySave;
             var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn btn-secondary'; cancel.textContent = T.passkeyCancel;
-            cancel.addEventListener('click', loadPasskeys);
+            cancel.addEventListener('click', function () { loadPasskeys(); });
             form.addEventListener('submit', function (ev) {
                 ev.preventDefault();
                 pkApi('/' + encodeURIComponent(p.id), 'PATCH', { name: input.value }).then(function (j) { if (j.__status === 200) { pkSay(''); loadPasskeys(); } else pkSay(T.passkeyError, 'error'); });

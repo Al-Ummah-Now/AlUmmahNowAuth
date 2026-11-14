@@ -187,23 +187,45 @@ export async function endSession(stores: SessionStores, token: string, nowMs = D
 
 /** `exp` (seconds) of a JWT, unverified; null if unreadable. */
 export function decodeJwtExp(token: string): number | null {
+  return decodeJwtTimes(token).exp;
+}
+
+/** `exp` and `iat` of a JWT (epoch seconds), each null when missing or malformed. Not verified. */
+export function decodeJwtTimes(token: string): { exp: number | null; iat: number | null } {
   const parts = token.split(".");
-  if (parts.length !== 3) return null;
+  if (parts.length !== 3) return { exp: null, iat: null };
   try {
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-    const exp = (JSON.parse(atob(padded)) as { exp?: unknown } | null)?.exp;
-    return typeof exp === "number" && Number.isFinite(exp) ? exp : null;
+    const claims = (JSON.parse(atob(padded)) as { exp?: unknown; iat?: unknown } | null) ?? {};
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    return { exp: num(claims.exp), iat: num(claims.iat) };
   } catch {
-    return null;
+    return { exp: null, iat: null };
   }
 }
 
-/** Whether the access token expires within `skewSeconds` (unreadable tokens count as expired). */
+/**
+ * Longest access-token lifetime still accepted as current (seconds). Auth issues
+ * 15-minute tokens since #437 (2026-11-08) and its account API refuses tokens issued
+ * for longer than ACCESS_TOKEN_TTL; a session signed in before that holds a 30-day
+ * token that has not expired, so it is refreshed for a short one on first use.
+ */
+export const MAX_ACCESS_LIFETIME_SECONDS = 60 * 60;
+
+/**
+ * Tokens issued from this time on (2026-11-09T00:00Z, the first full day of 15-minute
+ * tokens on production) are never treated as legacy: an issuer without ACCESS_TOKEN_TTL
+ * (the local stack) keeps issuing long tokens, and refreshing those would loop.
+ */
+export const LEGACY_TOKEN_CUTOFF_S = 1794182400;
+
 export function needsRefresh(access: string, nowMs = Date.now(), skewSeconds = REFRESH_SKEW_SECONDS): boolean {
-  const exp = decodeJwtExp(access);
+  const { exp, iat } = decodeJwtTimes(access);
   if (exp === null) return true;
-  return exp - nowMs / 1000 <= skewSeconds;
+  if (exp - nowMs / 1000 <= skewSeconds) return true;
+  // A long-lived token from before short access tokens: Auth's account API refuses it
+  return skewSeconds > 0 && iat !== null && iat < LEGACY_TOKEN_CUTOFF_S && exp - iat > MAX_ACCESS_LIFETIME_SECONDS;
 }
 
 export type FreshResult =

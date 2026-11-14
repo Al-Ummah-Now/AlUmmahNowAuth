@@ -9,8 +9,8 @@ function b64url(value: unknown): string {
 }
 
 /** An unsigned JWT-shaped token with the given exp (seconds). */
-export function jwt(exp: number, tag = "t"): string {
-  return `${b64url({ alg: "ES256", typ: "JWT" })}.${b64url({ mode: "access", exp, tag })}.sig`;
+export function jwt(exp: number, tag = "t", iat?: number): string {
+  return `${b64url({ alg: "ES256", typ: "JWT" })}.${b64url({ mode: "access", exp, tag, ...(iat === undefined ? {} : { iat }) })}.sig`;
 }
 
 /** In-memory KVNamespace with the calls the session code makes. */

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  LEGACY_TOKEN_CUTOFF_S,
   REFRESH_LOCK_MS,
   REFRESH_WAIT_MS,
   createSession,
@@ -20,6 +21,26 @@ describe("needsRefresh", () => {
     expect(needsRefresh(jwt(NOW_S + 60), NOW_MS)).toBe(true);
     expect(needsRefresh(jwt(NOW_S - 1), NOW_MS)).toBe(true);
     expect(needsRefresh("not-a-jwt", NOW_MS)).toBe(true);
+  });
+
+  it("refreshes a long-lived token from before 15-minute access tokens (Auth's account API refuses it)", () => {
+    // 30-day token issued 6 days before 15-minute tokens, a day later: valid for 23 more days
+    const issued = LEGACY_TOKEN_CUTOFF_S - 6 * 86400;
+    const nowMs = (LEGACY_TOKEN_CUTOFF_S + 86400) * 1000;
+    const legacy = jwt(issued + 30 * 86400, "legacy", issued);
+    expect(needsRefresh(legacy, nowMs)).toBe(true);
+    // ...but it still counts as unexpired if the refresh fails (skew 0)
+    expect(needsRefresh(legacy, nowMs, 0)).toBe(false);
+    // A current 15-minute token is left alone
+    expect(needsRefresh(jwt(NOW_S + 840, "short", NOW_S - 60), NOW_MS)).toBe(false);
+  });
+
+  it("only treats tokens issued before 15-minute tokens as legacy (no refresh loop where the issuer still issues long ones)", () => {
+    const issued = LEGACY_TOKEN_CUTOFF_S - 6 * 86400;
+    const nowMs = (LEGACY_TOKEN_CUTOFF_S + 86400) * 1000;
+    expect(needsRefresh(jwt(issued + 30 * 86400, "old", issued), nowMs)).toBe(true);
+    const fresh = LEGACY_TOKEN_CUTOFF_S + 3600;
+    expect(needsRefresh(jwt(fresh + 30 * 86400, "local", fresh), (fresh + 60) * 1000)).toBe(false);
   });
 });
 
