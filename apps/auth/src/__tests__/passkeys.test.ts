@@ -398,7 +398,9 @@ describe('passkeys (worker)', () => {
 	it('registration tokens are signed and expire', async () => {
 		const tok = await signRegistration(E as never, { u: 'u', s: 's', c: 'c', e: Date.now() + 1000 });
 		expect((await readRegistration(E as never, tok))?.u).toBe('u');
-		expect(await readRegistration(E as never, tok.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A')))).toBeNull();
+		// Tamper the first signature character: the last one carries base64url padding bits a decoder ignores
+		const [body, sig] = tok.split('.');
+		expect(await readRegistration(E as never, `${body}.${sig[0] === 'A' ? 'B' : 'A'}${sig.slice(1)}`)).toBeNull();
 		expect(await readRegistration(E as never, tok, Date.now() + 5000)).toBeNull();
 	});
 });
