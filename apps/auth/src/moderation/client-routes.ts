@@ -15,6 +15,7 @@ import { withinRateLimit, RATE_LIMIT_PERIOD_SECONDS, getClientIP } from '../rate
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { logger } from '../logger';
+import { isSystemUser } from '../security/system-accounts';
 import {
 	CreateRequestSchema,
 	MAX_REQUESTS_PER_CLIENT_PER_HOUR,
@@ -127,8 +128,9 @@ export async function routeModerationClient(request: Request, env: Env, ctx: Exe
 
 		if ((await store.countRecentByClient(client.id, Date.now() - 3600_000)) >= MAX_REQUESTS_PER_CLIENT_PER_HOUR) return tooMany();
 
-		const subject = await env.AUTH_DB.prepare('SELECT id FROM users WHERE id = ?').bind(input.subject_user_id).first<{ id: string }>();
-		if (!subject) return json({ error: 'subject_not_found', error_description: 'No auth user has this id' }, 404);
+		const subject = await env.AUTH_DB.prepare('SELECT id, metadata FROM users WHERE id = ?').bind(input.subject_user_id).first<{ id: string; metadata: string | null }>();
+		// System accounts are hidden from every admin flow (security/system-accounts.ts): as unknown
+		if (!subject || isSystemUser(subject)) return json({ error: 'subject_not_found', error_description: 'No auth user has this id' }, 404);
 
 		const created = await store.create({ clientId: client.id, tenantId: client.tenant_id || 'default', input, idempotencyKey: key, payloadHash: hash });
 		if (!created) {

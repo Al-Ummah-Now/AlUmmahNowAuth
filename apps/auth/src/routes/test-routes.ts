@@ -9,12 +9,14 @@
  * - /test/tokens/:email - Get token info for a user
  * - /test/run-users/delete/:email, /test/run-users/stale - E2E run accounts (test-run-users.ts)
  * - POST /test/report-error - a marked test error through the reporter (admin Errors page, #341)
+ * - GET /test/system-accounts - the system accounts and every role row they hold (must be none)
  */
 
 import { logger } from '../logger';
 import { isAuthorizedTestRequest, sinkKey } from '../utils/e2e-sink';
 import { routeRunUsers, type RunUserRoutesEnv } from './test-run-users';
 import { buildErrorEvent, sendEvents, type ErrorReportEnv } from '../errors/report';
+import { SYSTEM_USER_IDS_SQL } from '../security/system-accounts';
 
 interface TestRoutesEnv extends Partial<Omit<RunUserRoutesEnv, 'AUTH_DB' | 'AUTH_STORAGE' | 'TEST_PROMOTE_SECRET' | 'ENVIRONMENT' | 'OPENAUTH_ISSUER' | 'E2E_CODE_SINK_SECRET'>> {
 	AUTH_STORAGE: KVNamespace;
@@ -533,6 +535,18 @@ export async function routeTestEndpoints(
 	if (runUsers) {
 		ctx.waitUntil(logger.finalizeRequest());
 		return runUsers;
+	}
+
+	// GET /test/system-accounts: E2E proof on the live QA/stage D1 that no system account
+	// holds a role (security/system-accounts.ts). Primary-key reads only.
+	if (url.pathname === '/test/system-accounts' && request.method === 'GET') {
+		const users = await env.AUTH_DB.prepare(`SELECT id, status, json_extract(metadata, '$.type') AS type FROM users WHERE id IN (${SYSTEM_USER_IDS_SQL})`).all();
+		const roles = await env.AUTH_DB.prepare(`SELECT user_id, role_id FROM rbac_user_roles WHERE user_id IN (${SYSTEM_USER_IDS_SQL})`).all();
+		ctx.waitUntil(logger.finalizeRequest());
+		return new Response(JSON.stringify({ accounts: users.results ?? [], roles: roles.results ?? [] }), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+		});
 	}
 
 	// POST /test/report-error: a marked test error through the real reporter (#341): proves Auth's

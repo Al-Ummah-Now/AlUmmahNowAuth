@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { Link, useLoaderData, useFetcher } from "react-router";
+import { Link, useLoaderData, useFetcher, useSearchParams } from "react-router";
 import { ArrowLeft, Save, Plus, X, Shield, Users, Key, Settings, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -35,6 +35,8 @@ import {
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
 import { requireAuth } from "../lib/auth.server";
+import { actorLabel, isSystemUserId } from "../lib/system-accounts";
+import { langOf } from "../lib/deletion-copy";
 import { logger } from "../lib/logger.server";
 import {
   getRoleById,
@@ -116,7 +118,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
     // Fetch users with this role via API
     const usersResponse = await getRoleUsers(request, env, roleId);
-    const usersWithRole: UserWithRole[] = isErrorResponse(usersResponse) ? [] : usersResponse;
+    // System accounts are never listed (they hold no role; the super admin's Users > System accounts shows them)
+    const usersWithRole: UserWithRole[] = isErrorResponse(usersResponse) ? [] : usersResponse.filter((u) => !isSystemUserId(u.id));
 
     return {
       role: roleResponse,
@@ -240,6 +243,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 export default function RoleDetail() {
   const { role, allPermissions, usersWithRole } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
+  const [searchParams] = useSearchParams();
+  const lang = langOf(searchParams);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [addPermissionOpen, setAddPermissionOpen] = useState(false);
   const [roleName, setRoleName] = useState(role.name);
@@ -540,7 +545,7 @@ export default function RoleDetail() {
                           {formatDate(user.assigned_at)}
                         </TableCell>
                         <TableCell>
-                          {user.assigned_by || "System"}
+                          {actorLabel(user.assigned_by, lang)}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button

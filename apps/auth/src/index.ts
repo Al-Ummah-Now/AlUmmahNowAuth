@@ -12,6 +12,8 @@ import { isAllowedOrigin } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
 import { reportAuthError } from "./errors/report";
+import { flagSystemAccountAttempt } from './security/system-accounts';
+import { systemAccountGuard } from './custom/system-account-guard';
 import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
 import { withAddedRedirect, withPreviewRedirects } from "./utils/preview-redirects";
 import { allowedSiteRedirect } from "./utils/site-redirects";
@@ -294,6 +296,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminUserApp.use('*', requireAdmin());  // M2M auth required
     adminUserApp.use('*', adminContextMiddleware);
     adminUserApp.use('*', methodCompatMiddleware);
+    // System accounts: hidden by id, never changed, never granted a role (custom/system-account-guard.ts)
+    adminUserApp.use('*', systemAccountGuard({ users: true }));
     // Suspend/delete/session wipe/forced reset sign the user out everywhere (#437)
     adminUserApp.use('*', revokeOnAdminUserAction(env.TOKEN_REVOCATIONS, env.AUTH_DB));
     // A deleted role can't be assigned; DELETE /:id is a soft delete (deletions/), ahead of OpenAuth's
@@ -311,6 +315,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminRbacApp.use('*', requireAdmin());  // M2M auth required
     adminRbacApp.use('*', adminContextMiddleware);
     adminRbacApp.use('*', methodCompatMiddleware);
+    adminRbacApp.use('*', systemAccountGuard());
     // Deleted roles: hidden from OpenAuth's role routes, not assignable; DELETE is a soft delete
     adminRbacApp.use('*', hideDeleted('role', { prefix: 'roles', listKey: 'roles' }));
     adminRbacApp.use('*', refuseDeletedRoleAssignment());
@@ -498,7 +503,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // Every refresh: a deleted or suspended user is refused; the issuer then
       // re-reads the roles from RBAC, so refreshed tokens carry current roles
       // and the staff passkey deadline follows the admin setting (AUTH-PASSKEYS)
-      onRefresh: createRefreshCheck(userService, (userId, roles) => passkeyDeadline(env.AUTH_DB, userId, roles)),
+      // A system account's refresh is refused, audited and flagged (security/system-accounts.ts)
+      onRefresh: createRefreshCheck(
+        userService,
+        (userId, roles) => passkeyDeadline(env.AUTH_DB, userId, roles),
+        (userId, clientId) => flagSystemAccountAttempt(env, ctx, { userId, attempt: 'token_refresh', detail: clientId, request, requestId }),
+      ),
       // Suspended/deleted accounts (D1) are refused with an en/ar page (#662)
       onSuccess: createOnSuccessHandler(userService, rbacService, {
         request,

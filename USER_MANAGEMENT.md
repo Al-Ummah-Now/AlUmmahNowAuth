@@ -145,6 +145,17 @@ A suspended or deleted account (D1 `users.status` is not `active`, or `deleted_a
 
 Reinstated users sign in again normally. Refresh tokens and codes refused while suspended don't come back.
 
+## System accounts
+
+`user_system` (`system@openauth.local`, name "System") is a placeholder seeded by openauth. It is not a person: its id is the `assigned_by` of the Member role every new account gets, shown in the admin as **System (automatic)** («النظام (تلقائي)» with `?lang=ar`). The row is kept so those references stay valid.
+
+- **It can't sign in**, by any way in: password, email code, password reset, registration, passkey, silent single sign-on, device, the code grant, token refresh, or acting as an admin (`X-Acting-User-Id` or an admin session). The same applies to any user with `metadata.type = "system"`. See `apps/auth/src/security/system-accounts.ts`.
+- **It holds no role.** Migration `0041_system_accounts.sql` removed the Super Admin role openauth's seed gave it, and its D1 triggers abort any later grant. The admin APIs refuse a grant with 403 `system_account` (openauth's RBAC service refuses it too).
+- **It is hidden** from the user list, search, counts, pickers and the role page. Reading it by id answers 404 and changing it answers 403. `metadata.type = "system"` is reserved and can't be set through the API.
+- **Hiding never hides a risk.** Super admins see it, read-only, under **Users > System accounts** (`/users?view=system`): its status, every role row it holds, and the label "Can't sign in". A role there is shown as an alert.
+- **Every refused attempt** (sign-in, refresh, acting as admin, role grant, other admin change) writes an audit event (`security.system_account.sign_in_refused` / `security.system_account.role_grant_refused`) and raises a needs-action item on the videos admin **Errors** page, linked to that view. There is one item per account and kind of attempt. An admin acknowledges it there with Dismiss, and a later attempt reopens it. There is nothing to retry: the refusal is the intended outcome.
+- `scripts/release/__tests__/system-accounts.test.ts` fails if any deployed schema leaves a system account holding a role. The E2E spec `e2e/tests/auth/system-accounts.spec.ts` checks the live QA/stage database.
+
 ## Authentication Flow
 
 ### OAuth 2.0 Authorization Code Flow

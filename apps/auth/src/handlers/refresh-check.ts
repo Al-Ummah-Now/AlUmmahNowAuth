@@ -12,9 +12,10 @@
  * blip neither signs anyone out nor serves stale (possibly elevated) roles.
  */
 import { logger } from '../logger';
+import { isSystemMetadata, isSystemUserId } from '../security/system-accounts';
 
 export interface RefreshUserLookup {
-	getUser(tenantId: string, userId: string): Promise<{ status: string; deleted_at: number | null } | null>;
+	getUser(tenantId: string, userId: string): Promise<{ status: string; deleted_at: number | null; metadata?: unknown } | null>;
 }
 
 /**
@@ -23,7 +24,10 @@ export interface RefreshUserLookup {
  */
 export type PasskeyDeadlineLookup = (userId: string, roles: string[]) => Promise<number | undefined>;
 
-export function createRefreshCheck(users: RefreshUserLookup, passkeyDeadline?: PasskeyDeadlineLookup) {
+/** Called when a system account's refresh token is refused (audit + admin Errors page). */
+export type SystemAccountRefreshHook = (userId: string, clientId: string) => void;
+
+export function createRefreshCheck(users: RefreshUserLookup, passkeyDeadline?: PasskeyDeadlineLookup, onSystemAccount?: SystemAccountRefreshHook) {
 	return async (input: {
 		tenantId: string;
 		userId?: string;
@@ -32,10 +36,21 @@ export function createRefreshCheck(users: RefreshUserLookup, passkeyDeadline?: P
 	}): Promise<void | { revoke: true; reason: string } | { properties: Record<string, unknown> }> => {
 		// Not a user (no id in the token): nothing to check
 		if (!input.userId) return;
+		// A system account never gets tokens (security/system-accounts.ts)
+		if (isSystemUserId(input.userId)) {
+			logger.warn('[refresh] Refused: a system account', { userId: input.userId, clientId: input.clientID });
+			onSystemAccount?.(input.userId, input.clientID);
+			return { revoke: true, reason: 'system_account' };
+		}
 		const user = await users.getUser(input.tenantId, input.userId);
 		if (!user || user.deleted_at !== null || user.status === 'deleted') {
 			logger.info('[refresh] Refused: the user no longer exists', { userId: input.userId, clientId: input.clientID });
 			return { revoke: true, reason: 'user_deleted' };
+		}
+		if (isSystemMetadata(user.metadata)) {
+			logger.warn('[refresh] Refused: a system account', { userId: input.userId, clientId: input.clientID });
+			onSystemAccount?.(input.userId, input.clientID);
+			return { revoke: true, reason: 'system_account' };
 		}
 		if (user.status !== 'active') {
 			logger.info('[refresh] Refused: the user is not active', { userId: input.userId, status: user.status, clientId: input.clientID });

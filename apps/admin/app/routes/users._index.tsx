@@ -27,9 +27,12 @@ import { getAuthServerUrl } from "../lib/config";
 import { LoadErrorBanner } from "../components/load-error-banner";
 import { logger } from "../lib/logger.server";
 import { resolveUserDisplayName } from "../../../../packages/ui/src/display-name";
+import { SystemAccountsSection, type SystemAccountRow } from "../components/system-accounts-section";
+import { isSuperAdmin, systemAccountsCopy } from "../lib/system-accounts";
 // Role assignment uses M2M auth through admin-api.server.ts
 import {
   listUsers,
+  listSystemAccounts,
   listRoles,
   createUser,
   updateUser,
@@ -61,6 +64,33 @@ interface LoaderData {
   authServerUrl: string;
   /** Set when users or roles could not be fetched, so the page never shows a failure as "no users". */
   loadError?: string;
+  /** Super admins only: the system accounts the list leaves out (null for everyone else) */
+  systemAccounts?: SystemAccountRow[] | null;
+}
+
+/** Super admins: the read-only System accounts section's rows (a failure is a load error, never "none"). */
+async function loadSystemAccounts(
+  env: Parameters<typeof listSystemAccounts>[0],
+  actingUser: ActingUser,
+  request: Request
+): Promise<{ systemAccounts: SystemAccountRow[] | null; systemError?: string }> {
+  if (!isSuperAdmin(actingUser.roles)) return { systemAccounts: null };
+  try {
+    const res = await listSystemAccounts(env, actingUser, request);
+    if (isErrorResponse(res)) return { systemAccounts: null, systemError: `System accounts: ${res.error}` };
+    return {
+      systemAccounts: res.users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        status: u.status,
+        deleted_at: u.deleted_at ?? null,
+        roles: (u.roles ?? []).map((r) => ({ id: r.id, name: r.name })),
+      })),
+    };
+  } catch (error) {
+    return { systemAccounts: null, systemError: `System accounts: ${error instanceof Error ? error.message : "Request failed"}` };
+  }
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -133,8 +163,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const allRoles: Role[] = isErrorResponse(rolesResponse) ? [] : rolesResponse;
     console.debug("[users._index] Final allRoles count:", allRoles.length);
 
-    const loadError = isErrorResponse(rolesResponse) ? `Roles: ${rolesResponse.error}` : undefined;
-    return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl, loadError };
+    const { systemAccounts, systemError } = await loadSystemAccounts(env, actingUser, request);
+    const loadError = [isErrorResponse(rolesResponse) ? `Roles: ${rolesResponse.error}` : undefined, systemError].filter(Boolean).join("; ") || undefined;
+    return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl, loadError, systemAccounts };
   } catch (error) {
     console.error("Error loading users:", error);
     return {
@@ -347,7 +378,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 }
 
 export default function Users() {
-  const { users, allRoles, user, authServerUrl, loadError } = useLoaderData<LoaderData>();
+  const { users, allRoles, user, authServerUrl, loadError, systemAccounts } = useLoaderData<LoaderData>();
   const revalidator = useRevalidator();
   const fetcher = useFetcher();
   const [searchParams] = useSearchParams();
@@ -364,6 +395,9 @@ export default function Users() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
+  // ?view=system (the Errors page links here): the System accounts section first
+  const systemView = searchParams.get("view") === "system";
+  const systemCopy = systemAccountsCopy(deleteLang);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -564,6 +598,26 @@ export default function Users() {
       </div>
 
       <LoadErrorBanner what="users" error={loadError} />
+
+      {systemAccounts && (
+        <div className="mb-4 flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="system-accounts-toggle"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              if (systemView) next.delete("view");
+              else next.set("view", "system");
+              navigate({ search: next.toString() ? `?${next}` : "" });
+            }}
+          >
+            {systemView ? systemCopy.hide : `${systemCopy.show} (${systemAccounts.length})`}
+          </Button>
+        </div>
+      )}
+
+      {systemAccounts && systemView && <SystemAccountsSection accounts={systemAccounts} lang={deleteLang} />}
 
       <Card>
           <CardHeader>

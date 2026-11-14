@@ -10,16 +10,27 @@ import userInvitesSql from "../migrations/0030_user_invites.sql?raw";
 import signinIndexesSql from "../migrations/0031_signin_scan_indexes.sql?raw";
 import appSessionsUserIndexSql from "../migrations/0032_app_sessions_user_index.sql?raw";
 import webauthnSql from "../migrations/0038_webauthn_credentials.sql?raw";
+import systemAccountsSql from "../migrations/0041_system_accounts.sql?raw";
 
-/** Statements of a migration file (comments stripped). */
-function sqlStatements(sql: string): string[] {
-  return sql
+/** Statements of a migration file (comments stripped; a CREATE TRIGGER ... END stays one statement). */
+export function sqlStatements(sql: string): string[] {
+  const parts = sql
     .split("\n")
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n")
     .split(";")
     .map((s) => s.trim())
     .filter(Boolean);
+  const out: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    let stmt = parts[i];
+    if (/^CREATE\s+TRIGGER\b/i.test(stmt)) {
+      while (!/^END$/i.test(parts[i]) && i + 1 < parts.length) stmt += "; " + parts[++i];
+      stmt = stmt.replace(/;\s*END$/i, "; END");
+    }
+    out.push(stmt);
+  }
+  return out;
 }
 
 
@@ -336,6 +347,8 @@ export async function setupDatabase() {
     await env.AUTH_DB.prepare(`DROP TABLE IF EXISTS ${t}`).run();
   }
   for (const stmt of sqlStatements(webauthnSql)) await env.AUTH_DB.prepare(stmt).run();
+  // System accounts (0041): never a role (triggers); rbac_user_roles was rebuilt above
+  for (const stmt of sqlStatements(systemAccountsSql)) await env.AUTH_DB.prepare(stmt).run();
   await env.AUTH_DB.prepare(`DELETE FROM admin_deletions`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_codes`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_login_attempts`).run();

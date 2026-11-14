@@ -11,6 +11,7 @@
  */
 
 import { verifyAdminRequest, createAuthErrorResponse } from './auth-middleware';
+import { SYSTEM_USER_IDS_SQL } from './security/system-accounts';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter';
 import { adminErrorResponse } from './utils/error-response';
@@ -770,7 +771,7 @@ export class AdminEnterpriseRoutes {
       // Get user counts
       const userStats = await this.db.prepare(`
         SELECT
-          (SELECT COUNT(*) FROM users) as total_users,
+          (SELECT COUNT(*) FROM users) - (SELECT COUNT(*) FROM users WHERE id IN (${SYSTEM_USER_IDS_SQL})) as total_users,
           (SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-24 hours')) as users_24h,
           (SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-7 days')) as users_7d
       `).first<{ total_users: number; users_24h: number; users_7d: number }>();
