@@ -153,7 +153,7 @@ test.describe('Accounts admin: light and dark', () => {
 		}
 	});
 
-	test('phone: the switch is in the drawer', async ({ page }) => {
+	test('phone: the switch is in the drawer, and every list page passes axe', async ({ page }) => {
 		await loginAdmin(page, TEST_USERS.admin().email);
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto(url('/'));
@@ -165,5 +165,16 @@ test.describe('Accounts admin: light and dark', () => {
 		const before = await htmlMode(page);
 		await toggle.click();
 		expect(await htmlMode(page)).toBe(before === 'dark' ? 'light' : 'dark');
+
+		// wide tables scroll in their box on a phone: no axe violations there either (the Audit
+		// table's box was not keyboard-reachable)
+		const problems: string[] = [];
+		for (const route of ['/', '/users', '/roles', '/sessions', '/clients', '/audit', '/moderation', '/themes', '/deleted', '/security']) {
+			await page.goto(url(route));
+			await shell(page);
+			const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+			for (const v of result.violations) problems.push(`${route} phone: ${v.id} ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
+		}
+		expect(problems, problems.join('\n')).toEqual([]);
 	});
 });

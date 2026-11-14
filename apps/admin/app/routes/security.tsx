@@ -104,7 +104,7 @@ export default function Security() {
               <ul className="list-disc ps-6 text-sm" data-testid="staff-without-passkey">
                 {settings.withoutPasskey.slice(0, 50).map((s) => (
                   <li key={s.id}>
-                    <Link className="underline" to={`/users/${encodeURIComponent(s.id)}/passkeys`}>
+                    <Link className="inline-flex min-h-6 items-center underline" to={`/users/${encodeURIComponent(s.id)}/passkeys`}>
                       <bdi>{s.email}</bdi>
                     </Link>
                   </li>

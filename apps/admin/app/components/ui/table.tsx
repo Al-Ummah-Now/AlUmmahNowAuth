@@ -2,18 +2,47 @@ import * as React from "react"
 
 import { cn } from "../../lib/utils"
 
+/** True while the element's content is wider or taller than its box (it scrolls). */
+function useScrolls<T extends HTMLElement>(): [React.RefObject<T | null>, boolean] {
+  const ref = React.useRef<T>(null)
+  const [scrolls, setScrolls] = React.useState(false)
+  React.useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => setScrolls(el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight)
+    measure()
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    if (el.firstElementChild) observer.observe(el.firstElementChild)
+    return () => observer.disconnect()
+  }, [])
+  return [ref, scrolls]
+}
+
+// A table wider than the screen (phones) scrolls in its box: the box takes keyboard focus then, so
+// arrow keys can scroll it (WCAG 2.1.1, axe scrollable-region-focusable), named after the table
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
-    <table
-      ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
-      {...props}
-    />
-  </div>
-))
+>(({ className, ...props }, ref) => {
+  const [box, scrolls] = useScrolls<HTMLDivElement>()
+  return (
+    <div
+      ref={box}
+      className="relative w-full overflow-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]"
+      tabIndex={scrolls ? 0 : undefined}
+      role={scrolls && props["aria-label"] ? "region" : undefined}
+      aria-label={scrolls ? props["aria-label"] : undefined}
+    >
+      <table
+        ref={ref}
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props}
+      />
+    </div>
+  )
+})
 Table.displayName = "Table"
 
 const TableHeader = React.forwardRef<
