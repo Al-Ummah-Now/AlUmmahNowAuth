@@ -1,8 +1,29 @@
 import { useSyncExternalStore } from "react";
-import { Moon, Sun } from "lucide-react";
 import { MODE_COPY, currentColorMode, setColorMode, type ColorMode } from "../lib/color-mode";
 import type { AdminLang } from "../lib/deletion-copy";
 import { cn } from "../lib/utils";
+import { MOON_ICON_BODY, SUN_ICON_BODY } from "../lib/mode-toggle";
+
+/** The shared toggle's exact Lucide 0.487 icon (lib/mode-toggle.ts, MODE_ICON_ATTRS in JSX form), 18px like the videos rail foot. */
+function ModeIcon({ icon, className }: { icon: "sun" | "moon"; className: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`lucide lucide-${icon} size-[18px] ${className}`}
+      aria-hidden="true"
+      focusable="false"
+      dangerouslySetInnerHTML={{ __html: icon === "sun" ? SUN_ICON_BODY : MOON_ICON_BODY }}
+    />
+  );
+}
 
 function subscribe(onChange: () => void) {
   const observer = new MutationObserver(onChange);
@@ -29,12 +50,12 @@ export function ThemeToggle({ lang, className }: { lang: AdminLang; className?: 
       title={label}
       onClick={() => setColorMode(currentColorMode() === "dark" ? "light" : "dark")}
       className={cn(
-        "grid size-9 shrink-0 place-items-center rounded-lg text-[var(--color-sidebar-icon)] transition-colors hover:bg-[var(--color-sidebar-active)] hover:text-[var(--color-sidebar-foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]",
+        "grid size-11 shrink-0 place-items-center rounded-full text-[var(--color-sidebar-icon)] transition-colors hover:bg-[var(--color-sidebar-active)] hover:text-[var(--color-sidebar-foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]",
         className,
       )}
     >
-      <Sun aria-hidden="true" className="hidden size-5 dark:block" />
-      <Moon aria-hidden="true" className="block size-5 dark:hidden" />
+      <ModeIcon icon="sun" className="hidden dark:block" />
+      <ModeIcon icon="moon" className="block dark:hidden" />
     </button>
   );
 }

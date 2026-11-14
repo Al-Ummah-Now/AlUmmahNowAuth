@@ -69,10 +69,15 @@ test.describe('Accounts admin: light and dark', () => {
 		expect(await htmlMode(page)).toBe('dark');
 		const toggle = page.getByTestId('theme-toggle');
 		await expect(toggle).toHaveAttribute('aria-label', 'Switch to light mode');
+		// the videos site's icons (app/lib/mode-toggle.ts, Lucide 0.487): the Sun while dark
+		await expect(toggle.locator('svg.lucide-sun')).toBeVisible();
+		await expect(toggle.locator('svg.lucide-moon')).toBeHidden();
 
 		await toggle.click();
 		expect(await htmlMode(page)).toBe('light');
 		await expect(toggle).toHaveAttribute('aria-label', 'Switch to dark mode');
+		await expect(toggle.locator('svg.lucide-moon path')).toHaveAttribute('d', 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z');
+		await expect(toggle.locator('svg.lucide-moon')).toBeVisible();
 		expect(await page.evaluate(() => localStorage.getItem('theme'))).toBe('light');
 		await expect.poll(() => bodyBg(page)).toBe(PAGE.light);
 
