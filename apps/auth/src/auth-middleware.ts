@@ -1,5 +1,6 @@
 import { getUserSession } from './session';
 import { logger } from './logger';
+import { flagSystemAccountAttempt, isSystemUserId } from './security/system-accounts';
 import { extractBearerToken, RBACServiceImpl, RBACAdapter } from '@al-ummah-now/openauth';
 import { CloudflareStorage } from '@al-ummah-now/openauth/storage/cloudflare';
 import { createLocalJWKSet, jwtVerify, decodeJwt } from 'jose';
@@ -279,6 +280,12 @@ export async function verifyAdminRequest(
           clientId: m2mAuth.clientId,
         });
         throw new Error('M2M requests must include acting user ID');
+      }
+
+      // A system account never acts as an admin (security/system-accounts.ts)
+      if (isSystemUserId(actingUserId)) {
+        flagSystemAccountAttempt(env, undefined, { userId: actingUserId, attempt: 'acting_admin', detail: 'm2m', request, actorId: m2mAuth.clientId });
+        throw new Error('System accounts cannot act as an admin');
       }
 
       // SECURITY: Fetch actual roles from database - never trust client-provided roles

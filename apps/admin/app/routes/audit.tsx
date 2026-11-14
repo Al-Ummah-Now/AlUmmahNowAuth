@@ -14,6 +14,8 @@ import { Badge } from "../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { requireAuth } from "../lib/auth.server";
 import { logger } from "../lib/logger.server";
+import { actorLabel, isSystemUserId } from "../lib/system-accounts";
+import { langOf } from "../lib/deletion-copy";
 import {
   getAuditLogs,
   isErrorResponse,
@@ -174,6 +176,9 @@ const THEME_EVENTS = [
   "theme.imported",
 ];
 
+/** Refused attempts on system accounts (auth security/system-accounts.ts), offered as event filters. */
+const SYSTEM_ACCOUNT_EVENTS = ["security.system_account.sign_in_refused", "security.system_account.role_grant_refused"];
+
 /** Admin invites (docs/USER_INVITES.md), offered as event filters. */
 const INVITE_EVENTS = [
   "user.invited",
@@ -292,6 +297,7 @@ export default function AuditLogs() {
                     <datalist id="event-type-suggestions">
                       {THEME_EVENTS.map((t) => <option key={t} value={t} />)}
                       {INVITE_EVENTS.map((t) => <option key={t} value={t} />)}
+                      {SYSTEM_ACCOUNT_EVENTS.map((t) => <option key={t} value={t} />)}
                     </datalist>
                   </div>
 
@@ -443,8 +449,10 @@ export default function AuditLogs() {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-mono text-xs">
-                            {event.user_id || (
-                              <span className="text-[rgb(var(--color-muted-foreground))]">-</span>
+                            {event.user_id && isSystemUserId(event.user_id) ? (
+                              <span title={event.user_id}>{actorLabel(event.user_id, langOf(searchParams))}</span>
+                            ) : (
+                              event.user_id || <span className="text-[rgb(var(--color-muted-foreground))]">-</span>
                             )}
                           </TableCell>
                           <TableCell className="font-mono text-xs">

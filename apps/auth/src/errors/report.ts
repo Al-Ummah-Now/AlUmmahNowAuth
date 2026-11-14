@@ -148,3 +148,94 @@ export async function sendEvents(env: ErrorReportEnv, events: ReturnType<typeof 
 	if (res.status >= 400) logger.error('Error report refused by the ingest', { status: res.status });
 	return res.status;
 }
+
+/**
+ * A needs-action item on the admin Errors page (AlUmmahNow docs/features/error-reporting.md,
+ * "Reporter API"): something an admin must look at, not a crash. The same `key` updates one
+ * item; the admin acknowledges it there (Dismiss), and a later report with the same key
+ * reopens it. `retry` only when admin-api has a registered handler for it.
+ */
+export interface NeedsActionDetails {
+	/** Stable id of the item, e.g. "auth-system-account:sign_in:user_system". */
+	key: string;
+	source: 'queue' | 'dlq' | 'processing' | 'email' | 'ai' | 'admin-job' | 'scheduler' | 'upload' | 'ops' | 'status' | 'other';
+	/** Short admin-facing title. */
+	title: string;
+	/** Why (scrubbed again on ingest); the title when absent. */
+	message?: string;
+	itemType?: string;
+	itemId?: string;
+	/** https URL on alummahnow.net (e.g. the Auth admin page of the item). */
+	itemUrl?: string;
+	route?: string;
+	method?: string;
+	requestId?: string;
+	test?: boolean;
+	extra?: Record<string, string | number | boolean | null>;
+}
+
+/** The event for one needs-action item. Pure; exported for tests. */
+export function buildNeedsActionEvent(d: NeedsActionDetails, env: ErrorReportEnv, ref = newErrorRef()) {
+	return {
+		app: 'auth' as const,
+		kind: 'action' as const,
+		ref,
+		message: scrub(d.message || d.title, 2000)!,
+		route: d.route,
+		method: d.method,
+		requestId: d.requestId,
+		environment: env.ENVIRONMENT,
+		workerVersion: env.CF_VERSION_METADATA?.id,
+		occurredAt: new Date().toISOString(),
+		extra: d.extra,
+		test: d.test || undefined,
+		count: 1,
+		action: {
+			key: d.key,
+			source: d.source,
+			title: d.title,
+			itemType: d.itemType,
+			itemId: d.itemId,
+			itemUrl: d.itemUrl,
+		},
+	};
+}
+
+/**
+ * Raises (or updates) a needs-action item; returns its reference. Never throws and never
+ * delays the response. Per isolate one report per key every 10 s; repeats are counted
+ * into the next one.
+ */
+export function reportNeedsAction(
+	env: ErrorReportEnv,
+	ctx: { waitUntil(p: Promise<unknown>): void } | undefined,
+	details: NeedsActionDetails,
+	fetchImpl: typeof fetch = fetch
+): string {
+	try {
+		const event = buildNeedsActionEvent(details, env);
+		if (!env?.ERRORS_INGEST_URL) {
+			if (env?.ENVIRONMENT && env.ENVIRONMENT !== 'development') warnDisabled('ERRORS_INGEST_URL is not set', env);
+			return event.ref;
+		}
+		const fp = `action|${details.key}`;
+		const now = Date.now();
+		const seen = recent.get(fp);
+		if (seen && now - seen.at < DEDUPE_MS) {
+			seen.suppressed += 1;
+			return event.ref;
+		}
+		event.count = 1 + (seen?.suppressed ?? 0);
+		recent.set(fp, { at: now, suppressed: 0 });
+		if (recent.size > 500) recent.delete(recent.keys().next().value as string);
+		const work = sendEvents(env, [event as unknown as ReturnType<typeof buildErrorEvent>], fetchImpl).catch(() => undefined);
+		try {
+			ctx?.waitUntil(work);
+		} catch {
+			// outside a request: the promise still runs
+		}
+		return event.ref;
+	} catch {
+		return newErrorRef();
+	}
+}

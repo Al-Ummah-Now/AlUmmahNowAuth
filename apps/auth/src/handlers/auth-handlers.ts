@@ -25,6 +25,7 @@ import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import type { RequestTimer } from '../utils/request-timing';
 import { passkeyDeadline } from '../passkeys/policy';
 import { afterSignInCard } from '../passkeys/card';
+import { flagSystemAccountAttempt, isSystemUser, type SystemAccountEnv } from '../security/system-accounts';
 
 /** Times `fn` as a stage of the request when there is a timer (#804). */
 function staged<T>(timer: RequestTimer | undefined, name: string, fn: () => Promise<T>): Promise<T> {
@@ -69,7 +70,7 @@ export interface UserServiceLike {
 	getUserByEmail(
 		tenantId: string,
 		email: string
-	): Promise<{ id: string; email: string; status?: string; deleted_at?: number | null } | null>;
+	): Promise<{ id: string; email: string; status?: string; deleted_at?: number | null; metadata?: unknown } | null>;
 	createUser(
 		tenantId: string,
 		data: { email: string; name?: string | null }
@@ -134,7 +135,9 @@ export function createOnSuccessHandler(
 	const { request, env, ctx, requestId, db, homeUrl, theme, timer } = handlerCtx;
 
 	/** D1 state of an existing account: the user service's row, else a direct D1 read. */
-	async function stateOf(user: { id: string; status?: string; deleted_at?: number | null }): Promise<AccountState> {
+	async function stateOf(user: { id: string; status?: string; deleted_at?: number | null; metadata?: unknown }): Promise<AccountState> {
+		// System accounts never sign in (security/system-accounts.ts)
+		if (isSystemUser(user)) return 'system';
 		if (typeof user.status === 'string') return accountStateOf({ status: user.status, deleted_at: user.deleted_at ?? null });
 		return db ? readAccountState(db, user.id) : 'missing';
 	}
@@ -146,6 +149,10 @@ export function createOnSuccessHandler(
 	 */
 	async function refuse(email: string, userId: string, state: AccountState, provider: string): Promise<Response> {
 		logger.warn('[auth] Refused sign-in of a suspended or deleted account', { userId, state, provider });
+		// A system account: audit event + needs-action item on the admin Errors page
+		if (state === 'system') {
+			flagSystemAccountAttempt(env as SystemAccountEnv, ctx, { userId, attempt: 'sign_in', detail: provider || undefined, request, requestId });
+		}
 		const clientIP = getClientIP(request);
 		ctx.waitUntil(
 			getAuditEmitter().emit(
@@ -200,8 +207,9 @@ export function createOnSuccessHandler(
 		if (value.provider === 'passkey') {
 			const passkeyUserId = String(value.userID ?? '');
 			const row = db && passkeyUserId
-				? await db.prepare('SELECT email FROM users WHERE id = ?1 AND deleted_at IS NULL').bind(passkeyUserId).first<{ email: string }>()
+				? await db.prepare('SELECT id, email, metadata FROM users WHERE id = ?1 AND deleted_at IS NULL').bind(passkeyUserId).first<{ id: string; email: string; metadata: string | null }>()
 				: null;
+			if (isSystemUser({ id: passkeyUserId, metadata: row?.metadata })) return await refuse('', passkeyUserId, 'system', 'passkey');
 			if (!row) return await refuse('', passkeyUserId, 'deleted', 'passkey');
 			email = row.email;
 		}
@@ -532,16 +540,20 @@ export function createSendCodeHandler(
 		(m) => m.createRateLimitExceededEvent
 	);
 
-	async function hasAccount(email: string): Promise<boolean> {
+	/** The live D1 account of this address (idx_users_email_lower), if any. */
+	async function d1Account(email: string): Promise<{ id: string; metadata: string | null } | null> {
+		return env.AUTH_DB.prepare(
+			'SELECT id, metadata FROM users WHERE lower(email) = lower(?) AND deleted_at IS NULL LIMIT 1'
+		)
+			.bind(email)
+			.first<{ id: string; metadata: string | null }>();
+	}
+
+	async function hasAccount(email: string, d1User: { id: string } | null): Promise<boolean> {
 		// D1 first: it is consistent. Both KV lookups below can still answer "missing"
 		// for up to a minute after sign-up, because sign-up read those keys (to check
 		// the email was free) before writing them, and that miss is cached at the edge.
 		// A forgot-password right after signing up would then silently send nothing.
-		const d1User = await env.AUTH_DB.prepare(
-			'SELECT 1 FROM users WHERE lower(email) = lower(?) AND deleted_at IS NULL LIMIT 1'
-		)
-			.bind(email)
-			.first();
 		if (d1User) return true;
 		if (await userService.getUserByEmail('default', email)) return true;
 		if (!passwordStorage) return false;
@@ -608,8 +620,22 @@ export function createSendCodeHandler(
 		// Otherwise (password change / forgot password) only send to real accounts,
 		// and treat unknown emails as a silent no-op (see JSDoc above).
 		const isRegistration = url.pathname.includes('/register');
+		const d1User = await d1Account(email);
+		// A system account never gets a code: no sign-in, registration or password reset
+		// with it. Silent like an unknown email (no code is recorded, so none can be
+		// checked); audited and flagged on the admin Errors page.
+		if (d1User && isSystemUser(d1User)) {
+			flagSystemAccountAttempt(env as unknown as SystemAccountEnv, ctx, {
+				userId: d1User.id,
+				attempt: 'sign_in',
+				detail: isRegistration ? 'register' : 'email_code',
+				request,
+				requestId,
+			});
+			return;
+		}
 		if (!isRegistration) {
-			const accountExists = await hasAccount(email);
+			const accountExists = await hasAccount(email, d1User);
 			if (!accountExists) {
 				logger.warn('Password reset code requested for unknown email; not sending', {
 					email,

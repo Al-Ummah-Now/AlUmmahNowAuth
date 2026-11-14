@@ -68,6 +68,9 @@ export enum AuditEventType {
   INVALID_TOKEN = 'security.token.invalid',
   UNAUTHORIZED_ACCESS = 'security.access.unauthorized',
   PRIVILEGE_ESCALATION_ATTEMPT = 'security.privilege.escalation_attempt',
+  // System accounts (security/system-accounts.ts): refused, and flagged on the admin Errors page
+  SYSTEM_ACCOUNT_SIGNIN_REFUSED = 'security.system_account.sign_in_refused',
+  SYSTEM_ACCOUNT_ROLE_REFUSED = 'security.system_account.role_grant_refused',
   SUSPICIOUS_ACTIVITY = 'security.suspicious_activity',
 
   // OAuth Client Management Events

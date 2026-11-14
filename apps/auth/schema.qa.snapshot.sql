@@ -36,6 +36,7 @@
 --   migrations-qa/0038_webauthn_credentials.sql
 --   migrations-qa/0039_admin_windows_client.sql
 --   migrations-qa/0040_admin_android_client.sql
+--   migrations-qa/0041_system_accounts.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
@@ -171,3 +172,5 @@ CREATE INDEX idx_webhook_dlq_status ON webhook_dlq(status);
 CREATE INDEX idx_webhook_dlq_tenant_id ON webhook_dlq(tenant_id);
 CREATE VIEW expired_sessions AS SELECT bs.id AS browser_session_id, bs.tenant_id, bs.last_activity, bs.created_at, COUNT(acs.id) AS account_count FROM browser_sessions bs LEFT JOIN account_sessions acs ON bs.id = acs.browser_session_id WHERE bs.last_activity < (strftime('%s', 'now') * 1000 - 7 * 24 * 60 * 60 * 1000) GROUP BY bs.id;
 CREATE VIEW user_permissions AS SELECT DISTINCT ur.user_id, ur.tenant_id, p.client_id, p.name AS permission_name, p.resource, p.action, r.name AS role_name, r.is_system_role, ur.expires_at FROM rbac_user_roles ur INNER JOIN rbac_roles r ON ur.role_id = r.id INNER JOIN rbac_role_permissions rp ON r.id = rp.role_id INNER JOIN rbac_permissions p ON rp.permission_id = p.id WHERE (ur.expires_at IS NULL OR ur.expires_at > strftime('%s', 'now') * 1000);
+CREATE TRIGGER rbac_user_roles_no_system_accounts_insert BEFORE INSERT ON rbac_user_roles WHEN NEW.user_id = 'user_system' OR EXISTS (SELECT 1 FROM users WHERE id = NEW.user_id AND json_valid(metadata) AND json_extract(metadata, '$.type') = 'system') BEGIN SELECT RAISE(ABORT, 'system_account_role_refused'); END;
+CREATE TRIGGER rbac_user_roles_no_system_accounts_update BEFORE UPDATE OF user_id ON rbac_user_roles WHEN NEW.user_id = 'user_system' OR EXISTS (SELECT 1 FROM users WHERE id = NEW.user_id AND json_valid(metadata) AND json_extract(metadata, '$.type') = 'system') BEGIN SELECT RAISE(ABORT, 'system_account_role_refused'); END;

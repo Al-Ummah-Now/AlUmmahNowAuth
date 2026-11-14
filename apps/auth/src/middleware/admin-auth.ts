@@ -15,6 +15,16 @@ import { extractBearerToken, requireScope, requireAnyScope } from '@al-ummah-now
 import { logger } from '../logger';
 import { createLocalJWKSet, jwtVerify, decodeJwt } from 'jose';
 import { getJWKS } from '../utils/jwks-cache';
+import { flagSystemAccountAttempt, isSystemUser } from '../security/system-accounts';
+
+/** The execution context when there is one (unit tests call middleware without it). */
+function ctxOf(c: { executionCtx: ExecutionContext }): ExecutionContext | undefined {
+	try {
+		return c.executionCtx;
+	} catch {
+		return undefined;
+	}
+}
 
 // Re-export OpenAuth's scope middleware for use in routes
 export { requireScope, requireAnyScope };
@@ -129,6 +139,21 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 					return c.json({ error: 'M2M requests must include X-Acting-User-Id header' }, 401);
 				}
 
+				// A system account never acts as an admin (security/system-accounts.ts)
+				const actingRow = await c.env.AUTH_DB.prepare(`SELECT email, metadata FROM users WHERE id = ?`)
+					.bind(actingUserId)
+					.first<{ email: string; metadata: string | null }>();
+				if (isSystemUser({ id: actingUserId, metadata: actingRow?.metadata })) {
+					flagSystemAccountAttempt(c.env, ctxOf(c), {
+						userId: actingUserId,
+						attempt: 'acting_admin',
+						detail: 'm2m',
+						request: c.req.raw,
+						actorId: String(payload.client_id),
+					});
+					return c.json({ error: 'Forbidden: system accounts cannot act as an admin' }, 403);
+				}
+
 				// Fetch acting user's roles from DB (never trust client headers)
 				const rolesResult = await c.env.AUTH_DB.prepare(`
 					SELECT r.name
@@ -156,14 +181,9 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 					return c.json({ error: 'Forbidden: Acting user must be admin' }, 403);
 				}
 
-				// Get user email
-				const user = await c.env.AUTH_DB.prepare(`SELECT email FROM users WHERE id = ?`)
-					.bind(actingUserId)
-					.first<{ email: string }>();
-
 				c.set('adminUser', {
 					userId: actingUserId,
-					email: user?.email || '',
+					email: actingRow?.email || '',
 					roles,
 				});
 
@@ -192,12 +212,18 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 
 		// Get user with roles
 		const user = await c.env.AUTH_DB.prepare(`
-			SELECT u.id, u.email
+			SELECT u.id, u.email, u.metadata
 			FROM users u
 			WHERE u.id = ?
 		`)
 			.bind(activeAccount.userId)
-			.first<{ id: string; email: string }>();
+			.first<{ id: string; email: string; metadata: string | null }>();
+
+		// A system account never acts as an admin, even with a session (security/system-accounts.ts)
+		if (isSystemUser({ id: activeAccount.userId, metadata: user?.metadata })) {
+			flagSystemAccountAttempt(c.env, ctxOf(c), { userId: activeAccount.userId, attempt: 'acting_admin', detail: 'session', request: c.req.raw });
+			return c.json({ error: 'Forbidden: system accounts cannot act as an admin' }, 403);
+		}
 
 		if (!user) {
 			return c.json({ error: 'User not found' }, 404);

@@ -30,6 +30,7 @@ import { getAuditEmitter } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType, createAuditEvent } from '../audit-events';
 import { verifyAdminRequest } from '../auth-middleware';
 import { logger } from '../logger';
+import { flagSystemAccountAttempt, isSystemUserId, type SystemAccountEnv } from '../security/system-accounts';
 import { getClientIP } from '../rate-limit';
 import { verifyUserAccessToken } from '../routes/account-routes';
 import { checkCode, recordCode } from '../security/password-attempts';
@@ -464,6 +465,13 @@ async function handleAdmin(rctx: PasskeyRouteContext, path: string): Promise<Res
 	const userId = decodeURIComponent(m[1]);
 	const actor = await adminActor(request, env);
 	if (!actor) return json({ error: 'forbidden' }, 403);
+	// System accounts never sign in, so never get a passkey (security/system-accounts.ts)
+	if (isSystemUserId(userId)) {
+		if (request.method !== 'GET') {
+			flagSystemAccountAttempt(env as SystemAccountEnv, rctx.ctx, { userId, attempt: 'sign_in', detail: `passkey ${m[2] ?? 'list'}`, request, requestId: rctx.requestId, actorId: actor.id });
+		}
+		return json({ error: 'not_found' }, 404);
+	}
 	if (!m[2]) {
 		if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405);
 		const rows = await listForUser(db, userId);

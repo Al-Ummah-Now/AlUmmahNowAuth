@@ -11,6 +11,7 @@
  */
 
 import { Hono } from 'hono';
+import { SYSTEM_USER_IDS_SQL } from '../security/system-accounts';
 import { requireAdmin, requirePermission } from '../middleware/admin-auth';
 import { rateLimit } from '../middleware/rate-limit';
 
@@ -79,12 +80,13 @@ adminStatsRoutes.get(
 				systemRolesResult,
 				usersByRoleResults,
 			] = await Promise.all([
-				// Total users in tenant (soft-deleted users excluded, matching the users list)
+				// Total users in tenant (soft-deleted users excluded, matching the users list).
+				// System accounts are not counted: an index count minus their primary-key rows.
 				c.env.AUTH_DB.prepare(`
-					SELECT COUNT(*) as count
-					FROM users
-					WHERE tenant_id = ?
-					AND deleted_at IS NULL
+					SELECT
+						(SELECT COUNT(*) FROM users WHERE tenant_id = ?1 AND deleted_at IS NULL)
+						- (SELECT COUNT(*) FROM users WHERE id IN (${SYSTEM_USER_IDS_SQL}) AND tenant_id = ?1 AND deleted_at IS NULL)
+						AS count
 				`)
 					.bind(tenantId)
 					.first<{ count: number }>(),
@@ -98,6 +100,7 @@ adminStatsRoutes.get(
 					WHERE r.tenant_id = ?
 					AND LOWER(r.name) IN ('admin', 'super admin', 'super_admin')
 					AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
+					AND ur.user_id NOT IN (${SYSTEM_USER_IDS_SQL})
 				`)
 					.bind(tenantId)
 					.first<{ count: number }>(),
@@ -130,6 +133,7 @@ adminStatsRoutes.get(
 					FROM rbac_roles r
 					LEFT JOIN rbac_user_roles ur ON r.id = ur.role_id
 						AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
+						AND ur.user_id NOT IN (${SYSTEM_USER_IDS_SQL})
 					WHERE r.tenant_id = ?
 					GROUP BY r.id, r.name
 					ORDER BY user_count DESC, r.name ASC

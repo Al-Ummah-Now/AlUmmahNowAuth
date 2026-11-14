@@ -311,6 +311,30 @@ export async function listUsers(
   return m2mRequest<PaginatedUsers>(env, endpoint, actingUser, { method: 'GET' }, request);
 }
 
+/** One system account in the super admin's read-only view (GET /admin/users?system=only). */
+export interface SystemAccount {
+  id: string;
+  email: string;
+  name: string | null;
+  status: string;
+  deleted_at: number | null;
+  system: true;
+  can_sign_in: false;
+  roles: Array<{ id: string; name: string; assigned_at: number | null; assigned_by: string | null; expires_at: number | null }>;
+}
+
+/**
+ * GET /admin/users?system=only - the system accounts the user list leaves out, with
+ * every role row (super admins only; 403 for anyone else).
+ */
+export async function listSystemAccounts(
+  env: ApiEnv,
+  actingUser: ActingUser,
+  request?: Request
+): Promise<{ users: SystemAccount[] } | ErrorResponse> {
+  return m2mRequest<{ users: SystemAccount[] }>(env, '/admin/users?system=only', actingUser, { method: 'GET' }, request);
+}
+
 /**
  * GET /admin/users/:id - Get user details with roles
  */
