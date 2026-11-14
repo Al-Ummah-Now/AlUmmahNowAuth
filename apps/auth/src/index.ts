@@ -541,7 +541,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const issued = await timer.stage('issuer', () => app.fetch(passwordGuard.request, env, ctx));
     let issuerResponse = await timer.stage('guard.finish', () => passwordGuard.finish(issued));
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
-    if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin));
+    if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin, request.headers.get('Cookie')));
     // Turnstile on sign-up, reset and (after failures) sign-in pages (security/turnstile.ts)
     if (isPage && passwordGuard.widget && (issuerResponse.headers.get('Content-Type') ?? '').includes('text/html') && env.TURNSTILE_SITE_KEY) {
       const widget = passwordGuard.widget;

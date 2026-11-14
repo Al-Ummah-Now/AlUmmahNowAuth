@@ -33,6 +33,8 @@ declare global {
     PROFILE_APP_URL: string;
     /** Auth theme packages and their files, by content hash (themes/store.ts) */
     AUTH_THEMES?: KVNamespace;
+    /** Static files (apps/auth/public): the built-in themes' street tiles at /fanous/street/<file> */
+    ASSETS?: Fetcher;
     /** Where the "Start sign-in again" page links when the sign-in's app is unknown. */
     SIGN_IN_FALLBACK_URL?: string;
     /** Comma-separated app logout URLs walked on single sign-out */

@@ -5,6 +5,7 @@
  */
 import { carryThemeOnLocation, decorateHtml, pageKind, THEME_PARAM } from '../../../../packages/ui/src/auth-theme/decorate.ts';
 import type { CompiledTheme } from '../../../../packages/ui/src/auth-theme/types.ts';
+import { streetVariantAttr } from '../../../../packages/ui/src/fanous-street/index.ts';
 
 /** Browser page loads and form posts; token and JSON API calls skip theme work. */
 export function wantsPage(request: Request): boolean {
@@ -19,7 +20,8 @@ export function requestedTheme(url: URL): string | null {
 	return v && /^[a-z][a-z0-9-]{1,39}$/.test(v) ? v : null;
 }
 
-export async function finishThemedResponse(response: Response, compiled: CompiledTheme, url: URL, issuerOrigin: string): Promise<Response> {
+/** `cookie` is the request's Cookie header: it can pin the lantern street's variant (visual tests). */
+export async function finishThemedResponse(response: Response, compiled: CompiledTheme, url: URL, issuerOrigin: string, cookie?: string | null): Promise<Response> {
 	if (response.status >= 300 && response.status < 400) {
 		const location = response.headers.get('Location');
 		if (!location) return response;
@@ -33,6 +35,6 @@ export async function finishThemedResponse(response: Response, compiled: Compile
 	const html = await response.text();
 	const headers = new Headers(response.headers);
 	headers.delete('Content-Length');
-	const body = decorateHtml(html, compiled, { page: pageKind(url.pathname, html), carryTheme: compiled.id, street: true });
+	const body = decorateHtml(html, compiled, { page: pageKind(url.pathname, html), carryTheme: compiled.id, street: true, streetVariant: streetVariantAttr(cookie) });
 	return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }

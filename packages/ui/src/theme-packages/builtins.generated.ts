@@ -29,7 +29,7 @@ export const BUILT_IN_THEMES = [
   },
   {
     "id": "fawanees",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "kind": "event",
     "name": {
       "en": "Fawanees",
