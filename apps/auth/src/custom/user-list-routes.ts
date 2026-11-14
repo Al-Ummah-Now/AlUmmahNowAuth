@@ -126,6 +126,37 @@ function rememberTotal(tenantId: string, count: number): void {
 /** Forget the cached totals (tests). */
 export function clearUserTotals(): void {
   totals.clear();
+  roleCountCache.clear();
+}
+
+/** How many live users hold each role, and how many hold admin or super_admin (the dashboard). */
+export interface RoleCounts {
+  roles: Array<{ id: string; name: string; user_count: number }>;
+  admin_users: number;
+}
+const roleCountCache = new Map<string, { at: number; counts: RoleCounts }>();
+
+// The live, unexpired grants of live people: deleted users and system accounts left out, like the list
+const LIVE_GRANTS_SQL = `
+  FROM rbac_user_roles ur
+  JOIN rbac_roles r ON r.id = ur.role_id
+  JOIN users u ON u.id = ur.user_id AND u.tenant_id = ur.tenant_id
+  WHERE ur.tenant_id = ? AND u.deleted_at IS NULL AND u.id NOT IN (${SYSTEM_USER_IDS_SQL})
+    AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)`;
+// Role names normalised as isSuperAdmin does ("Super Admin", "super-admin", "super_admin")
+const ADMIN_ROLE_SQL = `lower(replace(replace(trim(r.name), ' ', '_'), '-', '_')) IN ('admin', 'super_admin')`;
+
+async function roleCounts(db: D1Database, tenantId: string): Promise<RoleCounts> {
+  const hit = roleCountCache.get(tenantId);
+  if (hit && Date.now() - hit.at < TOTAL_TTL_MS) return hit.counts;
+  const [perRole, admins] = await Promise.all([
+    db.prepare(`SELECT r.id AS id, r.name AS name, COUNT(*) AS user_count ${LIVE_GRANTS_SQL} GROUP BY r.id, r.name ORDER BY user_count DESC, r.name`)
+      .bind(tenantId).all<{ id: string; name: string; user_count: number }>(),
+    db.prepare(`SELECT COUNT(DISTINCT ur.user_id) AS count ${LIVE_GRANTS_SQL} AND ${ADMIN_ROLE_SQL}`).bind(tenantId).first<{ count: number }>(),
+  ]);
+  const counts: RoleCounts = { roles: perRole.results ?? [], admin_users: admins?.count ?? 0 };
+  roleCountCache.set(tenantId, { at: Date.now(), counts });
+  return counts;
 }
 
 /**
@@ -133,6 +164,19 @@ export function clearUserTotals(): void {
  */
 export function userListRoutes(db: D1Database) {
   const app = new Hono<{ Variables: AdminVariables }>();
+
+  /**
+   * GET /role-counts - users per role across every user (not a page of them), and the number of
+   * admins; the dashboard's figures, reused for a few minutes per isolate
+   */
+  app.get('/role-counts', async (c) => {
+    try {
+      return c.json(await roleCounts(db, c.get('tenantId') || 'default'));
+    } catch (error) {
+      console.error('Failed to count users by role:', error instanceof Error ? error.message : String(error));
+      return c.json({ error: 'server_error', error_description: 'Failed to count users by role' }, 500);
+    }
+  });
 
   /**
    * GET / - List users with their RBAC roles

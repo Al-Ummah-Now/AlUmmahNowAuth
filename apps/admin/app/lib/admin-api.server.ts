@@ -767,107 +767,63 @@ export interface UsersByRole {
   user_count: number;
 }
 
-/**
- * GET /admin/stats/users - Get user statistics
- *
- * NOTE: This endpoint needs to be implemented on the auth server.
- * For now, this returns placeholder data.
- */
+/** GET /admin/users/role-counts: users per role across every user, and the admins among them. */
+export interface RoleCounts {
+  roles: Array<{ id: string; name: string; user_count: number }>;
+  admin_users: number;
+}
+
+export function getRoleCounts(env: ApiEnv, actingUser: ActingUser, request?: Request): Promise<RoleCounts | ErrorResponse> {
+  return m2mRequest<RoleCounts>(env, '/admin/users/role-counts', actingUser, { method: 'GET' }, request);
+}
+
+/** The roles card: every role the roles page lists, split into system and custom. */
+export function roleStatsOf(roles: Pick<Role, 'is_system_role'>[]): RoleStats {
+  const systemRoles = roles.filter((r) => r.is_system_role).length;
+  return { totalRoles: roles.length, systemRoles, customRoles: roles.length - systemRoles };
+}
+
+/** The chart: the roles held by the most users, from the counts over every user. */
+export function usersByRoleOf(counts: RoleCounts, limit = 5): UsersByRole[] {
+  return counts.roles
+    .filter((r) => r.user_count > 0)
+    .map(({ name, user_count }) => ({ name, user_count }))
+    .sort((a, b) => b.user_count - a.user_count || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
+
+/** Total users (the list's own count) and admin users (admin or super_admin, every user counted). */
 export async function getUserStats(
   env: ApiEnv,
   actingUser: ActingUser,
-  request?: Request
+  request?: Request,
+  counts?: RoleCounts | ErrorResponse
 ): Promise<UserStats | ErrorResponse> {
-  // TODO: Implement /admin/stats/users endpoint on auth server
-  // For now, return from listUsers API
-  try {
-    // Note: API caps results at 100, but provides total_count with actual count
-    const result = await listUsers(env, actingUser, { limit: 100 }, request);
-    if (isErrorResponse(result)) {
-      return result;
-    }
-
-    // Count admin users from the returned users (this is approximate for >100 users)
-    // Note: OpenAuth seeds role_admin and role_super_admin (not _default suffix)
-    // Use optional chaining since some users may not have roles assigned
-    const adminUsers = result.users.filter(user =>
-      user.roles?.some(role =>
-        role.id === 'role_admin' || role.id === 'role_super_admin'
-      )
-    ).length;
-
-    // Use total_count from API response for accurate user count
-    // Fall back to users.length if total_count not provided
-    return {
-      totalUsers: result.total_count ?? result.users.length,
-      adminUsers,
-    };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : 'Failed to fetch user stats',
-    };
-  }
+  const [list, roleCounts] = await Promise.all([
+    listUsers(env, actingUser, { limit: 1 }, request),
+    counts ?? getRoleCounts(env, actingUser, request),
+  ]);
+  if (isErrorResponse(list)) return list;
+  if (isErrorResponse(roleCounts)) return roleCounts;
+  return { totalUsers: list.total_count ?? list.users.length, adminUsers: roleCounts.admin_users };
 }
 
-/**
- * GET /admin/stats/roles - Get role statistics
- *
- * NOTE: This endpoint needs to be implemented on the auth server.
- * For now, this returns placeholder data.
- */
-export async function getRoleStats(
-  _env: ApiEnv,
-  _actingUser: ActingUser
-): Promise<RoleStats | ErrorResponse> {
-  // TODO: Implement /admin/stats/roles endpoint on auth server
-  return {
-    totalRoles: 0,
-    systemRoles: 0,
-    customRoles: 0,
-  };
+/** The roles the roles page lists (deleted roles left out by Auth), system and custom. */
+export async function getRoleStats(env: ApiEnv, actingUser: ActingUser, request?: Request): Promise<RoleStats | ErrorResponse> {
+  const roles = await listRoles(env, actingUser, request);
+  return isErrorResponse(roles) ? roles : roleStatsOf(roles);
 }
 
-/**
- * GET /admin/stats/users-by-role - Get user distribution by role
- *
- * NOTE: This endpoint needs to be implemented on the auth server.
- * For now, this returns placeholder data.
- */
+/** Users per role across every user, the top `limit` roles. */
 export async function getUsersByRole(
   env: ApiEnv,
   actingUser: ActingUser,
   limit: number = 5,
-  request?: Request
+  request?: Request,
+  counts?: RoleCounts | ErrorResponse
 ): Promise<UsersByRole[] | ErrorResponse> {
-  // TODO: Implement /admin/stats/users-by-role endpoint on auth server
-  try {
-    const result = await listUsers(env, actingUser, { limit: 1000, skipCount: true }, request);
-    if (isErrorResponse(result)) {
-      return result;
-    }
-
-    // Count users by role
-    // Handle users that may not have roles assigned
-    const roleCounts = new Map<string, number>();
-    for (const user of result.users) {
-      for (const role of user.roles || []) {
-        const count = roleCounts.get(role.name) || 0;
-        roleCounts.set(role.name, count + 1);
-      }
-    }
-
-    // Convert to array and sort by count
-    const usersByRole: UsersByRole[] = Array.from(roleCounts.entries())
-      .map(([name, user_count]) => ({ name, user_count }))
-      .sort((a, b) => b.user_count - a.user_count)
-      .slice(0, limit);
-
-    return usersByRole;
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : 'Failed to fetch users by role',
-    };
-  }
+  const roleCounts = counts ?? (await getRoleCounts(env, actingUser, request));
+  return isErrorResponse(roleCounts) ? roleCounts : usersByRoleOf(roleCounts, limit);
 }
 
 // ============================================================================
@@ -1011,6 +967,7 @@ export const adminApi = {
   terminateAllUserSessions,
 
   // Stats
+  getRoleCounts,
   getUserStats,
   getRoleStats,
   getUsersByRole,
