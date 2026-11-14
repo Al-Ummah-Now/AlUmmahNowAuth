@@ -487,4 +487,38 @@ test.describe('Forgot Password Flow', () => {
     await expectSignInPage(page);
     await expect(page.locator('#loggedInView')).toHaveCount(0);
   });
+
+  test('a foreign redirect_uri on /password/change ends on the Profile app, not that site (#206)', async ({ page }) => {
+    const testUser = TEST_USERS.user();
+    await register(page, testUser.email);
+    await page.goto(TEST_URLS.profileApp);
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+    await page.locator('#loggedInView button:has-text("Sign Out")').first().click();
+    await expectSignInPage(page);
+
+    // Never let the browser actually reach the foreign site
+    const foreign: string[] = [];
+    await page.route('https://evil.example/**', (route) => {
+      foreign.push(route.request().url());
+      return route.fulfill({ status: 200, body: 'foreign site' });
+    });
+
+    await page.goto(`${TEST_URLS.authServer}/password/change?redirect_uri=${encodeURIComponent('https://evil.example/steal')}`);
+    await page.fill('input[type="email"]', testUser.email);
+    await page.click('button:has-text("Continue")');
+    await expect(page.locator('input[name="code"]')).toBeVisible({ timeout: 10000 });
+    const code = await setupEmailInterception().getLastLoginCode(testUser.email);
+    if (!code) throw new Error(`No reset code reached the sink for ${testUser.email}`);
+    await submitCode(page, code);
+    const passwordFields = page.locator('input[type="password"]');
+    await expect(passwordFields.nth(1)).toBeVisible({ timeout: 10000 });
+    await fillSecret(passwordFields.nth(0), NEW_PASSWORD);
+    await fillSecret(passwordFields.nth(1), NEW_PASSWORD);
+    await page.click('button:has-text("Continue")');
+
+    await expect(page.locator('input[name="repeat"]')).toHaveCount(0, { timeout: 15000 });
+    await page.waitForLoadState('domcontentloaded');
+    expect(foreign).toEqual([]);
+    expect(new URL(page.url()).hostname).not.toBe('evil.example');
+  });
 });
