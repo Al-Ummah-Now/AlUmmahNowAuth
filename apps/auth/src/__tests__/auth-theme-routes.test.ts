@@ -25,7 +25,7 @@ let privateKey: CryptoKey;
 let previousKey: string | null;
 
 async function token(scope = 'admin:*') {
-	return new SignJWT({ client_id: 'admin-client', scope, mode: 'access' })
+	return new SignJWT({ client_id: 'admin-client', scope, mode: 'm2m' })
 		.setProtectedHeader({ alg: 'ES256', kid: 'theme-kid' })
 		.setIssuer(ISSUER)
 		.setSubject('admin-client')

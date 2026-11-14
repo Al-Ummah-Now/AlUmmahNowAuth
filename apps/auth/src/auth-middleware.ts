@@ -32,6 +32,11 @@ function hasM2MAuth(request: Request): boolean {
   return extractBearerToken(authHeader) !== null;
 }
 
+/** An admin scope ("admin" or "admin:<anything>"): what an M2M client needs to act for an admin. */
+export function hasAdminScope(scopes: readonly string[]): boolean {
+  return scopes.some((s) => s === 'admin' || s.startsWith('admin:'));
+}
+
 /**
  * M2M auth result interface
  */
@@ -82,10 +87,23 @@ async function verifyM2MAuth(
     issuer,
   });
 
+  // A client_credentials token (openauth signs those with mode "m2m"), never a user token
+  if (payload.mode !== 'm2m') {
+    throw new Error('Invalid token: not an M2M token');
+  }
+
   // Extract scopes from token
   const scopes = payload.scope
     ? (typeof payload.scope === 'string' ? payload.scope.split(' ') : payload.scope as string[])
     : [];
+
+  // Only a client granted an admin scope may act for an admin (the rule requireAdmin applies).
+  // Without it, any M2M client (e.g. a videos service holding only moderation:request) could name
+  // an admin in X-Acting-User-Id and assign roles or delete users.
+  if (!hasAdminScope(scopes)) {
+    logger.warn('M2M token lacks admin scope', { clientId: payload.client_id });
+    throw new Error('Forbidden: admin scope required');
+  }
 
   logger.debug('M2M token verified successfully', {
     clientId: payload.client_id,

@@ -402,7 +402,7 @@ describe('impersonation: a system account never acts as an admin', () => {
 	});
 
 	const token = () =>
-		new SignJWT({ client_id: 'admin-client', scope: 'admin:*', mode: 'access' })
+		new SignJWT({ client_id: 'admin-client', scope: 'admin:*', mode: 'm2m' })
 			.setProtectedHeader({ alg: 'ES256', kid: 'system-kid' })
 			.setIssuer(ISSUER)
 			.setSubject('admin-client')
