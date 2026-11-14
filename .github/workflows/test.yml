@@ -144,6 +144,10 @@ jobs:
       - name: Wrangler config check
         run: pnpm check:config
 
+      # Local dev runs on local stores only, never a deployed environment's (scripts/release/dev-config.ts)
+      - name: Dev config check
+        run: pnpm check:dev-config
+
       - name: Migrations are append-only
         run: pnpm check:migrations "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
 

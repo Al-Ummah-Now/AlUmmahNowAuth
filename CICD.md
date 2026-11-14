@@ -97,6 +97,7 @@ These run on every PR (`test.yml` → **Release Checks**) and are part of the re
 | Command | Fails when | Fix |
 |---|---|---|
 | `pnpm check:config` | A deployed wrangler env is wrong: auth `env.production` without `ENVIRONMENT=production`, the prod issuer, or the Secrets Store bindings; a test-only binding in prod; a localhost value; a non-prod route. Also fails on any `wrangler deploy` / `versions upload` for auth without `--env` or `--config` (the 2026-11-07 incident). | Fix the config or command. Rules live in `scripts/release/apps.ts`. |
+| `pnpm check:dev-config` | Local development could reach a deployed environment: an app's dev config (`wrangler.dev.json`, `.jsonc` for the audit consumer) names a production or stage resource id or host, any wrangler config sets `remote: true`, a local script (`wrangler dev`, `--local`) or the admin's Vite dev server runs without the dev config, a deploy ships a dev config, or a dev config is missing a binding from the app's `wrangler.json`. | Point it at local stores (or QA at most). Rules live in `scripts/release/dev-config.ts`. |
 | `pnpm check:migrations <base>` | An existing file in `apps/*/migrations*/` was modified, deleted or renamed, or a new one sorts before the latest. | Add a new migration instead. |
 | `pnpm check:schema` | `apps/auth/schema.snapshot.sql` / `schema.qa.snapshot.sql` don't match what the migrations (openauth + app) produce. | `pnpm schema:snapshot` and commit the result with the migration. |
 | `pnpm test:scripts` | The release scripts' own tests fail. | |
@@ -134,6 +135,8 @@ pnpm dev:wrangler
 cd apps/auth
 pnpm run migrations:local
 ```
+
+Local dev and the `*:local` scripts run on each app's `wrangler.dev.json` (audit consumer: `wrangler.dev.jsonc`): local KV and D1 shared by id (`local-auth-storage`, `local-auth-db`), localhost URLs, never a deployed store. `wrangler.json` is the deploy config; `pnpm check:dev-config` keeps the two apart.
 
 ### Preview Environment
 

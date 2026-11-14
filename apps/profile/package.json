@@ -5,7 +5,7 @@
   "description": "Al Ummah Now User Profile Application",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev --port 3302 --inspector-port 3312",
+    "dev": "wrangler dev -c wrangler.dev.json --port 3302 --inspector-port 3312",
     "deploy": "wrangler deploy",
     "deploy:qa": "wrangler deploy --config wrangler.qa.json",
     "deploy:stage": "wrangler deploy --env stage",

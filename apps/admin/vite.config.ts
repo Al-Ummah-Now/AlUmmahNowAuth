@@ -4,15 +4,17 @@ import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { cloudflare } from "@cloudflare/vite-plugin";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     cloudflare({
       viteEnvironment: { name: "ssr" },
-      configPath: "wrangler.json",
+      // `pnpm dev` runs on local stores only (wrangler.dev.json). `pnpm build` writes the
+      // deploy config (build/server/wrangler.json) from the production config, wrangler.json.
+      configPath: command === "serve" ? "wrangler.dev.json" : "wrangler.json",
       persistState: { path: "../../.wrangler/state" },
     }),
     tailwindcss(),
     reactRouter(),
     tsconfigPaths(),
   ],
-});
+}));

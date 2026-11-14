@@ -16,9 +16,7 @@
   "kv_namespaces": [
     {
       "binding": "AUTH_STORAGE",
-      "id": "c3f796d40db8420c920aef1ce10a7f13",
-      "preview_id": "c9f1b1f1492e4a61b5e20d1872aa14fb",
-      "remote": true
+      "id": "c3f796d40db8420c920aef1ce10a7f13"
     }
   ],
   "d1_databases": [

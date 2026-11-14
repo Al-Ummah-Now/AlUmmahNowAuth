@@ -6,7 +6,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev --port 3304",
+    "dev": "wrangler dev -c wrangler.dev.jsonc --port 3304",
     "deploy": "wrangler deploy",
     "deploy:qa": "wrangler deploy --config wrangler.qa.jsonc",
     "deploy:stage": "wrangler deploy --env stage",
