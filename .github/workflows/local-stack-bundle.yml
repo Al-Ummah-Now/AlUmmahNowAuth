@@ -40,13 +40,13 @@ jobs:
         run: |
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a full commit sha: $SHA"; exit 1; }
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.SHA }}
           fetch-depth: 0
 
       # The bundle script from this workflow's own commit (an older released commit predates it)
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           path: .bundle-tools
           sparse-checkout: scripts/release/local-stack-bundle.sh

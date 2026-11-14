@@ -29,7 +29,7 @@ jobs:
     name: Build once
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
@@ -83,7 +83,7 @@ jobs:
       name: stage
       url: https://auth.stage.alummahnow.net
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
@@ -201,7 +201,7 @@ jobs:
       name: production
       url: https://auth.alummahnow.net
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # A newer commit on main means a newer release is queued behind this one
       # (concurrency auth-release). Never promote a stale candidate: e.g. a build
