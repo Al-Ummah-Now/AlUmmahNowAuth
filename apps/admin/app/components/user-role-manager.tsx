@@ -126,7 +126,7 @@ export function UserRoleManager({
           <div>
             <h3 className="text-sm font-semibold mb-3">Current Roles</h3>
             {currentRoles.length === 0 ? (
-              <p className="text-sm text-[rgb(var(--color-muted-foreground))]">
+              <p className="text-sm text-[var(--color-muted-foreground)]">
                 No roles assigned yet
               </p>
             ) : (
@@ -134,7 +134,7 @@ export function UserRoleManager({
                 {currentRoles.map((role) => (
                   <div
                     key={role.id}
-                    className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]"
+                    className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)]"
                   >
                     <UserRoleBadge role={role.name} />
                     <Button
@@ -161,7 +161,7 @@ export function UserRoleManager({
           <div>
             <h3 className="text-sm font-semibold mb-3">Add Role</h3>
             {availableRoles.length === 0 ? (
-              <p className="text-sm text-[rgb(var(--color-muted-foreground))]">
+              <p className="text-sm text-[var(--color-muted-foreground)]">
                 All roles have been assigned
               </p>
             ) : (
@@ -180,7 +180,7 @@ export function UserRoleManager({
                         <span className="flex items-center gap-2">
                           {role.name}
                           {role.is_system && (
-                            <span className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                            <span className="text-xs text-[var(--color-muted-foreground)]">
                               (System)
                             </span>
                           )}

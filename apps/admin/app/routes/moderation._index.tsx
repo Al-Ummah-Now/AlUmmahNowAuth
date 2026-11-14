@@ -75,7 +75,7 @@ export async function loader({ request, context }: LoaderFunctionArgs): Promise<
 }
 
 const selectClass =
-  "flex h-9 w-full rounded-md border border-[rgb(var(--color-border))] bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(var(--color-ring))]";
+  "flex h-9 w-full rounded-md border border-[var(--color-border)] bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)]";
 
 export default function ModerationRequestsPage() {
   const { queue, error, filters, page, user, authServerUrl } = useLoaderData<LoaderData>();
@@ -88,20 +88,20 @@ export default function ModerationRequestsPage() {
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Moderation requests</h2>
-        <p className="text-[rgb(var(--color-muted-foreground))]">
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Moderation requests</h2>
+        <p className="text-[var(--color-muted-foreground)]">
           Client apps ask; auth admins decide. Approving runs the action on the auth account.
         </p>
       </div>
 
       {error && (
-        <div role="alert" className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
+        <div role="alert" className="mb-6 p-4 ui-alert-error rounded-lg">
           Could not load moderation requests: {error}
         </div>
       )}
 
       {!!queue?.needs_attention && !filters.needs_attention && (
-        <div role="alert" data-testid="moderation-needs-attention" className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600 flex flex-wrap items-center justify-between gap-2">
+        <div role="alert" data-testid="moderation-needs-attention" className="mb-6 p-4 ui-alert-error rounded-lg flex flex-wrap items-center justify-between gap-2">
           <span>
             {queue.needs_attention === 1 ? "1 approved action failed" : `${queue.needs_attention} approved actions failed`} after every retry and need an admin.
           </span>
@@ -173,7 +173,7 @@ export default function ModerationRequestsPage() {
         </CardHeader>
         <CardContent>
           {queue && queue.requests.length === 0 ? (
-            <p className="py-8 text-center text-[rgb(var(--color-muted-foreground))]" data-testid="moderation-empty">
+            <p className="py-8 text-center text-[var(--color-muted-foreground)]" data-testid="moderation-empty">
               No moderation requests match these filters.
             </p>
           ) : (
@@ -197,16 +197,16 @@ export default function ModerationRequestsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{r.subject?.email ?? r.subject_user_id}</div>
-                        <div className="text-xs text-[rgb(var(--color-muted-foreground))]">{r.subject_user_id}</div>
+                        <div className="text-xs text-[var(--color-muted-foreground)]">{r.subject_user_id}</div>
                       </TableCell>
                       <TableCell>{label(MODERATION_ACTION_LABELS, r.action)}</TableCell>
                       <TableCell>
                         <div>{label(REASON_CATEGORY_LABELS, r.reason_category)}</div>
-                        <div className="text-xs text-[rgb(var(--color-muted-foreground))] line-clamp-1 max-w-xs">{r.reason}</div>
+                        <div className="text-xs text-[var(--color-muted-foreground)] line-clamp-1 max-w-xs">{r.reason}</div>
                       </TableCell>
                       <TableCell>
                         <div>{r.client_name ?? r.client_id}</div>
-                        <div className="text-xs text-[rgb(var(--color-muted-foreground))]">{r.requested_by.display_name}</div>
+                        <div className="text-xs text-[var(--color-muted-foreground)]">{r.requested_by.display_name}</div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={MODERATION_STATUS_CLASSES[r.status]}>{label(MODERATION_STATUS_LABELS, r.status)}</Badge>
@@ -214,7 +214,7 @@ export default function ModerationRequestsPage() {
                           <Badge variant="destructive" className="ms-1" data-testid="moderation-row-failed">Action failed</Badge>
                         )}
                         {(r.execution?.status === "queued" || r.execution?.status === "retrying") && r.status === "approved" && (
-                          <span className="ms-1 text-xs text-[rgb(var(--color-muted-foreground))]">{r.execution.status}</span>
+                          <span className="ms-1 text-xs text-[var(--color-muted-foreground)]">{r.execution.status}</span>
                         )}
                       </TableCell>
                     </TableRow>

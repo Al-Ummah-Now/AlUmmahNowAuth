@@ -89,7 +89,7 @@ export default function UserPasskeys() {
       </h1>
       <LoadErrorBanner what="the passkeys" error={data.loadError} />
       {fetcher.data?.error && (
-        <p className="text-sm text-red-600 mb-4" role="alert">
+        <p className="text-sm text-[var(--color-destructive-text)] mb-4" role="alert">
           {fetcher.data.error}
         </p>
       )}

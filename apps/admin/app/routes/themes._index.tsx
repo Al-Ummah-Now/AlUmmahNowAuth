@@ -99,10 +99,10 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
 
 const STATUS: Record<ThemeSummary["status"], string> = { published: "Published", draft: "Draft", changed: "Unpublished changes" };
 const selectClass =
-  "flex h-9 w-full rounded-md border border-[rgb(var(--color-border))] bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(var(--color-ring))]";
+  "flex h-9 w-full rounded-md border border-[var(--color-border)] bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)]";
 
 function ThemeSwatch({ swatches }: { swatches: Swatches | null }) {
-  if (!swatches) return <div className="h-28 rounded-t-xl bg-[rgb(var(--color-muted))]" />;
+  if (!swatches) return <div className="h-28 rounded-t-xl bg-[var(--color-muted)]" />;
   const half = (s: Swatches["light"], side: "light" | "dark") => (
     <div className="relative flex-1 overflow-hidden" style={{ background: s.background }} aria-label={`${side} colours`}>
       <div className="absolute inset-x-4 top-4 bottom-0 rounded-t-lg shadow-lg" style={{ background: s.card, borderTop: `3px solid ${s.primary}` }}>
@@ -137,8 +137,8 @@ export default function ThemesPage() {
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="mb-2 text-3xl font-bold text-[rgb(var(--color-foreground))]">Sign-in themes</h2>
-          <p className="max-w-2xl text-[rgb(var(--color-muted-foreground))]">
+          <h2 className="mb-2 text-3xl font-bold text-[var(--color-foreground)]">Sign-in themes</h2>
+          <p className="max-w-2xl text-[var(--color-muted-foreground)]">
             How Auth's pages look: sign-in, register, code entry, password reset, device approval, the account switcher, profile and this admin.
             Apps can ask for any published theme; otherwise they get their own default, then the Auth default.
           </p>
@@ -149,12 +149,12 @@ export default function ThemesPage() {
       </div>
 
       {(error || result?.error) && (
-        <div role="alert" className="mb-6 rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-red-500">
+        <div role="alert" className="mb-6 rounded-lg ui-alert-error p-4">
           {error ? `Could not load themes: ${error}` : result?.error}
         </div>
       )}
       {result?.ok && (
-        <div role="status" className="mb-6 rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-green-600">
+        <div role="status" className="mb-6 rounded-lg ui-alert-success p-4">
           {result.ok}
         </div>
       )}
@@ -219,7 +219,7 @@ export default function ThemesPage() {
                     disabled={busy || inUse}
                     onClick={() => setDeleting(t)}
                     title={inUse ? "In use: change the Auth default and app defaults first" : "Delete this theme"}
-                    className="text-red-500"
+                    className="text-[var(--color-destructive-text)]"
                   >
                     <Trash2 /> Delete
                   </Button>
@@ -252,7 +252,7 @@ export default function ThemesPage() {
                 <TableRow key={c.id} data-testid={`client-default-${c.id}`}>
                   <TableCell>
                     <div className="font-medium">{c.name}</div>
-                    <code className="text-xs text-[rgb(var(--color-muted-foreground))]">{c.id}</code>
+                    <code className="text-xs text-[var(--color-muted-foreground)]">{c.id}</code>
                   </TableCell>
                   <TableCell colSpan={2}>
                     <Form method="post" className="flex gap-2">
@@ -286,7 +286,7 @@ export default function ThemesPage() {
             <div className="space-y-1">
               <Label htmlFor="dup-id">Theme id</Label>
               <Input id="dup-id" name="id" required pattern="[a-z][a-z0-9\-]{1,39}" placeholder="eid-2027" defaultValue={duplicateFrom ? `${duplicateFrom.id}-copy` : ""} />
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">Lowercase letters, digits and dashes. Apps use it in links (?theme=…).</p>
+              <p className="text-xs text-[var(--color-muted-foreground)]">Lowercase letters, digits and dashes. Apps use it in links (?theme=…).</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">

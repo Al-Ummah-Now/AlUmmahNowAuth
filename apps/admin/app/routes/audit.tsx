@@ -257,8 +257,8 @@ export default function AuditLogs() {
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-6">
-        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Audit Logs</h2>
-        <p className="text-[rgb(var(--color-muted-foreground))]">
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Audit Logs</h2>
+        <p className="text-[var(--color-muted-foreground)]">
           View system audit logs and security events
         </p>
       </div>
@@ -283,7 +283,7 @@ export default function AuditLogs() {
           <CardContent>
             {/* Filters Section */}
             {showFilters && (
-              <div className="mb-6 p-4 border border-[rgb(var(--color-border))] rounded-lg bg-[rgb(var(--color-muted))]/20">
+              <div className="mb-6 p-4 border border-[var(--color-border)] rounded-lg bg-[var(--color-muted)]/20">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   <div className="grid gap-2">
                     <Label htmlFor="event_type">Event Type</Label>
@@ -367,7 +367,7 @@ export default function AuditLogs() {
             {/* Active Filters Display */}
             {hasActiveFilters && !showFilters && (
               <div className="mb-4 flex flex-wrap gap-2 items-center">
-                <span className="text-sm text-[rgb(var(--color-muted-foreground))]">Active filters:</span>
+                <span className="text-sm text-[var(--color-muted-foreground)]">Active filters:</span>
                 {eventTypeFilter && (
                   <Badge variant="outline">
                     Event: {eventTypeFilter}
@@ -402,9 +402,9 @@ export default function AuditLogs() {
             {/* Events Table */}
             {events.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <FileText className="h-12 w-12 text-[rgb(var(--color-muted-foreground))] mb-4" />
+                <FileText className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No audit events found</h3>
-                <p className="text-sm text-[rgb(var(--color-muted-foreground))] mb-4">
+                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
                   {hasActiveFilters
                     ? "Try adjusting your filters to see more results."
                     : "Audit events will appear here as they occur."}
@@ -434,12 +434,12 @@ export default function AuditLogs() {
                         <TableRow key={event.id}>
                           <TableCell className="font-mono text-xs">
                             <div className="flex items-center gap-2">
-                              <Calendar className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+                              <Calendar className="h-4 w-4 text-[var(--color-muted-foreground)]" />
                               {formatTimestamp(event.timestamp)}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <code className="text-xs bg-[rgb(var(--color-muted))] px-2 py-1 rounded">
+                            <code className="text-xs bg-[var(--color-muted)] px-2 py-1 rounded">
                               {event.event_type}
                             </code>
                           </TableCell>
@@ -452,12 +452,12 @@ export default function AuditLogs() {
                             {event.user_id && isSystemUserId(event.user_id) ? (
                               <span title={event.user_id}>{actorLabel(event.user_id, langOf(searchParams))}</span>
                             ) : (
-                              event.user_id || <span className="text-[rgb(var(--color-muted-foreground))]">-</span>
+                              event.user_id || <span className="text-[var(--color-muted-foreground)]">-</span>
                             )}
                           </TableCell>
                           <TableCell className="font-mono text-xs">
                             {event.ip_address || (
-                              <span className="text-[rgb(var(--color-muted-foreground))]">-</span>
+                              <span className="text-[var(--color-muted-foreground)]">-</span>
                             )}
                           </TableCell>
                           <TableCell>
@@ -473,8 +473,8 @@ export default function AuditLogs() {
 
                 {/* Pagination */}
                 {pagination.pages > 1 && (
-                  <div className="flex items-center justify-between mt-6 pt-6 border-t border-[rgb(var(--color-border))]">
-                    <div className="text-sm text-[rgb(var(--color-muted-foreground))]">
+                  <div className="flex items-center justify-between mt-6 pt-6 border-t border-[var(--color-border)]">
+                    <div className="text-sm text-[var(--color-muted-foreground)]">
                       Page {pagination.page} of {pagination.pages}{pagination.capped ? "+" : ""} ({pagination.total}{pagination.capped ? "+" : ""} total events)
                     </div>
                     <div className="flex gap-2">

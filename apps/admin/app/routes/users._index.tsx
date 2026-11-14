@@ -591,8 +591,8 @@ export default function Users() {
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-6">
-        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">User Management</h2>
-        <p className="text-[rgb(var(--color-muted-foreground))]">
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">User Management</h2>
+        <p className="text-[var(--color-muted-foreground)]">
           Manage user accounts and role assignments
         </p>
       </div>
@@ -652,19 +652,19 @@ export default function Users() {
                           setNewUserEmail(e.target.value);
                           setEmailError(null); // Clear error when user types
                         }}
-                        className={emailError ? "border-red-500" : ""}
+                        className={emailError ? "border-[var(--color-destructive-text)]" : ""}
                       />
                       {emailError && (
-                        <p className="text-sm text-red-500" role="alert">{emailError}</p>
+                        <p className="text-sm text-[var(--color-destructive-text)]" role="alert">{emailError}</p>
                       )}
                     </div>
                     {serverError && (
-                      <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md" role="alert">
+                      <div className="p-3 text-sm ui-alert-error rounded-md" role="alert">
                         {serverError}
                       </div>
                     )}
                     {serverWarning && (
-                      <div className="p-3 text-sm text-yellow-700 bg-yellow-50 rounded-md" role="alert" data-testid="role-assignment-warning">
+                      <div className="p-3 text-sm ui-alert-warning rounded-md" role="alert" data-testid="role-assignment-warning">
                         ⚠️ {serverWarning}
                       </div>
                     )}
@@ -685,11 +685,11 @@ export default function Users() {
                                   setSelectedRoles(selectedRoles.filter((id) => id !== role.id));
                                 }
                               }}
-                              className="h-4 w-4 rounded border-[rgb(var(--color-input))]"
+                              className="h-4 w-4 rounded border-[var(--color-input)]"
                             />
                             <span className="text-sm">{role.name}</span>
                             {role.description && (
-                              <span className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                              <span className="text-xs text-[var(--color-muted-foreground)]">
                                 - {role.description}
                               </span>
                             )}
@@ -737,9 +737,9 @@ export default function Users() {
 
             {loadError && users.length === 0 ? null : users.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <User className="h-12 w-12 text-[rgb(var(--color-muted-foreground))] mb-4" />
+                <User className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No users found</h3>
-                <p className="text-sm text-[rgb(var(--color-muted-foreground))] mb-4">
+                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
                   Get started by creating your first user account.
                 </p>
                 <Button onClick={() => setCreateDialogOpen(true)}>
@@ -763,20 +763,20 @@ export default function Users() {
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+                          <User className="h-4 w-4 text-[var(--color-muted-foreground)]" />
                           {user.name || '-'}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+                          <Mail className="h-4 w-4 text-[var(--color-muted-foreground)]" />
                           {user.email}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2">
                           {user.roles.length === 0 ? (
-                            <span className="text-sm text-[rgb(var(--color-muted-foreground))]">
+                            <span className="text-sm text-[var(--color-muted-foreground)]">
                               No roles
                             </span>
                           ) : (
@@ -820,7 +820,7 @@ export default function Users() {
                             onClick={() => handleDeleteUser(user.id)}
                             title="Delete User"
                           >
-                            <Trash2 className="h-4 w-4 mr-1 text-[rgb(var(--color-destructive))]" />
+                            <Trash2 className="h-4 w-4 mr-1 text-[var(--color-destructive-text)]" />
                             Delete
                           </Button>
                         </div>
@@ -874,7 +874,7 @@ export default function Users() {
               <Label htmlFor="role">Role</Label>
               <select
                 id="role"
-                className="flex h-10 w-full rounded-md border border-[rgb(var(--color-input))] bg-[rgb(var(--color-background))] px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--color-ring))] focus-visible:ring-offset-2"
+                className="flex h-10 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2"
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value)}
                 disabled={isEditSubmitting}
@@ -885,7 +885,7 @@ export default function Users() {
               </select>
             </div>
             {editServerError && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md" role="alert">
+              <div className="p-3 text-sm ui-alert-error rounded-md" role="alert">
                 {editServerError}
               </div>
             )}

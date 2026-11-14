@@ -126,8 +126,8 @@ const TABS = ["Colours", "Components", "Pages", "Shape & type", "Images", "Email
 type Tab = (typeof TABS)[number];
 
 const selectClass =
-  "flex h-9 w-full rounded-md border border-[rgb(var(--color-border))] bg-transparent px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(var(--color-ring))] disabled:opacity-60";
-const muted = "text-[rgb(var(--color-muted-foreground))]";
+  "flex h-9 w-full rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)] disabled:opacity-60";
+const muted = "text-[var(--color-muted-foreground)]";
 
 // ---------------------------------------------------------------- controls
 
@@ -140,7 +140,7 @@ function ColorField({ theme, mode, value, onChange, disabled, label }: { theme: 
         value={pickerHex(theme, mode, value)}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="h-8 w-9 shrink-0 cursor-pointer rounded border border-[rgb(var(--color-border))] bg-transparent p-0.5 disabled:cursor-default"
+        className="h-8 w-9 shrink-0 cursor-pointer rounded border border-[var(--color-border)] bg-transparent p-0.5 disabled:cursor-default"
       />
       <Input
         key={value ?? ""}
@@ -176,7 +176,7 @@ function GradientEditor({ value, onChange, disabled }: { value: string | undefin
   const g: Gradient = parseGradient(value) ?? { angle: 180, stops: [{ color: "#f4ae3a", at: 0 }, { color: "#e0962a", at: 100 }] };
   const update = (next: Gradient) => onChange(gradientCss(next));
   return (
-    <div className="space-y-2 rounded-md border border-[rgb(var(--color-border))] p-2">
+    <div className="space-y-2 rounded-md border border-[var(--color-border)] p-2">
       <div className="h-6 rounded" style={{ background: gradientCss({ ...g, stops: g.stops.map((s) => ({ ...s, color: HEX.test(s.color) ? s.color : "#888888" })) }) }} />
       <div className="flex items-center gap-2 text-xs">
         <span className={muted}>Angle</span>
@@ -191,12 +191,12 @@ function GradientEditor({ value, onChange, disabled }: { value: string | undefin
             disabled={disabled}
             aria-label={`Stop ${i + 1} colour`}
             onChange={(e) => update({ ...g, stops: g.stops.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })}
-            className="h-7 w-8 rounded border border-[rgb(var(--color-border))] bg-transparent p-0.5"
+            className="h-7 w-8 rounded border border-[var(--color-border)] bg-transparent p-0.5"
           />
           <input type="range" min={0} max={100} value={s.at} disabled={disabled} aria-label={`Stop ${i + 1} position`} onChange={(e) => update({ ...g, stops: g.stops.map((x, j) => (j === i ? { ...x, at: Number(e.target.value) } : x)) })} className="flex-1" />
           <span className="w-10 text-right">{s.at}%</span>
           {g.stops.length > 2 && (
-            <button type="button" className="text-red-500" disabled={disabled} onClick={() => update({ ...g, stops: g.stops.filter((_, j) => j !== i) })} aria-label={`Remove stop ${i + 1}`}>×</button>
+            <button type="button" className="text-[var(--color-destructive-text)]" disabled={disabled} onClick={() => update({ ...g, stops: g.stops.filter((_, j) => j !== i) })} aria-label={`Remove stop ${i + 1}`}>×</button>
           )}
         </div>
       ))}
@@ -218,15 +218,15 @@ function ShadowEditor({ value, onChange, disabled }: { value: string | undefined
     </label>
   );
   return (
-    <div className="space-y-1.5 rounded-md border border-[rgb(var(--color-border))] p-2">
-      <div className="mx-auto my-2 h-8 w-24 rounded-md bg-[rgb(var(--color-card))]" style={{ boxShadow: shadowCss(s) }} />
+    <div className="space-y-1.5 rounded-md border border-[var(--color-border)] p-2">
+      <div className="mx-auto my-2 h-8 w-24 rounded-md bg-[var(--color-card)]" style={{ boxShadow: shadowCss(s) }} />
       {num("x", -40, 40)}
       {num("y", -40, 60)}
       {num("blur", 0, 100)}
       {num("spread", -20, 40)}
       <label className="flex items-center gap-2 text-xs">
         <span className={`w-12 ${muted}`}>Colour</span>
-        <input type="color" value={s.color} disabled={disabled} onChange={(e) => update({ color: e.target.value })} className="h-7 w-8 rounded border border-[rgb(var(--color-border))] bg-transparent p-0.5" />
+        <input type="color" value={s.color} disabled={disabled} onChange={(e) => update({ color: e.target.value })} className="h-7 w-8 rounded border border-[var(--color-border)] bg-transparent p-0.5" />
         <input type="range" min={0} max={100} value={Math.round(s.alpha * 100)} disabled={disabled} onChange={(e) => update({ alpha: Number(e.target.value) / 100 })} className="flex-1" aria-label="Shadow opacity" />
         <span className="w-10 text-right">{Math.round(s.alpha * 100)}%</span>
       </label>
@@ -237,7 +237,7 @@ function ShadowEditor({ value, onChange, disabled }: { value: string | undefined
 function Issues({ issues }: { issues: Issue[] }) {
   if (!issues.length) return null;
   return (
-    <ul className="mt-1 space-y-0.5 text-xs text-amber-600">
+    <ul className="mt-1 space-y-0.5 text-xs text-[var(--color-warning-text)]">
       {issues.map((i, n) => (
         <li key={n} className="flex gap-1"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {i.message}</li>
       ))}
@@ -305,7 +305,7 @@ function SlotEditor({ theme, sectionId, slot, onTheme, disabled, assetUrls }: { 
             value={pickerHex(theme, m, v)}
             disabled={disabled}
             onChange={(e) => set(mode, e.target.value)}
-            className="h-8 w-9 shrink-0 rounded border border-[rgb(var(--color-border))] bg-transparent p-0.5"
+            className="h-8 w-9 shrink-0 rounded border border-[var(--color-border)] bg-transparent p-0.5"
           />
         )}
         <TextField value={v} onChange={(x) => set(mode, x)} disabled={disabled} label={`${slot.label} (${m})`} placeholder={slot.kind === "length" ? "e.g. 16px" : "CSS value, e.g. {color.surface}"} />
@@ -313,7 +313,7 @@ function SlotEditor({ theme, sectionId, slot, onTheme, disabled, assetUrls }: { 
     );
   };
   return (
-    <div className="grid gap-2 border-b border-[rgb(var(--color-border))] py-3 last:border-0 md:grid-cols-[180px_1fr]">
+    <div className="grid gap-2 border-b border-[var(--color-border)] py-3 last:border-0 md:grid-cols-[180px_1fr]">
       <div>
         <div className="text-sm font-medium">{slot.label}</div>
         <div className="mt-1 flex flex-wrap gap-2 text-xs">
@@ -329,7 +329,7 @@ function SlotEditor({ theme, sectionId, slot, onTheme, disabled, assetUrls }: { 
             </button>
           )}
           {raw !== undefined && (
-            <button type="button" className="text-red-500 underline" disabled={disabled} onClick={() => onTheme(setSlot(theme, sectionId, slot.key, undefined))}>Clear</button>
+            <button type="button" className="text-[var(--color-destructive-text)] underline" disabled={disabled} onClick={() => onTheme(setSlot(theme, sectionId, slot.key, undefined))}>Clear</button>
           )}
         </div>
       </div>
@@ -448,7 +448,7 @@ export default function ThemeBuilderPage() {
   const contrastCount = validation.contrast.length;
 
   const colorRow = (role: { name: string }) => (
-    <div key={role.name} className="grid grid-cols-2 items-start gap-2 border-b border-[rgb(var(--color-border))] py-2 last:border-0 md:grid-cols-[160px_1fr_1fr]">
+    <div key={role.name} className="grid grid-cols-2 items-start gap-2 border-b border-[var(--color-border)] py-2 last:border-0 md:grid-cols-[160px_1fr_1fr]">
       <div className="col-span-2 pt-1.5 text-sm md:col-span-1"><code className="text-xs">{role.name}</code></div>
       {(["light", "dark"] as const).map((mode) => (
         <div key={mode}>
@@ -475,7 +475,7 @@ export default function ThemeBuilderPage() {
     const files = Object.keys(assets).filter((p) => (opts.svgOnly ? p.endsWith(".svg") : !p.endsWith(".woff2") && (opts.icoOk || !p.endsWith(".ico"))));
     const current = typeof value === "object" ? value.light : value;
     return (
-      <div className="grid items-center gap-2 border-b border-[rgb(var(--color-border))] py-2 last:border-0 sm:grid-cols-[180px_1fr_48px]">
+      <div className="grid items-center gap-2 border-b border-[var(--color-border)] py-2 last:border-0 sm:grid-cols-[180px_1fr_48px]">
         <Label>{label}</Label>
         <select
           className={selectClass}
@@ -487,7 +487,7 @@ export default function ThemeBuilderPage() {
           <option value="">None</option>
           {files.map((p) => <option key={p} value={p}>{p.replace(/^assets\//, "")}</option>)}
         </select>
-        {current && assetUrls[current] ? <img src={assetUrls[current]} alt="" className="h-10 w-12 rounded border border-[rgb(var(--color-border))] object-contain" /> : <span />}
+        {current && assetUrls[current] ? <img src={assetUrls[current]} alt="" className="h-10 w-12 rounded border border-[var(--color-border)] object-contain" /> : <span />}
       </div>
     );
   };
@@ -497,14 +497,14 @@ export default function ThemeBuilderPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link to="/themes" className={`mb-2 inline-flex items-center gap-1 text-sm ${muted} hover:underline`}><ArrowLeft className="h-4 w-4" /> Sign-in themes</Link>
-          <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))]">{theme.name.en} <span className={`text-xl font-normal ${muted}`} dir="rtl" lang="ar">{theme.name.ar}</span></h2>
+          <h2 className="text-3xl font-bold text-[var(--color-foreground)]">{theme.name.en} <span className={`text-xl font-normal ${muted}`} dir="rtl" lang="ar">{theme.name.ar}</span></h2>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Badge variant="outline">{readOnly ? "Built-in" : "Custom"}</Badge>
             <Badge variant="outline">v{theme.version}</Badge>
             {summary.isAuthDefault && <Badge><Star className="mr-1 h-3 w-3" /> Auth default</Badge>}
             {summary.status === "changed" && <Badge variant="outline">Unpublished changes</Badge>}
             {summary.status === "draft" && <Badge variant="outline">Not published yet</Badge>}
-            {dirty && <Badge variant="outline" className="border-amber-500 text-amber-600">Unsaved</Badge>}
+            {dirty && <Badge variant="outline" className="border-[var(--color-warning-text)] text-[var(--color-warning-text)]">Unsaved</Badge>}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -528,23 +528,23 @@ export default function ThemeBuilderPage() {
       </div>
 
       {readOnly && (
-        <div className="mb-4 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-muted))]/30 p-3 text-sm">
+        <div className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-muted)]/30 p-3 text-sm">
           Built-in themes can't be changed. <Link to="/themes" className="underline">Duplicate it</Link> to make your own version.
         </div>
       )}
       {result?.error && (
-        <div role="alert" className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-500">
+        <div role="alert" className="mb-4 rounded-lg ui-alert-error p-3 text-sm">
           {result.error}
           {!!result.details?.length && <ul className="mt-1 list-disc pl-5">{result.details.slice(0, 8).map((d, i) => <li key={i}><code>{d.path}</code>: {d.message}</li>)}</ul>}
         </div>
       )}
-      {result?.ok && <div role="status" className="mb-4 rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-600">{result.ok}</div>}
+      {result?.ok && <div role="status" className="mb-4 rounded-lg ui-alert-success p-3 text-sm">{result.ok}</div>}
       {(validation.errors.length > 0 || contrastCount > 0) && (
-        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm" data-testid="theme-problems">
-          {validation.errors.length > 0 && <p className="font-medium text-red-500">{validation.errors.length} problem{validation.errors.length > 1 ? "s" : ""} to fix before saving:</p>}
-          {validation.errors.slice(0, 6).map((e, i) => <p key={i} className="text-red-500"><code>{e.path}</code>: {e.message}</p>)}
-          {contrastCount > 0 && <p className="font-medium text-amber-700">{contrastCount} contrast problem{contrastCount > 1 ? "s" : ""} (WCAG AA). You can save the draft; publishing needs them fixed.</p>}
-          {validation.contrast.slice(0, 6).map((e, i) => <p key={i} className="text-amber-700"><code>{e.path}</code>: {e.message}</p>)}
+        <div className="mb-4 rounded-lg ui-alert-warning p-3 text-sm" data-testid="theme-problems">
+          {validation.errors.length > 0 && <p className="font-medium text-[var(--color-destructive-text)]">{validation.errors.length} problem{validation.errors.length > 1 ? "s" : ""} to fix before saving:</p>}
+          {validation.errors.slice(0, 6).map((e, i) => <p key={i} className="text-[var(--color-destructive-text)]"><code>{e.path}</code>: {e.message}</p>)}
+          {contrastCount > 0 && <p className="font-medium text-[var(--color-warning-text)]">{contrastCount} contrast problem{contrastCount > 1 ? "s" : ""} (WCAG AA). You can save the draft; publishing needs them fixed.</p>}
+          {validation.contrast.slice(0, 6).map((e, i) => <p key={i} className="text-[var(--color-warning-text)]"><code>{e.path}</code>: {e.message}</p>)}
         </div>
       )}
 
@@ -555,7 +555,7 @@ export default function ThemeBuilderPage() {
             <div className="flex flex-wrap gap-1" role="tablist">
               {TABS.map((t) => (
                 <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
-                  className={`rounded-md px-3 py-1.5 text-sm ${tab === t ? "bg-[rgb(var(--color-primary))] text-[rgb(var(--color-primary-foreground))]" : "hover:bg-[rgb(var(--color-accent))]"}`}>
+                  className={`rounded-md px-3 py-1.5 text-sm ${tab === t ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "hover:bg-[var(--color-accent)]"}`}>
                   {t}
                 </button>
               ))}
@@ -600,7 +600,7 @@ export default function ThemeBuilderPage() {
                           <div className={`grid grid-cols-2 gap-2 text-xs ${muted} md:grid-cols-[140px_1fr_1fr]`}><span className="hidden md:block" /><span className="flex items-center gap-1"><Sun className="h-3 w-3" /> Light</span><span className="flex items-center gap-1"><Moon className="h-3 w-3" /> Dark</span></div>
                         )}
                         {comp.colors && Object.keys(comp.colors.light).map((part) => (
-                          <div key={part} className="grid grid-cols-2 items-start gap-2 border-b border-[rgb(var(--color-border))] py-2 last:border-0 md:grid-cols-[140px_1fr_1fr]">
+                          <div key={part} className="grid grid-cols-2 items-start gap-2 border-b border-[var(--color-border)] py-2 last:border-0 md:grid-cols-[140px_1fr_1fr]">
                             <code className="col-span-2 pt-1.5 text-xs md:col-span-1">{part}</code>
                             {(["light", "dark"] as const).map((mode) => (
                               <div key={mode}>
@@ -611,7 +611,7 @@ export default function ThemeBuilderPage() {
                           </div>
                         ))}
                         {comp.style && Object.keys(comp.style).map((field) => (
-                          <div key={field} className="grid items-start gap-2 border-b border-[rgb(var(--color-border))] py-2 last:border-0 md:grid-cols-[140px_1fr]">
+                          <div key={field} className="grid items-start gap-2 border-b border-[var(--color-border)] py-2 last:border-0 md:grid-cols-[140px_1fr]">
                             <code className="pt-1.5 text-xs">style.{field}</code>
                             <div className="space-y-2">
                               <TextField value={comp.style![field]} disabled={readOnly} label={`style.${field}`} onChange={(v) => v && update(setPath(theme, `components.${componentSection}.style.${field}`, v))} />
@@ -725,7 +725,7 @@ export default function ThemeBuilderPage() {
               {tab === "Images" && (
                 <div className="space-y-6">
                   {!readOnly && (
-                    <uploader.Form method="post" encType="multipart/form-data" className="grid items-end gap-3 rounded-lg border border-dashed border-[rgb(var(--color-border))] p-3 sm:grid-cols-[1fr_180px_auto]">
+                    <uploader.Form method="post" encType="multipart/form-data" className="grid items-end gap-3 rounded-lg border border-dashed border-[var(--color-border)] p-3 sm:grid-cols-[1fr_180px_auto]">
                       <input type="hidden" name="intent" value="upload" />
                       <div className="space-y-1">
                         <Label htmlFor="asset-file">Upload an image</Label>
@@ -775,14 +775,14 @@ export default function ThemeBuilderPage() {
                     <h3 className="mb-2 font-medium">Files in this theme</h3>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {Object.entries(assets).map(([p, a]) => (
-                        <div key={p} className="flex items-center gap-3 rounded border border-[rgb(var(--color-border))] p-2">
+                        <div key={p} className="flex items-center gap-3 rounded border border-[var(--color-border)] p-2">
                           {p.endsWith(".woff2") ? <span className="w-12 text-center text-xs">font</span> : <img src={assetUrls[p]} alt="" className="h-10 w-12 object-contain" />}
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-sm">{p.replace(/^assets\//, "")}</div>
                             <div className={`text-xs ${muted}`}>{(a.size / 1024).toFixed(1)} KB</div>
                           </div>
                           {!readOnly && (
-                            <Button size="sm" variant="ghost" type="button" className="text-red-500" disabled={dirty} title={dirty ? "Save the draft first" : "Remove this file"} onClick={() => setRemoving(p)}>Remove</Button>
+                            <Button size="sm" variant="ghost" type="button" className="text-[var(--color-destructive-text)]" disabled={dirty} title={dirty ? "Save the draft first" : "Remove this file"} onClick={() => setRemoving(p)}>Remove</Button>
                           )}
                         </div>
                       ))}
@@ -795,10 +795,10 @@ export default function ThemeBuilderPage() {
                 <div>
                   <p className={`mb-3 text-sm ${muted}`}>The sign-in code email. Empty fields keep the standard email.</p>
                   {(["background", "text", "buttonBackground", "buttonText"] as const).map((k) => (
-                    <div key={k} className="grid items-center gap-2 border-b border-[rgb(var(--color-border))] py-2 md:grid-cols-[180px_1fr_auto]">
+                    <div key={k} className="grid items-center gap-2 border-b border-[var(--color-border)] py-2 md:grid-cols-[180px_1fr_auto]">
                       <Label>{{ background: "Background", text: "Text", buttonBackground: "Header and accents", buttonText: "Header text" }[k]}</Label>
                       <ColorField theme={theme} mode="light" label={k} disabled={readOnly} value={theme.email?.[k]} onChange={(v) => update(setPath(theme, `email.${k}`, v))} />
-                      {theme.email?.[k] && <button type="button" className="text-xs text-red-500 underline" onClick={() => update(setPath(theme, `email.${k}`, undefined))}>Clear</button>}
+                      {theme.email?.[k] && <button type="button" className="text-xs text-[var(--color-destructive-text)] underline" onClick={() => update(setPath(theme, `email.${k}`, undefined))}>Clear</button>}
                     </div>
                   ))}
                   <div className="grid items-center gap-2 py-2 md:grid-cols-[180px_1fr]">
@@ -822,7 +822,7 @@ export default function ThemeBuilderPage() {
                   </p>
                   <details>
                     <summary className="cursor-pointer text-sm font-medium">theme.json</summary>
-                    <pre className="mt-2 max-h-96 overflow-auto rounded bg-[rgb(var(--color-muted))]/40 p-3 text-xs">{JSON.stringify(theme, null, 2)}</pre>
+                    <pre className="ui-code mt-2 max-h-96 overflow-auto rounded p-3 text-xs">{JSON.stringify(theme, null, 2)}</pre>
                   </details>
                 </div>
               )}
@@ -839,23 +839,23 @@ export default function ThemeBuilderPage() {
               <select className={`${selectClass} w-auto`} value={page} onChange={(e) => setPage(e.target.value as typeof page)} aria-label="Preview page">
                 {PAGES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
               </select>
-              <div className="inline-flex rounded-md border border-[rgb(var(--color-border))]" role="group" aria-label="Language">
-                {(["en", "ar"] as const).map((l) => <button key={l} type="button" aria-pressed={lang === l} onClick={() => setLang(l)} className={`px-2.5 py-1 text-sm ${lang === l ? "bg-[rgb(var(--color-accent))] font-medium" : ""}`}>{l === "en" ? "English" : "عربي"}</button>)}
+              <div className="inline-flex rounded-md border border-[var(--color-border)]" role="group" aria-label="Language">
+                {(["en", "ar"] as const).map((l) => <button key={l} type="button" aria-pressed={lang === l} onClick={() => setLang(l)} className={`px-2.5 py-1 text-sm ${lang === l ? "bg-[var(--color-accent)] font-medium" : ""}`}>{l === "en" ? "English" : "عربي"}</button>)}
               </div>
-              <div className="inline-flex rounded-md border border-[rgb(var(--color-border))]" role="group" aria-label="Colour scheme">
-                <button type="button" aria-pressed={scheme === "light"} onClick={() => setScheme("light")} className={`px-2 py-1 ${scheme === "light" ? "bg-[rgb(var(--color-accent))]" : ""}`} title="Light"><Sun className="h-4 w-4" /></button>
-                <button type="button" aria-pressed={scheme === "dark"} onClick={() => setScheme("dark")} className={`px-2 py-1 ${scheme === "dark" ? "bg-[rgb(var(--color-accent))]" : ""}`} title="Dark"><Moon className="h-4 w-4" /></button>
+              <div className="inline-flex rounded-md border border-[var(--color-border)]" role="group" aria-label="Colour scheme">
+                <button type="button" aria-pressed={scheme === "light"} onClick={() => setScheme("light")} className={`px-2 py-1 ${scheme === "light" ? "bg-[var(--color-accent)]" : ""}`} title="Light"><Sun className="h-4 w-4" /></button>
+                <button type="button" aria-pressed={scheme === "dark"} onClick={() => setScheme("dark")} className={`px-2 py-1 ${scheme === "dark" ? "bg-[var(--color-accent)]" : ""}`} title="Dark"><Moon className="h-4 w-4" /></button>
               </div>
-              <div className="inline-flex rounded-md border border-[rgb(var(--color-border))]" role="group" aria-label="Device">
-                <button type="button" aria-pressed={device === "phone"} onClick={() => setDevice("phone")} className={`px-2 py-1 ${device === "phone" ? "bg-[rgb(var(--color-accent))]" : ""}`} title="Phone"><Smartphone className="h-4 w-4" /></button>
-                <button type="button" aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")} className={`px-2 py-1 ${device === "desktop" ? "bg-[rgb(var(--color-accent))]" : ""}`} title="Desktop"><Monitor className="h-4 w-4" /></button>
+              <div className="inline-flex rounded-md border border-[var(--color-border)]" role="group" aria-label="Device">
+                <button type="button" aria-pressed={device === "phone"} onClick={() => setDevice("phone")} className={`px-2 py-1 ${device === "phone" ? "bg-[var(--color-accent)]" : ""}`} title="Phone"><Smartphone className="h-4 w-4" /></button>
+                <button type="button" aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")} className={`px-2 py-1 ${device === "desktop" ? "bg-[var(--color-accent)]" : ""}`} title="Desktop"><Monitor className="h-4 w-4" /></button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div ref={frameBox} className="w-full">
-              {preview.error && <p className="mb-2 text-sm text-amber-600" role="status">{preview.error}</p>}
-              <div className="mx-auto max-w-full overflow-hidden rounded-lg border border-[rgb(var(--color-border))] shadow-sm" style={{ width: dev.width * scale, height: dev.height * scale }}>
+              {preview.error && <p className="mb-2 text-sm text-[var(--color-warning-text)]" role="status">{preview.error}</p>}
+              <div className="mx-auto max-w-full overflow-hidden rounded-lg border border-[var(--color-border)] shadow-sm" style={{ width: dev.width * scale, height: dev.height * scale }}>
                 <iframe
                   title="Theme preview"
                   data-testid="theme-preview"

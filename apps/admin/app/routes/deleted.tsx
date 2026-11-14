@@ -119,7 +119,7 @@ export default function RecentlyDeleted() {
       <div dir={dirOf(lang)} lang={lang} className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t.pageTitle}</h1>
-          <p className="text-[rgb(var(--color-muted-foreground))]">{t.pageIntro}</p>
+          <p className="text-[var(--color-muted-foreground)]">{t.pageIntro}</p>
         </div>
 
         <nav aria-label={t.pageTitle} className="flex flex-wrap gap-2">
@@ -131,8 +131,8 @@ export default function RecentlyDeleted() {
               className={
                 "rounded-md border px-3 py-1.5 text-sm " +
                 (k === kind
-                  ? "border-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary))] text-[rgb(var(--color-primary-foreground))]"
-                  : "border-[rgb(var(--color-border))] hover:bg-[rgb(var(--color-accent))]")
+                  ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+                  : "border-[var(--color-border)] hover:bg-[var(--color-accent)]")
               }
             >
               {t.tab(k)}
@@ -142,12 +142,12 @@ export default function RecentlyDeleted() {
 
         <LoadErrorBanner what={t.pageTitle.toLowerCase()} error={loadError} />
         {notice && (
-          <p role="status" className="text-sm text-[rgb(var(--color-muted-foreground))]">
+          <p role="status" className="text-sm text-[var(--color-muted-foreground)]">
             {notice}
           </p>
         )}
         {actionError && (
-          <p role="alert" className="text-sm text-[rgb(var(--color-destructive))]">
+          <p role="alert" className="text-sm text-[var(--color-destructive-text)]">
             {actionError}
           </p>
         )}
@@ -175,18 +175,18 @@ export default function RecentlyDeleted() {
                     <TableRow key={item.id} data-testid="deleted-row">
                       <TableCell>
                         <div className="font-medium" dir="auto">{labelOf(item)}</div>
-                        {item.label && <div className="text-xs text-[rgb(var(--color-muted-foreground))]" dir="ltr">{item.id}</div>}
+                        {item.label && <div className="text-xs text-[var(--color-muted-foreground)]" dir="ltr">{item.id}</div>}
                       </TableCell>
                       <TableCell dir="auto">{actorName(item, lang)}</TableCell>
                       <TableCell>{formatTime(item.deletedAt, lang)}</TableCell>
                       <TableCell dir="auto">{item.reason ?? "—"}</TableCell>
                       <TableCell>
                         {item.purgeRequestedAt ? (
-                          <span className="font-medium text-[rgb(var(--color-destructive))]">{t.queued}</span>
+                          <span className="font-medium text-[var(--color-destructive-text)]">{t.queued}</span>
                         ) : (
                           t.daysLeft(daysUntil(item.purgeAt, now))
                         )}
-                        {item.lastError && <div className="text-xs text-[rgb(var(--color-destructive))]">{t.lastError(item.lastError)}</div>}
+                        {item.lastError && <div className="text-xs text-[var(--color-destructive-text)]">{t.lastError(item.lastError)}</div>}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap justify-end gap-2">

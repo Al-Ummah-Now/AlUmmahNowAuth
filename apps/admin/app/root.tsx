@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { LinksFunction, LoaderFunctionArgs, ShouldRevalidateFunction } from "react-router";
 import {
   Links,
@@ -5,10 +6,13 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
   useRouteLoaderData,
 } from "react-router";
 import { getAuthServerUrl, getOAuthClientId } from "./lib/config";
 import { fetchShellTheme } from "./lib/shell-theme";
+import { MODE_SCRIPT } from "./lib/color-mode";
+import { dirOf, langOf } from "./lib/deletion-copy";
 import { NAV_CSS } from "../../../packages/ui/src/nav/aun-nav.generated";
 import { STREET_CSS_PATH, STREET_JS_PATH, streetOn } from "../../../packages/ui/src/fanous-street/index.ts";
 import { environmentOfHost, tabIconLinks } from "../../../packages/ui/src/app-icons/serve";
@@ -50,11 +54,16 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({ formMethod, default
 export function Layout({ children }: { children: React.ReactNode }) {
   const data = useRouteLoaderData<typeof loader>("root");
   const shellCss = data?.shellCss;
+  // English unless the link asks for Arabic (?lang=ar), the admin's language switch for its dialogs
+  const lang = langOf(useLocation().search);
   return (
-    <html lang="en">
+    // The light/dark class on <html> belongs to MODE_SCRIPT (lib/color-mode.ts), never to React
+    <html lang={lang} dir={dirOf(lang)} suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {/* Light or dark before first paint: the saved choice, else the device */}
+        <script dangerouslySetInnerHTML={{ __html: MODE_SCRIPT }} />
         <Meta />
         <Links />
         {(data?.tabIcons ?? tabIconLinks("production")).map((l) => (
@@ -65,12 +74,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <style data-nav dangerouslySetInnerHTML={{ __html: NAV_CSS }} />
         {shellCss ? <style data-shell-theme dangerouslySetInnerHTML={{ __html: shellCss }} /> : null}
         {/* The Fanous lantern street (shared module, served by this app's worker) when the theme switches it on */}
-        {shellCss && streetOn(shellCss) ? (
-          <>
-            <link rel="stylesheet" href={STREET_CSS_PATH} data-fanous-street="" />
-            <script type="module" src={STREET_JS_PATH} data-fanous-street="" />
-          </>
-        ) : null}
+        {/* Its script starts after hydration (App), so its drawing never meets React's markup check */}
+        {shellCss && streetOn(shellCss) ? <link rel="stylesheet" href={STREET_CSS_PATH} data-fanous-street="" /> : null}
       </head>
       <body>
         {children}
@@ -82,5 +87,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const shellCss = useRouteLoaderData<typeof loader>("root")?.shellCss;
+  const street = !!shellCss && streetOn(shellCss);
+  useEffect(() => {
+    if (!street || document.querySelector("script[data-fanous-street]")) return;
+    const script = document.createElement("script");
+    script.type = "module";
+    script.src = STREET_JS_PATH;
+    script.dataset.fanousStreet = "";
+    document.head.appendChild(script);
+  }, [street]);
   return <Outlet />;
 }

@@ -215,10 +215,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function AuthCallback() {
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))] flex items-center justify-center">
+    <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(var(--color-primary))] mx-auto mb-4"></div>
-        <p className="text-[rgb(var(--color-foreground))]">Completing sign in...</p>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)] mx-auto mb-4"></div>
+        <p className="text-[var(--color-foreground)]">Completing sign in...</p>
       </div>
     </div>
   );

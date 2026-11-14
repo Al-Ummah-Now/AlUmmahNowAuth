@@ -310,7 +310,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
           <div
             ref={popupRef}
             hidden={!expanded}
-            className="absolute start-0 top-full z-50 mt-1 w-full min-w-72 overflow-y-auto rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-popover))] text-[rgb(var(--color-popover-foreground))] shadow-lg"
+            className="absolute start-0 top-full z-50 mt-1 w-full min-w-72 overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-popover)] text-[var(--color-popover-foreground)] shadow-lg"
             data-testid={testId ? `${testId}-popup` : undefined}
             // A press on the list (its scrollbar too) must not blur the input and close it
             onMouseDown={(e) => e.preventDefault()}
@@ -340,7 +340,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
                   choose(option);
                 }}
                 onMouseMove={() => i !== state.active && setState((s) => ({ ...s, active: i }))}
-                className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm ${i === state.active ? "bg-[rgb(var(--color-muted))] outline outline-2 -outline-offset-2 outline-[rgb(var(--color-ring))]" : ""}`}
+                className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm ${i === state.active ? "bg-[var(--color-muted)] outline outline-2 -outline-offset-2 outline-[var(--color-ring)]" : ""}`}
                 data-option={option.type}
                 data-id={option.type === "suggestion" ? option.suggestion.id : undefined}
               >
@@ -351,31 +351,31 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
               (showingInitial ? (
                 [0, 1, 2, 3].map((i) => (
                   <li key={`sk-${i}`} role="presentation" aria-hidden="true" className="flex items-center gap-3 px-3 py-2" data-testid={testId ? `${testId}-skeleton` : undefined}>
-                    <span className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-[rgb(var(--color-muted))] motion-reduce:animate-none" />
+                    <span className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-[var(--color-muted)] motion-reduce:animate-none" />
                     <span className="flex flex-1 flex-col gap-1.5">
-                      <span className="h-3 w-3/4 animate-pulse rounded bg-[rgb(var(--color-muted))] motion-reduce:animate-none" />
-                      <span className="h-2.5 w-1/3 animate-pulse rounded bg-[rgb(var(--color-muted))] motion-reduce:animate-none" />
+                      <span className="h-3 w-3/4 animate-pulse rounded bg-[var(--color-muted)] motion-reduce:animate-none" />
+                      <span className="h-2.5 w-1/3 animate-pulse rounded bg-[var(--color-muted)] motion-reduce:animate-none" />
                     </span>
                   </li>
                 ))
               ) : (
-                <li role="presentation" className="px-3 py-2 text-sm text-[rgb(var(--color-muted-foreground))]">
+                <li role="presentation" className="px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
                   {S.searching}
                 </li>
               ))}
           </ul>
           {emptyInitial && (
-            <p className="px-3 py-2 text-sm text-[rgb(var(--color-muted-foreground))]" data-testid={testId ? `${testId}-empty` : undefined}>
+            <p className="px-3 py-2 text-sm text-[var(--color-muted-foreground)]" data-testid={testId ? `${testId}-empty` : undefined}>
               {S.emptyList}
             </p>
           )}
           {showingInitial && initial?.status === "more" && (
-            <p className="px-3 py-2 text-xs text-[rgb(var(--color-muted-foreground))]" data-testid={testId ? `${testId}-loading-more` : undefined}>
+            <p className="px-3 py-2 text-xs text-[var(--color-muted-foreground)]" data-testid={testId ? `${testId}-loading-more` : undefined}>
               {S.loadingMore}
             </p>
           )}
           {showingInitial && initial?.status === "error" && (
-            <div className="flex items-center justify-between gap-2 border-t border-[rgb(var(--color-border))] px-3 py-2 text-sm text-[rgb(var(--color-muted-foreground))]" data-testid={testId ? `${testId}-error` : undefined}>
+            <div className="flex items-center justify-between gap-2 border-t border-[var(--color-border)] px-3 py-2 text-sm text-[var(--color-muted-foreground)]" data-testid={testId ? `${testId}-error` : undefined}>
               <span>{S.listFailed}</span>
               <button
                 type="button"
@@ -383,7 +383,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
                   loadInitial(initial.items.length ? initial.next : null);
                   inputRef.current?.focus();
                 }}
-                className="rounded border border-[rgb(var(--color-border))] px-2 py-1 text-xs hover:bg-[rgb(var(--color-muted))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(var(--color-ring))]"
+                className="rounded border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-muted)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)]"
                 data-testid={testId ? `${testId}-retry` : undefined}
               >
                 {S.retry}
@@ -402,7 +402,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
 
 function Initial({ label }: { label: string }) {
   return (
-    <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--color-muted))] text-sm font-medium text-[rgb(var(--color-muted-foreground))]">
+    <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-muted)] text-sm font-medium text-[var(--color-muted-foreground)]">
       {Array.from(label.trim())[0]?.toUpperCase() ?? "?"}
     </span>
   );
@@ -436,12 +436,12 @@ function OptionContent({ option, current }: { option: AutocompleteOption; curren
             {s.label}
           </span>
           {current === s.id && (
-            <span className="shrink-0 rounded-full border border-[rgb(var(--color-border))] px-2 text-xs text-[rgb(var(--color-muted-foreground))]" data-testid="autocomplete-current">
+            <span className="shrink-0 rounded-full border border-[var(--color-border)] px-2 text-xs text-[var(--color-muted-foreground)]" data-testid="autocomplete-current">
               {S.current}
             </span>
           )}
         </span>
-        <span className="flex min-w-0 gap-2 text-xs text-[rgb(var(--color-muted-foreground))]">
+        <span className="flex min-w-0 gap-2 text-xs text-[var(--color-muted-foreground)]">
           {s.secondary && (
             <span className="truncate" dir="auto">
               {s.secondary}
@@ -472,13 +472,13 @@ function Chip({
   const { id, item, missing } = picked;
   const name = item?.label ?? (missing ? S.notFound : S.lookingUp);
   return (
-    <div className="flex min-h-9 items-center gap-2 rounded-md border border-[rgb(var(--color-input))] py-1 ps-1 pe-1" data-testid={testId ? `${testId}-chip` : undefined} data-id={id}>
+    <div className="flex min-h-9 items-center gap-2 rounded-md border border-[var(--color-input)] py-1 ps-1 pe-1" data-testid={testId ? `${testId}-chip` : undefined} data-id={id}>
       {item ? <Initial label={item.label} /> : <span aria-hidden="true" className="h-8 w-1" />}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm" dir="auto">
           {name}
         </span>
-        <span className="flex min-w-0 gap-2 text-xs text-[rgb(var(--color-muted-foreground))]">
+        <span className="flex min-w-0 gap-2 text-xs text-[var(--color-muted-foreground)]">
           {item?.secondary && (
             <span className="truncate" dir="auto">
               {item.secondary}
@@ -493,7 +493,7 @@ function Chip({
         type="button"
         id={inputId}
         onClick={onChange}
-        className="rounded px-2 py-1 text-sm text-[rgb(var(--color-primary))] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(var(--color-ring))]"
+        className="rounded px-2 py-1 text-sm text-[var(--color-link)] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)]"
         aria-label={S.changeLabel(name)}
         data-testid={testId ? `${testId}-change` : undefined}
       >
@@ -502,7 +502,7 @@ function Chip({
       <button
         type="button"
         onClick={onClear}
-        className="rounded px-2 py-1 text-sm text-[rgb(var(--color-muted-foreground))] hover:text-[rgb(var(--color-foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(var(--color-ring))]"
+        className="rounded px-2 py-1 text-sm text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)]"
         aria-label={S.clearLabel(name)}
         data-testid={testId ? `${testId}-clear` : undefined}
       >

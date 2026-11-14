@@ -99,7 +99,7 @@ export default function ModerationRequestPage() {
     return (
       <AdminLayout user={user} authServerUrl={authServerUrl}>
         <Link to="/moderation" className="inline-flex items-center gap-1 text-sm underline mb-4"><ArrowLeft className="h-4 w-4" /> Moderation requests</Link>
-        <div role="alert" className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">Could not load this request: {error}</div>
+        <div role="alert" className="p-4 ui-alert-error rounded-lg">Could not load this request: {error}</div>
       </AdminLayout>
     );
   }
@@ -132,25 +132,25 @@ export default function ModerationRequestPage() {
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <Link to="/moderation" className="inline-flex items-center gap-1 text-sm underline mb-4"><ArrowLeft className="h-4 w-4" /> Moderation requests</Link>
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h2 className="text-2xl font-bold text-[rgb(var(--color-foreground))]">{label(MODERATION_ACTION_LABELS, r.action)}</h2>
+        <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{label(MODERATION_ACTION_LABELS, r.action)}</h2>
         <Badge variant="outline" data-testid="moderation-status" className={MODERATION_STATUS_CLASSES[r.status]}>
           {label(MODERATION_STATUS_LABELS, r.status)}
         </Badge>
-        <span className="text-sm text-[rgb(var(--color-muted-foreground))]">{r.id}</span>
+        <span className="text-sm text-[var(--color-muted-foreground)]">{r.id}</span>
       </div>
 
       {fetcher.data?.error && (
-        <div role="alert" className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">{fetcher.data.error}</div>
+        <div role="alert" className="mb-4 p-3 ui-alert-error rounded-lg">{fetcher.data.error}</div>
       )}
       {failed && (
-        <div role="alert" data-testid="moderation-action-failed" className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600">
+        <div role="alert" data-testid="moderation-action-failed" className="mb-4 p-3 ui-alert-error rounded-lg">
           <div className="font-medium">Needs attention: the action failed after {r.execution.attempts} attempt{r.execution.attempts === 1 ? "" : "s"}.</div>
           {r.action_error && <div className="text-sm mt-1">{r.action_error}</div>}
           <div className="text-sm mt-1">Run it again, close it as done by hand, or reject the request.</div>
         </div>
       )}
       {running && (
-        <div role="status" data-testid="moderation-action-running" className="mb-4 p-3 bg-sky-500/10 border border-sky-500/20 rounded-lg text-sky-700">
+        <div role="status" data-testid="moderation-action-running" className="mb-4 p-3 ui-alert-info rounded-lg">
           The action is {r.execution.status === "retrying" ? `being retried (attempt ${r.execution.attempts + 1})` : "queued"} and will run shortly.
           {r.execution.status === "retrying" && r.action_error && <div className="text-sm mt-1">Last error: {r.action_error}</div>}
         </div>
@@ -167,14 +167,14 @@ export default function ModerationRequestPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <div className="text-xs uppercase tracking-wide text-[rgb(var(--color-muted-foreground))]">Reason</div>
+                <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Reason</div>
                 <div className="font-medium">{label(REASON_CATEGORY_LABELS, r.reason_category)}</div>
                 <p className="whitespace-pre-wrap mt-1" data-testid="moderation-reason">{r.reason}</p>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wide text-[rgb(var(--color-muted-foreground))]">Evidence</div>
+                <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Evidence</div>
                 {r.evidence.length === 0 ? (
-                  <p className="text-sm text-[rgb(var(--color-muted-foreground))]">None attached.</p>
+                  <p className="text-sm text-[var(--color-muted-foreground)]">None attached.</p>
                 ) : (
                   <ul className="mt-1 space-y-1">
                     {r.evidence.map((e, i) => (
@@ -189,7 +189,7 @@ export default function ModerationRequestPage() {
               </div>
               {r.decision_note && (
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-[rgb(var(--color-muted-foreground))]">Decision note (shown to the app)</div>
+                  <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Decision note (shown to the app)</div>
                   <p className="whitespace-pre-wrap">{r.decision_note}</p>
                 </div>
               )}
@@ -215,7 +215,7 @@ export default function ModerationRequestPage() {
                       name="note"
                       rows={3}
                       maxLength={4000}
-                      className="w-full rounded-md border border-[rgb(var(--color-border))] bg-transparent px-3 py-2 text-sm"
+                      className="w-full rounded-md border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
                     />
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -271,9 +271,9 @@ export default function ModerationRequestPage() {
             <CardContent>
               <ol className="space-y-3" data-testid="moderation-history">
                 {r.history.map((h) => (
-                  <li key={h.id} className="border-l-2 border-[rgb(var(--color-border))] pl-3">
+                  <li key={h.id} className="border-l-2 border-[var(--color-border)] pl-3">
                     <div className="text-sm font-medium">{h.type.replace(/_/g, " ")}</div>
-                    <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                    <div className="text-xs text-[var(--color-muted-foreground)]">
                       {h.actor_type === "admin" ? `Auth admin ${h.actor_name ?? h.actor_id}` : h.actor_type === "client" ? `${h.actor_name ?? "Client"} (${r.client_name ?? r.client_id})` : "System"} · {formatWhen(h.at)}
                     </div>
                     {h.note && <p className="text-sm whitespace-pre-wrap mt-1">{h.note}</p>}
@@ -294,7 +294,7 @@ export default function ModerationRequestPage() {
                 <>
                   <div className="font-medium" data-testid="moderation-subject-email">{subject.email}</div>
                   {subject.name && <div>{subject.name}</div>}
-                  <div className="text-[rgb(var(--color-muted-foreground))]">{subject.id}</div>
+                  <div className="text-[var(--color-muted-foreground)]">{subject.id}</div>
                   <div>Status: <span className="font-medium">{subject.status}</span></div>
                   {subject.password_reset_required && <div>Password reset required</div>}
                   <div>Joined {formatWhen(subject.created_at)}</div>
@@ -312,13 +312,13 @@ export default function ModerationRequestPage() {
             </CardHeader>
             <CardContent>
               {prior_requests.length === 0 ? (
-                <p className="text-sm text-[rgb(var(--color-muted-foreground))]">None.</p>
+                <p className="text-sm text-[var(--color-muted-foreground)]">None.</p>
               ) : (
                 <ul className="space-y-2 text-sm">
                   {prior_requests.map((p) => (
                     <li key={p.id} className="flex items-center justify-between gap-2">
                       <Link to={`/moderation/${p.id}`} className="underline">{label(MODERATION_ACTION_LABELS, p.action)}</Link>
-                      <span className="text-xs text-[rgb(var(--color-muted-foreground))]">{formatWhen(p.created_at)}</span>
+                      <span className="text-xs text-[var(--color-muted-foreground)]">{formatWhen(p.created_at)}</span>
                       <Badge variant="outline" className={MODERATION_STATUS_CLASSES[p.status]}>{label(MODERATION_STATUS_LABELS, p.status)}</Badge>
                     </li>
                   ))}
