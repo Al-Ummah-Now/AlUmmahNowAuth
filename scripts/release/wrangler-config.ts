@@ -139,6 +139,12 @@ export interface AppRule {
 	configPath: string;
 	/** App directory (used to attribute deploy commands). */
 	dir: string;
+	/**
+	 * Local development config, relative to the repo root: what `pnpm dev` and the app's other
+	 * local scripts run on. Local stores only (QA at most), never a deployed environment's
+	 * (scripts/release/dev-config.ts, `pnpm check:dev-config`).
+	 */
+	devConfigPath: string;
 	production: EnvRule;
 	/** Stage rule; enforced (with prod parity) only once env.stage exists. */
 	stage?: EnvRule;

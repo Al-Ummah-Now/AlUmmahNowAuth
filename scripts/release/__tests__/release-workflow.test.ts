@@ -42,7 +42,8 @@ describe('release.yml', () => {
 
 		it.each([
 			['Deploy audit consumer to stage', 'al-ummah-now-d1-stage'],
-			['Deploy audit consumer to production', 'af76f007-e21e-43aa-88de-ebfefe46fb56'],
+			// the dry run names the D1 database (it printed the id only via the old preview_database_id, now removed)
+			['Deploy audit consumer to production', 'env.AUDIT_DB (al-ummah-now-d1) '],
 		])('%s resolves its worker and database', (stepName, database) => {
 			const output = sh(`${deployCommand(stepName)} --dry-run 2>&1`, join(root, 'apps/audit-consumer'));
 			expect(output).toContain(database);

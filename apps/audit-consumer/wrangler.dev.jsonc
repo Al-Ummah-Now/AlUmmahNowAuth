@@ -1,0 +1,38 @@
+{
+  // Local development only (`pnpm dev`): local stores, never a deployed environment's.
+  // Deploys use wrangler.jsonc (production, env.stage) and wrangler.qa.jsonc.
+  // pnpm check:dev-config fails CI if this file names a production or stage resource.
+  "name": "al-ummah-now-audit-consumer-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-10-11",
+
+  // The auth D1 (audit tables), the same local database as the auth app's wrangler.dev.json
+  "d1_databases": [
+    {
+      "binding": "AUDIT_DB",
+      "database_name": "al-ummah-now-d1-local",
+      "database_id": "local-auth-db"
+    }
+  ],
+
+  // The auth app's local AUDIT_QUEUE producer (wrangler.dev.json) sends to audit-events
+  "queues": {
+    "consumers": [
+      {
+        "queue": "audit-events",
+        "max_batch_size": 50,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "audit-events-dlq"
+      },
+      {
+        "queue": "audit-events-dlq",
+        "max_batch_size": 50,
+        "max_batch_timeout": 5,
+        "max_retries": 3
+      }
+    ]
+  },
+
+  "vars": { "LOG_LEVEL": "debug" }
+}

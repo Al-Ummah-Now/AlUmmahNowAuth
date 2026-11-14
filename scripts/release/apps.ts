@@ -41,6 +41,7 @@ export const APPS: AppRule[] = [
 	{
 		app: 'auth',
 		configPath: 'apps/auth/wrangler.json',
+		devConfigPath: 'apps/auth/wrangler.dev.json',
 		dir: 'apps/auth',
 		production: {
 			env: 'production',
@@ -68,6 +69,7 @@ export const APPS: AppRule[] = [
 	{
 		app: 'profile',
 		configPath: 'apps/profile/wrangler.json',
+		devConfigPath: 'apps/profile/wrangler.dev.json',
 		dir: 'apps/profile',
 		production: {
 			env: null,
@@ -94,6 +96,7 @@ export const APPS: AppRule[] = [
 	{
 		app: 'admin',
 		configPath: 'apps/admin/wrangler.json',
+		devConfigPath: 'apps/admin/wrangler.dev.json',
 		dir: 'apps/admin',
 		production: {
 			env: null,
@@ -130,6 +133,7 @@ export const APPS: AppRule[] = [
 	{
 		app: 'audit-consumer',
 		configPath: 'apps/audit-consumer/wrangler.jsonc',
+		devConfigPath: 'apps/audit-consumer/wrangler.dev.jsonc',
 		dir: 'apps/audit-consumer',
 		production: {
 			env: null,

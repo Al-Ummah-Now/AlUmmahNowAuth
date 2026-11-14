@@ -1,0 +1,36 @@
+{
+  "name": "al-ummah-now-profile-dev",
+  "compatibility_date": "2025-04-19",
+  "main": "src/index.ts",
+  "kv_namespaces": [
+    {
+      "binding": "AUTH_STORAGE",
+      "id": "local-auth-storage"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "al-ummah-now-d1-local",
+      "database_id": "local-auth-db"
+    }
+  ],
+  "vars": {
+    "AUTH_SERVER_URL": "http://localhost:3301",
+    "APP_URL": "http://localhost:3302",
+    "APP_ENV": "development",
+    "LOG_LEVEL": "debug",
+    "CF_WEB_ANALYTICS_TOKEN": ""
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}
