@@ -10,6 +10,8 @@ import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:
 import { decodeJwt } from 'jose';
 import worker from '../index';
 import { setupDatabase } from '../test-setup';
+import wranglerProd from '../../wrangler.json';
+import wranglerQa from '../../wrangler.qa.json';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { authStorage } from '../storage/auth-storage';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
@@ -526,5 +528,14 @@ describe('native passkey config', () => {
 	it('accepts the Studio and Admin clients of every env and nothing else', () => {
 		expect(NATIVE_PASSKEY_CLIENT_IDS.size).toBe(12);
 		expect(NATIVE_PASSKEY_CLIENT_IDS.has(VIEWER)).toBe(false);
+	});
+});
+
+describe('ANDROID_APP_CERTS per environment', () => {
+	// Production trusts Play-signed builds only; the CI pre-release key stays on QA and stage.
+	it('keeps the CI pre-release key off production and on QA and stage', () => {
+		expect(wranglerProd.env.production.vars.ANDROID_APP_CERTS.toUpperCase()).not.toContain(FINGERPRINT);
+		expect(wranglerProd.env.stage.vars.ANDROID_APP_CERTS).toContain(FINGERPRINT);
+		expect(wranglerQa.vars.ANDROID_APP_CERTS).toContain(FINGERPRINT);
 	});
 });

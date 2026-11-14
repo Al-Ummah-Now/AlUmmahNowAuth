@@ -143,7 +143,7 @@
         "ERRORS_INGEST_URL": "https://admin.api.alummahnow.net/internal/errors",
         "ENVIRONMENT": "production",
         "PASSKEY_PROMPT": "on",
-        "ANDROID_APP_CERTS": "{\"net.alummahnow.studio\": [\"5A:1B:3D:2B:57:6E:9A:2D:F0:BF:1B:E3:F1:8C:40:20:13:F9:5C:09:EA:EE:7C:F7:31:10:C4:2F:B5:69:DD:C0\"]}",
+        "ANDROID_APP_CERTS": "{}",
         "TURNSTILE_MODE": "monitor",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAF_3KPNkPlEGf_dP",
         "AUDIT_SAMPLE": "",
