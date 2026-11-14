@@ -3,7 +3,7 @@ import { Link, useLoaderData } from "react-router";
 import { Users, ShieldCheck, Activity, Database, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { AdminLayout } from "../components/admin-layout";
-import { getUserStats, getRoleStats, getUsersByRole, isErrorResponse } from "../lib/admin-api.server";
+import { getRoleCounts, getUserStats, getRoleStats, getUsersByRole, isErrorResponse } from "../lib/admin-api.server";
 import { redirectToLogin, requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl, getAppUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
@@ -78,9 +78,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     logger.info('Loading dashboard stats via API', { userId: user.id });
 
     // Call stats APIs (pass request for localhost detection)
-    const stats = await getUserStats(env, actingUser, request);
-    const roleStats = await getRoleStats(env, actingUser);
-    const usersByRoleResult = await getUsersByRole(env, actingUser, 5, request);
+    // One count of users per role feeds both the admin card and the chart, so they agree
+    const counts = await getRoleCounts(env, actingUser, request);
+    const [stats, roleStats, usersByRoleResult] = await Promise.all([
+      getUserStats(env, actingUser, request, counts),
+      getRoleStats(env, actingUser, request),
+      getUsersByRole(env, actingUser, 5, request, counts),
+    ]);
 
     // Handle errors gracefully
     if (isErrorResponse(stats)) {
