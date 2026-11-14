@@ -1,7 +1,7 @@
 /**
  * The Fawanees lantern street in the accounts admin (design: AlUmmahNow
- * docs/design/FAWANEES-STREET.md). The admin is a dark app whatever the device's setting, so it
- * takes the theme's dark-scheme street over its own page colour, in light and dark alike.
+ * docs/design/FAWANEES-STREET.md). It follows the admin's light/dark mode like the profile app:
+ * the light street in light mode, the dark street in dark, over the theme's page colour for that mode.
  * Asked for with ?theme=fawanees (no environment's theme changes): the street is on, garlands hang
  * in the page's gaps, every lantern on screen is drawn whole, nothing is see-through; with
  * ?theme=lantern there is no street. The per-run admin account is removed by the global teardown.
@@ -82,26 +82,31 @@ async function cutLanterns(page: Page): Promise<{ inView: number; cut: string[] 
 test.describe('Fawanees lantern street in the accounts admin', () => {
 	test.setTimeout(120000);
 
-	test('dark-scheme street in light and dark, whole lanterns, nothing see-through; Lantern has none', async ({ page }) => {
+	test('the street follows the mode, whole lanterns, nothing see-through; Lantern has none', async ({ page }) => {
 		await loginAdmin(page, TEST_USERS.admin().email);
 		const problems: string[] = [];
+		const lines: Record<string, string> = {};
 		for (const mode of ['light', 'dark'] as const) {
-			await page.emulateMedia({ colorScheme: mode });
+			// the admin's saved choice, with the device saying the other mode
+			await page.emulateMedia({ colorScheme: mode === 'light' ? 'dark' : 'light' });
+			await page.addInitScript((m) => localStorage.setItem('theme', m), mode);
 			await page.goto(`${TEST_URLS.adminDashboard}/users?theme=fawanees`);
 			await expect(page.locator('a:has-text("Users")').first()).toBeVisible();
 			await page.addStyleTag({ content: STILL });
 			await settle(page);
 			await expect(page.locator('html'), mode).toHaveClass(/fanous-street/);
-			// the admin stays dark: the dark street's colours, the admin's own page colour
-			expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fanous-street-line').trim())).toBe('#f5cf9242');
-			// the admin keeps its own dark page colour on the body (never the Fawanees light page)
-			expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(await page.evaluate(() => `rgb(${getComputedStyle(document.body).getPropertyValue('--color-background').trim().split(/\s+/).join(', ')})`));
+			await expect(page.locator('html'), mode).toHaveClass(new RegExp(`\\b${mode}\\b`));
+			// the street of this mode (Fawanees dark line #f5cf9242), over the theme's page colour for it
+			lines[mode] = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fanous-street-line').trim());
+			expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(mode === 'light' ? 'rgb(243, 238, 229)' : 'rgb(9, 21, 30)');
 			for (const s of await seeThrough(page)) problems.push(`${mode} see-through: ${s}`);
 			const l = await cutLanterns(page);
 			for (const c of l.cut) problems.push(`${mode} ${c}`);
 			expect(await page.locator('#fanous-street .fs-l').count(), `${mode}: lanterns on the page`).toBeGreaterThan(0);
 		}
 		expect(problems, problems.join('\n')).toEqual([]);
+		expect(lines.dark).toBe('#f5cf9242');
+		expect(lines.light).not.toBe(lines.dark);
 
 		await page.goto(`${TEST_URLS.adminDashboard}/users?theme=lantern`);
 		await expect(page.locator('a:has-text("Users")').first()).toBeVisible();

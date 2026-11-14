@@ -446,8 +446,8 @@ export default function ClientsPage() {
       <div className="mb-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">OAuth Clients</h2>
-            <p className="text-[rgb(var(--color-muted-foreground))]">Manage OAuth client applications</p>
+            <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">OAuth Clients</h2>
+            <p className="text-[var(--color-muted-foreground)]">Manage OAuth client applications</p>
           </div>
           <Button onClick={openCreateDialog}>
             <Plus className="mr-2 h-4 w-4" />
@@ -625,7 +625,7 @@ export default function ClientsPage() {
                       type="checkbox"
                       checked={newGrantTypes.includes(grant.value)}
                       onChange={() => toggleGrant(grant.value, newGrantTypes, setNewGrantTypes)}
-                      className="rounded border-gray-300"
+                      className="rounded border-[var(--color-input)] accent-[var(--color-primary)]"
                     />
                     <span className="text-sm">{grant.label}</span>
                   </label>
@@ -641,7 +641,7 @@ export default function ClientsPage() {
                       type="checkbox"
                       checked={newScopes.includes(scope.value)}
                       onChange={() => toggleScope(scope.value, newScopes, setNewScopes)}
-                      className="rounded border-gray-300"
+                      className="rounded border-[var(--color-input)] accent-[var(--color-primary)]"
                     />
                     <span className="text-sm">{scope.label}</span>
                   </label>
@@ -701,7 +701,7 @@ export default function ClientsPage() {
                       type="checkbox"
                       checked={editAllowedGrants.includes(grant.value)}
                       onChange={() => toggleGrant(grant.value, editAllowedGrants, setEditAllowedGrants)}
-                      className="rounded border-gray-300"
+                      className="rounded border-[var(--color-input)] accent-[var(--color-primary)]"
                     />
                     <span className="text-sm">{grant.label}</span>
                   </label>
@@ -717,7 +717,7 @@ export default function ClientsPage() {
                       type="checkbox"
                       checked={editScopes.includes(scope.value)}
                       onChange={() => toggleScope(scope.value, editScopes, setEditScopes)}
-                      className="rounded border-gray-300"
+                      className="rounded border-[var(--color-input)] accent-[var(--color-primary)]"
                     />
                     <span className="text-sm">{scope.label}</span>
                   </label>
@@ -805,7 +805,7 @@ export default function ClientsPage() {
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Client ID</Label>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 p-3 bg-muted rounded-md font-mono text-sm break-all">
+                  <code className="ui-code flex-1 p-3 rounded-md font-mono text-sm break-all">
                     {createdClientId}
                   </code>
                   <Button variant="outline" size="sm" onClick={copyClientId}>
@@ -818,7 +818,7 @@ export default function ClientsPage() {
             <div className="space-y-2">
               <Label className="text-sm font-medium">Client Secret</Label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 p-3 bg-muted rounded-md font-mono text-sm break-all">
+                <code className="ui-code flex-1 p-3 rounded-md font-mono text-sm break-all">
                   {newClientSecret}
                 </code>
                 <Button variant="outline" size="sm" onClick={copySecret}>
@@ -826,7 +826,7 @@ export default function ClientsPage() {
                 </Button>
               </div>
             </div>
-            <p className="text-sm text-amber-600 dark:text-amber-500">
+            <p className="text-sm text-[var(--color-warning-text)]">
               Store these credentials securely. The secret will not be shown again.
             </p>
           </div>

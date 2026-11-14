@@ -37,6 +37,8 @@ import {
 import { requireAuth } from "../lib/auth.server";
 import { actorLabel, isSystemUserId } from "../lib/system-accounts";
 import { langOf } from "../lib/deletion-copy";
+import { getAuthServerUrl } from "../lib/config";
+import { AdminLayout } from "../components/admin-layout";
 import { logger } from "../lib/logger.server";
 import {
   getRoleById,
@@ -67,6 +69,8 @@ interface UserWithRole {
 }
 
 interface LoaderData {
+  user: { id: string; email: string };
+  authServerUrl: string;
   role: RoleWithPermissions;
   allPermissions: Record<string, Permission[]>;
   usersWithRole: UserWithRole[];
@@ -84,8 +88,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   if (ctx) logger.setContext(ctx);
 
   // Require authentication
+  let user: { id: string; email: string };
   try {
-    await requireAuth(request, env, true);
+    user = await requireAuth(request, env, true);
   } catch (error) {
     if (error instanceof Response) {
       throw error;
@@ -122,6 +127,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     const usersWithRole: UserWithRole[] = isErrorResponse(usersResponse) ? [] : usersResponse.filter((u) => !isSystemUserId(u.id));
 
     return {
+      user: { id: user.id, email: user.email },
+      authServerUrl: getAuthServerUrl(request, env),
       role: roleResponse,
       allPermissions,
       usersWithRole,
@@ -241,7 +248,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 }
 
 export default function RoleDetail() {
-  const { role, allPermissions, usersWithRole } = useLoaderData<LoaderData>();
+  const { user, authServerUrl, role, allPermissions, usersWithRole } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
@@ -330,53 +337,26 @@ export default function RoleDetail() {
 
   const getResourceColor = (resource: string) => {
     const colors: Record<string, string> = {
-      users: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-      roles: "bg-purple-500/10 text-purple-600 border-purple-500/20",
-      content: "bg-green-500/10 text-green-600 border-green-500/20",
-      settings: "bg-orange-500/10 text-orange-600 border-orange-500/20",
-      audit: "bg-red-500/10 text-red-600 border-red-500/20",
-      analytics: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20",
-      system: "bg-gray-500/10 text-gray-600 border-gray-500/20",
-      clients: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
-      "*": "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
+      users: "bg-blue-500/10 text-blue-800 dark:text-blue-300 border-blue-500/30",
+      roles: "bg-purple-500/10 text-purple-800 dark:text-purple-300 border-purple-500/30",
+      content: "bg-green-500/10 text-green-800 dark:text-green-300 border-green-500/30",
+      settings: "bg-orange-500/10 text-orange-800 dark:text-orange-300 border-orange-500/30",
+      audit: "bg-red-500/10 text-red-800 dark:text-red-300 border-red-500/30",
+      analytics: "bg-cyan-500/10 text-cyan-800 dark:text-cyan-300 border-cyan-500/30",
+      system: "bg-gray-500/10 text-gray-800 dark:text-gray-300 border-gray-500/30",
+      clients: "bg-indigo-500/10 text-indigo-800 dark:text-indigo-300 border-indigo-500/30",
+      "*": "bg-yellow-500/10 text-yellow-800 dark:text-yellow-300 border-yellow-500/30",
     };
-    return colors[resource] || "bg-gray-500/10 text-gray-600 border-gray-500/20";
+    return colors[resource] || "bg-gray-500/10 text-gray-800 dark:text-gray-300 border-gray-500/30";
   };
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))]">
-      {/* Navigation */}
-      <nav className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/roles">
-                  <ArrowLeft className="h-5 w-5" />
-                </Link>
-              </Button>
-              <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <img
-                  src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                  alt="Al Ummah Now"
-                  className="h-10 w-10 rounded-lg"
-                />
-                <div>
-                  <h1 className="text-xl font-bold text-[rgb(var(--color-foreground))]">
-                    Role Management
-                  </h1>
-                  <p className="text-sm text-[rgb(var(--color-muted-foreground))]">
-                    Al Ummah Now Admin
-                  </p>
-                </div>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
+      <Link to="/roles" className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-link)] hover:underline">
+        <ArrowLeft className="h-4 w-4 rtl:-scale-x-100" aria-hidden="true" />
+        Roles
+      </Link>
+      <div>
         <div className="space-y-6">
           {/* Role Header */}
           <Card>
@@ -384,10 +364,10 @@ export default function RoleDetail() {
               <div className="flex items-start justify-between">
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
-                    <Shield className="h-6 w-6 text-[rgb(var(--color-primary))]" />
+                    <Shield className="h-6 w-6 text-[var(--color-link)]" />
                     <CardTitle className="text-2xl">{role.name}</CardTitle>
                     {isSystemRole && (
-                      <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      <Badge variant="outline" className="bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30">
                         System Role
                       </Badge>
                     )}
@@ -395,7 +375,7 @@ export default function RoleDetail() {
                   <CardDescription>
                     {role.description || "No description provided"}
                   </CardDescription>
-                  <div className="flex items-center gap-4 text-sm text-[rgb(var(--color-muted-foreground))]">
+                  <div className="flex items-center gap-4 text-sm text-[var(--color-muted-foreground)]">
                     <span>Created: {formatDate(role.created_at)}</span>
                     {role.updated_at !== role.created_at && (
                       <span>Updated: {formatDate(role.updated_at)}</span>
@@ -435,8 +415,8 @@ export default function RoleDetail() {
             </CardHeader>
             <CardContent>
               {isSystemRole && (
-                <div className="mb-4 p-4 rounded-md bg-amber-500/10 border border-amber-500/20">
-                  <p className="text-sm text-amber-600">
+                <div className="mb-4 p-4 rounded-md ui-alert-warning">
+                  <p className="text-sm">
                     This is a system role. Permissions cannot be modified.
                   </p>
                 </div>
@@ -444,9 +424,9 @@ export default function RoleDetail() {
 
               {role.permissions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Key className="h-12 w-12 text-[rgb(var(--color-muted-foreground))] mb-4" />
+                  <Key className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No permissions assigned</h3>
-                  <p className="text-sm text-[rgb(var(--color-muted-foreground))] mb-4">
+                  <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
                     Add permissions to define what users with this role can do.
                   </p>
                   {!isSystemRole && (
@@ -460,7 +440,7 @@ export default function RoleDetail() {
                 <div className="space-y-6">
                   {Object.entries(permissionsByResource).map(([resource, permissions]) => (
                     <div key={resource} className="space-y-3">
-                      <h3 className="text-sm font-semibold text-[rgb(var(--color-foreground))] uppercase">
+                      <h3 className="text-sm font-semibold text-[var(--color-foreground)] uppercase">
                         {resource}
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -516,9 +496,9 @@ export default function RoleDetail() {
             <CardContent>
               {usersWithRole.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Users className="h-12 w-12 text-[rgb(var(--color-muted-foreground))] mb-4" />
+                  <Users className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No users assigned</h3>
-                  <p className="text-sm text-[rgb(var(--color-muted-foreground))] mb-4">
+                  <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
                     No users currently have this role assigned.
                   </p>
                   <Button asChild>
@@ -554,7 +534,7 @@ export default function RoleDetail() {
                             onClick={() => setUserToRemove(user)}
                             title="Remove role from user"
                           >
-                            <Trash2 className="h-4 w-4 text-[rgb(var(--color-destructive))]" />
+                            <Trash2 className="h-4 w-4 text-[var(--color-destructive-text)]" />
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -565,7 +545,7 @@ export default function RoleDetail() {
             </CardContent>
           </Card>
         </div>
-      </main>
+      </div>
 
       {/* Edit Role Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
@@ -625,7 +605,7 @@ export default function RoleDetail() {
                 <SelectContent>
                   {Object.entries(unassignedPermissions).map(([resource, permissions]) => (
                     <div key={resource}>
-                      <div className="px-2 py-1.5 text-sm font-semibold text-[rgb(var(--color-muted-foreground))] uppercase">
+                      <div className="px-2 py-1.5 text-sm font-semibold text-[var(--color-muted-foreground)] uppercase">
                         {resource}
                       </div>
                       {permissions.map((permission) => (
@@ -633,7 +613,7 @@ export default function RoleDetail() {
                           <div>
                             <div className="font-medium">{permission.name}</div>
                             {permission.description && (
-                              <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                              <div className="text-xs text-[var(--color-muted-foreground)]">
                                 {permission.description}
                               </div>
                             )}
@@ -695,6 +675,6 @@ export default function RoleDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AdminLayout>
   );
 }

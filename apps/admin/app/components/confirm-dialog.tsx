@@ -77,7 +77,7 @@ function OpenConfirmDialog({
         e.preventDefault();
         if (!busy) onCancel();
       }}
-      className="w-[min(32rem,calc(100vw-2rem))] rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] p-0 text-[rgb(var(--color-card-foreground))] shadow-lg backdrop:bg-black/50"
+      className="w-[min(32rem,calc(100vw-2rem))] rounded-lg ui-raised p-0 backdrop:bg-black/50"
     >
       <form
         method="dialog"
@@ -87,10 +87,10 @@ function OpenConfirmDialog({
           if (matches && !busy) onConfirm({ reason: reasonText.trim(), typed: typed.trim() });
         }}
       >
-        <h2 id={`${id}-title`} className={cn("text-lg font-semibold", danger && "text-[rgb(var(--color-destructive))]")}>
+        <h2 id={`${id}-title`} className={cn("text-lg font-semibold", danger && "text-[var(--color-destructive-text)]")}>
           {title}
         </h2>
-        <p id={`${id}-desc`} className="text-sm text-[rgb(var(--color-muted-foreground))]">
+        <p id={`${id}-desc`} className="text-sm text-[var(--color-muted-foreground)]">
           {description}
         </p>
         {reason && (
@@ -105,7 +105,7 @@ function OpenConfirmDialog({
               rows={2}
               placeholder={reason.placeholder}
               onChange={(e) => setReasonText(e.target.value)}
-              className="rounded-md border border-[rgb(var(--color-input))] bg-transparent px-3 py-2 text-sm"
+              className="rounded-md border border-[var(--color-input)] bg-transparent px-3 py-2 text-sm"
             />
           </div>
         )}
@@ -121,12 +121,12 @@ function OpenConfirmDialog({
               spellCheck={false}
               dir="auto"
               onChange={(e) => setTyped(e.target.value)}
-              className="h-9 rounded-md border border-[rgb(var(--color-input))] bg-transparent px-3 text-sm"
+              className="h-9 rounded-md border border-[var(--color-input)] bg-transparent px-3 text-sm"
             />
           </div>
         )}
         {error && (
-          <p role="alert" className="text-sm text-[rgb(var(--color-destructive))]">
+          <p role="alert" className="text-sm text-[var(--color-destructive-text)]">
             {error}
           </p>
         )}

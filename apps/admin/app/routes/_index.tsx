@@ -157,8 +157,8 @@ export default function Index() {
   return (
     <AdminLayout user={data.user} authServerUrl={data.authServerUrl}>
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Dashboard</h2>
-        <p className="text-[rgb(var(--color-muted-foreground))]">
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Dashboard</h2>
+        <p className="text-[var(--color-muted-foreground)]">
           Welcome to the Al Ummah Now administration panel
         </p>
       </div>
@@ -168,11 +168,11 @@ export default function Index() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+            <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.totalUsers}</div>
-            <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+            <p className="text-xs text-[var(--color-muted-foreground)]">
               Registered users
             </p>
           </CardContent>
@@ -181,11 +181,11 @@ export default function Index() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Admin Users</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+            <ShieldCheck className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.adminUsers}</div>
-            <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+            <p className="text-xs text-[var(--color-muted-foreground)]">
               Users with admin role
             </p>
           </CardContent>
@@ -194,11 +194,11 @@ export default function Index() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Roles</CardTitle>
-            <Shield className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+            <Shield className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.totalRoles}</div>
-            <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+            <p className="text-xs text-[var(--color-muted-foreground)]">
               {data.systemRoles} system / {data.customRoles} custom
             </p>
           </CardContent>
@@ -208,11 +208,11 @@ export default function Index() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
-              <Activity className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+              <Activity className="h-4 w-4 text-[var(--color-muted-foreground)]" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">-</div>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              <p className="text-xs text-[var(--color-muted-foreground)]">
                 Click to manage sessions
               </p>
             </CardContent>
@@ -222,11 +222,11 @@ export default function Index() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Database</CardTitle>
-            <Database className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+            <Database className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">Connected</div>
-            <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+            <div className="text-2xl font-bold text-[var(--color-success-text)]">Connected</div>
+            <p className="text-xs text-[var(--color-muted-foreground)]">
               D1 Database Status
             </p>
           </CardContent>
@@ -247,16 +247,16 @@ export default function Index() {
               {data.usersByRole.map((role) => (
                 <div key={role.name} className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-[rgb(var(--color-foreground))]">
+                    <span className="font-medium text-[var(--color-foreground)]">
                       {role.name}
                     </span>
-                    <span className="text-[rgb(var(--color-muted-foreground))]">
+                    <span className="text-[var(--color-muted-foreground)]">
                       {role.user_count} {role.user_count === 1 ? 'user' : 'users'}
                     </span>
                   </div>
-                  <div className="h-2 bg-[rgb(var(--color-muted))] rounded-full overflow-hidden">
+                  <div className="h-2 bg-[var(--color-muted)] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-[rgb(var(--color-primary))] rounded-full"
+                      className="h-full bg-[var(--color-primary)] rounded-full"
                       style={{
                         width: `${data.totalUsers > 0 ? (role.user_count / data.totalUsers) * 100 : 0}%`
                       }}

@@ -16,6 +16,9 @@ importers:
         specifier: 1.0.52
         version: 1.0.52(arctic@3.7.0)(hono@4.13.16)
     devDependencies:
+      '@axe-core/playwright':
+        specifier: 4.14.0
+        version: 4.14.0(playwright-core@1.57.0)
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.10.11
         version: 0.10.11(@cloudflare/workers-types@4.20251128.0)(@vitest/runner@4.0.16)(@vitest/snapshot@4.0.16)(vitest@3.2.4(@types/node@24.10.1)(happy-dom@20.14.6)(jiti@2.6.1)(lightningcss@1.30.2))
@@ -323,6 +326,12 @@ packages:
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
+
+  '@axe-core/playwright@4.14.0':
+    resolution: {integrity: sha512-SGUhG5PIHd2eMdpgBF2PyQLOhX+qyDR2PT4cmoS4Qk2ak+jX/rrSvst9l0PGv5WTHolKpUMvVmoHpr4cZgf1RQ==}
+    engines: {node: '>=22.12.0'}
+    peerDependencies:
+      playwright-core: '>= 1.0.0'
 
   '@babel/code-frame@7.27.1':
     resolution: {integrity: sha512-cjQ7ZlQ0Mv3b47hABuTevyTuYN4i+loJKGeV9flcCgIK37cCXRh+L1bd3iBHlynerhQ7BhCkn2BPbQUL+rGqFg==}
@@ -2355,6 +2364,10 @@ packages:
   aws4fetch@1.0.20:
     resolution: {integrity: sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g==}
 
+  axe-core@4.14.0:
+    resolution: {integrity: sha512-9WTZxEjsZ7b13TH8JPmbV2z8CHbl80/2hm3XPEG4JgNdQLK81IBRXmSxHfMAOkSqQeRxT/0dwNDz2GOm3zzpcQ==}
+    engines: {node: '>=4'}
+
   babel-dead-code-elimination@1.0.10:
     resolution: {integrity: sha512-DV5bdJZTzZ0zn0DC24v3jD7Mnidh6xhKa4GfKCbq3sfW8kaWhDdZjP3i81geA8T33tdYqWKw4D3fVv0CwEgKVA==}
 
@@ -3957,6 +3970,11 @@ snapshots:
     dependencies:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
+
+  '@axe-core/playwright@4.14.0(playwright-core@1.57.0)':
+    dependencies:
+      axe-core: 4.14.0
+      playwright-core: 1.57.0
 
   '@babel/code-frame@7.27.1':
     dependencies:
@@ -5813,6 +5831,8 @@ snapshots:
       js-tokens: 9.0.1
 
   aws4fetch@1.0.20: {}
+
+  axe-core@4.14.0: {}
 
   babel-dead-code-elimination@1.0.10:
     dependencies:

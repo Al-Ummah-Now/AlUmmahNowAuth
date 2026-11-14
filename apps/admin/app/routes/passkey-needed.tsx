@@ -64,22 +64,22 @@ export default function PasskeyNeeded() {
   const t = COPY[locale];
   const button = "block w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-center";
   return (
-    <div lang={locale} dir={locale === "ar" ? "rtl" : "ltr"} className="min-h-screen bg-[rgb(var(--color-background))] flex items-center justify-center p-5">
-      <main className="rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card,var(--color-background)))] p-8 max-w-[440px] w-full" data-testid="passkey-needed">
-        <h1 className="text-2xl font-semibold mb-3 text-[rgb(var(--color-foreground))]">{grace ? t.grace : t.title}</h1>
-        <p className="text-sm leading-relaxed mb-2 text-[rgb(var(--color-muted-foreground))]">{t.body}</p>
-        <p className="text-sm leading-relaxed mb-6 text-[rgb(var(--color-muted-foreground))]">{t.hint}</p>
+    <div lang={locale} dir={locale === "ar" ? "rtl" : "ltr"} className="min-h-screen bg-[var(--color-background)] flex items-center justify-center p-5">
+      <main className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-8 max-w-[440px] w-full" data-testid="passkey-needed">
+        <h1 className="text-2xl font-semibold mb-3 text-[var(--color-foreground)]">{grace ? t.grace : t.title}</h1>
+        <p className="text-sm leading-relaxed mb-2 text-[var(--color-muted-foreground)]">{t.body}</p>
+        <p className="text-sm leading-relaxed mb-6 text-[var(--color-muted-foreground)]">{t.hint}</p>
         <div className="flex flex-col gap-3">
-          <a href={addUrl} data-testid="passkey-needed-add" className={`${button} bg-[rgb(var(--color-primary))] text-[rgb(var(--color-primary-foreground))]`}>
+          <a href={addUrl} data-testid="passkey-needed-add" className={`${button} bg-[var(--color-primary)] text-[var(--color-primary-foreground)]`}>
             {t.add}
           </a>
-          <a href={signInUrl} data-testid="passkey-needed-signin" className={`${button} border border-[rgb(var(--color-border))] text-[rgb(var(--color-foreground))]`}>
+          <a href={signInUrl} data-testid="passkey-needed-signin" className={`${button} border border-[var(--color-border)] text-[var(--color-foreground)]`}>
             {t.signIn}
           </a>
         </div>
-        <p className="text-xs mt-6 text-[rgb(var(--color-muted-foreground))]">{t.lost}</p>
+        <p className="text-xs mt-6 text-[var(--color-muted-foreground)]">{t.lost}</p>
         <p className="text-xs mt-3">
-          <a href={otherLanguageUrl} className="underline text-[rgb(var(--color-foreground))]" lang={locale === "ar" ? "en" : "ar"}>
+          <a href={otherLanguageUrl} className="underline text-[var(--color-foreground)]" lang={locale === "ar" ? "en" : "ar"}>
             {t.other}
           </a>
         </p>

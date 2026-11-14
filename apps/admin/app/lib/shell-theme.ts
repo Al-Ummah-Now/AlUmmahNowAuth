@@ -1,9 +1,10 @@
 /**
- * The admin shell takes its look from Auth's theme for the admin app (its
- * client default, else the Auth default): the theme's `adminShell` section.
- * Only parts the theme sets are restyled; the rest keeps the admin's own look. The theme's
- * Fanous tokens always come along, for the shared header account menu (NAV_CSS).
- * Any failure keeps the admin as it is.
+ * The admin takes its look from Auth's theme for the admin app (its client default, else the
+ * Auth default), in light and dark: the theme's Fanous tokens (roles, component colours,
+ * materials) colour the whole admin (app/tailwind.css maps them), and the theme's `adminShell`
+ * section restyles the shell parts it sets, with its light and dark values. The admin shows the
+ * mode the user chose (lib/color-mode.ts: `.light` / `.dark` on <html>), so the theme's
+ * per-scheme blocks are scoped to that class here. Any failure keeps the admin's fallback palette.
  */
 
 const VAR = (key: string) => `--auth-adminShell-${key}`;
@@ -20,41 +21,46 @@ const RULES: [key: string, css: (v: string) => string][] = [
   ["accent", (v) => `[data-shell="page"] a:focus-visible,[data-shell="page"] button:focus-visible{outline-color:${v}}[data-shell="header"]{border-bottom-color:${v}}`],
 ];
 
+/** One scheme's custom properties, as the Auth theme compiler emits them. */
+const SCHEME_BLOCK = /@media\s*\(\s*prefers-color-scheme\s*:\s*(light|dark)\s*\)\s*\{\s*:root\s*\{([^{}]*)\}\s*\}/g;
+
 /**
- * The style for the admin shell from a resolved theme's token CSS ("" when the theme sets no
- * shell parts, no menu tokens and no lantern street). The street comes last, so its dark-scheme
- * values win over the theme's own street tokens.
+ * The theme's per-scheme token blocks keyed on the admin's mode class instead of the device:
+ * `.light` / `.dark` on <html> wins; with neither (no script ran) the device decides, as before.
+ */
+export function modeScopedCss(tokensCss: string): string {
+  return tokensCss.replace(SCHEME_BLOCK, (_m, scheme: "light" | "dark", body: string) => {
+    const other = scheme === "light" ? "dark" : "light";
+    return `:root.${scheme}{${body}}@media(prefers-color-scheme:${scheme}){:root:not(.${other}){${body}}}`;
+  });
+}
+
+/**
+ * The style for the admin from a resolved theme's token CSS: its tokens scoped per mode, the
+ * `adminShell` parts it sets, and the lantern street's page rules when the theme has a street.
+ * "" when the CSS has no Fanous tokens or could leave its style element.
  */
 export function shellThemeCss(tokensCss: string): string {
   if (/<\/style|<!--/i.test(tokensCss)) return "";
-  const rules = RULES.filter(([key]) => tokensCss.includes(`${VAR(key)}:`)).map(([key, css]) => css(`var(${VAR(key)})`));
-  const street = adminStreetCss(tokensCss);
-  // The header account button and menus (NAV_CSS, AlUmmahNow docs/design/NAV.md) read the theme's
-  // Fanous tokens: keep them even when the theme restyles no shell part
-  const menu = tokensCss.includes("--fanous-c-menu-bg:");
-  if (!rules.length && !menu && !street) return "";
   // only the theme's custom properties are needed here, not its font imports
   const start = tokensCss.indexOf(":root{");
-  const tokens = rules.length || menu ? `${start >= 0 ? tokensCss.slice(start) : tokensCss}\n${rules.join("\n")}` : "";
-  return [tokens, street].filter(Boolean).join("\n");
+  if (start < 0 || !tokensCss.includes("--fanous-color-background:")) return "";
+  const tokens = modeScopedCss(tokensCss.slice(start));
+  const rules = RULES.filter(([key]) => tokensCss.includes(`${VAR(key)}:`)).map(([key, css]) => css(`var(${VAR(key)})`));
+  return [tokens, ...rules, adminStreetCss(tokensCss)].filter(Boolean).join("\n");
 }
 
-/** The street tokens the shared module reads, and the primary colour its lantern glow uses. */
-const STREET_DECL = /^--fanous-(?:street-[a-z-]+|color-primary):/;
-
 /**
- * The Fanous lantern street in the admin (design: AlUmmahNow docs/design/FAWANEES-STREET.md).
- * The admin is a dark app whatever the device's setting, so it takes the theme's dark-scheme
- * street, over its own page colour (the body paints it; the page wrapper lets the street through).
- * "" when the theme has no street.
+ * The Fanous lantern street in the admin (design: AlUmmahNow docs/design/FAWANEES-STREET.md). It
+ * follows the mode like the profile app: the street's tokens are part of the theme's per-scheme
+ * blocks, so the light street shows in light mode and the dark street in dark. Here: the page
+ * wrapper lets the street through (the body paints the page colour), and room for garlands.
+ * "" when the theme has no street in either scheme.
  */
 export function adminStreetCss(tokensCss: string): string {
-  const dark = /@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)\s*\{\s*:root\s*\{([^}]*)\}\s*\}/.exec(tokensCss);
-  if (!dark) return "";
-  const decls = dark[1].split(";").map((d) => d.trim()).filter((d) => STREET_DECL.test(d));
-  if (!decls.some((d) => /^--fanous-street-on:\s*1$/.test(d))) return "";
+  const on = [...tokensCss.matchAll(SCHEME_BLOCK)].some(([, , body]) => /(?:^|;)\s*--fanous-street-on:\s*1\s*(?:;|$)/.test(body));
+  if (!on) return "";
   return (
-    `:root{${decls.join(";")}}\n` +
     `html.fanous-street [data-shell="page"]{background:transparent}\n` +
     // Room for garlands: below short pages, and one band at the end of every page
     `html.fanous-street [data-shell="page"]>main{min-height:100vh;padding-bottom:96px}`

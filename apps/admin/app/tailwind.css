@@ -1,68 +1,250 @@
 @import "tailwindcss";
 
+/* Light and dark (app/lib/color-mode.ts): MODE_SCRIPT puts .light or .dark on <html> before first
+   paint; without it the page follows the device. dark: utilities follow the class, not the device. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The admin's colours are the active Auth theme's tokens for the mode on screen (root.tsx shellCss,
+   scoped per mode by app/lib/shell-theme.ts): the page, surfaces, text, buttons, forms, dialogs and
+   the rail take the theme's own roles and component colours (Fawanees, the platform's approved
+   palette, in prod). The --fb-* values are only the fallback when Auth's theme cannot be loaded. */
 @theme {
-  --color-background: 2 6 23;
-  --color-foreground: 248 250 252;
+  --color-background: var(--fanous-color-background, var(--fb-background));
+  --color-foreground: var(--fanous-color-text-primary, var(--fb-foreground));
 
-  --color-card: 15 23 42;
-  --color-card-foreground: 248 250 252;
+  --color-card: var(--fanous-color-surface, var(--fb-card));
+  --color-card-foreground: var(--fanous-color-text-primary, var(--fb-foreground));
 
-  --color-popover: 15 23 42;
-  --color-popover-foreground: 248 250 252;
+  --color-popover: var(--fanous-c-dialog-bg, var(--fb-card));
+  --color-popover-foreground: var(--fanous-c-dialog-text, var(--fb-foreground));
 
-  --color-primary: 14 165 233;
-  --color-primary-foreground: 248 250 252;
+  --color-primary: var(--fanous-c-button-primary-bg, var(--fb-primary));
+  --color-primary-foreground: var(--fanous-c-button-primary-text, var(--fb-on-primary));
 
-  --color-secondary: 30 41 59;
-  --color-secondary-foreground: 248 250 252;
+  --color-secondary: var(--fanous-c-button-secondary-bg, var(--fb-muted));
+  --color-secondary-foreground: var(--fanous-c-button-secondary-text, var(--fb-foreground));
 
-  --color-muted: 30 41 59;
-  --color-muted-foreground: 148 163 184;
+  --color-muted: var(--fanous-c-drawer-active-bg, var(--fb-muted));
+  --color-muted-foreground: var(--fanous-color-text-muted, var(--fb-muted-foreground));
 
-  --color-accent: 6 182 212;
-  --color-accent-foreground: 248 250 252;
+  /* Hover and pressed surfaces (ghost and outline buttons, list rows) */
+  --color-accent: var(--fanous-c-drawer-active-bg, var(--fb-muted));
+  --color-accent-foreground: var(--fanous-color-text-primary, var(--fb-foreground));
 
-  --color-destructive: 220 38 38;
-  --color-destructive-foreground: 248 250 252;
+  /* Fills (destructive buttons) and text (errors) are different colours: a fill red is too dark
+     for text on the dark page */
+  --color-destructive: var(--fanous-c-button-destructive-bg, var(--fb-destructive));
+  --color-destructive-foreground: var(--fanous-c-button-destructive-text, #ffffff);
+  --color-destructive-text: var(--fanous-color-error-text, var(--fb-error-text));
+  --color-success-text: var(--fanous-color-success-text, var(--fb-success-text));
+  --color-warning-text: var(--fb-warning-text);
+  --color-link: var(--fanous-c-link-text, var(--fb-link));
 
-  --color-border: 51 65 85;
-  --color-input: 51 65 85;
-  --color-ring: 14 165 233;
+  --color-border: var(--fanous-color-divider, var(--fb-border));
+  --color-input: var(--fanous-c-form-input-border, var(--fb-input));
+  --color-input-background: var(--fanous-c-form-input-bg, var(--fb-card));
+  --color-ring: var(--fanous-color-focus-ring, var(--fb-ring));
+
+  --color-sidebar: var(--fanous-c-drawer-bg, var(--fb-card));
+  --color-sidebar-foreground: var(--fanous-c-drawer-text, var(--fb-foreground));
+  --color-sidebar-icon: var(--fanous-c-drawer-icon, var(--fb-muted-foreground));
+  --color-sidebar-active: var(--fanous-c-drawer-active-bg, var(--fb-muted));
+  --color-sidebar-active-foreground: var(--fanous-c-drawer-active-text, var(--fb-foreground));
+  --color-sidebar-divider: var(--fanous-c-drawer-divider, var(--fb-border));
 
   --radius: 0.5rem;
 }
 
-/* Fallbacks for the shared header account menu (NAV_CSS, AlUmmahNow docs/design/NAV.md) when
-   Auth's theme (root.tsx shellCss, which defines the real Fanous tokens) cannot be loaded */
+/* Fallback palettes (no theme): slate light and slate dark, each AA on its own surfaces */
 :root {
-  /* Dark only: the shared nav's light-dark() menus take their dark colours */
+  color-scheme: light;
+  --fb-background: #f8fafc;
+  --fb-foreground: #0f172a;
+  --fb-card: #ffffff;
+  --fb-muted: #e2e8f0;
+  --fb-muted-foreground: #475569;
+  --fb-primary: #0369a1;
+  --fb-on-primary: #ffffff;
+  --fb-destructive: #b91c1c;
+  --fb-error-text: #b91c1c;
+  --fb-success-text: #15803d;
+  --fb-warning-text: #92400e;
+  --fb-link: #0369a1;
+  --fb-border: #e2e8f0;
+  --fb-input: #64748b;
+  --fb-ring: #0369a1;
+}
+:root.dark {
   color-scheme: dark;
-  --fanous-c-nav-bg: rgb(var(--color-card));
-  --fanous-c-nav-text: rgb(var(--color-foreground));
-  --fanous-c-nav-icon: rgb(var(--color-muted-foreground));
-  --fanous-c-nav-hover: rgb(var(--color-muted));
-  --fanous-c-nav-border: rgb(var(--color-border));
-  --fanous-c-nav-search-border: rgb(var(--color-border));
-  --fanous-c-nav-active-text: rgb(var(--color-primary));
-  --fanous-c-menu-bg: rgb(var(--color-popover));
-  --fanous-c-menu-text: rgb(var(--color-popover-foreground));
-  --fanous-c-menu-muted: rgb(var(--color-muted-foreground));
-  --fanous-c-menu-hover: rgb(var(--color-muted));
-  --fanous-c-menu-border: rgb(var(--color-border));
-  --fanous-c-divider-line: rgb(var(--color-border));
-  --fanous-color-primary: rgb(var(--color-primary));
-  --fanous-color-on-primary: rgb(var(--color-background));
-  --fanous-color-link: rgb(var(--color-primary));
-  --fanous-color-focus-ring: rgb(var(--color-ring));
-  --fanous-color-error-text: rgb(248 113 113);
+  --fb-background: #020617;
+  --fb-foreground: #f8fafc;
+  --fb-card: #0f172a;
+  --fb-muted: #1e293b;
+  --fb-muted-foreground: #94a3b8;
+  --fb-primary: #38bdf8;
+  --fb-on-primary: #020617;
+  --fb-destructive: #b91c1c;
+  --fb-error-text: #f87171;
+  --fb-success-text: #4ade80;
+  --fb-warning-text: #fcd34d;
+  --fb-link: #7dd3fc;
+  --fb-border: #334155;
+  --fb-input: #64748b;
+  --fb-ring: #38bdf8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    color-scheme: dark;
+    --fb-background: #020617;
+    --fb-foreground: #f8fafc;
+    --fb-card: #0f172a;
+    --fb-muted: #1e293b;
+    --fb-muted-foreground: #94a3b8;
+    --fb-primary: #38bdf8;
+    --fb-on-primary: #020617;
+    --fb-destructive: #b91c1c;
+    --fb-error-text: #f87171;
+    --fb-success-text: #4ade80;
+    --fb-warning-text: #fcd34d;
+    --fb-link: #7dd3fc;
+    --fb-border: #334155;
+    --fb-input: #64748b;
+    --fb-ring: #38bdf8;
+  }
+}
+
+/* Fallbacks for the shared header account menu (NAV_CSS, AlUmmahNow docs/design/NAV.md) when
+   Auth's theme cannot be loaded. The header is dark in every mode; the menus pick their light or
+   dark colours with light-dark(), which follows the color-scheme set above per mode. */
+:root {
+  --fanous-c-nav-bg: #0f172a;
+  --fanous-c-nav-text: #f8fafc;
+  --fanous-c-nav-icon: #cbd5e1;
+  --fanous-c-nav-hover: #1e293b;
+  --fanous-c-nav-border: #334155;
+  --fanous-c-nav-search-border: #64748b;
+  --fanous-c-nav-active-text: #7dd3fc;
+  --fanous-c-menu-bg: #1e293b;
+  --fanous-c-menu-text: #f8fafc;
+  --fanous-c-menu-muted: #cbd5e1;
+  --fanous-c-menu-hover: #0f172a;
+  --fanous-c-menu-border: #64748b;
+  --fanous-c-divider-line: var(--fb-border);
+  --fanous-color-background: var(--fb-background);
+  --fanous-color-text-primary: var(--fb-foreground);
+  --fanous-color-primary: var(--fb-primary);
+  --fanous-color-on-primary: var(--fb-on-primary);
+  --fanous-color-link: var(--fb-link);
+  --fanous-color-focus-ring: var(--fb-ring);
+  --fanous-color-error-text: var(--fb-error-text);
 }
 
 * {
-  border-color: rgb(var(--color-border));
+  border-color: var(--color-border);
 }
 
 body {
   font-family: "Inter", sans-serif;
-  background-color: rgb(var(--color-background));
-  color: rgb(var(--color-foreground));
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* Surfaces in the theme's own materials (--m-*, from the theme package: gradients, edges and
+   shadows per mode); a flat token colour when the theme sets none */
+@layer components {
+  /* Cards: the theme's card fill, its border paint (a gradient in Fawanees dark) and its edge */
+  .ui-card {
+    border: 1px solid transparent;
+    background:
+      var(--m-card, linear-gradient(var(--color-card), var(--color-card))) padding-box,
+      var(--m-border, linear-gradient(var(--color-border), var(--color-border))) border-box;
+    box-shadow: var(--m-card-edge, 0 1px 2px rgb(0 0 0 / 0.08));
+    color: var(--color-card-foreground);
+  }
+  /* Raised surfaces: dialogs and dropdowns */
+  .ui-raised {
+    background: var(--m-raised, var(--color-popover));
+    box-shadow: var(--m-raised-edge, 0 0 0 1px var(--color-border), 0 20px 44px -18px rgb(0 0 0 / 0.45));
+    color: var(--color-popover-foreground);
+  }
+  /* Text fields and select triggers */
+  .ui-control {
+    background: var(--m-control, var(--color-input-background));
+    box-shadow: var(--m-control-edge, none);
+    color: var(--fanous-c-form-input-text, var(--color-foreground));
+  }
+  .ui-control::placeholder {
+    color: var(--fanous-c-form-placeholder, var(--color-muted-foreground));
+  }
+  /* Primary actions: the theme's primary button paint */
+  .ui-primary {
+    background: var(--m-primary, var(--color-primary));
+    box-shadow: var(--m-primary-edge, none);
+    color: var(--color-primary-foreground);
+  }
+  .ui-primary:hover {
+    background: var(--m-primary-hover, var(--color-primary));
+  }
+  .ui-primary:active {
+    background: var(--m-primary-press, var(--color-primary));
+  }
+  /* Code and JSON blocks: an inset on the card */
+  .ui-code {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    border: 1px solid var(--color-border);
+  }
+
+  /* Notices: the status colour as text on an opaque tint of the card (no see-through over the
+     lantern street), in both modes */
+  .ui-alert-error,
+  .ui-alert-success,
+  .ui-alert-warning,
+  .ui-alert-info {
+    color: var(--tone);
+    background: color-mix(in srgb, var(--tone) 10%, var(--color-card));
+    border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+  }
+  .ui-alert-error { --tone: var(--color-destructive-text); }
+  .ui-alert-success { --tone: var(--color-success-text); }
+  .ui-alert-warning { --tone: var(--color-warning-text); }
+  .ui-alert-info { --tone: var(--color-link); }
+
+  /* The shell */
+  .shell-header {
+    background: var(--m-header, var(--fanous-c-nav-bg));
+    box-shadow: var(--m-header-edge, none);
+  }
+  .shell-rail {
+    background: var(--m-rail, var(--color-sidebar));
+    box-shadow: var(--m-rail-edge, inset -1px 0 0 var(--color-sidebar-divider));
+  }
+  [dir="rtl"] .shell-rail {
+    box-shadow: var(--m-rail-edge-rtl, inset 1px 0 0 var(--color-sidebar-divider));
+  }
+  .shell-link {
+    --from: 0%;
+    color: var(--color-sidebar-foreground);
+  }
+  [dir="rtl"] .shell-link {
+    --from: 100%;
+  }
+  .shell-link svg {
+    color: var(--color-sidebar-icon);
+  }
+  .shell-link:hover {
+    background: var(--m-hover, var(--color-sidebar-active));
+  }
+  .shell-link[aria-current="page"] {
+    background: var(--m-active, var(--color-sidebar-active));
+    box-shadow: var(--m-active-edge, none);
+    color: var(--color-sidebar-active-foreground);
+    font-weight: 600;
+  }
+  .shell-link[aria-current="page"] svg {
+    color: currentColor;
+  }
+  .shell-foot {
+    border-top: 1px solid var(--color-sidebar-divider);
+  }
 }

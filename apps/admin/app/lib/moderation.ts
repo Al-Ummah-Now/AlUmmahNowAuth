@@ -31,11 +31,11 @@ export const REASON_CATEGORY_LABELS: Record<string, string> = {
 
 /** Badge colours per status (tailwind classes on the shared Badge). */
 export const MODERATION_STATUS_CLASSES: Record<string, string> = {
-  pending: "bg-amber-500/15 text-amber-600 border-amber-500/30",
-  info_requested: "bg-sky-500/15 text-sky-600 border-sky-500/30",
-  approved: "bg-indigo-500/15 text-indigo-600 border-indigo-500/30",
-  rejected: "bg-zinc-500/15 text-zinc-600 border-zinc-500/30",
-  actioned: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+  pending: "bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30",
+  info_requested: "bg-sky-500/15 text-sky-800 dark:text-sky-300 border-sky-500/30",
+  approved: "bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 border-indigo-500/30",
+  rejected: "bg-zinc-500/15 text-zinc-800 dark:text-zinc-300 border-zinc-500/30",
+  actioned: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30",
 };
 
 export const label = (map: Record<string, string>, key: string) => map[key] ?? key;

@@ -285,14 +285,14 @@ export default function SessionsPage() {
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Session Management</h2>
-        <p className="text-[rgb(var(--color-muted-foreground))]">
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Session Management</h2>
+        <p className="text-[var(--color-muted-foreground)]">
           Monitor and manage active user sessions across all devices
         </p>
       </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
+          <div className="mb-6 p-4 ui-alert-error rounded-lg">
             Error loading sessions: {error}
           </div>
         )}
@@ -302,11 +302,11 @@ export default function SessionsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Sessions</CardTitle>
-              <Users className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+              <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalSessions}</div>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              <p className="text-xs text-[var(--color-muted-foreground)]">
                 Active sessions across all users
               </p>
             </CardContent>
@@ -315,11 +315,11 @@ export default function SessionsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Now</CardTitle>
-              <Activity className="h-4 w-4 text-green-500" />
+              <Activity className="h-4 w-4 text-[var(--color-success-text)]" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-500">{stats.activeSessions}</div>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              <div className="text-2xl font-bold text-[var(--color-success-text)]">{stats.activeSessions}</div>
+              <p className="text-xs text-[var(--color-muted-foreground)]">
                 Used in the last hour
               </p>
             </CardContent>
@@ -328,11 +328,11 @@ export default function SessionsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Logins (24h)</CardTitle>
-              <Clock className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+              <Clock className="h-4 w-4 text-[var(--color-muted-foreground)]" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.loginsLast24h}</div>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              <p className="text-xs text-[var(--color-muted-foreground)]">
                 New logins in the last 24 hours
               </p>
             </CardContent>
@@ -341,13 +341,13 @@ export default function SessionsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Suspicious</CardTitle>
-              <AlertTriangle className={`h-4 w-4 ${suspiciousCount > 0 ? 'text-yellow-500' : 'text-[rgb(var(--color-muted-foreground))]'}`} />
+              <AlertTriangle className={`h-4 w-4 ${suspiciousCount > 0 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-muted-foreground)]'}`} />
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${suspiciousCount > 0 ? 'text-yellow-500' : ''}`}>
+              <div className={`text-2xl font-bold ${suspiciousCount > 0 ? 'text-[var(--color-warning-text)]' : ''}`}>
                 {suspiciousCount}
               </div>
-              <p className="text-xs text-[rgb(var(--color-muted-foreground))]">
+              <p className="text-xs text-[var(--color-muted-foreground)]">
                 Flagged for review
               </p>
             </CardContent>
@@ -357,9 +357,9 @@ export default function SessionsPage() {
 
         {/* Suspicious Activity Alert */}
         {suspiciousCount > 0 && (
-          <Card className="mb-8 border-yellow-500/50">
+          <Card className="mb-8 ui-alert-warning">
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2 text-yellow-500">
+              <CardTitle className="text-lg flex items-center gap-2 text-[var(--color-warning-text)]">
                 <AlertTriangle className="h-5 w-5" />
                 Suspicious Activity Detected
               </CardTitle>
@@ -370,9 +370,9 @@ export default function SessionsPage() {
                   <h4 className="font-medium mb-2">Multiple IPs in Short Time</h4>
                   <div className="space-y-2">
                     {suspicious.multipleIPsInShortTime.map((item, i) => (
-                      <div key={i} className="text-sm p-2 bg-yellow-500/10 rounded">
+                      <div key={i} className="text-sm p-2 rounded bg-[var(--color-card)] text-[var(--color-foreground)]">
                         <span className="font-medium">{item.email}</span> - {item.ipCount} different IPs
-                        <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                        <div className="text-xs text-[var(--color-muted-foreground)]">
                           IPs: {Array.isArray(item.ipAddresses) ? item.ipAddresses.join(', ') : item.ipAddresses}
                         </div>
                       </div>
@@ -385,7 +385,7 @@ export default function SessionsPage() {
                   <h4 className="font-medium mb-2">Failed Then Successful Logins</h4>
                   <div className="space-y-2">
                     {suspicious.failedThenSuccessfulLogins.map((item, i) => (
-                      <div key={i} className="text-sm p-2 bg-yellow-500/10 rounded">
+                      <div key={i} className="text-sm p-2 rounded bg-[var(--color-card)] text-[var(--color-foreground)]">
                         <span className="font-medium">{item.email}</span> - {item.failedAttempts} failed attempts before success
                       </div>
                     ))}
@@ -418,19 +418,19 @@ export default function SessionsPage() {
                     className="w-72"
                     testId="sessions-user"
                   />
-                  <Button type="submit" variant="outline" size="icon">
-                    <Search className="h-4 w-4" />
+                  <Button type="submit" variant="outline" size="icon" aria-label="Show this user's sessions" title="Show this user's sessions">
+                    <Search className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </form>
-                <Button variant="outline" size="icon" onClick={() => window.location.reload()}>
-                  <RefreshCw className="h-4 w-4" />
+                <Button variant="outline" size="icon" onClick={() => window.location.reload()} aria-label="Refresh" title="Refresh">
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             {sessions.length === 0 ? (
-              <div className="text-center py-8 text-[rgb(var(--color-muted-foreground))]">
+              <div className="text-center py-8 text-[var(--color-muted-foreground)]">
                 <HelpCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No active sessions found</p>
               </div>
@@ -452,7 +452,7 @@ export default function SessionsPage() {
                       <TableCell>
                         <div>
                           <div className="font-medium">{session.email}</div>
-                          <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                          <div className="text-xs text-[var(--color-muted-foreground)]">
                             {session.userId}
                           </div>
                         </div>
@@ -463,7 +463,7 @@ export default function SessionsPage() {
                           <span>Device</span>
                         </div>
                         {session.device?.userAgent && (
-                          <div className="text-xs text-[rgb(var(--color-muted-foreground))] max-w-[200px] truncate" title={session.device.userAgent}>
+                          <div className="text-xs text-[var(--color-muted-foreground)] max-w-[200px] truncate" title={session.device.userAgent}>
                             {session.device.userAgent}
                           </div>
                         )}
@@ -476,7 +476,7 @@ export default function SessionsPage() {
                       </TableCell>
                       <TableCell>
                         <div>{formatDate(session.lastUsed)}</div>
-                        <div className="text-xs text-[rgb(var(--color-muted-foreground))]">
+                        <div className="text-xs text-[var(--color-muted-foreground)]">
                           Auth: {formatDate(session.authenticatedAt)}
                         </div>
                       </TableCell>
@@ -490,7 +490,7 @@ export default function SessionsPage() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                          className="text-[var(--color-destructive-text)] hover:bg-[var(--color-accent)]"
                           disabled={fetcher.state !== 'idle'}
                           title={copy.endSessionButton}
                           aria-label={copy.endSessionAria(session.email)}

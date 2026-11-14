@@ -32,7 +32,7 @@ export function SystemAccountsSection({ accounts, lang }: { accounts: SystemAcco
       </CardHeader>
       <CardContent>
         {accounts.length === 0 ? (
-          <p className="text-sm text-[rgb(var(--color-muted-foreground))]">{t.empty}</p>
+          <p className="text-sm text-[var(--color-muted-foreground)]">{t.empty}</p>
         ) : (
           <Table>
             <TableHeader>
@@ -48,7 +48,7 @@ export function SystemAccountsSection({ accounts, lang }: { accounts: SystemAcco
                 <TableRow key={a.id} data-testid={`system-account-${a.id}`}>
                   <TableCell>
                     <div className="font-medium" dir="ltr">{a.email}</div>
-                    <div className="font-mono text-xs text-[rgb(var(--color-muted-foreground))]" dir="ltr">{a.id}</div>
+                    <div className="font-mono text-xs text-[var(--color-muted-foreground)]" dir="ltr">{a.id}</div>
                   </TableCell>
                   <TableCell>{a.name ?? "—"}</TableCell>
                   <TableCell>
@@ -59,7 +59,7 @@ export function SystemAccountsSection({ accounts, lang }: { accounts: SystemAcco
                   </TableCell>
                   <TableCell>
                     {a.roles.length === 0 ? (
-                      <span className="text-sm text-[rgb(var(--color-muted-foreground))]" data-testid="no-roles">{t.noRoles}</span>
+                      <span className="text-sm text-[var(--color-muted-foreground)]" data-testid="no-roles">{t.noRoles}</span>
                     ) : (
                       <div className="space-y-1" role="alert">
                         <div className="flex flex-wrap gap-1">
@@ -67,7 +67,7 @@ export function SystemAccountsSection({ accounts, lang }: { accounts: SystemAcco
                             <Badge key={r.id} variant="destructive">{r.name}</Badge>
                           ))}
                         </div>
-                        <p className="text-xs text-[rgb(var(--color-destructive))]">{t.roleAlert}</p>
+                        <p className="text-xs text-[var(--color-destructive-text)]">{t.roleAlert}</p>
                       </div>
                     )}
                   </TableCell>

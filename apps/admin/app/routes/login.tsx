@@ -52,13 +52,13 @@ export default function Login() {
   const data = useLoaderData<typeof loader>();
   // Only rendered for a failed sign-in (the loader redirects otherwise)
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))] flex items-center justify-center p-6">
+    <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center p-6">
       <div className="text-center max-w-md" data-testid="login-error">
-        <h1 className="text-xl font-semibold text-[rgb(var(--color-foreground))] mb-3">Sign-in did not complete</h1>
-        <p className="text-sm text-[rgb(var(--color-muted-foreground))] mb-6 break-words">{data?.error}</p>
+        <h1 className="text-xl font-semibold text-[var(--color-foreground)] mb-3">Sign-in did not complete</h1>
+        <p className="text-sm text-[var(--color-muted-foreground)] mb-6 break-words">{data?.error}</p>
         <a
           href={data?.retryUrl ?? "/login"}
-          className="inline-block rounded-lg px-4 py-2.5 text-sm font-semibold bg-[rgb(var(--color-primary))] text-[rgb(var(--color-primary-foreground))]"
+          className="inline-block rounded-lg px-4 py-2.5 text-sm font-semibold bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
         >
           Try again
         </a>

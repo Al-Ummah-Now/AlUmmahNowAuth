@@ -261,8 +261,8 @@ export default function Roles() {
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-6">
-        <h2 className="text-3xl font-bold text-[rgb(var(--color-foreground))] mb-2">Role Management</h2>
-        <p className="text-[rgb(var(--color-muted-foreground))]">
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Role Management</h2>
+        <p className="text-[var(--color-muted-foreground)]">
           Manage RBAC roles and permission assignments
         </p>
       </div>
@@ -338,9 +338,9 @@ export default function Roles() {
 
             {loadError && roles.length === 0 ? null : roles.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Shield className="h-12 w-12 text-[rgb(var(--color-muted-foreground))] mb-4" />
+                <Shield className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No roles found</h3>
-                <p className="text-sm text-[rgb(var(--color-muted-foreground))] mb-4">
+                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
                   Get started by creating your first role.
                 </p>
                 <Button onClick={() => setCreateDialogOpen(true)}>
@@ -367,12 +367,12 @@ export default function Roles() {
                           to={`/roles/${role.id}`}
                           className="flex items-center gap-2 hover:underline"
                         >
-                          <Shield className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+                          <Shield className="h-4 w-4 text-[var(--color-muted-foreground)]" />
                           {role.name}
                         </Link>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm text-[rgb(var(--color-muted-foreground))]">
+                        <span className="text-sm text-[var(--color-muted-foreground)]">
                           {role.description || "No description"}
                         </span>
                       </TableCell>
@@ -383,7 +383,7 @@ export default function Roles() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Users className="h-4 w-4 text-[rgb(var(--color-muted-foreground))]" />
+                          <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
                           <span className="text-sm">{role.user_count}</span>
                         </div>
                       </TableCell>
@@ -409,8 +409,8 @@ export default function Roles() {
                             <Trash2
                               className={`h-4 w-4 ${
                                 role.is_system_role
-                                  ? "text-[rgb(var(--color-muted-foreground))]"
-                                  : "text-[rgb(var(--color-destructive))]"
+                                  ? "text-[var(--color-muted-foreground)]"
+                                  : "text-[var(--color-destructive-text)]"
                               }`}
                             />
                           </Button>

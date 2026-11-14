@@ -5,20 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "../../lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-background)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-[rgb(var(--color-primary))] text-[rgb(var(--color-primary-foreground))] shadow hover:bg-[rgb(var(--color-primary))]/90",
+          "ui-primary font-semibold",
         destructive:
-          "bg-[rgb(var(--color-destructive))] text-[rgb(var(--color-destructive-foreground))] shadow-sm hover:bg-[rgb(var(--color-destructive))]/90",
+          "bg-[var(--color-destructive)] text-[var(--color-destructive-foreground)] shadow-sm hover:bg-[var(--color-destructive)]/90",
         outline:
-          "border border-[rgb(var(--color-input))] bg-transparent shadow-sm hover:bg-[rgb(var(--color-accent))] hover:text-[rgb(var(--color-accent-foreground))]",
+          "border border-[var(--fanous-c-button-secondary-border,var(--color-input))] bg-[var(--color-secondary)] text-[var(--color-secondary-foreground)] shadow-sm hover:bg-[var(--color-accent)] hover:text-[var(--color-accent-foreground)]",
         secondary:
-          "bg-[rgb(var(--color-secondary))] text-[rgb(var(--color-secondary-foreground))] shadow-sm hover:bg-[rgb(var(--color-secondary))]/80",
-        ghost: "hover:bg-[rgb(var(--color-accent))] hover:text-[rgb(var(--color-accent-foreground))]",
-        link: "text-[rgb(var(--color-primary))] underline-offset-4 hover:underline",
+          "bg-[var(--color-secondary)] text-[var(--color-secondary-foreground)] shadow-sm hover:bg-[var(--color-secondary)]/80",
+        ghost: "hover:bg-[var(--color-accent)] hover:text-[var(--color-accent-foreground)]",
+        link: "text-[var(--color-link)] underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-4 py-2",
