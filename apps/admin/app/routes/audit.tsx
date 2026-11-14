@@ -418,7 +418,7 @@ export default function AuditLogs() {
             ) : (
               <>
                 <div className="overflow-x-auto">
-                  <Table>
+                  <Table aria-label="Audit events">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Timestamp</TableHead>
