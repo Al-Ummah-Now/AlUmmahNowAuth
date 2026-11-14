@@ -115,7 +115,7 @@ describe("admin theme: light and dark", () => {
     const css = shellThemeCss(tokens);
     const street = adminStreetCss(tokens);
     expect(css.endsWith(street)).toBe(true);
-    expect(street).toBe('html.fanous-street [data-shell="page"]{background:transparent}\nhtml.fanous-street [data-shell="page"]>main{min-height:100vh;padding-bottom:96px}');
+    expect(street).toBe('html.fanous-street{--fanous-street-opacity:var(--fanous-street-faint)}\nhtml.fanous-street [data-shell="page"]{background:transparent}\nhtml.fanous-street [data-shell="page"]>main{min-height:100vh;padding-bottom:96px}');
     const light = block(css, ":root.light"), dark = block(css, ":root.dark");
     expect(light["--fanous-street-on"]).toBe("1");
     expect(dark["--fanous-street-on"]).toBe("1");
@@ -124,6 +124,10 @@ describe("admin theme: light and dark", () => {
     const pkg = builtinPackage("fawanees")!;
     expect(dark["--fanous-street-lights"]).toBe(`url("https://auth.example/themes/assets/${pkg.assets["assets/street-lights-dark.svg"]!.hash}")`);
     expect(light["--fanous-street-lights"]).not.toBe(dark["--fanous-street-lights"]);
+    // the faint opacity per mode, and the tiles (static files on the auth origin)
+    expect(dark["--fanous-street-faint"]).toBe("0.35");
+    expect(light["--fanous-street-faint"]).toBe("1");
+    expect(dark["--fanous-street-tile-2"]).toBe('image-set(url("https://auth.example/fanous/street/street-tile-dark-2.webp") 2x)');
   });
 
   it("keeps the street next to the shell parts when a theme has both", () => {

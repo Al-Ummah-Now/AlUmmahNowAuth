@@ -16,7 +16,7 @@ import { scheduleKeepTypedBeforeHydration, TYPED_RECORDER_SCRIPT } from "./lib/k
 import { dirOf, langOf } from "./lib/deletion-copy";
 import { NAV_CSS } from "../../../packages/ui/src/nav/aun-nav.generated";
 import { PAGE_HEADER_CSS } from "../../../packages/ui/src/nav/page-header.ts";
-import { STREET_CSS_PATH, STREET_JS_PATH, streetOn } from "../../../packages/ui/src/fanous-street/index.ts";
+import { STREET_CSS_PATH, STREET_JS_PATH, STREET_VARIANT_ATTR, pickStreetVariant, streetOn } from "../../../packages/ui/src/fanous-street/index.ts";
 import { environmentOfHost, tabIconLinks } from "../../../packages/ui/src/app-icons/serve";
 
 import "./tailwind.css";
@@ -48,6 +48,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // ICO and exact-size PNGs. One build serves stage and production, so read the host
     tabIcons: tabIconLinks(environmentOfHost(new URL(request.url).hostname)),
     environment: environmentOfHost(new URL(request.url).hostname),
+    // The lantern street's tile variant, picked per response (the aun_street_variant cookie pins it)
+    streetVariant: pickStreetVariant(request.headers.get("Cookie")),
   };
 }
 
@@ -60,9 +62,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const shellCss = data?.shellCss;
   // English unless the link asks for Arabic (?lang=ar), the admin's language switch for its dialogs
   const lang = langOf(useLocation().search);
+  // The server picks the street's tile variant (loader), so the page arrives with it set
+  const streetVariant = shellCss && streetOn(shellCss) ? { [STREET_VARIANT_ATTR]: String(data?.streetVariant ?? 1) } : {};
   return (
     // The light/dark class on <html> belongs to MODE_SCRIPT (lib/color-mode.ts), never to React
-    <html lang={lang} dir={dirOf(lang)} suppressHydrationWarning>
+    <html lang={lang} dir={dirOf(lang)} suppressHydrationWarning {...streetVariant}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

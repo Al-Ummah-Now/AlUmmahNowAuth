@@ -132,6 +132,25 @@ ${modeBlock('light')}
  * The street's tokens for one mode. The shared street module reads them: --fanous-street-on 1
  * switches it on; a theme without a street sets 0.
  */
+/**
+ * The street's tiles (raster, so never inlined): a built-in theme's are served by every app at
+ * /fanous/street/<file>; an uploaded package's comes from its own asset URL. image-set(… 2x) shows
+ * the 2x tile at its CSS size, with no background-size.
+ */
+function tileTokens(street: NonNullable<ThemePackage['street']>, mode: Mode, opts: CompileOptions): string[] {
+  const url = (p: string) => (opts.assetUrl ? opts.assetUrl(p) : `/fanous/street/${p.split('/').pop()}`);
+  const files = street.tile?.[mode] ?? [];
+  const tile = (file: string) => `image-set(url("${url(file)}") 2x)`;
+  return [
+    // The first variant is the default; --fanous-street-tile-<n> are the variants the page picks
+    // from (fanous-street.css). An unused custom property never fetches its image.
+    `  --fanous-street-tile: ${files[0] ? tile(files[0]) : 'none'};`,
+    ...files.map((file, i) => `  --fanous-street-tile-${i + 1}: ${tile(file)};`),
+    `  --fanous-street-faint: ${street.faint?.[mode] ?? 1};`,
+    `  --fanous-street-lights-opacity: ${street.lightsOpacity?.[mode] ?? 1};`,
+  ];
+}
+
 function streetTokens(pkg: ThemePackage, mode: Mode, opts: CompileOptions): string[] {
   const street = pkg.street;
   // Off, explicitly: the default theme's blocks also match unthemed selectors (html:not(.dark), .dark)
@@ -143,6 +162,7 @@ function streetTokens(pkg: ThemePackage, mode: Mode, opts: CompileOptions): stri
     `  --fanous-street-window: ${street.window[mode].toLowerCase()};`,
     `  --fanous-street-glow: ${street.glow[mode]};`,
     `  --fanous-street-lights: url("${lights}");`,
+    ...tileTokens(street, mode, opts),
   ];
 }
 

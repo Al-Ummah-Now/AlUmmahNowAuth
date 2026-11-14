@@ -228,6 +228,13 @@ describe('a custom theme from duplicate to delete', () => {
 		expect(res.headers.get('Content-Type')).toBe('image/svg+xml');
 		expect(res.headers.get('Content-Security-Policy')).toContain('sandbox');
 		expect((await handleThemeAsset(ENV, 'nope')).status).toBe(404);
+		// a street tile the copy kept from Fawanees: the auth Worker's static file
+		const tile = await handleThemeAsset(ENV, assets['assets/street-tile-dark-2.webp'].hash);
+		expect(tile.status).toBe(200);
+		expect(tile.headers.get('Content-Type')).toBe('image/webp');
+		const bytes = new Uint8Array(await tile.arrayBuffer());
+		expect(new TextDecoder().decode(bytes.slice(8, 12))).toBe('WEBP');
+		expect(bytes.length).toBe(builtinPackage('fawanees')!.assets['assets/street-tile-dark-2.webp']!.size);
 	});
 
 	it('cannot be deleted while in use, then is soft-deleted: hidden everywhere, id still taken', async () => {

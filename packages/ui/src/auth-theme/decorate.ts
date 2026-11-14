@@ -36,6 +36,8 @@ export interface DecorateOptions {
 	street?: boolean;
 	/** The shared site header on top of the page. */
 	header?: SignInHeader;
+	/** This response's street variant attribute (streetVariantAttr), put on <html> with the street. */
+	streetVariant?: string;
 }
 
 /** What the sign-in pages' header needs (AlUmmahNow docs/design/NAV.md "Header"). */
@@ -76,9 +78,10 @@ export const SIGN_IN_HEADER_CSS =
 
 
 export function decorateHtml(html: string, compiled: CompiledTheme, opts: DecorateOptions): string {
+	const street = !!opts.street && streetOn(compiled.tokensCss);
 	let out = html.replace(/<html\b([^>]*)>/i, (_, attrs: string) => {
-		const cleaned = attrs.replace(/\s(?:data-theme|data-auth-page)="[^"]*"/g, '');
-		return `<html${cleaned} data-theme="${attr(compiled.id)}" data-auth-page="${opts.page}">`;
+		const cleaned = attrs.replace(/\s(?:data-theme|data-auth-page|data-fanous-street-variant)="[^"]*"/g, '');
+		return `<html${cleaned} data-theme="${attr(compiled.id)}" data-auth-page="${opts.page}"${street ? (opts.streetVariant ?? '') : ''}>`;
 	});
 
 	if (compiled.graphic && opts.page !== 'account-switcher') {
@@ -91,7 +94,7 @@ export function decorateHtml(html: string, compiled: CompiledTheme, opts: Decora
 
 	if (opts.page === 'account-switcher') out = out.replace(/<\/head>/i, `<style data-auth-theme>${compiled.pickerCss}</style></head>`);
 
-	if (opts.street && streetOn(compiled.tokensCss)) out = out.replace(/<\/head>/i, `${streetHeadTags()}</head>`);
+	if (street) out = out.replace(/<\/head>/i, `${streetHeadTags()}</head>`);
 
 	if (opts.carryTheme) {
 		const id = encodeURIComponent(opts.carryTheme);

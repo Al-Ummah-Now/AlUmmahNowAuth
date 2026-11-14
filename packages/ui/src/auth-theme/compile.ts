@@ -196,7 +196,10 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 
 /**
  * The lantern street's tokens for one scheme (the shared street module reads them):
- * --fanous-street-on 1 switches it on; a theme without a street sets 0.
+ * --fanous-street-on 1 switches it on; a theme without a street sets 0. The tiles: the first is the
+ * default, --fanous-street-tile-<n> the variants the server picks from (<html
+ * data-fanous-street-variant>); image-set(… 2x) shows each 2x tile at its CSS size, and an unused
+ * custom property never fetches its image.
  */
 export function streetTokens(t: StoredPackage['theme'], s: Scheme, fileUrl: (path: string) => string): string[] {
 	const street = t.street;
@@ -207,7 +210,15 @@ export function streetTokens(t: StoredPackage['theme'], s: Scheme, fileUrl: (pat
 		`--fanous-street-window: ${street.window[s].toLowerCase()}`,
 		`--fanous-street-glow: ${street.glow[s]}`,
 		`--fanous-street-lights: url("${fileUrl(street.lights[s])}")`,
+		...tileTokens(street.tile?.[s] ?? [], fileUrl),
+		`--fanous-street-faint: ${street.faint?.[s] ?? 1}`,
+		`--fanous-street-lights-opacity: ${street.lightsOpacity?.[s] ?? 1}`,
 	];
+}
+
+function tileTokens(files: readonly string[], fileUrl: (path: string) => string): string[] {
+	const tile = (file: string) => `image-set(url("${fileUrl(file)}") 2x)`;
+	return [`--fanous-street-tile: ${files[0] ? tile(files[0]) : 'none'}`, ...files.map((file, i) => `--fanous-street-tile-${i + 1}: ${tile(file)}`)];
 }
 
 /** OpenAuth's theme for one page: picks one of the theme's photos. */

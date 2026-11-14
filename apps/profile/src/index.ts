@@ -482,6 +482,7 @@ const worker = {
         analyticsToken: env.CF_WEB_ANALYTICS_TOKEN,
         street: true,
         path: url.pathname + url.search,
+        cookie: request.headers.get('Cookie'),
       });
 
       const headers = new Headers({

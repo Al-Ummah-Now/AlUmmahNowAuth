@@ -1902,7 +1902,7 @@
     },
     "street": {
       "type": "object",
-      "description": "The lantern street: whole lanterns hung on strings in the page's free gaps and soft distant lights behind the content. Drawn by the apps' shared street module (no code in the package); the package switches it on and gives its colours and art.",
+      "description": "The lantern street: one wide image tile of strings and lit lanterns repeated behind the whole page, over soft distant lights. No code in the package; the package switches it on and gives its art.",
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -1967,6 +1967,71 @@
               "type": "number",
               "minimum": 0,
               "maximum": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ]
+        },
+        "faint": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "dark": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ],
+          "description": "Opacity of the street where its lanterns lie behind text, chosen so every text colour keeps 4.5:1."
+        },
+        "lightsOpacity": {
+          "type": "object",
+          "properties": {
+            "light": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "dark": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "light",
+            "dark"
+          ],
+          "description": "Opacity of the distant lights layer."
+        },
+        "tile": {
+          "type": "object",
+          "description": "Wide image tiles of strings and lit lanterns, drawn at 2x and repeated in both directions behind the page; each wraps like a cylinder (left edge meets right, top meets bottom) so no joint shows. Up to 4 variants per mode: the page picks one at random before first paint and downloads only that one. A light and a dark tile at the same position are the same street.",
+          "properties": {
+            "light": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/imageAsset" },
+              "minItems": 1,
+              "maxItems": 4
+            },
+            "dark": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/imageAsset" },
+              "minItems": 1,
+              "maxItems": 4
             }
           },
           "additionalProperties": false,

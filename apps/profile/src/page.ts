@@ -4,7 +4,7 @@ import { dirFor, MESSAGES } from "./i18n";
 import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
 import { NAV_CSS } from '../../../packages/ui/src/nav/aun-nav.generated.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
-import { streetHeadTags, streetOn } from '../../../packages/ui/src/fanous-street/index.ts';
+import { streetHeadTags, streetOn, streetVariantAttr } from '../../../packages/ui/src/fanous-street/index.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
 import { FIT_TO_VIEWPORT_ES5 } from '../../../packages/ui/src/nav/menu-fit-es5.ts';
@@ -29,6 +29,8 @@ export interface HomePageOptions {
   street?: boolean;
   /** This page's path and query: the language button and Sign in keep them. */
   path?: string;
+  /** The request's Cookie header: it can pin the street's variant (visual tests); else each response picks one. */
+  cookie?: string | null;
 }
 
 /** JSON for embedding inside <script>: escapes "<" so "</script>" in data can't end the block. */
@@ -246,15 +248,17 @@ export function renderHomePage(o: HomePageOptions): string {
     signInHref: `/login?return=${encodeURIComponent(here.pathname + here.search)}`,
   });
 
+  const street = !!o.street && streetOn(theme.css);
+
   return `<!DOCTYPE html>
-<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
+<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}"${street ? streetVariantAttr(o.cookie) : ''}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${e(t.pageTitle)}</title>
     ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
     <style>${theme.css}${NAV_CSS}${STYLES}${PAGE_HEADER_CSS}</style>
-    ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
+    ${street ? streetHeadTags() : ''}
     <script>${PAGE_MODE_SCRIPT}</script>
 </head>
 <body>

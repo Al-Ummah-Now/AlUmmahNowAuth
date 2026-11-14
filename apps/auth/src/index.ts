@@ -583,7 +583,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     let issuerResponse = await timer.stage('guard.finish', () => passwordGuard.finish(issued));
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
     // and the shared site header on top (AlUmmahNow docs/design/NAV.md "Header")
-    if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin, signInHeaderFor(url, getLocaleFromRequest(request), env)));
+    if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin, signInHeaderFor(url, getLocaleFromRequest(request), env), request.headers.get('Cookie')));
     // No email: the sign-in page leaves out "Create account" and "Forgot password?"
     if (isPage && !emailAvailable && (issuerResponse.headers.get('Content-Type') ?? '').includes('text/html')) {
       issuerResponse = withoutEmailLinks(issuerResponse);

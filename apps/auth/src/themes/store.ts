@@ -4,7 +4,7 @@
  * default; AUTH_THEMES KV holds packages and asset files under their content
  * hash, so a key is written once and never changes (no stale reads).
  */
-import { BUILTIN_IDS, blobBytes, builtinBlob, builtinPackage } from '../../../../packages/ui/src/auth-theme/builtin.ts';
+import { BUILTIN_IDS, blobBytes, builtinBlob, builtinPackage, builtinStaticPath, isBuiltinFile } from '../../../../packages/ui/src/auth-theme/builtin.ts';
 import { sha256Hex } from '../../../../packages/ui/src/auth-theme/package.ts';
 import type { StoredPackage } from '../../../../packages/ui/src/auth-theme/types.ts';
 import { deletedClause } from '../deletions/store';
@@ -43,7 +43,8 @@ export class ThemeStoreUnavailable extends Error {
 }
 
 export class ThemeStore {
-	constructor(private db: D1Database, private kv: KVNamespace | undefined) {}
+	/** `files` is the auth Worker's static assets (env.ASSETS): the built-in street tiles. */
+	constructor(private db: D1Database, private kv: KVNamespace | undefined, private files?: Fetcher) {}
 
 	private get blobs(): KVNamespace {
 		if (!this.kv) throw new ThemeStoreUnavailable();
@@ -97,16 +98,26 @@ export class ThemeStore {
 	/** Stores a file; returns its content hash. */
 	async putAsset(data: Uint8Array, type: string): Promise<string> {
 		const hash = await sha256Hex(data);
-		if (!builtinBlob(hash)) await this.blobs.put(`asset:${hash}`, data, { metadata: { type } });
+		if (!isBuiltinFile(hash)) await this.blobs.put(`asset:${hash}`, data, { metadata: { type } });
 		return hash;
 	}
 
 	async getAsset(hash: string): Promise<{ data: Uint8Array; type: string } | null> {
 		const builtin = builtinBlob(hash);
 		if (builtin) return { data: blobBytes(builtin), type: builtin.type };
+		const staticPath = builtinStaticPath(hash);
+		if (staticPath) return this.getStaticAsset(staticPath);
 		if (!this.kv) return null;
 		const { value, metadata } = await this.kv.getWithMetadata<{ type?: string }>(`asset:${hash}`, 'arrayBuffer');
 		return value ? { data: new Uint8Array(value), type: metadata?.type ?? 'application/octet-stream' } : null;
+	}
+
+	/** A built-in street tile, from the auth Worker's static files (null where there are none, e.g. a script). */
+	private async getStaticAsset(path: string): Promise<{ data: Uint8Array; type: string } | null> {
+		if (!this.files) return null;
+		const res = await this.files.fetch(new Request(`https://assets.invalid${path}`));
+		if (!res.ok) return null;
+		return { data: new Uint8Array(await res.arrayBuffer()), type: res.headers.get('Content-Type')?.split(';')[0] ?? 'application/octet-stream' };
 	}
 
 	async getAssetText(hash: string): Promise<string | null> {
@@ -173,7 +184,7 @@ export class ThemeStore {
 		}
 		const hashes = new Set(packages.flatMap((p) => Object.values(p.assets).map((a) => a.hash)));
 		for (const hash of hashes) {
-			if (otherHashes.has(hash) || builtinBlob(hash)) continue;
+			if (otherHashes.has(hash) || isBuiltinFile(hash)) continue;
 			await this.kv.delete(`asset:${hash}`);
 			removedAssets++;
 		}
