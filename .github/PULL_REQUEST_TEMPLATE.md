@@ -48,6 +48,7 @@ Closes #
 - [ ] Self-review of code completed
 - [ ] Comments added for complex logic
 - [ ] Documentation updated (README, API docs, etc.)
+- [ ] **Wiki / feature registry updated**: link the AlUmmahNowWiki PR that documents this and adds or updates its entry in [`features/registry.json`](https://github.com/Al-Ummah-Now/AlUmmahNowWiki/blob/main/features/README.md) (mention this PR there as `AlUmmahNowAuth#N`), or write "no user-visible change". The release run warns about PRs the wiki doesn't mention.
 - [ ] No new warnings or errors
 - [ ] TypeScript types are correct (`pnpm type-check`)
 - [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
