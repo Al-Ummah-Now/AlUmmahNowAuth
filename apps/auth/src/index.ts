@@ -17,6 +17,7 @@ import { systemAccountGuard } from './custom/system-account-guard';
 import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
 import { withAddedRedirect, withPreviewRedirects } from "./utils/preview-redirects";
 import { allowedSiteRedirect } from "./utils/site-redirects";
+import { sessionSecretUsable } from "./utils/session-secret";
 import { createOnSuccessHandler, createSendCodeHandler } from "./handlers/auth-handlers";
 import { createRefreshCheck } from "./handlers/refresh-check";
 import { PasswordProvider } from "@al-ummah-now/openauth/provider/password";
@@ -393,8 +394,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const sessionService = new D1SessionAdapter(env.AUTH_DB);
     const tenantService = new D1TenantAdapter(env.AUTH_DB);
     // SESSION_SECRET encrypts the __session SSO cookie (A256GCM JWE). The all-zero
-    // fallback is a public key, so production refuses to run without the secret.
-    if (!env.SESSION_SECRET && env.ENVIRONMENT === 'production') {
+    // fallback is a public key: anyone could mint a session for any account. Only a
+    // local development worker may use it; every deployed env (QA, stage, production)
+    // refuses to run without the secret.
+    if (!sessionSecretUsable(env)) {
       logger.error('SESSION_SECRET is not set; refusing to issue SSO sessions with a public key');
       return new Response('Server misconfigured', { status: 503 });
     }

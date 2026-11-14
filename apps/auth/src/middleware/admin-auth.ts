@@ -105,6 +105,11 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 					issuer,
 				});
 
+				// A client_credentials token (openauth signs those with mode "m2m"), never a user token
+				if (payload.mode !== 'm2m') {
+					return c.json({ error: 'Invalid token: not an M2M token' }, 401);
+				}
+
 				// Set context values
 				const scopes = payload.scope
 					? typeof payload.scope === 'string'
