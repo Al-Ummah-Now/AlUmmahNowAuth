@@ -56,6 +56,7 @@ import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
 import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
+import { safePasswordChangeRequest } from "./security/password-change-redirect";
 import { injectTurnstile, widgetScriptUrl } from "./security/turnstile";
 import { handleModerationBatch, type ModerationQueueMessage } from './moderation/queue';
 import { createActionRunner } from './moderation/actions';
@@ -253,6 +254,8 @@ function logTiming(ctx: ExecutionContext, timer: RequestTimer, method: string, p
 }
 
 async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, requestId: string, timer: RequestTimer): Promise<Response> {
+    // Forgot-password redirect_uri: only same-origin paths or a client's registered URI (#206)
+    request = await safePasswordChangeRequest(request, env);
     const url = new URL(request.url);
 
     // Determine if running in production (test endpoints disabled in production)
