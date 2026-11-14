@@ -3,7 +3,7 @@
   "format": "alummahnow.theme-package",
   "formatVersion": 1,
   "id": "fawanees",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "name": {
     "en": "Fawanees",
     "ar": "فوانيس"
@@ -813,6 +813,28 @@
     "glow": {
       "light": 0.34,
       "dark": 0.6
+    },
+    "tile": {
+      "light": [
+        "assets/street-tile-1.webp",
+        "assets/street-tile-2.webp",
+        "assets/street-tile-3.webp",
+        "assets/street-tile-4.webp"
+      ],
+      "dark": [
+        "assets/street-tile-dark-1.webp",
+        "assets/street-tile-dark-2.webp",
+        "assets/street-tile-dark-3.webp",
+        "assets/street-tile-dark-4.webp"
+      ]
+    },
+    "faint": {
+      "light": 1,
+      "dark": 0.35
+    },
+    "lightsOpacity": {
+      "light": 1,
+      "dark": 0.85
     }
   },
   "description": {

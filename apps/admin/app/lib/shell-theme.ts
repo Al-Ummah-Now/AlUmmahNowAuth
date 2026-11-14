@@ -54,13 +54,16 @@ export function shellThemeCss(tokensCss: string): string {
  * The Fanous lantern street in the admin (design: AlUmmahNow docs/design/FAWANEES-STREET.md). It
  * follows the mode like the profile app: the street's tokens are part of the theme's per-scheme
  * blocks, so the light street shows in light mode and the dark street in dark. Here: the page
- * wrapper lets the street through (the body paints the page colour), and room for garlands.
+ * wrapper lets the street through (the body paints the page colour), room for garlands, and the
+ * street at the theme's faint opacity: page titles and subtitles sit on it, and at full strength a
+ * dark-mode lantern behind a muted subtitle leaves it near 1.2:1 (faint keeps every text colour at 4.5:1).
  * "" when the theme has no street in either scheme.
  */
 export function adminStreetCss(tokensCss: string): string {
   const on = [...tokensCss.matchAll(SCHEME_BLOCK)].some(([, , body]) => /(?:^|;)\s*--fanous-street-on:\s*1\s*(?:;|$)/.test(body));
   if (!on) return "";
   return (
+    `html.fanous-street{--fanous-street-opacity:var(--fanous-street-faint)}\n` +
     `html.fanous-street [data-shell="page"]{background:transparent}\n` +
     // Room for garlands: below short pages, and one band at the end of every page
     `html.fanous-street [data-shell="page"]>main{min-height:100vh;padding-bottom:96px}`

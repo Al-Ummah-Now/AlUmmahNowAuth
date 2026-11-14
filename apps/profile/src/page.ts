@@ -3,7 +3,7 @@ import { dirFor, MESSAGES } from "./i18n";
 import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
 import { NAV_CSS } from '../../../packages/ui/src/nav/aun-nav.generated.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
-import { streetHeadTags, streetOn } from '../../../packages/ui/src/fanous-street/index.ts';
+import { streetHeadTags, streetOn, streetVariantAttr } from '../../../packages/ui/src/fanous-street/index.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
 import { FIT_TO_VIEWPORT_ES5 } from '../../../packages/ui/src/nav/menu-fit-es5.ts';
@@ -25,6 +25,8 @@ export interface HomePageOptions {
   environment?: string;
   /** Live page: load the lantern street when the theme switches it on (the admin preview runs no scripts). */
   street?: boolean;
+  /** The request's Cookie header: it can pin the street's variant (visual tests); else each response picks one. */
+  cookie?: string | null;
 }
 
 /** JSON for embedding inside <script>: escapes "<" so "</script>" in data can't end the block. */
@@ -212,16 +214,17 @@ export function renderHomePage(o: HomePageOptions): string {
   const e = escapeHtml;
   const other: Locale = o.locale === "ar" ? "en" : "ar";
   const isLoggedIn = o.user !== null;
+  const street = !!o.street && streetOn(theme.css);
 
   return `<!DOCTYPE html>
-<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
+<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}"${street ? streetVariantAttr(o.cookie) : ''}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${e(t.pageTitle)}</title>
     ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
     <style>${theme.css}${NAV_CSS}${STYLES}</style>
-    ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
+    ${street ? streetHeadTags() : ''}
 </head>
 <body>
     <header class="navbar">

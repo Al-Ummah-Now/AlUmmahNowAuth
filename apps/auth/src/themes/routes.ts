@@ -21,7 +21,7 @@ import { softDeleteRoute } from '../deletions/routes';
 type Vars = { adminUser: { userId: string; email: string; roles: string[] } | null; tenantId: string };
 type AdminContext = Context<{ Bindings: Env; Variables: Vars }>;
 
-const serviceOf = (env: Env) => new ThemeService(new ThemeStore(env.AUTH_DB, env.AUTH_THEMES));
+const serviceOf = (env: Env) => new ThemeService(new ThemeStore(env.AUTH_DB, env.AUTH_THEMES, env.ASSETS));
 
 function actorOf(c: AdminContext): Actor {
 	const admin = c.get('adminUser');
@@ -94,7 +94,7 @@ adminThemeRoutes.post(
 		const lang = body.lang === 'ar' ? 'ar' : 'en';
 		const scheme = body.scheme === 'dark' ? 'dark' : 'light';
 		const env = c.env;
-		const store = new ThemeStore(env.AUTH_DB, env.AUTH_THEMES);
+		const store = new ThemeStore(env.AUTH_DB, env.AUTH_THEMES, env.ASSETS);
 		const service = new ThemeService(store);
 		const url = new URL(c.req.url);
 		const assetBase = assetBaseOf(env, url);
@@ -182,7 +182,7 @@ const PUBLIC_HEADERS = { 'Access-Control-Allow-Origin': '*', 'X-Content-Type-Opt
 
 /** GET /themes: published Auth themes (ids and names) apps may pass as ?theme=. */
 export async function handlePublicThemeList(env: Env): Promise<Response> {
-	const store = new ThemeStore(env.AUTH_DB, env.AUTH_THEMES);
+	const store = new ThemeStore(env.AUTH_DB, env.AUTH_THEMES, env.ASSETS);
 	const settings = await themeSettings(store);
 	const rows = Object.keys(settings.published).length ? await store.listRows().catch(() => []) : [];
 	const themes = [
@@ -196,7 +196,7 @@ export async function handlePublicThemeList(env: Env): Promise<Response> {
 
 /** GET /themes/resolve?client_id=&theme=: the theme a client's pages get, with its token CSS (profile, admin shell). */
 export async function handleThemeResolve(env: Env, url: URL): Promise<Response> {
-	const store = new ThemeStore(env.AUTH_DB, env.AUTH_THEMES);
+	const store = new ThemeStore(env.AUTH_DB, env.AUTH_THEMES, env.ASSETS);
 	const requested = url.searchParams.get('theme');
 	const { compiled, source } = await resolveRequestTheme(store, {
 		requested: requested && /^[a-z][a-z0-9-]{1,39}$/.test(requested) ? requested : null,
@@ -211,7 +211,7 @@ export async function handleThemeResolve(env: Env, url: URL): Promise<Response> 
 /** GET /themes/assets/<sha256>: a theme file. Immutable; SVG can't run script here. */
 export async function handleThemeAsset(env: Env, hash: string): Promise<Response> {
 	if (!/^[0-9a-f]{64}$/.test(hash)) return new Response('Not found', { status: 404 });
-	const asset = await new ThemeStore(env.AUTH_DB, env.AUTH_THEMES).getAsset(hash);
+	const asset = await new ThemeStore(env.AUTH_DB, env.AUTH_THEMES, env.ASSETS).getAsset(hash);
 	if (!asset) return new Response('Not found', { status: 404 });
 	return new Response(asset.data, {
 		headers: {
