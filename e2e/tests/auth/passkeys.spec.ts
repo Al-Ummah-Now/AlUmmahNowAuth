@@ -83,6 +83,18 @@ async function signUpToCard(page: Page, email: string): Promise<void> {
   await expect(page.locator('[data-page="passkey"]')).toBeVisible({ timeout: 20000 });
 }
 
+/**
+ * The hub's Passkeys card shows no error: the list loaded (empty text or rows) and the
+ * status line is not in its error tone. Catches "Something went wrong. Try again." on load.
+ */
+async function expectCardHealthy(page: Page): Promise<void> {
+  const card = page.locator('#passkeys');
+  await expect(card).toBeVisible({ timeout: 15000 });
+  await expect(card.locator('#passkeysEmpty:visible, #passkeyList [data-passkey-id]').first()).toBeVisible({ timeout: 15000 });
+  await expect(card.locator('#passkeyStatus[data-tone="error"]')).toHaveCount(0);
+  await expect(card.locator('[data-tone="error"], .error-message')).toHaveCount(0);
+}
+
 /** Sign out of the profile app, drop every cookie and open it again (it sends the browser to sign-in). */
 async function signOutClean(page: Page, context: BrowserContext): Promise<void> {
   await Promise.all([
@@ -115,6 +127,7 @@ test.describe('Passkeys', () => {
 
     // The hub lists it
     await expect(page.locator('#passkeyList [data-passkey-id]')).toHaveCount(1, { timeout: 15000 });
+    await expectCardHealthy(page);
 
     // Autofill (conditional UI): signed out with no cookies, the sign-in page offers the
     // passkey and the virtual authenticator (automatic presence) picks it, so the user is
@@ -142,6 +155,7 @@ test.describe('Passkeys', () => {
 
     const rows = page.locator('#passkeyList [data-passkey-id]');
     await expect(page.locator('#passkeysEmpty')).toBeVisible({ timeout: 15000 });
+    await expectCardHealthy(page);
     // "Add a passkey" opens the Auth setup page; the passkey is made there, then Continue comes back
     await page.locator('#passkeyAdd').click();
     await expect(page.locator('[data-page="passkey"]')).toBeVisible({ timeout: 15000 });
@@ -173,5 +187,6 @@ test.describe('Passkeys', () => {
     // The restored passkey persists across a reload
     await page.reload();
     await expect(rows).toHaveCount(1, { timeout: 15000 });
+    await expectCardHealthy(page);
   });
 });
