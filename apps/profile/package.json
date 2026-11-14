@@ -17,7 +17,7 @@
     "types": "wrangler types --env-file .dev.vars.example --strict-vars=false"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.51",
+    "@al-ummah-now/openauth": "1.0.52",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
