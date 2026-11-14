@@ -21,7 +21,7 @@
     "types": "wrangler types --env-file .dev.vars.example --strict-vars=false"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.53",
+    "@al-ummah-now/openauth": "1.0.54",
     "@al-ummah-now/ui": "workspace:*",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.11",
