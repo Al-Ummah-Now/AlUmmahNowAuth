@@ -1,9 +1,9 @@
 {
   "repo": "Al-Ummah-Now/AlUmmahNow",
-  "ref": "a7b688d183b06ee4ac25ea740e8af1d2784138fd",
+  "ref": "0f304fc53905c208aa5bf63a2418f077b75178a4",
   "source": "packages/fanous-tokens/nav/aun-nav.css",
-  "sourceSha256": "cb7718a6c8f581f667dc7a8c291e237efe1559ed80fec504da27f8bbb30f1233",
-  "output": "37ddbce36cb1942e2e6becdb8a39074eef53b0f48ff3630a760c868bb9fbcb75",
+  "sourceSha256": "c673ea98ce7da3f91f0ba3c10a9e8fbf54f96820b760b60e2b749bb243461030",
+  "output": "1fd2a837ced09e70ede9c93d9479dc4f8654bbf4f439f32b74a1f3d1aa743fa6",
   "icons": {
     "apps/admin/public/aun-nav/icons/www.webp": "b0feb2c79ff71890862210489b49db96fb0d90f58d7818279f6bec53ae032b56",
     "apps/admin/public/aun-nav/icons/videos.webp": "856d631b870c5805002379271469e1dd475a23f3b07d61f5141b7f8149fd3366",
@@ -12,11 +12,11 @@
     "apps/admin/public/aun-nav/icons/admin.webp": "33d3ae62ec9a9cf98b65c3d04007c1cdbfd12a8633b506c0b610c35a43074c81",
     "apps/admin/public/aun-nav/icons/auth-admin.webp": "61f4fd5b7dc27ccc009d7dd0b8f8488d6a989800644d1f69fc5896ad1430764f",
     "apps/admin/public/brand/logo-64.webp": "c51a8d293fe139cf4682aace98b21c95bada76b69ba88dce7342f040712845a3",
-    "packages/ui/src/nav/aun-nav-icons.generated.ts": "aa14bb4d3ba18414bea1faa98f121fe48f1543987a12cd0d26c322e5cd1fbd7b"
+    "packages/ui/src/nav/aun-nav-icons.generated.ts": "10445df2d117d92f04bcaccc8e510300fcb2434ca5973f1ca238f3b7eef34d9b"
   },
   "files": {
-    "packages/ui/src/nav/header.js": "2befeb44d549143e8cc466f7b091bd4117065cef14ffba3c6a0113a470cd8eda",
-    "packages/ui/src/nav/header.d.ts": "f9bb4518188e41d53370e6ee5fe1523409d792c2f93a151c7eb87332838e3b02",
+    "packages/ui/src/nav/header.js": "9b788b238d4ccefbf3078312bbd7190db0dd708487fe495aeb08ec909d32b52e",
+    "packages/ui/src/nav/header.d.ts": "c6a8786b29faf26f00f8235fa8fda0baf9d0768db37cc5cedd8b8462f1cc35db",
     "packages/ui/src/nav/mode-toggle.js": "a05f5544599c1364710427baf455213cbd5a2655a38e791e9cc055580db55a7b",
     "packages/ui/src/nav/mode-toggle.d.ts": "c57c9674622027069eb1fa5b05b4268a187c557b0bd714c6698a39efce3c682e"
   }
