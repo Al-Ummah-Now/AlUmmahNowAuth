@@ -33,6 +33,8 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
 	const theme = openauthThemeFor(compiled, () => 0);
 	const render = { theme, locale: lang, direction } as const;
 	const req = new Request(`${opts.issuer}/password/authorize?lang=${lang}&auth_flow=preview`);
+	// The live pages' header (AlUmmahNow docs/design/NAV.md "Header")
+	const header = { lang, url: new URL(req.url), issuer: opts.issuer, home: opts.profileUrl };
 
 	if (page === 'profile') {
 		const html = renderHomePage({
@@ -59,7 +61,7 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
 			allowAddAccount: true,
 			locale: lang,
 		});
-		return inert(decorateHtml(html, compiled, { page: 'account-switcher', forceScheme: scheme }));
+		return inert(decorateHtml(html, compiled, { page: 'account-switcher', forceScheme: scheme, header }));
 	}
 
 	let response: Response;
@@ -86,7 +88,7 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
 			response = await ui.login(req, undefined, undefined, render);
 			kind = 'sign-in';
 	}
-	return inert(decorateHtml(await response.text(), compiled, { page: kind, forceScheme: scheme }));
+	return inert(decorateHtml(await response.text(), compiled, { page: kind, forceScheme: scheme, header }));
 }
 
 /** No scripts, no form posts: the frame shows the page only. */

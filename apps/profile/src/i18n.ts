@@ -3,8 +3,6 @@ import type { Locale } from "./apps";
 export const LOCALES: readonly Locale[] = ["en", "ar"];
 const en = {
   pageTitle: "Al Ummah Now - User Profile",
-  brand: "Al Ummah Now",
-  brandApp: "Profile",
   appsButton: "Al Ummah Now apps",
   appsHeading: "Your apps",
   appsSubheading: "Jump to another Al Ummah Now app. You stay signed in.",
@@ -12,8 +10,6 @@ const en = {
   groupAdmin: "Administration",
   current: "You're here",
   open: "Open",
-  switchLanguage: "العربية",
-  switchLanguageLabel: "التبديل إلى العربية",
   signIn: "Sign In",
   signOut: "Sign out",
   heroTitle: "Welcome to Your Profile",
@@ -77,8 +73,6 @@ export type Messages = typeof en;
 
 const ar: Messages = {
   pageTitle: "الأمة الآن - الملف الشخصي",
-  brand: "الأمة الآن",
-  brandApp: "الملف الشخصي",
   appsButton: "تطبيقات الأمة الآن",
   appsHeading: "تطبيقاتك",
   appsSubheading: "انتقل إلى تطبيق آخر من تطبيقات الأمة الآن دون الحاجة لتسجيل الدخول من جديد.",
@@ -86,8 +80,6 @@ const ar: Messages = {
   groupAdmin: "الإدارة",
   current: "أنت هنا",
   open: "فتح",
-  switchLanguage: "English",
-  switchLanguageLabel: "Switch to English",
   signIn: "تسجيل الدخول",
   signOut: "تسجيل الخروج",
   heroTitle: "مرحبًا بك في ملفك الشخصي",

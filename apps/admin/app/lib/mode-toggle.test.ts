@@ -1,5 +1,5 @@
 /**
- * The Light / Dark control in the accounts admin (app/lib/mode-toggle.ts)
+ * The Light / Dark control in the accounts admin (app/lib/mode-toggle.ts, the vendored packages/ui/src/nav/mode-toggle.js)
  * is an exact copy of AlUmmahNow packages/fanous-tokens/nav/mode-toggle.js, whose markup the
  * videos site checks against lucide-react 0.487. Pinned here so a drift fails in this repo too.
  */

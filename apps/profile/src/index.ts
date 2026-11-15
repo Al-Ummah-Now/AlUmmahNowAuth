@@ -481,6 +481,7 @@ const worker = {
         clientId: PROFILE_CLIENT_ID,
         analyticsToken: env.CF_WEB_ANALYTICS_TOKEN,
         street: true,
+        path: url.pathname + url.search,
       });
 
       const headers = new Headers({

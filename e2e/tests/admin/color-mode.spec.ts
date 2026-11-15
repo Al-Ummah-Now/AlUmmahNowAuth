@@ -1,7 +1,8 @@
 /**
  * Light and dark in the accounts admin (apps/admin/app/lib/color-mode.ts), the same switch as the
- * videos site: the Sun/Moon button at the foot of the side rail, the choice saved in
- * localStorage `theme`, the device's mode until the first choice, no flash on reload.
+ * videos site: the Sun/Moon button in the shared header (AlUmmahNow docs/design/NAV.md "Header":
+ * language, then light/dark), the choice saved in localStorage `theme`, the device's mode until
+ * the first choice, no flash on reload.
  *
  * - toggle → reload keeps the mode, and the saved choice wins over the device;
  * - every admin route renders in light and in dark with the theme's tokens for that mode and no
@@ -68,6 +69,8 @@ test.describe('Accounts admin: light and dark', () => {
 		// first visit: the device's mode
 		expect(await htmlMode(page)).toBe('dark');
 		const toggle = page.getByTestId('theme-toggle');
+		// in the header, right after the language button
+		await expect(page.locator('[data-shell="header"] .aun-lang + .aun-mode')).toHaveCount(1);
 		await expect(toggle).toHaveAttribute('aria-label', 'Switch to light mode');
 		// the videos site's icons (app/lib/mode-toggle.ts, Lucide 0.487): the Sun while dark
 		await expect(toggle.locator('svg.lucide-sun')).toBeVisible();
@@ -171,15 +174,14 @@ test.describe('Accounts admin: light and dark', () => {
 		}
 	});
 
-	test('phone: the switch is in the drawer, and every list page passes axe', async ({ page }) => {
+	test('phone: the switch stays in the header, and every list page passes axe', async ({ page }) => {
 		await loginAdmin(page, TEST_USERS.admin().email);
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto(url('/'));
 		await shell(page);
-		await expect(page.getByTestId('theme-toggle')).toBeHidden();
-		await page.getByRole('button', { name: 'Open menu' }).click();
 		const toggle = page.getByTestId('theme-toggle');
 		await expect(toggle).toBeVisible();
+		await expect(page.locator('[data-shell="sidebar"] [data-testid="theme-toggle"]')).toHaveCount(0);
 		const before = await htmlMode(page);
 		await toggle.click();
 		expect(await htmlMode(page)).toBe(before === 'dark' ? 'light' : 'dark');

@@ -166,7 +166,7 @@ jobs:
       - name: Built-in theme packages are valid and bundled
         run: pnpm themes:check
 
-      - name: Shared nav stylesheet matches its lock (AlUmmahNow docs/design/NAV.md)
+      - name: Shared nav stylesheet, header builders, light/dark control and icons match their lock (AlUmmahNow docs/design/NAV.md)
         run: pnpm nav:check
 
   unit-tests:
