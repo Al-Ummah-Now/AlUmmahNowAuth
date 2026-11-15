@@ -109,10 +109,13 @@ test.describe('Accounts admin: light and dark', () => {
 			for (const route of routes) {
 				const res = await page.goto(url(route));
 				// Every route, not just the first without the shell: name where it landed and why
-				const hasShell = await page.locator('[data-shell="sidebar"]').waitFor({ state: 'attached', timeout: 15000 }).then(() => true, () => false);
+				const hasShell = await page.locator('[data-shell="sidebar"]').waitFor({ state: 'attached', timeout: 5000 }).then(() => true, () => false);
 				if (!hasShell) {
 					const heading = (await page.locator('h1, h2').first().textContent({ timeout: 1000 }).catch(() => null))?.trim().slice(0, 80);
-					problems.push(`${route} ${mode}: no admin shell; landed on ${new URL(page.url()).pathname} (HTTP ${res?.status() ?? '?'}) "${heading ?? ''}"`);
+					const problem = `${route} ${mode}: no admin shell; landed on ${new URL(page.url()).pathname} (HTTP ${res?.status() ?? '?'}) "${heading ?? ''}"`;
+					problems.push(problem);
+					// Printed at once: a timeout later must not hide it
+					console.log(`[color-mode] ${problem}`);
 					continue;
 				}
 				await page.waitForLoadState('networkidle').catch(() => {});
