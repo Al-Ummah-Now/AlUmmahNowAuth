@@ -3,19 +3,19 @@
  * profile app: brand, QA/stage badge (never on production or local dev), Website and Videos,
  * language (keeps the page and query), light/dark (the choice wins over the device, before first
  * paint), then the account menu on the profile, nothing on the sign-in page itself. 64px bar,
- * 56px on phones; no axe violations (WCAG 2.2 AA) in the header in either mode or language.
+ * 56px on phones; no axe violations in the header (WCAG 2.2 AA plus label-content-name-mismatch,
+ * e2e/utils/header-axe.ts) in English and Arabic: no aria-label on the language button.
  *
  * Fawanees is asked for with ?theme= (no environment's theme changes).
  */
 import { test, expect, type Page } from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
 import { register } from '../../fixtures/auth';
+import { HEADER, headerAxe } from '../../utils/header-axe';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 // Registers with the test password: traces would record it. See e2e/utils/secret-input.ts.
 test.use({ trace: 'off' });
 
-const HEADER = '[data-testid="aun-header"]';
 const authHost = new URL(TEST_URLS.authServer).hostname;
 const ENVIRONMENT = authHost.includes('.qa.') ? 'qa' : authHost.includes('.stage.') ? 'stage' : authHost === 'localhost' ? 'local' : 'production';
 const htmlMode = (page: Page) => page.evaluate(() => (document.documentElement.classList.contains('dark') ? 'dark' : 'light'));
@@ -29,11 +29,6 @@ const controls = (page: Page) =>
 				return ['aun-brand', 'aun-env', 'aun-apps', 'aun-lang', 'aun-acct-btn', 'aun-signin'].find((c) => el.classList.contains(c))!;
 			}),
 	);
-
-async function headerAxe(page: Page, label: string): Promise<string[]> {
-	const result = await new AxeBuilder({ page }).include(HEADER).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
-	return result.violations.map((v) => `${label}: ${v.id} ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
-}
 
 async function openSignIn(page: Page): Promise<void> {
 	await page.goto(`${TEST_URLS.profileApp}/?theme=fawanees`);
@@ -72,6 +67,7 @@ test.describe('Sign-in header', () => {
 		for (const [k, v] of before.searchParams) if (k !== 'lang') expect(after.searchParams.get(k)).toBe(v);
 		await expect(page.locator(HEADER).locator('.aun-brand-app')).toHaveText('الحساب');
 		await expect(page.locator(`${HEADER} .aun-lang`)).toHaveAccessibleName('التبديل إلى الإنجليزية: English');
+		await expect(page.locator(`${HEADER} .aun-lang`)).not.toHaveAttribute('aria-label');
 		await expect(page.locator('input[type="password"]')).toBeVisible();
 		expect(await headerAxe(page, 'ar')).toEqual([]);
 	});
@@ -133,6 +129,11 @@ test.describe('Profile header', () => {
 		await expect(page.locator(`${HEADER} .aun-acct-btn`)).toHaveCount(0);
 		expect(errors).toEqual([]);
 		expect(await headerAxe(page, 'profile signed out')).toEqual([]);
+		await page.locator(`${HEADER} .aun-lang`).click();
+		await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+		await expect(page.locator(`${HEADER} .aun-lang`)).not.toHaveAttribute('aria-label');
+		expect(await headerAxe(page, 'profile signed out ar')).toEqual([]);
+		expect(errors).toEqual([]);
 	});
 
 	test('signed in: the shared header with the account menu last; language keeps the query; light/dark', async ({ page }) => {

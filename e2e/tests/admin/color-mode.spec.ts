@@ -6,7 +6,8 @@
  *
  * - toggle → reload keeps the mode, and the saved choice wins over the device;
  * - every admin route renders in light and in dark with the theme's tokens for that mode and no
- *   axe violations (WCAG 2.2 AA);
+ *   axe violations (WCAG 2.2 AA); the header also passes label-content-name-mismatch
+ *   (e2e/utils/header-axe.ts) in English and Arabic;
  * - Arabic (?lang=ar): the shell is RTL, the switch speaks Arabic and still works.
  *
  * Fawanees is asked for with ?theme= (no environment's theme changes). The per-run admin account
@@ -16,6 +17,7 @@ import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { loginAdmin } from '../../fixtures/admin';
 import { TEST_URLS, TEST_USERS } from '../../utils/test-data';
+import { HEADER, headerAxe } from '../../utils/header-axe';
 
 // Signs in and promotes with test secrets: no trace (same rule as the other admin specs)
 test.use({ trace: 'off' });
@@ -104,6 +106,11 @@ test.describe('Accounts admin: light and dark', () => {
 		await page.locator('[data-shell="sidebar"] a[href^="/users"]').click();
 		await expect(page).toHaveURL(/\/users/);
 		expect(await htmlMode(page)).toBe('dark');
+		// the header in English, both modes (the language button: no aria-label, hidden prefix + visible name)
+		await expect(page.locator(`${HEADER} .aun-lang`)).not.toHaveAttribute('aria-label');
+		expect(await headerAxe(page, 'en dark')).toEqual([]);
+		await toggle.click();
+		expect(await headerAxe(page, 'en light')).toEqual([]);
 	});
 
 	test('every admin route renders in light and dark with no axe violations', async ({ page }) => {
@@ -171,7 +178,9 @@ test.describe('Accounts admin: light and dark', () => {
 			await shell(page);
 			const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
 			expect(result.violations.map((v) => `${mode}: ${v.id}`)).toEqual([]);
+			expect(await headerAxe(page, `ar ${mode}`)).toEqual([]);
 		}
+		await expect(page.locator(`${HEADER} .aun-lang`)).not.toHaveAttribute('aria-label');
 	});
 
 	test('phone: the switch stays in the header, and every list page passes axe', async ({ page }) => {
