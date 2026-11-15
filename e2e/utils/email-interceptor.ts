@@ -26,8 +26,15 @@ const E2E_DOMAIN = '@e2e.alummahnow.net';
 /**
  * Reads a code from auth's E2E sink (QA/stage; apps/auth/src/utils/e2e-sink.ts).
  * consume=1 deletes it on read, so the next call waits for the next code sent.
+ *
+ * The sink is KV: after a read (or the consume delete) of an address's key, that
+ * location can keep answering "missing" for up to about 60 s, even once the next
+ * code is written (KV caches the miss). A second code for the same address (sign
+ * up, then reset) therefore polls past that window instead of giving up at 20 s.
  */
-async function readSinkCode(email: string, timeoutMs = 20000): Promise<string | null> {
+export const SINK_POLL_TIMEOUT_MS = 75_000;
+
+async function readSinkCode(email: string, timeoutMs = SINK_POLL_TIMEOUT_MS): Promise<string | null> {
   const url = `${AUTH_SERVER_URL}/test/email/${encodeURIComponent(email)}?consume=1`;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
