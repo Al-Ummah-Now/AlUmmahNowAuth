@@ -241,4 +241,12 @@ describe('Admin > Signing keys', () => {
 		expect(sent).toEqual([expect.objectContaining({ trigger: 'admin', adminId: 'usr_admin', force: true })]);
 		expect((await call('DELETE', 'Super Admin')).status).toBe(405);
 	});
+
+	it('retry: runs the step again without starting a rotation', async () => {
+		const res = await call('POST', 'Super Admin', { action: 'retry' });
+		expect(res.status).toBe(202);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]).toMatchObject({ trigger: 'admin', adminId: 'usr_admin' });
+		expect(sent[0].force).toBeUndefined();
+	});
 });

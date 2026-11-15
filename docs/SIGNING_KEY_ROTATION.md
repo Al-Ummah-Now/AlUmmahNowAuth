@@ -46,7 +46,7 @@ Steps are idempotent: a step does only what the key index says is due.
 - the last run (`status`);
 - `canRotate`.
 
-`POST /admin/settings/signing-keys` with `{ "action": "rotate" }` (Super Admin) answers `202` once the step is queued. It answers `503` if the queue is unavailable; that failure is flagged too. It's rate-limited by `ADMIN_SENSITIVE_LIMITER`.
+`POST /admin/settings/signing-keys` (Super Admin) answers `202` once the step is queued. `{ "action": "rotate" }` starts a rotation now. `{ "action": "retry" }` runs the step again after a flagged failure, without starting a rotation. It answers `503` if the queue is unavailable; that failure is flagged too. It's rate-limited by `ADMIN_SENSITIVE_LIMITER`.
 
 ## Audit and failures
 
