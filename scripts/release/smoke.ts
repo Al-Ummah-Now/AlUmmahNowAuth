@@ -138,6 +138,9 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 			url.searchParams.set('redirect_uri', client.redirect(hosts));
 			url.searchParams.set('response_type', 'code');
 			url.searchParams.set('state', 'release-smoke');
+			// Public clients must send PKCE S256 (#211); a fixed, well-formed challenge
+			url.searchParams.set('code_challenge', 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+			url.searchParams.set('code_challenge_method', 'S256');
 			// Follow auth-server redirects (carrying cookies) to the page a user would see
 			let res = await get(url.toString());
 			let current = url;
