@@ -1,4 +1,4 @@
-import { Link, useLocation, useSearchParams } from "react-router";
+import { Link, useLocation, useRouteLoaderData, useSearchParams } from "react-router";
 import {
   LayoutDashboard,
   Users,
@@ -14,14 +14,15 @@ import {
   Trash2,
   KeyRound,
 } from "lucide-react";
-import { Button } from "./ui/button";
 import { AccountSwitcher } from "@al-ummah-now/ui";
 import { otherApps } from "../lib/app-links";
 import { langOf } from "../lib/deletion-copy";
-import { shellCopy, withLang, type NavKey } from "../lib/shell-copy";
+import { langSwitchHref, shellCopy, withLang, type NavKey } from "../lib/shell-copy";
+import { publicAppLinks } from "../../../../packages/ui/src/nav/page-header.ts";
+import { AppLinks, Brand, EnvBadge, LangButton } from "./site-header";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "../lib/utils";
-import { useState, useCallback } from "react";
+import { useState } from "react";
 
 interface NavItem {
   key: NavKey;
@@ -55,6 +56,7 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
   const t = shellCopy(lang);
+  const environment = useRouteLoaderData<{ environment?: string }>("root")?.environment;
   // Use lazy initializer to load from localStorage - avoids effect-based setState
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -73,9 +75,7 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
   };
 
   // Close mobile menu when navigating - called on link clicks
-  const closeMobileMenu = useCallback(() => {
-    setMobileOpen(false);
-  }, []);
+  const closeMobileMenu = () => setMobileOpen(false);
 
   const isActive = (href: string) => {
     if (href === "/") {
@@ -86,60 +86,51 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
 
   return (
     <div data-shell="page" className="min-h-screen bg-[var(--color-background)]">
-      {/* Top Navigation: dark in every theme and mode (AlUmmahNow docs/design/NAV.md) */}
-      <nav data-shell="header" className="shell-header fixed top-0 inset-x-0 z-50 border-b border-[var(--fanous-c-nav-border)] text-[var(--fanous-c-nav-text)]">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {/* Mobile menu toggle */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="lg:hidden text-[var(--fanous-c-nav-icon)] hover:bg-[var(--fanous-c-nav-hover)] hover:text-[var(--fanous-c-nav-text)]"
-                onClick={() => setMobileOpen(!mobileOpen)}
-                aria-label={mobileOpen ? t.closeMenu : t.openMenu}
-                aria-expanded={mobileOpen}
-                aria-controls="admin-rail"
-              >
-                {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </Button>
-              {/* Desktop collapse toggle */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="hidden lg:flex text-[var(--fanous-c-nav-icon)] hover:bg-[var(--fanous-c-nav-hover)] hover:text-[var(--fanous-c-nav-text)]"
-                onClick={toggleCollapsed}
-                title={collapsed ? t.expand : t.collapse}
-                aria-label={collapsed ? t.expand : t.collapse}
-                aria-pressed={collapsed}
-              >
-                {collapsed ? <Menu className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5 rtl:-scale-x-100" />}
-              </Button>
-            </div>
-            <Link to={withLang("/", lang)} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <img
-                src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png"
-                alt={t.brand}
-                className="h-9 w-9 rounded-lg"
-              />
-              <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-[var(--fanous-c-nav-text)]">{t.brand}</h1>
-                <p className="text-xs text-[var(--fanous-c-nav-active-text)]">{t.app}</p>
-              </div>
-            </Link>
-            <div className="flex items-center gap-2">
-              {user && authServerUrl && (
-                <AccountSwitcher
-                  authServerUrl={authServerUrl}
-                  currentUser={user}
-                  apps={otherApps(authServerUrl)}
-                  clientId="1448ed27-39a6-417d-b4c8-07f881e81269"
-                />
-              )}
-            </div>
-          </div>
+      {/* The shared header (AlUmmahNow docs/design/NAV.md "Header"): drawer toggle, brand, QA/stage
+          badge, then Website and Videos, language, light/dark and the account menu. Dark in every
+          theme and mode; a theme's header material is its background (.shell-header) */}
+      <header data-shell="header" data-testid="aun-header" className="aun-header shell-header" style={{ zIndex: 50 }}>
+        {/* Phones and tablets: open the drawer. Desktop: collapse the rail */}
+        <span className="contents lg:hidden">
+          <button
+            type="button"
+            className="aun-icon-btn"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label={mobileOpen ? t.closeMenu : t.openMenu}
+            aria-expanded={mobileOpen}
+            aria-controls="admin-rail"
+          >
+            {mobileOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+          </button>
+        </span>
+        <span className="hidden lg:contents">
+          <button
+            type="button"
+            className="aun-icon-btn"
+            onClick={toggleCollapsed}
+            title={collapsed ? t.expand : t.collapse}
+            aria-label={collapsed ? t.expand : t.collapse}
+            aria-pressed={collapsed}
+          >
+            {collapsed ? <Menu aria-hidden="true" /> : <ChevronLeft aria-hidden="true" className="rtl:-scale-x-100" />}
+          </button>
+        </span>
+        <Brand lang={lang} href={withLang("/", lang)} app={t.app} />
+        <EnvBadge environment={environment} lang={lang} />
+        <div className="aun-header-tools">
+          <AppLinks lang={lang} links={authServerUrl ? publicAppLinks(authServerUrl, lang) : []} />
+          <LangButton lang={lang} href={langSwitchHref(location.pathname, location.search, lang)} />
+          <ThemeToggle lang={lang} />
+          {user && authServerUrl && (
+            <AccountSwitcher
+              authServerUrl={authServerUrl}
+              currentUser={user}
+              apps={otherApps(authServerUrl)}
+              clientId="1448ed27-39a6-417d-b4c8-07f881e81269"
+            />
+          )}
         </div>
-      </nav>
+      </header>
 
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -154,7 +145,8 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
         id="admin-rail"
         data-shell="sidebar"
         className={cn(
-          "shell-rail fixed start-0 top-[57px] bottom-0 z-40 transition-all duration-300",
+          // below the header: 56px on phones, 64px from 640px (NAV.md "Header")
+          "shell-rail fixed start-0 top-14 sm:top-16 bottom-0 z-40 transition-all duration-300",
           // Desktop: show based on collapsed state
           "hidden lg:block",
           collapsed ? "lg:w-16" : "lg:w-56",
@@ -181,17 +173,14 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
             ))}
           </nav>
 
-          {/* Light / dark, at the foot of the rail (NAV.md: apps with a side rail put it there) */}
-          <div className={cn("shell-foot flex items-center p-3", collapsed && !mobileOpen ? "lg:justify-center" : "")}>
-            <ThemeToggle lang={lang} />
-          </div>
         </div>
       </aside>
 
       {/* Main Content */}
       <main
         className={cn(
-          "pt-[57px] transition-all duration-300",
+          // the header is sticky above it (NAV.md "Header")
+          "transition-all duration-300",
           // Desktop: adjust padding based on collapsed state
           collapsed ? "lg:ps-16" : "lg:ps-56",
           // Mobile: no side padding

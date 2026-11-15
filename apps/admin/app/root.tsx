@@ -14,6 +14,7 @@ import { fetchShellTheme } from "./lib/shell-theme";
 import { MODE_SCRIPT } from "./lib/color-mode";
 import { dirOf, langOf } from "./lib/deletion-copy";
 import { NAV_CSS } from "../../../packages/ui/src/nav/aun-nav.generated";
+import { PAGE_HEADER_CSS } from "../../../packages/ui/src/nav/page-header.ts";
 import { STREET_CSS_PATH, STREET_JS_PATH, streetOn } from "../../../packages/ui/src/fanous-street/index.ts";
 import { environmentOfHost, tabIconLinks } from "../../../packages/ui/src/app-icons/serve";
 
@@ -41,9 +42,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_ID?: string } | undefined;
   return {
     shellCss: await fetchShellTheme(getAuthServerUrl(request, env), getOAuthClientId(env), fetch, new URL(request.url).searchParams.get("theme")),
-    // QA and stage tabs get a corner dot (SVG); production the ICO and exact-size PNGs. One build
-    // serves stage and production, so read the host
+    // QA and stage tabs get a corner dot (SVG) and the header a QA / STAGE badge; production the
+    // ICO and exact-size PNGs. One build serves stage and production, so read the host
     tabIcons: tabIconLinks(environmentOfHost(new URL(request.url).hostname)),
+    environment: environmentOfHost(new URL(request.url).hostname),
   };
 }
 
@@ -70,8 +72,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <link key={l.href} rel="icon" href={l.href} type={l.type} sizes={l.sizes} />
         ))}
         <meta name="theme-color" content="#09273a" />
-        {/* The shared header account button and menus (AlUmmahNow docs/design/NAV.md) */}
-        <style data-nav dangerouslySetInnerHTML={{ __html: NAV_CSS }} />
+        {/* The shared header, its account button and menus (AlUmmahNow docs/design/NAV.md "Header") */}
+        <style data-nav dangerouslySetInnerHTML={{ __html: NAV_CSS + PAGE_HEADER_CSS }} />
         {shellCss ? <style data-shell-theme dangerouslySetInnerHTML={{ __html: shellCss }} /> : null}
         {/* The Fanous lantern street (shared module, served by this app's worker) when the theme switches it on */}
         {/* Its script starts after hydration (App), so its drawing never meets React's markup check */}

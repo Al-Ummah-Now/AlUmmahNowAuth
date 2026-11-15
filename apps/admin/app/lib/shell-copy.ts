@@ -5,6 +5,7 @@
  * «سمات تسجيل الدخول» (deletion-copy).
  */
 import type { AdminLang } from "./deletion-copy";
+import { sameSitePath } from "../../../../packages/ui/src/nav/page-header.ts";
 
 export type NavKey = "dashboard" | "users" | "roles" | "sessions" | "clients" | "audit" | "moderation" | "themes" | "deleted" | "security";
 
@@ -68,4 +69,17 @@ export const shellCopy = (lang: AdminLang): ShellCopy => (lang === "ar" ? ar : e
 /** A rail link that keeps the page language (?lang=ar) across sections. */
 export function withLang(href: string, lang: AdminLang): string {
   return lang === "ar" ? `${href}${href.includes("?") ? "&" : "?"}lang=ar` : href;
+}
+
+/**
+ * The language button's link: this page and query with ?lang= swapped (English drops it, as the
+ * rail's withLang links do).
+ */
+export function langSwitchHref(pathname: string, search: string, lang: AdminLang): string {
+  const params = new URLSearchParams(search);
+  if (lang === "ar") params.delete("lang");
+  else params.set("lang", "ar");
+  const q = params.toString();
+  // never protocol-relative (a path like //evil.example): see sameSitePath
+  return `${sameSitePath(pathname)}${q ? `?${q}` : ""}`;
 }

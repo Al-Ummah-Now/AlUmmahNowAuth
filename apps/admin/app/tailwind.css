@@ -211,8 +211,9 @@ body {
   .ui-alert-info { --tone: var(--color-link); }
 
   /* The shell */
+  /* the shared header (.aun-header, NAV.md "Header") takes the theme's header material as its background */
   .shell-header {
-    background: var(--m-header, var(--fanous-c-nav-bg));
+    --aun-header-bg: var(--m-header, var(--fanous-c-nav-bg));
     box-shadow: var(--m-header-edge, none);
   }
   .shell-rail {
@@ -243,8 +244,5 @@ body {
   }
   .shell-link[aria-current="page"] svg {
     color: currentColor;
-  }
-  .shell-foot {
-    border-top: 1px solid var(--color-sidebar-divider);
   }
 }

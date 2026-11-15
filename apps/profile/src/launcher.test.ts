@@ -66,7 +66,7 @@ describe("renderHomePage", () => {
   it("sets lang and dir for Arabic and offers a switch back to English", () => {
     const html = renderHomePage({ ...base, locale: "ar" });
     expect(html).toContain('<html lang="ar" dir="rtl" data-theme="fawanees">');
-    expect(html).toContain('href="?lang=en"');
+    expect(html).toContain('<a class="aun-lang" href="/?lang=en" hreflang="en">');
     expect(html).toContain("تطبيقاتك");
   });
 
@@ -101,7 +101,7 @@ describe("renderHomePage", () => {
   it("loads the lantern street (same-origin files) on the live page when the theme has one", () => {
     const fawanees = { id: "fawanees", css: compileBuiltin("fawanees", base.authServerUrl)!.tokensCss };
     const live = renderHomePage({ ...base, locale: "en", theme: fawanees, street: true });
-    expect(live).toContain(`${streetHeadTags()}\n</head>`);
+    expect(live).toContain(`${streetHeadTags()}\n    <script>`);
     expect(live.indexOf("<style>")).toBeLessThan(live.indexOf(STREET_CSS_PATH));
     // the admin preview (no street option) and themes without a street load nothing
     expect(renderHomePage({ ...base, locale: "en", theme: fawanees })).not.toContain(STREET_JS_PATH);

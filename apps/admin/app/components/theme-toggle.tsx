@@ -1,11 +1,14 @@
 import { useSyncExternalStore } from "react";
 import { MODE_COPY, currentColorMode, setColorMode, type ColorMode } from "../lib/color-mode";
 import type { AdminLang } from "../lib/deletion-copy";
-import { cn } from "../lib/utils";
-import { MOON_ICON_BODY, SUN_ICON_BODY } from "../lib/mode-toggle";
+import { MOON_ICON_BODY, SUN_ICON_BODY, modeToggleLabel } from "../lib/mode-toggle";
 
-/** The shared toggle's exact Lucide 0.487 icon (lib/mode-toggle.ts, MODE_ICON_ATTRS in JSX form), 18px like the videos rail foot. */
-function ModeIcon({ icon, className }: { icon: "sun" | "moon"; className: string }) {
+/**
+ * One Lucide 0.487 icon exactly as the shared modeIconSvg draws it (AlUmmahNow
+ * packages/fanous-tokens/nav/mode-toggle.js, vendored in packages/ui/src/nav): `aun-mode-sun` /
+ * `aun-mode-moon` let the shared header CSS (PAGE_HEADER_CSS) show the icon of the mode on screen.
+ */
+function ModeIcon({ icon }: { icon: "sun" | "moon" }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -17,11 +20,27 @@ function ModeIcon({ icon, className }: { icon: "sun" | "moon"; className: string
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`lucide lucide-${icon} size-[18px] ${className}`}
+      className={`lucide lucide-${icon} aun-mode-${icon}`}
       aria-hidden="true"
       focusable="false"
       dangerouslySetInnerHTML={{ __html: icon === "sun" ? SUN_ICON_BODY : MOON_ICON_BODY }}
     />
+  );
+}
+
+/**
+ * The header's light/dark button (AlUmmahNow docs/design/NAV.md "Header": `.aun-icon-btn.aun-mode`),
+ * the same element as the shared modeButtonHtml with both icons (site-header.test.tsx compares
+ * them). `dark` null: the mode is not known yet (server render), so the name offers both.
+ */
+export function ModeButton({ lang, dark, onClick }: { lang: AdminLang; dark: boolean | null; onClick?: () => void }) {
+  const copy = MODE_COPY[lang];
+  const label = dark === null ? `${copy.toLight} / ${copy.toDark}` : modeToggleLabel(lang, dark);
+  return (
+    <button type="button" className="aun-icon-btn aun-mode" id="mode-toggle" data-testid="theme-toggle" aria-label={label} title={label} onClick={onClick}>
+      <ModeIcon icon="sun" />
+      <ModeIcon icon="moon" />
+    </button>
   );
 }
 
@@ -32,30 +51,18 @@ function subscribe(onChange: () => void) {
 }
 
 /**
- * The light/dark switch at the foot of the side rail, as on the videos site (AlUmmahNow
- * apps/web ThemeDemo/AppShell `theme-toggle`; NAV.md: apps with a side rail put it there): one
- * icon button that names the mode it switches to. The icon follows the <html> class through CSS,
- * so the server render and the first paint already show the right one.
+ * The light/dark switch in the header, as on the videos site (AlUmmahNow apps/web `theme-toggle`):
+ * one icon button that names the mode it switches to. The icon follows the <html> class through
+ * CSS, so the server render and the first paint already show the right one.
  */
-export function ThemeToggle({ lang, className }: { lang: AdminLang; className?: string }) {
+export function ThemeToggle({ lang }: { lang: AdminLang }) {
   // null on the server and during hydration: the label then comes from the class after hydration
   const mode = useSyncExternalStore<ColorMode | null>(subscribe, () => currentColorMode(), () => null);
-  const copy = MODE_COPY[lang];
-  const label = mode === "dark" ? copy.toLight : mode === "light" ? copy.toDark : `${copy.toLight} / ${copy.toDark}`;
   return (
-    <button
-      type="button"
-      data-testid="theme-toggle"
-      aria-label={label}
-      title={label}
+    <ModeButton
+      lang={lang}
+      dark={mode === null ? null : mode === "dark"}
       onClick={() => setColorMode(currentColorMode() === "dark" ? "light" : "dark")}
-      className={cn(
-        "grid size-11 shrink-0 place-items-center rounded-full text-[var(--color-sidebar-icon)] transition-colors hover:bg-[var(--color-sidebar-active)] hover:text-[var(--color-sidebar-foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]",
-        className,
-      )}
-    >
-      <ModeIcon icon="sun" className="hidden dark:block" />
-      <ModeIcon icon="moon" className="block dark:hidden" />
-    </button>
+    />
   );
 }

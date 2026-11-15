@@ -2,9 +2,12 @@
  * Finishes a rendered Auth page for its theme: names the theme and the page on
  * <html> (sections are scoped by data-auth-page), puts the header graphic on
  * the card, gives the account switcher its rules, loads the lantern street,
+ * puts the shared site header on top (AlUmmahNow docs/design/NAV.md "Header"),
  * and makes every link inside the sign-in flow keep the theme the flow started with.
  */
 import { streetHeadTags, streetOn } from '../fanous-street/index.ts';
+import { NAV_CSS } from '../nav/aun-nav.generated.ts';
+import { APP_NAMES, langHref, PAGE_HEADER_CSS, PAGE_MODE_SCRIPT, pageHeaderHtml, publicAppLinks } from '../nav/page-header.ts';
 import type { CompiledTheme, Scheme } from './types.ts';
 
 export type AuthPage = 'sign-in' | 'register' | 'code' | 'reset' | 'consent' | 'account-switcher' | 'other';
@@ -31,7 +34,50 @@ export interface DecorateOptions {
 	forceScheme?: Scheme;
 	/** Live pages: load the lantern street when the theme switches it on (the admin preview runs no scripts). */
 	street?: boolean;
+	/** The shared site header on top of the page. */
+	header?: SignInHeader;
 }
+
+/** What the sign-in pages' header needs (AlUmmahNow docs/design/NAV.md "Header"). */
+export interface SignInHeader {
+	/** The page's language (OpenAuth's ?lang=). */
+	lang: 'en' | 'ar';
+	/** ENVIRONMENT: "qa" / "stage" show the badge. */
+	environment?: string;
+	/** This page's URL: the language button keeps its path and query. */
+	url: URL;
+	/** The issuer (auth.<domain>): Website and Videos are its sibling hosts. */
+	issuer: string;
+	/** The brand's link: the account home (the profile app). */
+	home: string;
+}
+
+/**
+ * The sign-in pages' header: brand ("Account"), environment badge, Website and Videos, language,
+ * light/dark. No account control and no Sign in: these pages are the sign-in.
+ */
+export function signInHeaderHtml(h: SignInHeader): string {
+	return pageHeaderHtml({
+		lang: h.lang,
+		brandHref: h.home,
+		app: APP_NAMES.account[h.lang],
+		environment: h.environment,
+		appLinks: publicAppLinks(h.issuer, h.lang),
+		langHref: langHref(h.url, h.lang === 'ar' ? 'en' : 'ar'),
+	});
+}
+
+/**
+ * The header on OpenAuth's pages and on the account switcher. OpenAuth's root is a full-page
+ * centred column: the header takes the top and the card stays centred in the space below.
+ */
+export const SIGN_IN_HEADER_CSS =
+	`[data-component="root"]{padding:0;bottom:auto;min-height:100%;justify-content:flex-start;align-items:stretch}` +
+	`[data-component="root"]>.aun-header{flex:none;user-select:auto}` +
+	`[data-component="root"]>[data-component="center"]{align-self:center;margin-block:auto;padding-block:1rem;max-width:calc(100% - 2rem)}` +
+	`body:has(>.aun-header){flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0}` +
+	`body>.aun-header~.container{margin:auto;width:calc(100% - 40px)}`;
+
 
 export function decorateHtml(html: string, compiled: CompiledTheme, opts: DecorateOptions): string {
 	let out = html.replace(/<html\b([^>]*)>/i, (_, attrs: string) => {
@@ -58,8 +104,26 @@ export function decorateHtml(html: string, compiled: CompiledTheme, opts: Decora
 		);
 	}
 
+	if (opts.header) out = addHeader(out, signInHeaderHtml(opts.header));
+
 	if (opts.forceScheme) out = forceScheme(out, opts.forceScheme);
 	return out;
+}
+
+/** Inserts the header (first in OpenAuth's root, else first in <body>) with its styles and the light/dark script, last in <head>. */
+function addHeader(html: string, header: string): string {
+	let placed = false;
+	let out = html.replace(/(<div\b[^>]*data-component="root"[^>]*>)/, (m) => {
+		placed = true;
+		return `${m}${header}`;
+	});
+	if (!placed) out = out.replace(/(<body\b[^>]*>)/i, (m) => {
+		placed = true;
+		return `${m}${header}`;
+	});
+	if (!placed) return html;
+	// a function, so "$" in the CSS or script is never read as a replacement pattern
+	return out.replace(/<\/head>/i, () => `<style data-aun-header>${NAV_CSS}${PAGE_HEADER_CSS}${SIGN_IN_HEADER_CSS}</style><script>${PAGE_MODE_SCRIPT}</script></head>`);
 }
 
 /** Media queries on the colour scheme answer as `scheme` (preview frames can't set the device's). */

@@ -7,6 +7,7 @@ import { streetHeadTags, streetOn } from '../../../packages/ui/src/fanous-street
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
 import { FIT_TO_VIEWPORT_ES5 } from '../../../packages/ui/src/nav/menu-fit-es5.ts';
+import { APP_NAMES, langHref, PAGE_HEADER_CSS, sameSitePath, PAGE_MODE_SCRIPT, pageHeaderHtml, publicAppLinks } from '../../../packages/ui/src/nav/page-header.ts';
 
 /** The logo's night sky (the manifest's theme_color), for the browser chrome. */
 const PROFILE_THEME_COLOR = '#09273a';
@@ -25,6 +26,8 @@ export interface HomePageOptions {
   environment?: string;
   /** Live page: load the lantern street when the theme switches it on (the admin preview runs no scripts). */
   street?: boolean;
+  /** This page's path and query: the language button and Sign in keep them. */
+  path?: string;
 }
 
 /** JSON for embedding inside <script>: escapes "<" so "</script>" in data can't end the block. */
@@ -52,34 +55,11 @@ const STYLES = `
 
         :focus-visible { outline: 2px solid var(--fanous-color-primary); outline-offset: 2px; }
 
-        /* The header is dark in every theme and mode (AlUmmahNow docs/design/NAV.md): nav tokens */
-        .navbar {
-            background: var(--auth-profile-nav-background, var(--fanous-c-nav-bg));
-            color: var(--fanous-c-nav-text);
-            padding: 0.5rem 2rem;
-            min-height: 3.5rem;
-            border-bottom: 1px solid var(--fanous-c-nav-border);
-            position: relative;
-            z-index: 10;
-        }
-        .navbar-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1rem;
-        }
-        .logo { display: flex; align-items: center; gap: 12px; color: var(--fanous-c-nav-text); text-decoration: none; min-width: 0; }
-        .logo img { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
-        .logo-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-        .logo-brand { font-size: 0.8rem; font-weight: 600; color: var(--fanous-c-nav-active-text); letter-spacing: 0.02em; }
-        .logo-app { font-size: 1.35rem; font-weight: 700; white-space: nowrap; }
-        .nav-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
-        .nav-menu { display: flex; gap: 1rem; align-items: center; }
-
-        /* Language link, account button and menus: the shared .aun-* classes (NAV_CSS, AlUmmahNow docs/design/NAV.md) */
-        /* The shared nav's menus pick light or dark with light-dark(): the page follows the OS, like its tokens */
+        /* The header (AlUmmahNow docs/design/NAV.md "Header"): the shared .aun-* classes (NAV_CSS) and
+           markup (packages/ui/src/nav/page-header.ts); a theme's profile nav material is its background */
+        .aun-header { --aun-header-bg: var(--auth-profile-nav-background, var(--fanous-c-nav-bg)); }
+        /* The shared nav's menus pick light or dark with light-dark(): the device's mode until the
+           sun/moon button saves a choice (PAGE_MODE_SCRIPT puts .light / .dark on <html>) */
         :root { color-scheme: light dark; }
         .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .accounts-list:empty { display: none; }
@@ -175,11 +155,6 @@ const STYLES = `
         }
 
         @media (max-width: 640px) {
-            .navbar { padding: 0.5rem 1rem; }
-            .logo-brand { display: none; }
-            .logo-app { font-size: 1.1rem; }
-            .logo img { width: 34px; height: 34px; }
-            .nav-actions { gap: 0.25rem; }
             .container { padding: 1.5rem 1rem; }
             .hero h1 { font-size: 2rem; }
             .apps-cards { grid-template-columns: 1fr; }
@@ -212,28 +187,11 @@ export function renderHomePage(o: HomePageOptions): string {
   const e = escapeHtml;
   const other: Locale = o.locale === "ar" ? "en" : "ar";
   const isLoggedIn = o.user !== null;
-
-  return `<!DOCTYPE html>
-<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${e(t.pageTitle)}</title>
-    ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
-    <style>${theme.css}${NAV_CSS}${STYLES}</style>
-    ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
-</head>
-<body>
-    <header class="navbar">
-        <div class="navbar-content">
-            <a class="logo" href="/">
-                <img src="https://al-ummah-now-images.b-cdn.net/favicon_io/android-chrome-192x192.png" alt="">
-                <span class="logo-text"><span class="logo-brand">${e(t.brand)}</span><span class="logo-app">${e(t.brandApp)}</span></span>
-            </a>
-            <nav class="nav-actions" aria-label="${e(t.brand)}">
-                <div class="nav-menu" id="navMenu"></div>
-                <a class="lang-toggle aun-lang" href="?lang=${other}" lang="${other}" hreflang="${other}" aria-label="${e(t.switchLanguageLabel)}">${e(t.switchLanguage)}</a>
-                <div class="account-switcher" id="accountSwitcher" style="display: none; position: relative;">
+  // The page's own path and query, without the one-shot ?error= message
+  // (never protocol-relative: a request path like //evil.example stays on this site)
+  const here = new URL(sameSitePath(o.path ?? "/"), "https://profile.invalid");
+  here.searchParams.delete("error");
+  const accountSwitcher = `<div class="account-switcher" id="accountSwitcher" style="display: none; position: relative;">
                     <button type="button" class="account-trigger aun-acct-btn" id="accountTrigger" aria-haspopup="menu" aria-expanded="false" aria-controls="accountDropdown" onclick="toggleAccountDropdown()">
                         <span class="aun-avatar" id="activeAvatar" aria-hidden="true">?</span>
                         <span class="aun-acct-name" id="activeEmail" dir="auto">${e(t.loading)}</span>
@@ -255,10 +213,34 @@ export function renderHomePage(o: HomePageOptions): string {
                         <button type="button" class="dropdown-action aun-menu-item" role="menuitem" id="signOutOne" onclick="requestSignOutAccount(currentUser.id)">${ICON_SIGNOUT}<span class="aun-menu-text">${e(t.signOut)}</span></button>
                         <button type="button" class="dropdown-action danger aun-menu-item aun-menu-item--danger" role="menuitem" id="signOutAllBtn" onclick="requestSignOutAll()">${ICON_SIGNOUT}<span class="aun-menu-text">${e(t.signOutAll)}</span></button>
                     </div>
-                </div>
-            </nav>
-        </div>
-    </header>
+                </div>`;
+  // The shared header (AlUmmahNow docs/design/NAV.md "Header"): brand, QA/stage badge, Website and
+  // Videos, language, light/dark, then the account menu, or Sign in when signed out
+  const header = pageHeaderHtml({
+    lang: o.locale,
+    brandHref: o.locale === "ar" ? "/?lang=ar" : "/",
+    app: APP_NAMES.account[o.locale],
+    environment: o.environment,
+    appLinks: publicAppLinks(o.authServerUrl, o.locale),
+    langHref: langHref(here, other),
+    account: isLoggedIn ? accountSwitcher : undefined,
+    signInHref: `/login?return=${encodeURIComponent(here.pathname + here.search)}`,
+    maxWidth: "1200px",
+  });
+
+  return `<!DOCTYPE html>
+<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${e(t.pageTitle)}</title>
+    ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
+    <style>${theme.css}${NAV_CSS}${STYLES}${PAGE_HEADER_CSS}</style>
+    ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
+    <script>${PAGE_MODE_SCRIPT}</script>
+</head>
+<body>
+    ${header}
 
     <main class="container">
         <div id="errorContainer"></div>
@@ -375,10 +357,11 @@ export function renderHomePage(o: HomePageOptions): string {
         }
         // Keyboard (AlUmmahNow docs/design/NAV.md): ArrowDown on the button opens at the first item;
         // ArrowUp/ArrowDown move, Home/End jump, Escape closes and returns focus to the button.
-        document.getElementById('accountTrigger').addEventListener('keydown', function (e) {
+        // Signed out, the header has Sign in instead of the account menu
+        if (document.getElementById('accountTrigger')) document.getElementById('accountTrigger').addEventListener('keydown', function (e) {
             if (e.key === 'ArrowDown') { e.preventDefault(); setAccountDropdown(true); var l = menuItems(); if (l[0]) l[0].focus(); }
         });
-        document.getElementById('accountDropdown').addEventListener('keydown', function (e) {
+        if (document.getElementById('accountDropdown')) document.getElementById('accountDropdown').addEventListener('keydown', function (e) {
             var list = menuItems();
             var i = list.indexOf(document.activeElement);
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -637,7 +620,6 @@ export function renderHomePage(o: HomePageOptions): string {
         function renderUserUI(user) {
             document.getElementById('loggedInView').style.display = 'block';
             document.getElementById('loggedOutView').style.display = 'none';
-            document.getElementById('navMenu').innerHTML = '';
             document.getElementById('userId').textContent = user.id;
             document.getElementById('userEmail').textContent = user.email;
 
@@ -667,14 +649,6 @@ export function renderHomePage(o: HomePageOptions): string {
             } else {
                 document.getElementById('loggedInView').style.display = 'none';
                 document.getElementById('loggedOutView').style.display = 'block';
-                var btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'btn btn-primary';
-                btn.textContent = '🔐 ' + T.signIn;
-                btn.addEventListener('click', handleLogin);
-                var nav = document.getElementById('navMenu');
-                nav.innerHTML = '';
-                nav.appendChild(btn);
             }
         }
 

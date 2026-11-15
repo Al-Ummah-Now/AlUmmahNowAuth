@@ -1,8 +1,11 @@
 /**
- * Vendors the shared nav contract (AlUmmahNow docs/design/NAV.md: the header account button and the
- * menus that open from it, the same in every Al Ummah Now app) from AlUmmahNow
- * `packages/fanous-tokens/nav/aun-nav.css` at a pinned commit into
- * packages/ui/src/nav/aun-nav.generated.ts (NAV_CSS), and records it in nav.lock.json.
+ * Vendors the shared nav contract (AlUmmahNow docs/design/NAV.md: the header, its account button and
+ * the menus that open from it, the same in every Al Ummah Now app) from AlUmmahNow at a pinned commit:
+ * - `packages/fanous-tokens/nav/aun-nav.css` into packages/ui/src/nav/aun-nav.generated.ts (NAV_CSS);
+ * - the header's markup builders `nav/header.js` and the light/dark control `nav/mode-toggle.js`
+ *   (with their .d.ts), copied byte for byte into packages/ui/src/nav/;
+ * - the app icons and the owner's logo (`/brand/logo-64.webp`, the header's brand mark);
+ * and records every file's sha256 in nav.lock.json. --check fails when any copy differs from the lock.
  *
  *   node --experimental-strip-types scripts/themes/sync-nav.ts --ref <40-char sha>   (fetch, rewrite)
  *   node --experimental-strip-types scripts/themes/sync-nav.ts --check               (offline: output == lock)
@@ -23,6 +26,15 @@ const ICON_SOURCE = 'packages/fanous-tokens/nav/icons';
 export const ICONS_MODULE = 'packages/ui/src/nav/aun-nav-icons.generated.ts';
 /** For the auth admin: static files in its public folder. */
 export const ICONS_PUBLIC = 'apps/admin/public/aun-nav/icons';
+/** The header's markup builders and the light/dark control, copied byte for byte (header.js imports ./mode-toggle.js). */
+export const VENDORED = ['header.js', 'header.d.ts', 'mode-toggle.js', 'mode-toggle.d.ts'].map((name) => ({
+  source: `packages/fanous-tokens/nav/${name}`,
+  out: `packages/ui/src/nav/${name}`,
+}));
+/** The owner's logo, the header's brand mark (NAV.md "Header": `/brand/logo-64.webp`). */
+const LOGO_SOURCE = 'apps/web/public/brand/logo-64.webp';
+export const LOGO_PATH = '/brand/logo-64.webp';
+const LOGO_PUBLIC = `apps/admin/public${LOGO_PATH}`;
 
 interface Lock {
   repo: string;
@@ -30,8 +42,10 @@ interface Lock {
   source: string;
   sourceSha256: string;
   output: string;
-  /** sha256 of ICONS_MODULE and of each file in ICONS_PUBLIC. */
+  /** sha256 of ICONS_MODULE and of each file in ICONS_PUBLIC (and the logo). */
   icons?: Record<string, string>;
+  /** Byte-identical copies (VENDORED): output path -> sha256 of the upstream file at `ref`. */
+  files?: Record<string, string>;
 }
 
 const sha256 = (s: string | Uint8Array) => createHash('sha256').update(s).digest('hex');
@@ -53,9 +67,23 @@ async function main() {
   }
   if (args.includes('--check')) {
     if (!lock) throw new Error(`${LOCK} is missing`);
-    const iconsStale = Object.entries(lock.icons ?? {}).some(([file, hash]) => sha256(readFileSync(file)) !== hash);
-    if (sha256(readFileSync(OUT, 'utf8')) !== lock.output || !lock.icons || iconsStale) {
-      console.error(`${OUT} does not match ${LOCK} (hand edit?). Run: pnpm nav:sync`);
+    const differs = (file: string, hash: string) => {
+      try {
+        return sha256(readFileSync(file)) !== hash;
+      } catch {
+        return true;
+      }
+    };
+    const stale = [
+      ...(differs(OUT, lock.output) ? [OUT] : []),
+      ...Object.entries(lock.icons ?? {}).filter(([file, hash]) => differs(file, hash)).map(([file]) => file),
+      ...Object.entries(lock.files ?? {}).filter(([file, hash]) => differs(file, hash)).map(([file]) => file),
+      // every vendored file is locked: a lock without one is stale too
+      ...VENDORED.filter((v) => !lock!.files?.[v.out]).map((v) => v.out),
+      ...(lock.icons?.[LOGO_PUBLIC] ? [] : [LOGO_PUBLIC]),
+    ];
+    if (!lock.icons || stale.length) {
+      console.error(`${stale.join(', ') || ICONS_MODULE} does not match ${LOCK} (hand edit?). Run: pnpm nav:sync`);
       process.exit(1);
     }
     console.info(`nav: ${OUT} matches the lock (${REPO}@${lock.ref.slice(0, 8)})`);
@@ -69,6 +97,15 @@ async function main() {
   const css = await res.text();
   const out = navModule(css, ref);
   writeFileSync(OUT, out);
+  const files: Record<string, string> = {};
+  for (const v of VENDORED) {
+    const fileUrl = `https://raw.githubusercontent.com/${REPO}/${ref}/${v.source}`;
+    const fileRes = await fetch(fileUrl);
+    if (!fileRes.ok) throw new Error(`${fileUrl}: ${fileRes.status}`);
+    const body = Buffer.from(await fileRes.arrayBuffer());
+    writeFileSync(v.out, body);
+    files[v.out] = sha256(body);
+  }
   const icons: Record<string, string> = {};
   const rows: string[] = [];
   mkdirSync(ICONS_PUBLIC, { recursive: true });
@@ -83,14 +120,25 @@ async function main() {
     icons[file] = sha256(body);
     rows.push(`  '/aun-nav/icons/${id}.webp': { type: 'image/webp', body: '${body.toString('base64')}' },`);
   }
+  {
+    const logoUrl = `https://raw.githubusercontent.com/${REPO}/${ref}/${LOGO_SOURCE}`;
+    const logoRes = await fetch(logoUrl);
+    if (!logoRes.ok) throw new Error(`${logoUrl}: ${logoRes.status}`);
+    const body = Buffer.from(await logoRes.arrayBuffer());
+    if (body.subarray(0, 4).toString() !== 'RIFF' || body.subarray(8, 12).toString() !== 'WEBP') throw new Error(`${logoUrl}: not a WebP`);
+    mkdirSync(LOGO_PUBLIC.slice(0, LOGO_PUBLIC.lastIndexOf('/')), { recursive: true });
+    writeFileSync(LOGO_PUBLIC, body);
+    icons[LOGO_PUBLIC] = sha256(body);
+    rows.push(`  '${LOGO_PATH}': { type: 'image/webp', body: '${body.toString('base64')}' },`);
+  }
   const iconsModule =
     `// Generated by scripts/themes/sync-nav.ts from ${REPO}@${ref}:${ICON_SOURCE}. Do not edit.\n` +
-    `/** The account menu's app icons (each app's own favicon, 96 px lossless WebP): path -> type and base64 body. */\n` +
+    `/** The account menu's app icons (each app's own favicon, 96 px lossless WebP) and the header's logo: path -> type and base64 body. */\n` +
     `export const NAV_ICONS: Record<string, { type: string; body: string }> = {\n${rows.join('\n')}\n};\n`;
   writeFileSync(ICONS_MODULE, iconsModule);
   icons[ICONS_MODULE] = sha256(iconsModule);
-  writeFileSync(LOCK, JSON.stringify({ repo: REPO, ref, source: SOURCE, sourceSha256: sha256(css), output: sha256(out), icons }, null, 2) + '\n');
-  console.info(`wrote ${OUT} and ${LOCK}`);
+  writeFileSync(LOCK, JSON.stringify({ repo: REPO, ref, source: SOURCE, sourceSha256: sha256(css), output: sha256(out), icons, files }, null, 2) + '\n');
+  console.info(`wrote ${OUT}, ${VENDORED.map((v) => v.out).join(', ')}, the icons and ${LOCK}`);
 }
 
 main().catch((e) => {

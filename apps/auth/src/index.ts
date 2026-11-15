@@ -70,7 +70,7 @@ import { serveIcon, signInFavicon } from './themes/favicon';
 import { CODE_INPUT_LABEL } from "./ui/copy";
 import { ThemeStore } from "./themes/store";
 import { assetBaseOf, resolveRequestTheme } from "./themes/runtime";
-import { finishThemedResponse, requestedTheme, wantsPage } from "./themes/pages";
+import { finishThemedResponse, requestedTheme, signInHeaderFor, wantsPage } from "./themes/pages";
 
 // This value should be shared between the OpenAuth server Worker and other
 // client Workers that you connect to it, so the types and schema validation are
@@ -559,7 +559,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const issued = await timer.stage('issuer', () => app.fetch(passwordGuard.request, env, ctx));
     let issuerResponse = await timer.stage('guard.finish', () => passwordGuard.finish(issued));
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
-    if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin));
+    // and the shared site header on top (AlUmmahNow docs/design/NAV.md "Header")
+    if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin, signInHeaderFor(url, getLocaleFromRequest(request), env)));
     // Turnstile on sign-up, reset and (after failures) sign-in pages (security/turnstile.ts)
     if (isPage && passwordGuard.widget && (issuerResponse.headers.get('Content-Type') ?? '').includes('text/html') && env.TURNSTILE_SITE_KEY) {
       const widget = passwordGuard.widget;

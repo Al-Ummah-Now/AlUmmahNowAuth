@@ -3,7 +3,7 @@
  * decorated (theme and page names, header graphic, in-flow links keep the
  * theme), redirects inside the flow keep ?theme=.
  */
-import { carryThemeOnLocation, decorateHtml, pageKind, THEME_PARAM } from '../../../../packages/ui/src/auth-theme/decorate.ts';
+import { carryThemeOnLocation, decorateHtml, pageKind, THEME_PARAM, type SignInHeader } from '../../../../packages/ui/src/auth-theme/decorate.ts';
 import type { CompiledTheme } from '../../../../packages/ui/src/auth-theme/types.ts';
 
 /** Browser page loads and form posts; token and JSON API calls skip theme work. */
@@ -19,7 +19,21 @@ export function requestedTheme(url: URL): string | null {
 	return v && /^[a-z][a-z0-9-]{1,39}$/.test(v) ? v : null;
 }
 
-export async function finishThemedResponse(response: Response, compiled: CompiledTheme, url: URL, issuerOrigin: string): Promise<Response> {
+/** The sign-in pages' header for this request (AlUmmahNow docs/design/NAV.md "Header"). */
+export function signInHeaderFor(url: URL, lang: string, env: { ENVIRONMENT?: string; OPENAUTH_ISSUER?: string; PROFILE_APP_URL?: string }): SignInHeader {
+	const l = lang === 'ar' ? 'ar' : 'en';
+	let home = url.origin;
+	try {
+		const profile = new URL(env.PROFILE_APP_URL || url.origin);
+		if (l === 'ar') profile.searchParams.set('lang', 'ar');
+		home = profile.toString();
+	} catch {
+		// a bad PROFILE_APP_URL: the brand links to this host
+	}
+	return { lang: l, environment: env.ENVIRONMENT, url, issuer: env.OPENAUTH_ISSUER || url.origin, home };
+}
+
+export async function finishThemedResponse(response: Response, compiled: CompiledTheme, url: URL, issuerOrigin: string, header?: SignInHeader): Promise<Response> {
 	if (response.status >= 300 && response.status < 400) {
 		const location = response.headers.get('Location');
 		if (!location) return response;
@@ -33,6 +47,6 @@ export async function finishThemedResponse(response: Response, compiled: Compile
 	const html = await response.text();
 	const headers = new Headers(response.headers);
 	headers.delete('Content-Length');
-	const body = decorateHtml(html, compiled, { page: pageKind(url.pathname, html), carryTheme: compiled.id, street: true });
+	const body = decorateHtml(html, compiled, { page: pageKind(url.pathname, html), carryTheme: compiled.id, street: true, header });
 	return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }
