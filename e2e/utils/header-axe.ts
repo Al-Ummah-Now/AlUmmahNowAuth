@@ -24,7 +24,7 @@ export async function headerAxe(page: Page, label: string): Promise<string[]> {
 /** The contract's typeface (aun-nav.css .aun-header), the same in every app's header whatever the page uses. */
 export const HEADER_FONT = {
 	en: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-	ar: '"Noto Naskh Arabic", "Geeza Pro", "Segoe UI", Tahoma, sans-serif',
+	ar: '"Noto Naskh Arabic", "Geeza Pro", system-ui, "Segoe UI", Tahoma, sans-serif',
 } as const;
 
 /**
