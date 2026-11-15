@@ -213,16 +213,7 @@ export function createOnSuccessHandler(
 			if (!row) return await refuse('', passkeyUserId, 'deleted', 'passkey');
 			email = row.email;
 		}
-		logger.info('Authentication successful', { email, provider: value.provider });
-
-		// DEBUG: Log the full value object and tenant
-		logger.info('[DEBUG] onSuccess called', {
-			valueKeys: Object.keys(value),
-			value: JSON.stringify(value).slice(0, 500),
-			tenant: _tenant?.id,
-			hasAuthCtx: !!authCtx,
-			hasSubjectMethod: typeof authCtx?.subject === 'function',
-		});
+		logger.info('Authentication successful', { provider: value.provider });
 
 		try {
 			// Look up user via OpenAuth's UserService
@@ -239,9 +230,9 @@ export function createOnSuccessHandler(
 
 			if (!existingUser) {
 				// User doesn't exist - this is a registration, create them
-				logger.info('Creating new user during registration', { email, tenantId });
+				logger.info('Creating new user during registration', { tenantId });
 				existingUser = await staged(timer, 'onsuccess.create', () => userService.createUser(tenantId, { email }));
-				logger.info('User created successfully', { userId: existingUser.id, email });
+				logger.info('User created successfully', { userId: existingUser.id });
 				// E2E run accounts (QA/stage only): the marker the run teardown requires
 				const created = existingUser;
 				await staged(timer, 'onsuccess.runmarker', () => markRunUser(env as unknown as RunUsersEnv, db, created));
@@ -316,10 +307,8 @@ export function createOnSuccessHandler(
 			const rbacResult = await staged(timer, 'onsuccess.roles', () => rbacService.getUserRoles(userId, tenantId));
 			const roles = rbacResult.map((r) => r.name);
 
-			// Debug: Log the roles being returned
 			logger.info('User roles from RBAC', {
 				userId: existingUser.id,
-				email,
 				roles,
 				rolesCount: roles.length,
 			});
@@ -347,13 +336,6 @@ export function createOnSuccessHandler(
 				success: true,
 			});
 
-			// DEBUG: Log before calling subject
-			// Note: userID is required by OpenAuth enterprise issuer for RBAC enrichment
-			logger.info('[DEBUG] Calling authCtx.subject', {
-				type: 'user',
-				properties: { id: user.id, email, roles: user.roles },
-			});
-
 			const subjectResponse = await staged(timer, 'onsuccess.subject', () =>
 				authCtx.subject('user', {
 					id: user.id,
@@ -363,34 +345,16 @@ export function createOnSuccessHandler(
 				})
 			);
 
-			// DEBUG: Log the response from subject
-			logger.info('[DEBUG] authCtx.subject returned', {
-				responseType: typeof subjectResponse,
-				isResponse: subjectResponse instanceof Response,
-				status: subjectResponse instanceof Response ? subjectResponse.status : 'N/A',
-				headers:
-					subjectResponse instanceof Response
-						? Object.fromEntries(subjectResponse.headers.entries())
-						: 'N/A',
-			});
-
-			// DEBUG: If not a Response, log what it actually is and return error
+			// The issuer always answers with a Response; anything else is a bug
 			if (!(subjectResponse instanceof Response)) {
 				const unknownResponse = subjectResponse as unknown;
-				logger.error('[DEBUG] subjectResponse is NOT a Response!', {
-					actualValue: JSON.stringify(unknownResponse).slice(0, 500),
+				logger.error('[auth] authCtx.subject did not return a Response', {
+					type: typeof unknownResponse,
 					constructorName: (unknownResponse as { constructor?: { name?: string } })
 						?.constructor?.name,
 				});
-				// Return a clear error so we can see what's happening
 				return new Response(
-					JSON.stringify({
-						error: 'subject_not_response',
-						debug: {
-							type: typeof unknownResponse,
-							value: unknownResponse,
-						},
-					}),
+					JSON.stringify({ error: 'subject_not_response' }),
 					{
 						status: 500,
 						headers: { 'Content-Type': 'application/json' },
@@ -398,15 +362,12 @@ export function createOnSuccessHandler(
 				);
 			}
 
-			// DEBUG: Check if it's a redirect or has unexpected content
 			const isRedirect = subjectResponse.status >= 300 && subjectResponse.status < 400;
 			if (!isRedirect) {
-				const cloned = subjectResponse.clone();
-				const body = await cloned.text();
-				logger.error('[DEBUG] subjectResponse is NOT a redirect!', {
+				// Status and type only: the body can hold the user's details
+				logger.error('[auth] authCtx.subject did not redirect', {
 					status: subjectResponse.status,
 					contentType: subjectResponse.headers.get('Content-Type'),
-					body: body.slice(0, 1000),
 				});
 			}
 
@@ -577,7 +538,7 @@ export function createSendCodeHandler(
 			rateLimitEventPromise,
 		]);
 
-		logger.info('Sending login code', { email, codeLength: code.length });
+		logger.info('Sending login code', { codeLength: code.length });
 
 		// Rate limiting (AU-1): Workers Rate Limiting, SEND_CODE_LIMITER (limit per env
 		// in wrangler config). QA/stage E2E addresses (sink active, never in prod) are
@@ -593,7 +554,6 @@ export function createSendCodeHandler(
 			const retryAfter = 60;
 			logger.warn('Rate limit exceeded for login attempt', {
 				clientIP,
-				email,
 				retryAfter,
 			});
 
@@ -638,7 +598,6 @@ export function createSendCodeHandler(
 			const accountExists = await hasAccount(email, d1User);
 			if (!accountExists) {
 				logger.warn('Password reset code requested for unknown email; not sending', {
-					email,
 					pathname: url.pathname,
 				});
 				return;
@@ -670,7 +629,7 @@ export function createSendCodeHandler(
 			// Runs after RESEND_API_KEY resolves, so a missing secret still fails here.
 			if (sinkThisCode) {
 				await storeSinkCode(env, email, code);
-				logger.info('Verification code stored in E2E sink', { email });
+				logger.info('Verification code stored in E2E sink');
 				return;
 			}
 
@@ -694,7 +653,7 @@ export function createSendCodeHandler(
 				html: htmlContent,
 				text: textContent,
 			}));
-			logger.info('Login code sent successfully', { email, emailId: emailResult.emailId });
+			logger.info('Login code sent successfully', { emailId: emailResult.emailId });
 
 			// For E2E tests, store the email ID in KV so tests can retrieve it
 			if (isLocalhost && emailResult.emailId) {
@@ -708,13 +667,11 @@ export function createSendCodeHandler(
 					{ expirationTtl: 300 }
 				); // 5 minute TTL
 				logger.debug('Stored email ID for E2E test', {
-					email,
 					emailId: emailResult.emailId,
 				});
 			}
 		} catch (error) {
 			logger.error('Failed to send login code', {
-				email,
 				error: error instanceof Error ? error.message : String(error),
 			});
 			return CODE_SEND_FAILED;

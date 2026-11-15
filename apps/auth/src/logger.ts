@@ -9,6 +9,52 @@
  * logs, enable Logpush in your Cloudflare dashboard, or use D1 storage.
  */
 
+/**
+ * Logs never carry personal data or credentials (AlUmmahNowAuth#313):
+ * - any email address, in the message or any context value, keeps only its domain ("***@example.com");
+ * - values under credential/header keys (Location holds the authorization code,
+ *   Set-Cookie the session) are replaced with "[redacted]".
+ * This runs on every line, so a later `logger.info(msg, { email })` cannot leak.
+ */
+const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g;
+const REDACTED_KEYS = new Set([
+  'location',
+  'set-cookie',
+  'cookie',
+  'authorization',
+  'headers',
+  'password',
+  'code',
+  'token',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'client_secret',
+  'secret',
+]);
+
+export function maskEmails(text: string): string {
+  return text.replace(EMAIL_PATTERN, '***@$1');
+}
+
+export function redactLogValue(value: unknown, depth = 0): unknown {
+  if (typeof value === 'string') return maskEmails(value);
+  if (value === null || typeof value !== 'object') return value;
+  if (depth > 6) return '[truncated]';
+  if (value instanceof Error) return maskEmails(value.message);
+  if (Array.isArray(value)) return value.map((v) => redactLogValue(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = REDACTED_KEYS.has(key.toLowerCase()) && v !== undefined && v !== null && v !== '' ? '[redacted]' : redactLogValue(v, depth + 1);
+  }
+  return out;
+}
+
+/** "?a=1&b=2" → "a,b": parameter names only (values can be emails, codes or tokens). */
+export function queryKeys(search: string): string {
+  return [...new URLSearchParams(search).keys()].join(',');
+}
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
@@ -137,7 +183,9 @@ class Logger {
     }, flushDelay);
   }
 
-  private log(level: LogLevel, message: string, context?: LogContext): void {
+  private log(level: LogLevel, rawMessage: string, rawContext?: LogContext): void {
+    const message = maskEmails(rawMessage);
+    const context = rawContext ? (redactLogValue(rawContext) as LogContext) : undefined;
     const formattedMessage = this.formatMessage(level, message, context);
 
     // Write to console (captured by Cloudflare Workers logging)
@@ -182,7 +230,7 @@ class Logger {
     this.info('Incoming request', {
       method: request.method,
       path: url.pathname,
-      search: url.search,
+      queryKeys: queryKeys(url.search),
       ...additionalContext,
     });
   }
