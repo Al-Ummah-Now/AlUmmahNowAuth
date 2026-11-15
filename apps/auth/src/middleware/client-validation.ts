@@ -60,9 +60,9 @@ export async function validateClient(
 	// Fetch client from database
 	const client = await db
 		.prepare(
-			`SELECT id, client_id, name, redirect_uris
+			`SELECT id, name, redirect_uris
       FROM oauth_clients
-      WHERE client_id = ? AND enabled = 1`
+      WHERE id = ? AND enabled = 1`
 		)
 		.bind(clientId)
 		.first();
@@ -70,7 +70,7 @@ export async function validateClient(
 	if (!client) {
 		return {
 			valid: false,
-			error: `Invalid client_id: ${clientId}`,
+			error: 'Invalid client_id',
 		};
 	}
 
@@ -91,7 +91,7 @@ export async function validateClient(
 	return {
 		valid: true,
 		client: {
-			id: client.client_id as string,
+			id: client.id as string,
 			name: client.name as string,
 			redirectUris,
 		},
@@ -118,9 +118,9 @@ export async function getClient(
 } | null> {
 	const client = await db
 		.prepare(
-			`SELECT id, client_id, name, redirect_uris
+			`SELECT id, name, redirect_uris
       FROM oauth_clients
-      WHERE client_id = ? AND enabled = 1`
+      WHERE id = ? AND enabled = 1`
 		)
 		.bind(clientId)
 		.first();
@@ -136,7 +136,7 @@ export async function getClient(
 		: rawUris.split(',').map(u => u.trim());
 
 	return {
-		id: client.client_id as string,
+		id: client.id as string,
 		name: client.name as string,
 		redirectUris,
 	};

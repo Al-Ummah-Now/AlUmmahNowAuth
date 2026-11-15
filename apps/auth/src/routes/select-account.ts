@@ -9,6 +9,7 @@
 import { BrowserSessionService } from '../services/browser-session.service';
 import { AccountSessionService } from '../services/account-session.service';
 import { validateClient } from '../middleware/client-validation';
+import { escapeHtml } from '../email/layout';
 import { renderAccountSelector } from '../ui/select-account';
 import { uiLocale } from '../ui/confirm-dialog';
 import type { AccountSelectorAccount } from '../ui/select-account';
@@ -46,7 +47,7 @@ export async function handleSelectAccountGet(
 	const clientValidation = await validateClient(env.AUTH_DB, clientId, redirectUri);
 	if (!clientValidation.valid) {
 		return new Response(
-			`<html><body><h1>Authorization Error</h1><p>${clientValidation.error}</p></body></html>`,
+			`<html><body><h1>Authorization Error</h1><p>${escapeHtml(clientValidation.error ?? '')}</p></body></html>`,
 			{ status: 400, headers: { 'Content-Type': 'text/html' } }
 		);
 	}
@@ -158,7 +159,7 @@ export async function handleSelectAccountPost(
 	const clientValidation = await validateClient(env.AUTH_DB, clientId, redirectUri);
 	if (!clientValidation.valid) {
 		return new Response(
-			`<html><body><h1>Authorization Error</h1><p>${clientValidation.error}</p></body></html>`,
+			`<html><body><h1>Authorization Error</h1><p>${escapeHtml(clientValidation.error ?? '')}</p></body></html>`,
 			{ status: 400, headers: { 'Content-Type': 'text/html' } }
 		);
 	}
