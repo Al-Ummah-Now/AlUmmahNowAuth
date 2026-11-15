@@ -1,7 +1,7 @@
 /**
  * The shared site header (AlUmmahNow docs/design/NAV.md "Header") on the sign-in pages and the
- * profile app: brand, QA/stage badge (never on production or local dev), Website and Videos,
- * language (keeps the page and query), light/dark (the choice wins over the device, before first
+ * profile app: brand, QA/stage badge (never on production or local dev), no links to other sites
+ * (owner, 2026-11-15), language (keeps the page and query), light/dark (the choice wins over the device, before first
  * paint), then the account menu on the profile, nothing on the sign-in page itself. 64px bar,
  * 56px on phones, full width (the brand 16px from the edge, 12px on phones; never centred), in the
  * contract's typeface whatever the page's font (system-ui; Noto Naskh Arabic in Arabic); no axe violations in the header (WCAG 2.2 AA plus label-content-name-mismatch,
@@ -11,7 +11,7 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 import { register } from '../../fixtures/auth';
-import { HEADER, HEADER_FONT, headerAxe, headerMetrics } from '../../utils/header-axe';
+import { HEADER, HEADER_FONT, headerAxe, headerMetrics, oneLineProblems } from '../../utils/header-axe';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 // Registers with the test password: traces would record it. See e2e/utils/secret-input.ts.
@@ -22,12 +22,12 @@ const ENVIRONMENT = authHost.includes('.qa.') ? 'qa' : authHost.includes('.stage
 const htmlMode = (page: Page) => page.evaluate(() => (document.documentElement.classList.contains('dark') ? 'dark' : 'light'));
 /** The header's controls in reading order. */
 const controls = (page: Page) =>
-	page.locator(`${HEADER} :is(.aun-brand, .aun-env, .aun-apps, .aun-lang, .aun-mode, .aun-acct-btn, .aun-signin)`).evaluateAll((els) =>
+	page.locator(`${HEADER} :is(.aun-brand, .aun-env, .aun-lang, .aun-mode, .aun-acct-btn, .aun-signin)`).evaluateAll((els) =>
 		els
 			.filter((el) => el.getClientRects().length)
 			.map((el) => {
 				if (el.classList.contains('aun-mode')) return 'aun-icon-btn:mode';
-				return ['aun-brand', 'aun-env', 'aun-apps', 'aun-lang', 'aun-acct-btn', 'aun-signin'].find((c) => el.classList.contains(c))!;
+				return ['aun-brand', 'aun-env', 'aun-lang', 'aun-acct-btn', 'aun-signin'].find((c) => el.classList.contains(c))!;
 			}),
 	);
 
@@ -38,12 +38,13 @@ async function openSignIn(page: Page): Promise<void> {
 }
 
 test.describe('Sign-in header', () => {
-	test('brand, badge, app links, language, light/dark; no account control; the card stays centred', async ({ page }) => {
+	test('brand, badge, language, light/dark; no links to other sites, no account control; the card stays centred', async ({ page }) => {
 		await page.emulateMedia({ colorScheme: 'dark' });
 		await openSignIn(page);
-		const expected = ['aun-brand', ...(ENVIRONMENT === 'qa' || ENVIRONMENT === 'stage' ? ['aun-env'] : []), ...(ENVIRONMENT === 'local' ? [] : ['aun-apps']), 'aun-lang', 'aun-icon-btn:mode'];
+		const expected = ['aun-brand', ...(ENVIRONMENT === 'qa' || ENVIRONMENT === 'stage' ? ['aun-env'] : []), 'aun-lang', 'aun-icon-btn:mode'];
 		expect(await controls(page)).toEqual(expected);
 		await expect(page.locator(HEADER).locator('.aun-brand-app')).toHaveText('Account');
+		await expect(page.locator(`${HEADER} :is(.aun-apps, .aun-app, a[href*="//www."], a[href*="//videos."])`)).toHaveCount(0);
 		expect((await page.locator(HEADER).boundingBox())!.height).toBe(64);
 		// the header spans the top; the card sits below it, centred
 		const header = (await page.locator(HEADER).boundingBox())!;
@@ -103,11 +104,10 @@ test.describe('Sign-in header', () => {
 		expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-component="center"]')!).backgroundColor)).toBe(darkBg);
 	});
 
-	test('phone: a 56px bar, the app links leave it, language and light/dark stay', async ({ page }) => {
+	test('phone: a 56px bar with language and light/dark', async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await openSignIn(page);
 		expect((await page.locator(HEADER).boundingBox())!.height).toBe(56);
-		await expect(page.locator(`${HEADER} .aun-apps`)).toBeHidden();
 		await expect(page.locator(`${HEADER} .aun-lang`)).toBeVisible();
 		await expect(page.locator(`${HEADER} .aun-mode`)).toBeVisible();
 		const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -126,7 +126,7 @@ test.describe('Header frame: full width, one typeface', () => {
 		['profile', (page: Page, ar: boolean) => page.goto(`${TEST_URLS.profileApp}/?error=access_denied&theme=fawanees${ar ? '&lang=ar' : ''}`)],
 	] as const) {
 		for (const lang of ['en', 'ar'] as const) {
-			test(`${name} ${lang}: 64px at 1440 and 56px at 390, the brand at the edge, the contract's font`, async ({ page }) => {
+			test(`${name} ${lang}: 64px at 1440 and 56px at 390, one line from 320, the brand at the edge, the contract's font`, async ({ page }) => {
 				await page.setViewportSize({ width: 1440, height: 900 });
 				await open(page, lang === 'ar');
 				await expect(page.locator('html')).toHaveAttribute('lang', lang);
@@ -139,6 +139,8 @@ test.describe('Header frame: full width, one typeface', () => {
 				expect(phone.height).toBe(56);
 				expect(phone.brandInset).toBeLessThanOrEqual(12);
 				expect(phone.fonts).toEqual([HEADER_FONT[lang]]);
+				// one line from 320 to 1440, no links to other sites
+				expect(await oneLineProblems(page, `${name} ${lang}`)).toEqual([]);
 			});
 		}
 	}
@@ -170,13 +172,15 @@ test.describe('Profile header', () => {
 		await page.emulateMedia({ colorScheme: 'dark' });
 		await page.goto(`${TEST_URLS.profileApp}/?theme=fawanees`);
 		await expect(page.locator('#accountSwitcher')).toBeVisible();
-		const expected = ['aun-brand', ...(ENVIRONMENT === 'qa' || ENVIRONMENT === 'stage' ? ['aun-env'] : []), ...(ENVIRONMENT === 'local' ? [] : ['aun-apps']), 'aun-lang', 'aun-icon-btn:mode', 'aun-acct-btn'];
+		const expected = ['aun-brand', ...(ENVIRONMENT === 'qa' || ENVIRONMENT === 'stage' ? ['aun-env'] : []), 'aun-lang', 'aun-icon-btn:mode', 'aun-acct-btn'];
 		expect(await controls(page)).toEqual(expected);
 		// full width, like every app's header: no centred row
 		await expect(page.locator(`${HEADER} .aun-header-row`)).toHaveCount(0);
 		expect((await page.locator(HEADER).boundingBox())!.width).toBe(page.viewportSize()!.width);
 		// the account button too: the contract's typeface, not the page's
 		expect((await headerMetrics(page)).fonts).toEqual([HEADER_FONT.en]);
+		expect(await oneLineProblems(page, 'profile signed in en')).toEqual([]);
+		await page.setViewportSize({ width: 1280, height: 720 });
 		expect(await headerAxe(page, 'profile en dark')).toEqual([]);
 
 		const toggle = page.locator(`${HEADER} .aun-mode`);
@@ -193,6 +197,8 @@ test.describe('Profile header', () => {
 		expect(url.searchParams.get('theme')).toBe('fawanees');
 		await expect(page.locator(`${HEADER} .aun-brand-app`)).toHaveText('الحساب');
 		expect((await headerMetrics(page)).fonts).toEqual([HEADER_FONT.ar]);
+		expect(await oneLineProblems(page, 'profile signed in ar')).toEqual([]);
+		await page.setViewportSize({ width: 1280, height: 720 });
 		expect(await headerAxe(page, 'profile ar light')).toEqual([]);
 	});
 });

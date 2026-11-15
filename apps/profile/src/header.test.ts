@@ -4,14 +4,13 @@
  */
 import { describe, expect, it } from "vitest";
 import { renderHomePage } from "./page";
-import { appLinksHtml, brandHtml, envBadgeHtml, langButtonHtml, signInHtml } from "../../../packages/ui/src/nav/header.js";
+import { brandHtml, envBadgeHtml, langButtonHtml, signInHtml } from "../../../packages/ui/src/nav/header.js";
 import { modeIconSvg } from "../../../packages/ui/src/nav/mode-toggle.js";
 import {
   langHref,
   modeButtonBothHtml,
   PAGE_MODE_SCRIPT,
   pageHeaderHtml,
-  publicAppLinks,
   sameSitePath,
 } from "../../../packages/ui/src/nav/page-header.ts";
 
@@ -27,24 +26,16 @@ const base = {
 const headerOf = (html: string) => html.slice(html.indexOf('<header class="aun-header"'), html.indexOf("</header>") + 9);
 /** The header's controls in reading order, by class. */
 const order = (header: string) =>
-  [...header.matchAll(/class="(aun-brand|aun-env|aun-apps|aun-lang|aun-icon-btn aun-mode|account-switcher|aun-signin)"/g)].map((m) => m[1]);
+  [...header.matchAll(/class="(aun-brand|aun-env|aun-lang|aun-icon-btn aun-mode|account-switcher|aun-signin)"/g)].map((m) => m[1]);
 
 describe("profile header", () => {
-  it("renders the builders in the spec's order: brand, QA badge, Website and Videos, language, light/dark, account", () => {
+  it("renders the builders in the spec's order: brand, QA badge, language, light/dark, account; no links to other sites", () => {
     const header = headerOf(renderHomePage({ ...base, locale: "en", path: "/?theme=fawanees" }));
-    expect(order(header)).toEqual(["aun-brand", "aun-env", "aun-apps", "aun-lang", "aun-icon-btn aun-mode", "account-switcher"]);
+    expect(order(header)).toEqual(["aun-brand", "aun-env", "aun-lang", "aun-icon-btn aun-mode", "account-switcher"]);
     expect(header).toContain(brandHtml({ lang: "en", href: "/", app: "Account", logoSrc: "/brand/logo-64.webp" }));
     expect(header).toContain(envBadgeHtml("qa", "en"));
-    expect(header).toContain(
-      appLinksHtml({
-        lang: "en",
-        links: [
-          { id: "www", href: "https://www.qa.alummahnow.net/en/" },
-          { id: "videos", href: "https://videos.qa.alummahnow.net/en" },
-        ],
-        iconBase: "/aun-nav/icons",
-      }),
-    );
+    // no Website / Videos in the bar (owner, 2026-11-15): they are in the account menu's apps
+    expect(header).not.toMatch(/aun-apps|aun-app\b|www\.qa\.alummahnow\.net|videos\.qa\.alummahnow\.net/);
     // the language button keeps the page's query and swaps ?lang=
     expect(header).toContain(langButtonHtml({ lang: "en", href: "/?theme=fawanees&lang=ar" }));
     expect(header).toContain(modeButtonBothHtml("en"));
@@ -58,23 +49,22 @@ describe("profile header", () => {
     const header = headerOf(renderHomePage({ ...base, locale: "ar", path: "/?lang=ar&theme=fawanees" }));
     expect(header).toContain(brandHtml({ lang: "ar", href: "/?lang=ar", app: "الحساب", logoSrc: "/brand/logo-64.webp" }));
     expect(header).toContain(langButtonHtml({ lang: "ar", href: "/?lang=en&theme=fawanees" }));
-    expect(header).toContain('href="https://www.qa.alummahnow.net/ar/"');
+    expect(header).not.toContain("www.qa.alummahnow.net");
     expect(header).toContain(modeButtonBothHtml("ar"));
   });
 
   it("signed out: a solid Sign in in the header (no emoji button), back to this page after signing in", () => {
     const html = renderHomePage({ ...base, user: null, locale: "en", path: "/?theme=fawanees&error=access_denied" });
     const header = headerOf(html);
-    expect(order(header)).toEqual(["aun-brand", "aun-env", "aun-apps", "aun-lang", "aun-icon-btn aun-mode", "aun-signin"]);
+    expect(order(header)).toEqual(["aun-brand", "aun-env", "aun-lang", "aun-icon-btn aun-mode", "aun-signin"]);
     expect(header).toContain(signInHtml({ lang: "en", href: `/login?return=${encodeURIComponent("/?theme=fawanees")}` }));
     expect(html).not.toContain("navMenu");
     expect(header).not.toContain("accountSwitcher");
   });
 
-  it("no badge in production, and no app links on hosts without the auth.<domain> pattern", () => {
+  it("no badge in production", () => {
     const header = headerOf(renderHomePage({ ...base, environment: "production", authServerUrl: "http://localhost:3301", locale: "en" }));
     expect(header).not.toContain("aun-env");
-    expect(header).not.toContain("aun-apps");
   });
 
   it("loads the mode script after the page's styles, so a saved choice is on screen before first paint", () => {
@@ -85,19 +75,6 @@ describe("profile header", () => {
 });
 
 describe("shared page header (packages/ui/src/nav/page-header.ts)", () => {
-  it("publicAppLinks: Website and Videos from any Auth host", () => {
-    expect(publicAppLinks("https://auth.alummahnow.net", "en")).toEqual([
-      { id: "www", href: "https://www.alummahnow.net/en/" },
-      { id: "videos", href: "https://videos.alummahnow.net/en" },
-    ]);
-    expect(publicAppLinks("https://profile.auth.stage.alummahnow.net/", "ar")).toEqual([
-      { id: "www", href: "https://www.stage.alummahnow.net/ar/" },
-      { id: "videos", href: "https://videos.stage.alummahnow.net/ar" },
-    ]);
-    expect(publicAppLinks("http://localhost:3301", "en")).toEqual([]);
-    expect(publicAppLinks("not a url", "en")).toEqual([]);
-  });
-
   it("langHref keeps the path and query, swaps lang, drops one-shot parameters", () => {
     expect(langHref(new URL("https://a.example/password/authorize?client_id=x&lang=en"), "ar")).toBe("/password/authorize?client_id=x&lang=ar");
     expect(langHref("/", "ar")).toBe("/?lang=ar");
@@ -129,7 +106,7 @@ describe("shared page header (packages/ui/src/nav/page-header.ts)", () => {
   });
 
   it("the sign-in pages' header has no account slot", () => {
-    const html = pageHeaderHtml({ lang: "en", brandHref: "/", app: "Account", appLinks: [], langHref: "/?lang=ar" });
+    const html = pageHeaderHtml({ lang: "en", brandHref: "/", app: "Account", langHref: "/?lang=ar" });
     expect(html).not.toContain("aun-signin");
     expect(html).not.toContain("aun-acct-btn");
     expect(html).toMatch(/^<header class="aun-header" data-testid="aun-header"><a class="aun-brand"/);

@@ -2,6 +2,7 @@
  * The accounts admin's header frame (AlUmmahNow docs/design/NAV.md "Header"), the same as the videos
  * site's: full width, 64px (56px on phones), the drawer toggle first at the inline-start edge as the
  * videos site's 40px round `.aun-icon-btn.aun-menu-btn` with lucide `menu` (in every state: no X, no chevron),
+ * one line from 320 to 1440 with no links to other sites (owner, 2026-11-15),
  * and the contract's typeface on every piece of text (system-ui; Noto Naskh Arabic in Arabic),
  * whatever font the theme gives the page. English and Arabic, desktop and phone; axe on the header.
  *
@@ -10,7 +11,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginAdmin } from '../../fixtures/admin';
 import { TEST_URLS, TEST_USERS } from '../../utils/test-data';
-import { HEADER, HEADER_FONT, headerAxe, headerMetrics } from '../../utils/header-axe';
+import { HEADER, HEADER_FONT, headerAxe, headerMetrics, oneLineProblems } from '../../utils/header-axe';
 
 const url = (lang: 'en' | 'ar') => `${TEST_URLS.adminDashboard}/?theme=fawanees${lang === 'ar' ? '&lang=ar' : ''}`;
 
@@ -68,6 +69,9 @@ test.describe('Accounts admin header frame', () => {
 			await expect(page.locator(`${HEADER} [data-testid="nav-drawer-toggle"]:visible`)).toHaveAttribute('aria-expanded', 'true');
 			await expect(page.locator(`${HEADER} [data-testid="nav-drawer-toggle"]:visible svg.lucide-menu`)).toBeVisible();
 			expect(await headerAxe(page, `admin ${lang} phone`)).toEqual([]);
+			// one line from 320 to 1440 (drawer closed), no links to other sites
+			await page.locator(`${HEADER} [data-testid="nav-drawer-toggle"]:visible`).click();
+			expect(await oneLineProblems(page, `admin ${lang}`)).toEqual([]);
 		});
 	}
 });

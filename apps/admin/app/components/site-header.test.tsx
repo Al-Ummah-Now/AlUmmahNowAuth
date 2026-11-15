@@ -6,9 +6,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { appLinksHtml, brandHtml, envBadgeHtml, HEADER_ORDER, langButtonHtml, menuButtonHtml } from "../../../../packages/ui/src/nav/header.js";
-import { modeButtonBothHtml, publicAppLinks } from "../../../../packages/ui/src/nav/page-header.ts";
-import { AppLinks, Brand, EnvBadge, LangButton, MenuButton } from "./site-header";
+import { brandHtml, envBadgeHtml, HEADER_ORDER, langButtonHtml, menuButtonHtml } from "../../../../packages/ui/src/nav/header.js";
+import { modeButtonBothHtml } from "../../../../packages/ui/src/nav/page-header.ts";
+import { Brand, EnvBadge, LangButton, MenuButton } from "./site-header";
 import { langSwitchHref } from "../lib/shell-copy";
 import { ModeButton } from "./theme-toggle";
 
@@ -35,13 +35,6 @@ describe("admin header = the shared builders", () => {
     it(`${lang}: QA and STAGE badges, none in production or local dev`, () => {
       for (const env of ["qa", "stage"]) expect(html(<EnvBadge environment={env} lang={lang} />)).toBe(envBadgeHtml(env, lang));
       for (const env of ["production", "development", undefined]) expect(html(<EnvBadge environment={env} lang={lang} />)).toBe("");
-    });
-
-    it(`${lang}: Website and Videos`, () => {
-      const links = publicAppLinks("https://auth.qa.alummahnow.net", lang);
-      expect(links.map((l) => l.id)).toEqual(["www", "videos"]);
-      expect(html(<AppLinks lang={lang} links={links} />)).toBe(appLinksHtml({ lang, links, iconBase: "/aun-nav/icons" }));
-      expect(html(<AppLinks lang={lang} links={[]} />)).toBe("");
     });
 
     it(`${lang}: language button`, () => {
@@ -71,7 +64,7 @@ describe("admin header = the shared builders", () => {
     expect(langSwitchHref("/\\evil.example", "?lang=ar", "ar")).toBe("/evil.example");
   });
 
-  it("keeps the spec's order: drawer toggle, brand, badge, then app links, language, light/dark, account", () => {
-    expect(HEADER_ORDER).toEqual(["menu", "brand", "env", "primary", "actions", "apps", "lang", "mode", "account"]);
+  it("keeps the spec's order: drawer toggle, brand, badge, then language, light/dark, account (no links to other sites)", () => {
+    expect(HEADER_ORDER).toEqual(["menu", "brand", "env", "primary", "actions", "lang", "mode", "account"]);
   });
 });

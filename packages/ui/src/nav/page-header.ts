@@ -4,10 +4,11 @@
  * the AlUmmahNow file, kept equal by `pnpm nav:check`); the auth admin renders the same elements as
  * JSX and its tests compare them with these builders.
  *
- * Reading order (mirrored in Arabic): brand · environment badge · app links · language · light/dark
- * · account (or Sign in).
+ * Reading order (mirrored in Arabic): brand · environment badge · language · light/dark · account
+ * (or Sign in). No links to other sites (owner, 2026-11-15): the logo leads to the app's home, the
+ * other apps are in the account menu's "Al Ummah Now apps".
  */
-import { appLinksHtml, brandHtml, envBadgeHtml, langButtonHtml, modeButtonHtml, signInHtml } from './header.js';
+import { brandHtml, envBadgeHtml, langButtonHtml, modeButtonHtml, signInHtml } from './header.js';
 import { MODE_TOGGLE_LABELS, modeIconSvg } from './mode-toggle.js';
 
 export type HeaderLang = 'en' | 'ar';
@@ -18,30 +19,8 @@ export const APP_NAMES = {
 	account: { en: 'Account', ar: 'الحساب' },
 } as const;
 
-/** The owner's logo and the app icons, served by each app at these paths (scripts/themes/sync-nav.ts). */
+/** The owner's logo, served by each app at this path (scripts/themes/sync-nav.ts). */
 export const LOGO_SRC = '/brand/logo-64.webp';
-export const APP_ICON_BASE = '/aun-nav/icons';
-
-/**
- * Website and Videos, the public sites other than Auth's, from Auth's own host:
- * auth.<domain> (or profile.auth.<domain>, admin.auth.<domain>) → www.<domain>/<lang>/ and
- * videos.<domain>/<lang>. None on hosts outside that pattern (local dev).
- */
-export function publicAppLinks(authUrl: string, lang: HeaderLang): { id: 'www' | 'videos'; href: string }[] {
-	let u: URL;
-	try {
-		u = new URL(authUrl);
-	} catch {
-		return [];
-	}
-	const m = /(?:^|\.)auth\.(.+)$/.exec(u.host);
-	if (!m) return [];
-	const at = (sub: string) => `${u.protocol}//${sub}.${m[1]}`;
-	return [
-		{ id: 'www', href: `${at('www')}/${lang}/` },
-		{ id: 'videos', href: `${at('videos')}/${lang}` },
-	];
-}
 
 /**
  * The language button's link: the current page and query in the other language (`?lang=`), the
@@ -85,8 +64,6 @@ export interface PageHeaderOptions {
 	app: string;
 	/** APP_ENV / ENVIRONMENT: "qa" and "stage" show the badge. */
 	environment?: string;
-	/** Website and Videos (publicAppLinks). */
-	appLinks: { id: string; href: string }[];
 	/** langHref(...) */
 	langHref: string;
 	/** The account control's markup (signed in), else... */
@@ -106,7 +83,6 @@ export function pageHeaderHtml(o: PageHeaderOptions): string {
 		brandHtml({ lang: o.lang, href: o.brandHref, app: o.app, logoSrc: LOGO_SRC }) +
 		envBadgeHtml(o.environment, o.lang) +
 		`<div class="aun-header-tools">` +
-		appLinksHtml({ lang: o.lang, links: o.appLinks, iconBase: APP_ICON_BASE }) +
 		langButtonHtml({ lang: o.lang, href: o.langHref }) +
 		modeButtonBothHtml(o.lang) +
 		account +

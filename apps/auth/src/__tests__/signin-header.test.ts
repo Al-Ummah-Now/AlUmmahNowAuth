@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { compileBuiltin } from '../../../../packages/ui/src/auth-theme/builtin.ts';
 import { decorateHtml, signInHeaderHtml, SIGN_IN_HEADER_CSS } from '../../../../packages/ui/src/auth-theme/decorate.ts';
-import { appLinksHtml, brandHtml, envBadgeHtml, langButtonHtml } from '../../../../packages/ui/src/nav/header.js';
+import { brandHtml, envBadgeHtml, langButtonHtml } from '../../../../packages/ui/src/nav/header.js';
 import { modeButtonBothHtml, PAGE_MODE_SCRIPT } from '../../../../packages/ui/src/nav/page-header.ts';
 import { signInHeaderFor } from '../themes/pages';
 import { HEADER_ICON_PATHS, serveIcon } from '../themes/favicon';
@@ -19,7 +19,7 @@ const page =
 	'<body><div data-component="root"><div data-component="center"><form></form></div></div></body></html>';
 
 describe('sign-in header', () => {
-	it('is the builders in the spec order, with no account control and no Sign in', () => {
+	it('is the builders in the spec order, with no links to other sites, no account control and no Sign in', () => {
 		const url = new URL(`${BASE}/password/authorize?client_id=c&theme=fawanees`);
 		const header = signInHeaderHtml(signInHeaderFor(url, 'en', env));
 		expect(header).toBe(
@@ -27,14 +27,6 @@ describe('sign-in header', () => {
 				brandHtml({ lang: 'en', href: 'https://profile.auth.qa.alummahnow.net/', app: 'Account', logoSrc: '/brand/logo-64.webp' }) +
 				envBadgeHtml('qa', 'en') +
 				'<div class="aun-header-tools">' +
-				appLinksHtml({
-					lang: 'en',
-					links: [
-						{ id: 'www', href: 'https://www.qa.alummahnow.net/en/' },
-						{ id: 'videos', href: 'https://videos.qa.alummahnow.net/en' },
-					],
-					iconBase: '/aun-nav/icons',
-				}) +
 				// the language button keeps the sign-in query
 				langButtonHtml({ lang: 'en', href: '/password/authorize?client_id=c&theme=fawanees&lang=ar' }) +
 				modeButtonBothHtml('en') +
@@ -47,7 +39,7 @@ describe('sign-in header', () => {
 		const header = signInHeaderHtml(signInHeaderFor(url, 'ar', env));
 		expect(header).toContain(brandHtml({ lang: 'ar', href: 'https://profile.auth.qa.alummahnow.net/?lang=ar', app: 'الحساب', logoSrc: '/brand/logo-64.webp' }));
 		expect(header).toContain(langButtonHtml({ lang: 'ar', href: '/password/authorize?lang=en&client_id=c' }));
-		expect(header).toContain('href="https://www.qa.alummahnow.net/ar/"');
+		expect(header).not.toMatch(/www\.qa\.alummahnow|videos\.qa\.alummahnow|aun-apps/);
 		expect(header).toContain(envBadgeHtml('qa', 'ar'));
 	});
 
@@ -62,7 +54,7 @@ describe('sign-in header', () => {
 	it('no badge in production', () => {
 		const header = signInHeaderHtml(signInHeaderFor(new URL('https://auth.alummahnow.net/password/authorize'), 'en', { ...env, ENVIRONMENT: 'production', OPENAUTH_ISSUER: 'https://auth.alummahnow.net' }));
 		expect(header).not.toContain('aun-env');
-		expect(header).toContain('href="https://www.alummahnow.net/en/"');
+		expect(header).not.toMatch(/www\.alummahnow|videos\.alummahnow|aun-apps/);
 	});
 
 	it('goes first in OpenAuth root; styles and the mode script go last in <head>, after the page styles', () => {
@@ -83,7 +75,7 @@ describe('sign-in header', () => {
 		expect(out).toContain(`<body>${signInHeaderHtml(h)}<div class="container">`);
 	});
 
-	it('serves the logo and the Website and Videos icons it shows', async () => {
+	it('serves the logo it shows', async () => {
 		for (const path of HEADER_ICON_PATHS) {
 			const res = serveIcon(path)!;
 			expect(res.headers.get('Content-Type')).toBe('image/webp');
