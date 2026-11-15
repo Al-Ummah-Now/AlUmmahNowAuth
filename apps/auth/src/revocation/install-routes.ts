@@ -9,7 +9,8 @@
  * The caller authenticates as an OAuth client (HTTP Basic, as /token) holding
  * the tokens:revoke scope. The revoked refresh tokens are refused at their next
  * use; access tokens expire within ACCESS_TOKEN_TTL. A later sign-in on that
- * install works. Audited; answers 204.
+ * install works. The user (and a named client) must be in the caller's tenant,
+ * else 404. Audited; answers 204.
  */
 import { authenticateScopedClient } from '../moderation/client-routes';
 import { withinRateLimit, getClientIP, RATE_LIMIT_PERIOD_SECONDS } from '../rate-limit';
@@ -38,6 +39,15 @@ export function parseRevocationTarget(body: unknown): Target | string {
 	return typeof clientId === 'string' && ID.test(clientId) ? { userId, clientId } : 'client_id is invalid';
 }
 
+/** The target user, and the target client when one is named, belong to the calling client's tenant. */
+async function inCallerTenant(db: D1Database, tenantId: string, target: Target): Promise<boolean> {
+	const user = await db.prepare('SELECT tenant_id FROM users WHERE id = ?').bind(target.userId).first<{ tenant_id: string }>();
+	if (!user || user.tenant_id !== tenantId) return false;
+	if (!target.clientId) return true;
+	const named = await db.prepare('SELECT tenant_id FROM oauth_clients WHERE id = ?').bind(target.clientId).first<{ tenant_id: string }>();
+	return named?.tenant_id === tenantId;
+}
+
 export async function routeTokenRevocations(request: Request, env: Env, ctx: ExecutionContext, requestId: string): Promise<Response | null> {
 	const url = new URL(request.url);
 	if (url.pathname !== TOKEN_REVOCATION_PATH) return null;
@@ -60,6 +70,11 @@ export async function routeTokenRevocations(request: Request, env: Env, ctx: Exe
 	}
 	const target = parseRevocationTarget(body);
 	if (typeof target === 'string') return json({ error: 'invalid_request', error_description: target }, 400);
+
+	// Only the caller's own tenant: the user (and the client named) must be in it (404 otherwise)
+	if (!(await inCallerTenant(env.AUTH_DB, client.tenant_id, target))) {
+		return json({ error: 'not_found', error_description: 'No such user or client in this tenant' }, 404);
+	}
 
 	const scopeKey = target.installId ? installScopeKey(target.userId, target.installId) : clientScopeKey(target.userId, target.clientId!);
 	const before = await revokeScope({ db: env.AUTH_DB, kv: env.TOKEN_REVOCATIONS }, scopeKey, target.installId ? 'install_signed_out' : 'client_signed_out');
