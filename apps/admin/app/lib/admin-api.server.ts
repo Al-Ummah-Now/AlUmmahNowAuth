@@ -1152,6 +1152,40 @@ export async function sendPasskeySetupLink(env: ApiEnv, actingUser: ActingUser, 
   });
 }
 
+/** A signing key as Admin > Signing keys sees it (no key material). */
+export interface SigningKeyRow {
+  id: string;
+  alg: string;
+  created: number;
+  activates?: number;
+  expired?: number;
+  state: 'pending' | 'active' | 'previous' | 'retired';
+}
+
+export interface SigningKeysView {
+  keys: SigningKeyRow[];
+  policy: { publishLeadMs: number; rotateEveryMs: number; retireAfterMs: number; scheduled: boolean };
+  status: {
+    lastRunAt: number | null;
+    lastTrigger: 'schedule' | 'admin' | null;
+    queuedAt: number | null;
+    error: string | null;
+    errorAt: number | null;
+    attempts: number;
+  };
+  canRotate: boolean;
+}
+
+/** GET /admin/settings/signing-keys (AlUmmahNowAuth#13) */
+export async function getSigningKeys(env: ApiEnv, actingUser: ActingUser, request?: Request) {
+  return m2mRequest<SigningKeysView>(env, `/admin/settings/signing-keys`, actingUser, { method: 'GET' }, request);
+}
+
+/** POST /admin/settings/signing-keys: rotate now, or run a failed step again (Super Admin) */
+export async function queueSigningKeyStep(env: ApiEnv, actingUser: ActingUser, action: 'rotate' | 'retry') {
+  return m2mRequest<{ queued: true }>(env, `/admin/settings/signing-keys`, actingUser, { method: 'POST', body: JSON.stringify({ action }) });
+}
+
 /** GET /admin/settings/staff-passkeys */
 export async function getStaffPasskeySettings(env: ApiEnv, actingUser: ActingUser, request?: Request) {
   return m2mRequest<StaffPasskeySettings>(env, `/admin/settings/staff-passkeys`, actingUser, { method: 'GET' }, request);

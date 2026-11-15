@@ -7,7 +7,7 @@
 import type { AdminLang } from "./deletion-copy";
 import { sameSitePath } from "../../../../packages/ui/src/nav/page-header.ts";
 
-export type NavKey = "dashboard" | "users" | "roles" | "sessions" | "clients" | "audit" | "moderation" | "themes" | "deleted" | "security";
+export type NavKey = "dashboard" | "users" | "roles" | "sessions" | "clients" | "audit" | "moderation" | "themes" | "deleted" | "security" | "signingKeys";
 
 export interface ShellCopy {
   brand: string;
@@ -39,6 +39,7 @@ const en: ShellCopy = {
     themes: "Sign-in themes",
     deleted: "Recently deleted",
     security: "Security",
+    signingKeys: "Signing keys",
   },
 };
 
@@ -61,6 +62,7 @@ const ar: ShellCopy = {
     themes: "سمات تسجيل الدخول",
     deleted: "المحذوفة مؤخرًا",
     security: "الأمان",
+    signingKeys: "مفاتيح التوقيع",
   },
 };
 

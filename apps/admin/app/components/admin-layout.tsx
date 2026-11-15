@@ -10,6 +10,7 @@ import {
   Palette,
   Trash2,
   KeyRound,
+  FileKey,
 } from "lucide-react";
 import { AccountSwitcher } from "@al-ummah-now/ui";
 import { otherApps } from "../lib/app-links";
@@ -37,6 +38,7 @@ const navItems: NavItem[] = [
   { key: "themes", href: "/themes", icon: <Palette className="h-5 w-5" /> },
   { key: "deleted", href: "/deleted", icon: <Trash2 className="h-5 w-5" /> },
   { key: "security", href: "/security", icon: <KeyRound className="h-5 w-5" /> },
+  { key: "signingKeys", href: "/signing-keys", icon: <FileKey className="h-5 w-5" /> },
 ];
 
 interface AdminLayoutProps {
