@@ -238,6 +238,19 @@ describe('one native install signed out (#363)', () => {
 		expect((await revokeCall({ user_id: 'usr_x' })).status).toBe(400);
 	});
 
+	it("only reaches users and clients of the caller's tenant", async () => {
+		const now = Date.now();
+		await E.AUTH_DB.prepare(`INSERT OR IGNORE INTO tenants (id, name, status, created_at, updated_at) VALUES ('other', 'Other', 'active', ?, ?)`).bind(now, now).run();
+		await E.AUTH_DB.prepare(`INSERT OR IGNORE INTO users (id, tenant_id, email, status, created_at, updated_at) VALUES ('usr_other_tenant', 'other', 'o@example.com', 'active', ?, ?)`)
+			.bind(now, now)
+			.run();
+		await E.AUTH_DB.prepare(`INSERT OR REPLACE INTO oauth_clients (id, tenant_id, name, created_at, updated_at) VALUES ('other-tenant-app', 'other', 'Other app', ?, ?)`).bind(now, now).run();
+		expect((await revokeCall({ user_id: 'usr_other_tenant', install_id: 'ins_1' })).status).toBe(404);
+		expect((await revokeCall({ user_id: 'usr_nobody', install_id: 'ins_1' })).status).toBe(404);
+		expect((await revokeCall({ user_id: await userId(), client_id: 'other-tenant-app' })).status).toBe(404);
+		expect(await E.AUTH_DB.prepare(`SELECT 1 FROM scoped_revocations WHERE scope_key = 'i:usr_other_tenant:ins_1'`).first()).toBeNull();
+	});
+
 	it('parseRevocationTarget', () => {
 		expect(parseRevocationTarget({ user_id: 'u', install_id: 'i' })).toEqual({ userId: 'u', installId: 'i' });
 		expect(parseRevocationTarget({ user_id: 'u', client_id: 'c' })).toEqual({ userId: 'u', clientId: 'c' });
