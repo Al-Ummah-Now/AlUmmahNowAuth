@@ -76,6 +76,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: One lockfile (pnpm)
+        # npm/yarn lockfiles next to pnpm-lock.yaml drift and double the Dependabot alerts (#297)
+        run: |
+          stray=$(git ls-files | grep -E '(^|/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock)$' || true)
+          if [ -n "$stray" ]; then
+            echo "::error::Only pnpm-lock.yaml is allowed. Remove:"; echo "$stray"
+            exit 1
+          fi
+
       - name: Audit dependencies
         run: pnpm audit --audit-level high --prod
 

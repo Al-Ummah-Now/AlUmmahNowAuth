@@ -1,8 +1,10 @@
 version: 2
 updates:
-  # Enable version updates for npm
+  # npm: the whole pnpm workspace (root + apps), minor/patch updates grouped
   - package-ecosystem: "npm"
-    directory: "/"
+    directories:
+      - "/"
+      - "/apps/*"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -28,63 +30,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
-
-  # Auth app dependencies
-  - package-ecosystem: "npm"
-    directory: "/apps/auth"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "meywd"
-    labels:
-      - "dependencies"
-      - "auth-app"
-      - "automated"
-    commit-message:
-      prefix: "chore"
-      prefix-development: "chore"
-      include: "scope"
-
-  # Admin app dependencies
-  - package-ecosystem: "npm"
-    directory: "/apps/admin"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "meywd"
-    labels:
-      - "dependencies"
-      - "admin-app"
-      - "automated"
-    commit-message:
-      prefix: "chore"
-      prefix-development: "chore"
-      include: "scope"
-
-  # Profile app dependencies
-  - package-ecosystem: "npm"
-    directory: "/apps/profile"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "02:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "meywd"
-    labels:
-      - "dependencies"
-      - "profile-app"
-      - "automated"
-    commit-message:
-      prefix: "chore"
-      prefix-development: "chore"
-      include: "scope"
+      # Security updates arrive as one PR too
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
