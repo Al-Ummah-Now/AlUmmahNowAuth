@@ -65,10 +65,10 @@ export function LangButton({ lang, href }: { lang: AdminLang; href: string }) {
 }
 
 /**
- * The drawer toggle, first in the bar: the same 40px round `.aun-icon-btn` with lucide `menu` (0.487,
- * exactly the shared menuButtonHtml's icon) as the videos site's drawer toggle, in every state (no X,
- * no chevron). Not `.aun-menu`: that class is the menu surface in aun-nav.css (an absolutely placed
- * 21rem panel), so it never goes on a header button here.
+ * The drawer toggle, first in the bar: the same 40px round `.aun-icon-btn.aun-menu-btn` with lucide
+ * `menu` (0.487, exactly the shared menuButtonHtml's icon) as the videos site's drawer toggle, in every
+ * state (no X, no chevron). Always shown (it opens the drawer / collapses the rail), so not
+ * `.aun-menu-collapse`; never `.aun-menu`, the account menu's surface in aun-nav.css.
  */
 export function MenuButton({
   label,
@@ -86,7 +86,7 @@ export function MenuButton({
   return (
     <button
       type="button"
-      className="aun-icon-btn"
+      className="aun-icon-btn aun-menu-btn"
       data-testid="nav-drawer-toggle"
       aria-label={label}
       title={label}
