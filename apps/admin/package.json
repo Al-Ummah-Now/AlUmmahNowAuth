@@ -33,7 +33,7 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-toast": "^1.2.1",
-    "@react-router/cloudflare": "^7.18.5",
+    "@react-router/cloudflare": "^8.5.1",
     "@react-router/node": "^7.18.5",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
