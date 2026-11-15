@@ -1,7 +1,8 @@
 /**
  * E2E: passkeys (AUTH-PASSKEYS) with a Chromium virtual authenticator.
  *
- * - The after-sign-in card adds a passkey, then continues to the app.
+ * - The after-sign-in card adds a passkey, then goes on to the app by itself (1.5 s).
+ * - /passkeys/setup goes back to its return target by itself; without one it stays.
  * - "Sign in with a passkey" on the sign-in page signs the user in with no password.
  * - The account hub lists, renames and removes a passkey (in-app dialog, Undo).
  *
@@ -120,9 +121,9 @@ test.describe('Passkeys', () => {
 
     await signUpToCard(page, email);
     await page.locator('[data-page="passkey"] [data-action="add"]').click();
-    const done = page.locator('[data-page="passkey"] [data-action="done"]');
-    await expect(done).toBeVisible({ timeout: 15000 });
-    await done.click();
+    // "Passkey added" with Continue, then the page goes on to the app by itself
+    await expect(page.locator('[data-page="passkey"] [data-slot="status"]')).toContainText('Passkey added', { timeout: 15000 });
+    await expect(page.locator('[data-page="passkey"] [data-action="done"]')).toBeVisible();
     await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
 
     // The hub lists it
@@ -156,13 +157,11 @@ test.describe('Passkeys', () => {
     const rows = page.locator('#passkeyList [data-passkey-id]');
     await expect(page.locator('#passkeysEmpty')).toBeVisible({ timeout: 15000 });
     await expectCardHealthy(page);
-    // "Add a passkey" opens the Auth setup page; the passkey is made there, then Continue comes back
+    // "Add a passkey" opens the Auth setup page; the passkey is made there, then it comes back by itself
     await page.locator('#passkeyAdd').click();
     await expect(page.locator('[data-page="passkey"]')).toBeVisible({ timeout: 15000 });
     await page.locator('[data-page="passkey"] [data-action="add"]').click();
-    const done = page.locator('[data-page="passkey"] [data-action="done"]');
-    await expect(done).toBeVisible({ timeout: 15000 });
-    await done.click();
+    await expect(page.locator('[data-page="passkey"] [data-slot="status"]')).toContainText('Passkey added', { timeout: 15000 });
     await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
     await expect(rows).toHaveCount(1, { timeout: 15000 });
 
@@ -188,5 +187,25 @@ test.describe('Passkeys', () => {
     await page.reload();
     await expect(rows).toHaveCount(1, { timeout: 15000 });
     await expectCardHealthy(page);
+  });
+
+  test('/passkeys/setup without a return target stays on the page after adding, Continue goes to the hub', async ({ page, context }) => {
+    const email = generateTestEmail('hub-noreturn');
+    accounts.push(email);
+    await addVirtualAuthenticator(context, page);
+    await register(page, email);
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+
+    // As the native apps open it (setup_url has no return_to)
+    await page.goto(`${TEST_URLS.authServer}/passkeys/setup`);
+    await page.locator('[data-page="passkey"] [data-action="add"]').click();
+    const status = page.locator('[data-page="passkey"] [data-slot="status"]');
+    await expect(status).toContainText('Passkey added', { timeout: 15000 });
+    await expect(status).not.toContainText('Taking you back');
+    const setupUrl = page.url();
+    await page.waitForTimeout(2500);
+    expect(page.url()).toBe(setupUrl);
+    await page.locator('[data-page="passkey"] [data-action="done"]').click();
+    await expect(page.locator('#passkeyList [data-passkey-id]')).toHaveCount(1, { timeout: 20000 });
   });
 });

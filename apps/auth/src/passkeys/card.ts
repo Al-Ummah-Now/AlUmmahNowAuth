@@ -76,6 +76,7 @@ export async function afterSignInCard(input: CardInput): Promise<Response | null
 		needsCode: staff,
 		email: input.email,
 		continueUrl: location,
+		autoContinue: true,
 		lang: input.locale,
 	});
 	// Keep the issuer's cookies (the new __session, flow cleanup)
