@@ -56,7 +56,7 @@ export async function generateAuthorizationCode(
 
 	// Look up the internal OAuth client ID (FK references oauth_clients.id, not client_id)
 	const client = await db
-		.prepare(`SELECT id FROM oauth_clients WHERE client_id = ?`)
+		.prepare(`SELECT id FROM oauth_clients WHERE id = ?`)
 		.bind(params.clientId)
 		.first<{ id: string }>();
 
@@ -119,7 +119,7 @@ export async function validateAuthorizationCode(
 
 	// Look up the internal OAuth client ID (DB stores internal ID, not public client_id)
 	const client = await db
-		.prepare(`SELECT id FROM oauth_clients WHERE client_id = ?`)
+		.prepare(`SELECT id FROM oauth_clients WHERE id = ?`)
 		.bind(clientId)
 		.first<{ id: string }>();
 
