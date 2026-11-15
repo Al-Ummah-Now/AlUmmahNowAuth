@@ -5,6 +5,7 @@ import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from 
 import { authStorage } from "./storage/auth-storage";
 import { D1UserService } from "./services/d1-user-service";
 import { PKCE_REQUIRED_CLIENTS } from "./pkce-clients";
+import { CONFIDENTIAL_CLIENTS } from "./confidential-clients";
 import { D1SessionAdapter } from "./adapters/session-adapter";
 import { D1TenantAdapter } from "./adapters/tenant-adapter";
 import { hexToSecret } from "./utils/crypto";
@@ -453,6 +454,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // Public clients (no secret) must send PKCE S256 on /authorize (#211), and
       // codes of these clients are redeemed only with PKCE (OA-1, see pkce-clients.ts)
       pkce: { requireForPublicClients: true, requireForCodeExchange: PKCE_REQUIRED_CLIENTS },
+      // These confidential clients always authenticate with their secret on the
+      // code exchange and refresh (#211, see confidential-clients.ts)
+      requireClientAuthentication: CONFIDENTIAL_CLIENTS,
       sessionService,
       tenantService,
       sessionSecret,

@@ -16,7 +16,7 @@ import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:
 import worker from '../index';
 import { generatePKCE } from '@al-ummah-now/openauth/pkce';
 import { setupDatabase } from '../test-setup';
-import { PROFILE, ADMIN, registerTestClients } from './helpers/clients';
+import { PROFILE, ADMIN, ADMIN_BASIC, registerTestClients } from './helpers/clients';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
@@ -101,7 +101,12 @@ async function codeOwner(callback: URL, client: Client): Promise<string> {
 	const res = await worker.fetch(
 		new Request(`${ISSUER}/token`, {
 			method: 'POST',
-			headers: { 'content-type': 'application/x-www-form-urlencoded', host: new URL(ISSUER).host },
+			headers: {
+				'content-type': 'application/x-www-form-urlencoded',
+				host: new URL(ISSUER).host,
+				// The admin is a confidential client (confidential-clients.ts)
+				...(client.id === ADMIN.id ? { authorization: ADMIN_BASIC } : {}),
+			},
 			body: new URLSearchParams({
 				grant_type: 'authorization_code',
 				code: code!,
@@ -143,7 +148,7 @@ describe('/authorize with an existing browser session (issuer as deployed)', () 
 		expect((await new Browser().authorize(ADMIN)).pathname).toBe('/password/authorize');
 	});
 
-	it('profile and admin codes are only redeemed with PKCE (pkce-clients.ts, OA-1)', async () => {
+	it('profile and admin codes are only redeemed with PKCE or the admin secret (pkce-clients.ts, OA-1, #211)', async () => {
 		for (const client of [PROFILE, ADMIN]) {
 			const browser = new Browser();
 			await browser.submitForm(await browser.authorize(PROFILE), ALICE);
@@ -164,9 +169,56 @@ describe('/authorize with an existing browser session (issuer as deployed)', () 
 				ctx
 			);
 			await waitOnExecutionContext(ctx);
-			expect(res.status).toBe(400);
-			expect(((await res.json()) as { error_description: string }).error_description).toMatch(/PKCE/);
+			if (client.id === ADMIN.id) {
+				// A confidential client: no secret, no tokens
+				expect(res.status).toBe(401);
+				expect(((await res.json()) as { error: string }).error).toBe('invalid_client');
+			} else {
+				expect(res.status).toBe(400);
+				expect(((await res.json()) as { error_description: string }).error_description).toMatch(/PKCE/);
+			}
 		}
+	});
+
+	it('admin codes and refresh tokens are useless without the admin secret, even with PKCE (#211)', async () => {
+		const token = async (body: Record<string, string>, authorization?: string) => {
+			const ctx = createExecutionContext();
+			const res = await worker.fetch(
+				new Request(`${ISSUER}/token`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/x-www-form-urlencoded',
+						host: new URL(ISSUER).host,
+						...(authorization ? { authorization } : {}),
+					},
+					body: new URLSearchParams(body).toString(),
+				}),
+				env as unknown as Env,
+				ctx
+			);
+			await waitOnExecutionContext(ctx);
+			return res;
+		};
+		const browser = new Browser();
+		await browser.submitForm(await browser.authorize(PROFILE), ALICE);
+		const callback = await browser.authorize(ADMIN);
+		const exchange = {
+			grant_type: 'authorization_code',
+			code: callback.searchParams.get('code')!,
+			redirect_uri: ADMIN.redirect,
+			client_id: ADMIN.id,
+			code_verifier: verifiers.get(callback.searchParams.get('state') ?? '') ?? '',
+		};
+		const bare = await token(exchange);
+		expect(bare.status).toBe(401);
+		const wrong = await token(exchange, `Basic ${btoa(`${ADMIN.id}:guess`)}`);
+		expect(wrong.status).toBe(401);
+		// The refused attempts did not use the code up
+		const ok = await token(exchange, ADMIN_BASIC);
+		expect(ok.status).toBe(200);
+		const { refresh_token } = (await ok.json()) as { refresh_token: string };
+		expect((await token({ grant_type: 'refresh_token', refresh_token })).status).toBe(401);
+		expect((await token({ grant_type: 'refresh_token', refresh_token }, ADMIN_BASIC)).status).toBe(200);
 	});
 
 	it('one account -> silent code for it in another app', async () => {
