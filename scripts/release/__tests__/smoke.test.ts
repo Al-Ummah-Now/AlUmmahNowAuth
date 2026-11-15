@@ -16,7 +16,15 @@ function fakeFetch(opts: { issuer?: string; deep?: object; deepStatus?: number; 
 		if (url.pathname === '/.well-known/jwks.json') return json({ keys: [{ kid: 'k' }] });
 		if (url.pathname === '/health') return json(opts.deep ?? { status: 'ok', environment: 'production', version: 'v-new', checks: { d1: true } }, opts.deepStatus ?? 200);
 		if (url.pathname.startsWith('/test/')) return new Response('Not Found', { status: opts.testRoute ?? 404 });
-		if (url.pathname === '/authorize') return new Response(null, { status: 302, headers: { Location: '/password/authorize' } });
+		if (url.pathname === '/authorize') {
+			// Like the issuer: public clients must send PKCE S256 (#211)
+			if (url.searchParams.get('code_challenge_method') !== 'S256' || !url.searchParams.get('code_challenge')) {
+				const back = new URL(url.searchParams.get('redirect_uri')!);
+				back.searchParams.set('error', 'invalid_request');
+				return new Response(null, { status: 302, headers: { Location: back.toString() } });
+			}
+			return new Response(null, { status: 302, headers: { Location: '/password/authorize' } });
+		}
 		if (url.pathname === '/password/authorize') return new Response('<form method="post"><input type="email" name="email"></form>', { status: 200 });
 		return new Response('ok', { status: 200 });
 	}) as typeof fetch;
