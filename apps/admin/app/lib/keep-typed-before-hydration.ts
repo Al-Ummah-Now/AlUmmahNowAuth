@@ -22,7 +22,9 @@
 export const TYPED_PROP = '__aunTypedBeforeHydration';
 
 /** Inline in <head>, before any field is shown. Records only fields React has not hydrated yet. */
-export const TYPED_RECORDER_SCRIPT = `document.addEventListener('input',function(e){var t=e.target;if(!t||(t.tagName!=='INPUT'&&t.tagName!=='TEXTAREA'))return;for(var k in t){if(k.indexOf('__reactProps$')===0)return}t.${TYPED_PROP}=t.value},true);`;
+export const TYPED_RECORDER_SCRIPT = `document.addEventListener('input',function(e){var t=e.target;if(!t||(t.tagName!=='INPUT'&&t.tagName!=='TEXTAREA')||/^(checkbox|radio|file|hidden|submit|button|reset|image|range|color)$/.test(t.type))return;for(var k in t){if(k.indexOf('__reactProps$')===0)return}t.${TYPED_PROP}=t.value},true);`;
+
+const NOT_TEXT = /^(checkbox|radio|file|hidden|submit|button|reset|image|range|color)$/;
 
 type Field = (HTMLInputElement | HTMLTextAreaElement) & {
   [TYPED_PROP]?: string;
@@ -42,6 +44,11 @@ export function keepTypedBeforeHydration(root: Pick<ParentNode, "querySelectorAl
   for (const el of Array.from(root.querySelectorAll<Field>('input, textarea'))) {
     const typed = el[TYPED_PROP];
     if (typed === undefined) continue;
+    // Text fields only (a file input's value cannot be set; boxes have no typed text)
+    if (el instanceof HTMLInputElement && NOT_TEXT.test(el.type)) {
+      delete el[TYPED_PROP];
+      continue;
+    }
     const props = reactProps(el);
     if (!props) continue; // not hydrated yet: a later pass
     delete el[TYPED_PROP];
