@@ -33,6 +33,8 @@ const TOKEN_PATTERNS = [
 	['slack-token', /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/],
 	['aws-access-key', /\b(AKIA|ASIA)[A-Z0-9]{16}\b/],
 	['private-key', /-----BEGIN ([A-Z]+ )?PRIVATE KEY-----/],
+	// .npmrc is committed (scope only, for Dependabot); a registry token never is. ${ENV} references are fine.
+	['npmrc-auth-token', /_authToken\s*=\s*(?!\$\{)\S+/],
 ];
 
 /** True when a literal from a generated Env type looks like a credential. */
