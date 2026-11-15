@@ -12,7 +12,9 @@ import worker from '../index';
 import { setupDatabase } from '../test-setup';
 import { PROFILE, registerTestClients } from './helpers/clients';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
-import { Storage } from '@al-ummah-now/openauth/storage/storage';
+import { joinKey, Storage } from '@al-ummah-now/openauth/storage/storage';
+import { refreshKey } from '@al-ummah-now/openauth/refresh-token';
+import { DEFAULT_REFRESH_TOKEN_TTL } from '../revocation/token-gate';
 import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
 import { createRefreshCheck } from '../handlers/refresh-check';
 
@@ -127,6 +129,34 @@ describe('refresh recomputes roles (worker)', () => {
 			.run();
 		const storage = CloudflarePatchedStorage({ namespace: E.AUTH_STORAGE });
 		await Storage.set(storage, ['email', EMAIL, 'password'], await ScryptHasher().hash(PASSWORD));
+	});
+
+	it('#419: a refresh token lives 30 days from its last use, renewed by every refresh', async () => {
+		/** When the stored refresh token expires (D1 atomic store, epoch ms). */
+		const expiresAt = async (token: string) => {
+			const i = token.lastIndexOf(':');
+			const row = await E.AUTH_DB.prepare('SELECT expires_at FROM openauth_atomic WHERE key = ?')
+				.bind(joinKey(refreshKey(token.slice(0, i), token.slice(i + 1))))
+				.first<{ expires_at: number }>();
+			return row!.expires_at;
+		};
+		const days30 = DEFAULT_REFRESH_TOKEN_TTL * 1000;
+		expect(DEFAULT_REFRESH_TOKEN_TTL).toBe(30 * 24 * 60 * 60);
+
+		const browser = new Browser();
+		const before = Date.now();
+		const first = await browser.signIn();
+		const firstExpiry = await expiresAt(first.refresh_token);
+		expect(firstExpiry).toBeGreaterThanOrEqual(before + days30);
+		expect(firstExpiry).toBeLessThanOrEqual(Date.now() + days30);
+
+		await new Promise((r) => setTimeout(r, 20));
+		const refreshed = await browser.refresh(first.refresh_token);
+		expect(refreshed.status).toBe(200);
+		const nextExpiry = await expiresAt(refreshed.body.refresh_token);
+		// Sliding: the rotated token lives another 30 days from this refresh
+		expect(nextExpiry).toBeGreaterThan(firstExpiry);
+		expect(nextExpiry).toBeLessThanOrEqual(Date.now() + days30);
 	});
 
 	it('a role granted after sign-in arrives on the next refresh; a revoked one goes', async () => {

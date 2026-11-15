@@ -54,7 +54,7 @@ import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
 import { noIndexWorker } from '../../../packages/ui/src/crawlers.ts';
 import { resolveUserDisplayName } from "../../../packages/ui/src/display-name.ts";
 import { tenantCustomDomains } from "./utils/tenant-domains";
-import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
+import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl, parseRefreshTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
 import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
 import { ADMIN_NATIVE_CLIENT_IDS } from "./admin-native-clients";
@@ -389,6 +389,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       return await handleTokenRevoke(request, storage);
     }
     const accessTtl = parseAccessTtl(env.ACCESS_TOKEN_TTL);
+    // Refresh tokens live 30 days from their last use (#419), not openauth's one year
+    const refreshTtl = parseRefreshTtl(env.REFRESH_TOKEN_TTL);
 
     // Initialize OpenAuth enterprise issuer with multi-account session support
     logger.debug('Initializing OpenAuth enterprise issuer', {
@@ -445,12 +447,15 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // verification instead of the request Host / X-Forwarded-* headers.
       issuer: env.OPENAUTH_ISSUER || undefined,
       // Refresh tokens of revoked sign-ins read as missing; old sessions get
-      // the current access-token lifetime on their next refresh (#437)
+      // the current access-token lifetime on their next refresh (#437), and the
+      // current refresh lifetime; one-year tokens unused for 30 days are refused (#419)
       // Codes and device grants of suspended/deleted accounts (D1) are refused (#662)
-      storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, revocationsDb: env.AUTH_DB, accessTtl, db: env.AUTH_DB }),
+      storage: guardIssuerStorage(storage, { revocations: env.TOKEN_REVOCATIONS, revocationsDb: env.AUTH_DB, accessTtl, refreshTtl, db: env.AUTH_DB }),
       // Codes live 10 minutes (RFC 6749 maximum): the after-sign-in passkey card
       // (AUTH-PASSKEYS) shows before the redirect that carries the code
-      ttl: { ...(accessTtl ? { access: accessTtl } : {}), code: 600 },
+      // Refresh tokens: REFRESH_TOKEN_TTL (30 days) sliding: each refresh rotates
+      // the token and the next one lives that long again (#419)
+      ttl: { ...(accessTtl ? { access: accessTtl } : {}), refresh: refreshTtl, code: 600 },
       // Public clients (no secret) must send PKCE S256 on /authorize (#211), and
       // codes of these clients are redeemed only with PKCE (OA-1, see pkce-clients.ts)
       pkce: { requireForPublicClients: true, requireForCodeExchange: PKCE_REQUIRED_CLIENTS },

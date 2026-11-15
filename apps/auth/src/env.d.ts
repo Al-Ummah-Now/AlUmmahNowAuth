@@ -70,6 +70,8 @@ declare global {
      * default (30 days). Existing sessions are capped on their next refresh.
      */
     ACCESS_TOKEN_TTL?: string;
+    /** Refresh-token lifetime in seconds from its last use (#419); 30 days when unset. */
+    REFRESH_TOKEN_TTL?: string;
     /** "on": the hourly job starts signing-key rotations when a key is due (signing-keys/rotation.ts) */
     SIGNING_KEY_ROTATION_SCHEDULE?: string;
     REFRESH_TOKEN_EXPIRY?: number;

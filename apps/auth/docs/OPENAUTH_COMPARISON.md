@@ -194,7 +194,7 @@ Your codebase implements **significant duplicate and overlapping functionality**
 |---------|----------------|----------|
 | **Access Token Generation** | Built-in via issuer | `/token` endpoint |
 | **Refresh Token Generation** | Built-in via issuer | `refresh_token` grant type |
-| Refresh Token TTL | Configurable (default 1 year) | `ttl.refresh` config |
+| Refresh Token TTL | Configurable (openauth default 1 year; Auth sets 30 days from last use, `REFRESH_TOKEN_TTL`, #419) | `ttl.refresh` config |
 | Access Token TTL | Configurable (default 30 days) | `ttl.access` config |
 | Reuse Window | Configurable (default 60s) | `ttl.reuse` - concurrency handling |
 | Reuse Detection | Prevents replay attacks | Built-in security |

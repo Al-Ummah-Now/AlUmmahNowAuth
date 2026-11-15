@@ -22,7 +22,7 @@ import {
 	revokeUser,
 	type RevocationEntry,
 } from '../revocation/revocation-list';
-import { guardIssuerStorage, parseAccessTtl } from '../revocation/token-gate';
+import { DEFAULT_REFRESH_TOKEN_TTL, MAX_REFRESH_TOKEN_TTL, guardIssuerStorage, parseAccessTtl, parseRefreshTtl } from '../revocation/token-gate';
 import { adminUserActionReason, endBrowserSignIns, revokeOnAdminUserAction, revokeOnPasswordChange } from '../revocation/lifecycle';
 
 const ISSUER = 'http://localhost:3301';
@@ -102,6 +102,16 @@ describe('revocation list', () => {
 		expect(parseAccessTtl('900')).toBe(900);
 		expect(parseAccessTtl(900)).toBe(900);
 		for (const bad of [undefined, '', 'abc', '30', '90.5', '-900']) expect(parseAccessTtl(bad)).toBeUndefined();
+	});
+
+	it('#419: parseRefreshTtl is 30 days unless REFRESH_TOKEN_TTL is whole seconds from 1 hour to 365 days', () => {
+		expect(DEFAULT_REFRESH_TOKEN_TTL).toBe(2_592_000);
+		expect(parseRefreshTtl(undefined)).toBe(DEFAULT_REFRESH_TOKEN_TTL);
+		expect(parseRefreshTtl('604800')).toBe(604_800);
+		expect(parseRefreshTtl(String(MAX_REFRESH_TOKEN_TTL))).toBe(31_536_000);
+		for (const bad of ['', 'abc', '60', '1.5', '-604800', String(MAX_REFRESH_TOKEN_TTL + 1)]) {
+			expect(parseRefreshTtl(bad)).toBe(DEFAULT_REFRESH_TOKEN_TTL);
+		}
 	});
 
 	it('maps admin user actions to revocations (paths as the admin user app sees them, and full paths)', () => {
@@ -201,6 +211,29 @@ describe('issuer storage guard', () => {
 		expect(await Storage.atomic(guarded).get(refreshKey('au4-old'))).toBeUndefined();
 		expect(await Storage.atomic(raw).get(refreshKey('au4-old'))).toBeUndefined();
 		expect(await Storage.atomic(guarded).get(refreshKey('au4-new'))).toMatchObject({ clientID: 'web' });
+	});
+
+	it('#419: caps the one-year refresh lifetime of old tokens, so their next rotation lives 30 days', async () => {
+		await E.AUTH_DB.prepare('CREATE TABLE IF NOT EXISTS openauth_atomic (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER)').run();
+		const raw = authStorage(E);
+		const guarded = guardIssuerStorage(raw, { refreshTtl: DEFAULT_REFRESH_TOKEN_TTL, db: E.AUTH_DB });
+		const atomic = Storage.atomic(guarded);
+		const year = 31_536_000 * 1000;
+		const day = 86_400_000;
+		// Written (last used) 2 days ago with a one-year lifetime: kept, capped to 30 days
+		await Storage.atomic(raw).set(refreshKey('ttl-recent'), record(nowS()), new Date(Date.now() - 2 * day + year));
+		const seen = await atomic.get(refreshKey('ttl-recent'));
+		expect(seen.ttl).toEqual({ access: 2_592_000, refresh: DEFAULT_REFRESH_TOKEN_TTL });
+		// The issuer's compare-and-set against the capped copy still succeeds
+		expect(await atomic.replace(refreshKey('ttl-recent'), seen, { ...seen, timeUsed: 1 })).toBe(true);
+		// Unused for 31 days: refused and deleted
+		await Storage.atomic(raw).set(refreshKey('ttl-idle'), record(nowS()), new Date(Date.now() - 31 * day + year));
+		expect(await atomic.get(refreshKey('ttl-idle'))).toBeUndefined();
+		expect(await Storage.atomic(raw).get(refreshKey('ttl-idle'))).toBeUndefined();
+		// Tokens already within the lifetime are untouched
+		const current = { ...record(nowS()), ttl: { access: 900, refresh: 604_800 } };
+		await Storage.atomic(raw).set(refreshKey('ttl-short'), current, new Date(Date.now() + 604_800_000));
+		expect((await atomic.get(refreshKey('ttl-short'))).ttl).toEqual({ access: 900, refresh: 604_800 });
 	});
 
 	it('is the plain storage when nothing is configured', () => {
