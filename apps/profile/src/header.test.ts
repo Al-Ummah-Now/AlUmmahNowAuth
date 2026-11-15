@@ -48,7 +48,10 @@ describe("profile header", () => {
     // the language button keeps the page's query and swaps ?lang=
     expect(header).toContain(langButtonHtml({ lang: "en", href: "/?theme=fawanees&lang=ar" }));
     expect(header).toContain(modeButtonBothHtml("en"));
-    expect(header).toMatch(/^<header class="aun-header" data-testid="aun-header" style="--aun-header-max:1200px"><div class="aun-header-row">/);
+    // full width, like every app's header: no max width, no centred row
+    expect(header).toMatch(/^<header class="aun-header" data-testid="aun-header"><a class="aun-brand"/);
+    expect(header).not.toContain("--aun-header-max");
+    expect(header).not.toContain("aun-header-row");
   });
 
   it("Arabic: the same controls in Arabic, the link back to English keeps the query", () => {

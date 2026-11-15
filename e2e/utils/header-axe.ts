@@ -20,3 +20,31 @@ export async function headerAxe(page: Page, label: string): Promise<string[]> {
 		.analyze();
 	return result.violations.map((v) => `${label}: ${v.id} ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
 }
+
+/** The contract's typeface (aun-nav.css .aun-header), the same in every app's header whatever the page uses. */
+export const HEADER_FONT = {
+	en: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+	ar: '"Noto Naskh Arabic", "Geeza Pro", "Segoe UI", Tahoma, sans-serif',
+} as const;
+
+/**
+ * The header's layout and type, as every app must draw it (NAV.md "Header"): its height, the
+ * brand's distance from the inline-start edge (full width, never centred), and every distinct
+ * font-family on the header and its text (icons aside).
+ */
+export async function headerMetrics(page: Page): Promise<{ height: number; brandInset: number; fonts: string[] }> {
+	return page.locator(HEADER).evaluate((h) => {
+		const brand = h.querySelector('.aun-brand')!.getBoundingClientRect();
+		const rtl = getComputedStyle(h).direction === 'rtl';
+		const fonts = new Set<string>();
+		for (const el of [h, ...h.querySelectorAll('*')]) {
+			if (el.closest('svg') || !el.getClientRects().length) continue;
+			fonts.add(getComputedStyle(el).fontFamily);
+		}
+		return {
+			height: h.getBoundingClientRect().height,
+			brandInset: Math.round(rtl ? document.documentElement.clientWidth - brand.right : brand.left),
+			fonts: [...fonts],
+		};
+	});
+}

@@ -3,14 +3,15 @@
  * profile app: brand, QA/stage badge (never on production or local dev), Website and Videos,
  * language (keeps the page and query), light/dark (the choice wins over the device, before first
  * paint), then the account menu on the profile, nothing on the sign-in page itself. 64px bar,
- * 56px on phones; no axe violations in the header (WCAG 2.2 AA plus label-content-name-mismatch,
+ * 56px on phones, full width (the brand 16px from the edge, 12px on phones; never centred), in the
+ * contract's typeface whatever the page's font (system-ui; Noto Naskh Arabic in Arabic); no axe violations in the header (WCAG 2.2 AA plus label-content-name-mismatch,
  * e2e/utils/header-axe.ts) in English and Arabic: no aria-label on the language button.
  *
  * Fawanees is asked for with ?theme= (no environment's theme changes).
  */
 import { test, expect, type Page } from '@playwright/test';
 import { register } from '../../fixtures/auth';
-import { HEADER, headerAxe } from '../../utils/header-axe';
+import { HEADER, HEADER_FONT, headerAxe, headerMetrics } from '../../utils/header-axe';
 import { TEST_URLS, generateTestEmail } from '../../utils/test-data';
 
 // Registers with the test password: traces would record it. See e2e/utils/secret-input.ts.
@@ -115,6 +116,34 @@ test.describe('Sign-in header', () => {
 	});
 });
 
+/**
+ * Full width, one typeface, one line: the same frame as www and the videos site at 1440 and 390,
+ * in English and Arabic (the brand at the inline-start edge, mirrored).
+ */
+test.describe('Header frame: full width, one typeface', () => {
+	for (const [name, open] of [
+		['sign-in', (page: Page, ar: boolean) => openSignIn(page).then(() => (ar ? page.goto(`${page.url()}&lang=ar`) : undefined))],
+		['profile', (page: Page, ar: boolean) => page.goto(`${TEST_URLS.profileApp}/?error=access_denied&theme=fawanees${ar ? '&lang=ar' : ''}`)],
+	] as const) {
+		for (const lang of ['en', 'ar'] as const) {
+			test(`${name} ${lang}: 64px at 1440 and 56px at 390, the brand at the edge, the contract's font`, async ({ page }) => {
+				await page.setViewportSize({ width: 1440, height: 900 });
+				await open(page, lang === 'ar');
+				await expect(page.locator('html')).toHaveAttribute('lang', lang);
+				const desk = await headerMetrics(page);
+				expect(desk.height).toBe(64);
+				expect(desk.brandInset).toBeLessThanOrEqual(16);
+				expect(desk.fonts).toEqual([HEADER_FONT[lang]]);
+				await page.setViewportSize({ width: 390, height: 844 });
+				const phone = await headerMetrics(page);
+				expect(phone.height).toBe(56);
+				expect(phone.brandInset).toBeLessThanOrEqual(12);
+				expect(phone.fonts).toEqual([HEADER_FONT[lang]]);
+			});
+		}
+	}
+});
+
 test.describe('Profile header', () => {
 	test.setTimeout(90000);
 
@@ -143,8 +172,11 @@ test.describe('Profile header', () => {
 		await expect(page.locator('#accountSwitcher')).toBeVisible();
 		const expected = ['aun-brand', ...(ENVIRONMENT === 'qa' || ENVIRONMENT === 'stage' ? ['aun-env'] : []), ...(ENVIRONMENT === 'local' ? [] : ['aun-apps']), 'aun-lang', 'aun-icon-btn:mode', 'aun-acct-btn'];
 		expect(await controls(page)).toEqual(expected);
-		// the centred row (aun-nav.css .aun-header-row) is the bar's 64px; the bar adds its 1px bottom border
-		expect((await page.locator(`${HEADER} .aun-header-row`).boundingBox())!.height).toBe(64);
+		// full width, like every app's header: no centred row
+		await expect(page.locator(`${HEADER} .aun-header-row`)).toHaveCount(0);
+		expect((await page.locator(HEADER).boundingBox())!.width).toBe(page.viewportSize()!.width);
+		// the account button too: the contract's typeface, not the page's
+		expect((await headerMetrics(page)).fonts).toEqual([HEADER_FONT.en]);
 		expect(await headerAxe(page, 'profile en dark')).toEqual([]);
 
 		const toggle = page.locator(`${HEADER} .aun-mode`);
@@ -160,6 +192,7 @@ test.describe('Profile header', () => {
 		expect(url.searchParams.get('lang')).toBe('ar');
 		expect(url.searchParams.get('theme')).toBe('fawanees');
 		await expect(page.locator(`${HEADER} .aun-brand-app`)).toHaveText('الحساب');
+		expect((await headerMetrics(page)).fonts).toEqual([HEADER_FONT.ar]);
 		expect(await headerAxe(page, 'profile ar light')).toEqual([]);
 	});
 });

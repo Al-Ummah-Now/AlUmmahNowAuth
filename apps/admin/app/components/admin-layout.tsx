@@ -7,9 +7,6 @@ import {
   Monitor,
   FileText,
   Flag,
-  ChevronLeft,
-  Menu,
-  X,
   Palette,
   Trash2,
   KeyRound,
@@ -19,7 +16,7 @@ import { otherApps } from "../lib/app-links";
 import { langOf } from "../lib/deletion-copy";
 import { langSwitchHref, shellCopy, withLang, type NavKey } from "../lib/shell-copy";
 import { publicAppLinks } from "../../../../packages/ui/src/nav/page-header.ts";
-import { AppLinks, Brand, EnvBadge, LangButton } from "./site-header";
+import { AppLinks, Brand, EnvBadge, LangButton, MenuButton } from "./site-header";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "../lib/utils";
 import { useState } from "react";
@@ -90,30 +87,18 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
           badge, then Website and Videos, language, light/dark and the account menu. Dark in every
           theme and mode; a theme's header material is its background (.shell-header) */}
       <header data-shell="header" data-testid="aun-header" className="aun-header shell-header" style={{ zIndex: 50 }}>
-        {/* Phones and tablets: open the drawer. Desktop: collapse the rail */}
+        {/* The drawer toggle (the videos site's: lucide menu in every state). Phones and tablets:
+            open the drawer. Desktop: collapse the rail */}
         <span className="contents lg:hidden">
-          <button
-            type="button"
-            className="aun-icon-btn"
+          <MenuButton
+            label={mobileOpen ? t.closeMenu : t.openMenu}
             onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label={mobileOpen ? t.closeMenu : t.openMenu}
-            aria-expanded={mobileOpen}
-            aria-controls="admin-rail"
-          >
-            {mobileOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-          </button>
+            expanded={mobileOpen}
+            controls="admin-rail"
+          />
         </span>
         <span className="hidden lg:contents">
-          <button
-            type="button"
-            className="aun-icon-btn"
-            onClick={toggleCollapsed}
-            title={collapsed ? t.expand : t.collapse}
-            aria-label={collapsed ? t.expand : t.collapse}
-            aria-pressed={collapsed}
-          >
-            {collapsed ? <Menu aria-hidden="true" /> : <ChevronLeft aria-hidden="true" className="rtl:-scale-x-100" />}
-          </button>
+          <MenuButton label={collapsed ? t.expand : t.collapse} onClick={toggleCollapsed} pressed={collapsed} />
         </span>
         <Brand lang={lang} href={withLang("/", lang)} app={t.app} />
         <EnvBadge environment={environment} lang={lang} />
