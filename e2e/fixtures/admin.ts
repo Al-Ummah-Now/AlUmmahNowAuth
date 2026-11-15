@@ -31,17 +31,20 @@ export async function loginAdmin(page: Page, email: string): Promise<void> {
     throw new Error('TEST_PROMOTE_SECRET environment variable is required for admin promotion in E2E tests');
   }
 
-  const response = await page.request.post(`${TEST_URLS.authServer}/test/promote/${encodeURIComponent(email)}`, {
+  // Node fetch, not page.request: Playwright records page.request (and any request context made
+  // in a test) in the trace with its headers, so a retried spec's trace carried both secrets
+  // (Test Suite runs since a3a8884; the artifact scan deleted them before upload).
+  const response = await fetch(`${TEST_URLS.authServer}/test/promote/${encodeURIComponent(email)}`, {
+    method: 'POST',
     headers: {
       'X-Test-Secret': testSecret,
       // Every /test/* route requires the E2E secret (apps/auth/src/utils/e2e-sink.ts)
       'X-E2E-Secret': process.env.E2E_CODE_SINK_SECRET ?? '',
     },
-    failOnStatusCode: false,
   });
 
-  if (!response.ok()) {
-    throw new Error(`Failed to promote user to admin: ${response.status()} - ${await response.text()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to promote user to admin: ${response.status} - ${await response.text()}`);
   }
 
   // IMPORTANT: After promoting to admin, clear cookies to force fresh OAuth flow

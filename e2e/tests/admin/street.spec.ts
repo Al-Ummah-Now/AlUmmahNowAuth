@@ -10,6 +10,9 @@ import { test, expect, type Page } from '@playwright/test';
 import { loginAdmin } from '../../fixtures/admin';
 import { TEST_URLS, TEST_USERS } from '../../utils/test-data';
 
+// Signs in and promotes with test secrets: no trace (same rule as the other admin specs)
+test.use({ trace: 'off' });
+
 const STILL = '*:not(html),*::before,*::after{transition:none!important;animation-duration:0s!important;animation-delay:0s!important}';
 
 async function settle(page: Page): Promise<void> {

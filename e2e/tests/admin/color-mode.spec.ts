@@ -16,6 +16,9 @@ import AxeBuilder from '@axe-core/playwright';
 import { loginAdmin } from '../../fixtures/admin';
 import { TEST_URLS, TEST_USERS } from '../../utils/test-data';
 
+// Signs in and promotes with test secrets: no trace (same rule as the other admin specs)
+test.use({ trace: 'off' });
+
 const ADMIN = TEST_URLS.adminDashboard;
 const THEME = 'theme=fawanees';
 const url = (path: string, extra = '') => `${ADMIN}${path}${path.includes('?') ? '&' : '?'}${THEME}${extra}`;
@@ -104,8 +107,15 @@ test.describe('Accounts admin: light and dark', () => {
 			await page.emulateMedia({ colorScheme: mode === 'light' ? 'dark' : 'light' });
 			await page.evaluate((m) => localStorage.setItem('theme', m), mode);
 			for (const route of routes) {
-				await page.goto(url(route));
-				await shell(page);
+				const res = await page.goto(url(route));
+				// Every route, not just the first without the shell: name where it landed and why
+				const hasShell = await page.locator('[data-shell="sidebar"]').waitFor({ state: 'attached', timeout: 15000 }).then(() => true, () => false);
+				if (!hasShell) {
+					const heading = (await page.locator('h1, h2').first().textContent({ timeout: 1000 }).catch(() => null))?.trim().slice(0, 80);
+					problems.push(`${route} ${mode}: no admin shell; landed on ${new URL(page.url()).pathname} (HTTP ${res?.status() ?? '?'}) "${heading ?? ''}"`);
+					continue;
+				}
+				await page.waitForLoadState('networkidle').catch(() => {});
 				if ((await htmlMode(page)) !== mode) problems.push(`${route} ${mode}: html is ${await htmlMode(page)}`);
 				const bg = await bodyBg(page);
 				if (bg !== PAGE[mode]) problems.push(`${route} ${mode}: page colour ${bg}`);
