@@ -38,6 +38,7 @@ import { requireAdmin } from './middleware/admin-auth';
 import { verifyAdminAuth } from './auth-middleware';
 import { routeModerationClient } from './moderation/client-routes';
 import { routeTokenRevocations, TOKEN_REVOCATION_PATH } from './revocation/install-routes';
+import { handleSigningKeys, SIGNING_KEYS_PATH } from './signing-keys/routes';
 import { moderationAdminRoutes } from './moderation/admin-routes';
 import { deletionAdminRoutes } from './deletions/routes';
 import { routeInvitePage, routeInviteProvisioning } from './invites/routes';
@@ -586,6 +587,11 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	if (isAdminOnlyPath(pathname)) {
 		const denied = await enforceAdmin(rctx);
 		if (denied) return denied;
+	}
+
+	// Admin > Signing keys: list and rotate now (signing-keys/routes.ts, #13)
+	if (pathname === SIGNING_KEYS_PATH) {
+		return addSecurityHeaders(await handleSigningKeys(request, rctx.env, rctx.ctx, rctx.requestId), rctx.isProduction);
 	}
 
 	// Passkeys (AUTH-PASSKEYS): setup page and ceremonies, the hub's list, the admin's recovery

@@ -455,4 +455,5 @@ See [TESTING.md](./TESTING.md) for comprehensive testing documentation.
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 - [docs/MODERATION_REQUESTS.md](./docs/MODERATION_REQUESTS.md) - Moderation requests from client apps (`/moderation/requests`, `/admin/moderation-requests`)
 - [docs/TOKEN_REVOCATIONS.md](./docs/TOKEN_REVOCATIONS.md) - Signing out one device or native install (`/internal/token-revocations`, `sid`, `install_id`)
+- [docs/SIGNING_KEY_ROTATION.md](./docs/SIGNING_KEY_ROTATION.md) - Signing-key rotation: pending key, overlap, retirement, `/admin/settings/signing-keys`
 - [OpenAuth.js Documentation](https://github.com/openauthjs/openauth)

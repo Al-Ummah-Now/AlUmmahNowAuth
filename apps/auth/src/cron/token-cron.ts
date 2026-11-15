@@ -16,6 +16,7 @@ import { purgeDeleted } from '../deletions/purge';
 import { purgeRevokedInvites } from '../invites/service';
 import { D1AtomicStorage } from '../storage/d1-atomic';
 import { adoptLegacyRefreshTokens } from '../storage/legacy-refresh';
+import { enqueueRotation } from '../signing-keys/rotation';
 
 export type CronJobName = 'token-cleanup' | 'code-sweep';
 
@@ -95,6 +96,12 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 					if (invites.purged || invites.failed) logger.info('Invite cleanup completed', invites);
 				} catch (error) {
 					logger.error('Invite cleanup failed', { error: error instanceof Error ? error.message : String(error) });
+				}
+				// Signing-key rotation: a step queued every hour; it only acts when a key is due (#13)
+				try {
+					await enqueueRotation(env, 'schedule');
+				} catch (error) {
+					logger.error('Signing-key rotation could not be queued', { error: error instanceof Error ? error.message : String(error) });
 				}
 				break;
 			}

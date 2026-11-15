@@ -56,6 +56,7 @@
     ]
   },
   "vars": {
+    "SIGNING_KEY_ROTATION_SCHEDULE": "on",
     "ENVIRONMENT": "development",
     "PASSKEY_PROMPT": "off",
     "TURNSTILE_MODE": "off",
@@ -155,6 +156,7 @@
         "SITES_CLIENT_ID": "81f2bb95-15c6-4896-b414-be2c24155a74",
         "SITES_REGISTRY_URL": "https://videos.api.alummahnow.net",
         "ACCESS_TOKEN_TTL": "900",
+        "SIGNING_KEY_ROTATION_SCHEDULE": "off",
         "AUDIT_WEBHOOK_URL": "",
         "AUDIT_WEBHOOK_SECRET": "",
         "SIGN_IN_FALLBACK_URL": "https://videos.alummahnow.net/",
@@ -275,6 +277,7 @@
         "SITES_CLIENT_ID": "81f2bb95-15c6-4896-b414-be2c24155a74",
         "SITES_REGISTRY_URL": "https://videos.api.stage.alummahnow.net",
         "ACCESS_TOKEN_TTL": "900",
+        "SIGNING_KEY_ROTATION_SCHEDULE": "off",
         "AUDIT_WEBHOOK_URL": "",
         "AUDIT_WEBHOOK_SECRET": "",
         "SIGN_IN_FALLBACK_URL": "https://profile.auth.stage.alummahnow.net/",

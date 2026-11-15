@@ -73,6 +73,7 @@
     "SITES_CLIENT_ID": "0abd9eac-e47e-4a1a-90bd-18cffec0303c",
     "SITES_REGISTRY_URL": "https://videos.api.qa.alummahnow.net",
     "ACCESS_TOKEN_TTL": "900",
+    "SIGNING_KEY_ROTATION_SCHEDULE": "on",
     "AUDIT_WEBHOOK_URL": "",
     "AUDIT_WEBHOOK_SECRET": "",
     "SIGN_IN_FALLBACK_URL": "https://videos.qa.alummahnow.net/",

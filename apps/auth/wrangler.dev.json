@@ -122,6 +122,7 @@
     ]
   },
   "vars": {
+    "SIGNING_KEY_ROTATION_SCHEDULE": "on",
     "ENVIRONMENT": "development",
     "PASSKEY_PROMPT": "off",
     "TURNSTILE_MODE": "off",
