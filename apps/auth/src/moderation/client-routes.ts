@@ -42,30 +42,41 @@ const tooMany = () =>
 const clientAuth = createClientAuthMiddleware();
 
 /** Authenticates the calling client; a client without a stored secret is refused like a wrong one. */
-export async function authenticateModerationClient(
+export function authenticateModerationClient(
 	request: Request,
 	env: Env,
 	ctx: ExecutionContext
+): Promise<{ ok: true; client: OAuthClient } | { ok: false; response: Response }> {
+	return authenticateScopedClient(request, env, ctx, MODERATION_CLIENT_SCOPE, 'moderation');
+}
+
+/** HTTP Basic client authentication (as /token) plus a required client scope. */
+export async function authenticateScopedClient(
+	request: Request,
+	env: Env,
+	ctx: ExecutionContext,
+	scope: string,
+	realm: string
 ): Promise<{ ok: true; client: OAuthClient } | { ok: false; response: Response }> {
 	let result: Awaited<ReturnType<typeof clientAuth>>;
 	try {
 		result = await clientAuth(request, env, ctx);
 	} catch (error) {
 		// verifyClientSecret throws on a client that has no secret hash
-		logger.warn('[moderation] client authentication failed', { error: error instanceof Error ? error.message : String(error) });
+		logger.warn(`[${realm}] client authentication failed`, { error: error instanceof Error ? error.message : String(error) });
 		return {
 			ok: false,
 			response: json({ error: 'invalid_client', error_description: 'Client authentication failed' }, 401, {
-				'WWW-Authenticate': 'Basic realm="moderation"',
+				'WWW-Authenticate': `Basic realm="${realm}"`,
 			}),
 		};
 	}
 	if (result.authenticated === false) return { ok: false, response: result.response };
 	const scopes = Array.isArray(result.client.scopes) ? result.client.scopes : [];
-	if (!scopes.includes(MODERATION_CLIENT_SCOPE)) {
+	if (!scopes.includes(scope)) {
 		return {
 			ok: false,
-			response: json({ error: 'insufficient_scope', error_description: `Client lacks the ${MODERATION_CLIENT_SCOPE} scope` }, 403),
+			response: json({ error: 'insufficient_scope', error_description: `Client lacks the ${scope} scope` }, 403),
 		};
 	}
 	return { ok: true, client: result.client };

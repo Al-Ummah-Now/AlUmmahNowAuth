@@ -7,33 +7,6 @@
  */
 
 /**
- * Revokes all refresh tokens for a session
- *
- * Used when a user logs out of a specific session.
- *
- * @param sessionId - The account session ID
- * @param db - D1 database binding
- * @returns Number of tokens revoked
- */
-export async function revokeSessionTokens(
-	sessionId: string,
-	db: D1Database
-): Promise<{ revoked: number }> {
-	const nowUnix = Math.floor(Date.now() / 1000);
-
-	const result = await db
-		.prepare(
-			`UPDATE refresh_tokens
-			SET revoked = 1, revoked_at = ?, revoked_reason = 'session_revoked'
-			WHERE session_id = ? AND revoked = 0`
-		)
-		.bind(nowUnix, sessionId)
-		.run();
-
-	return { revoked: result.meta?.changes || 0 };
-}
-
-/**
  * Revokes all refresh tokens for a user across all sessions
  *
  * Used when a user logs out globally or account is disabled.

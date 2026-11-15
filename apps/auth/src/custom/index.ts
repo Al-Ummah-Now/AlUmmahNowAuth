@@ -17,7 +17,7 @@
 export { getOrCreateUser, checkPasswordResetRequired, clearPasswordResetRequired } from './user-helpers';
 
 // Token revocation
-export { revokeSessionTokens, revokeUserTokens } from './token-revocation';
+export { revokeUserTokens } from './token-revocation';
 
 // Admin context middleware for OpenAuth routes
 export { adminContextMiddleware, methodCompatMiddleware } from './admin-context-middleware';

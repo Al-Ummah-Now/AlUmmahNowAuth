@@ -37,6 +37,7 @@ import { routePasskeys } from './passkeys/routes';
 import { requireAdmin } from './middleware/admin-auth';
 import { verifyAdminAuth } from './auth-middleware';
 import { routeModerationClient } from './moderation/client-routes';
+import { routeTokenRevocations, TOKEN_REVOCATION_PATH } from './revocation/install-routes';
 import { moderationAdminRoutes } from './moderation/admin-routes';
 import { deletionAdminRoutes } from './deletions/routes';
 import { routeInvitePage, routeInviteProvisioning } from './invites/routes';
@@ -693,6 +694,12 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	if (pathname.startsWith('/invite/')) {
 		const theme = openauthThemeFor(compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!);
 		const response = await routeInvitePage(request, rctx.env, rctx.ctx, rctx.requestId, theme);
+		return response ? addSecurityHeaders(response, rctx.isProduction) : null;
+	}
+
+	// A client app ends one native install's (or one client's) sign-in (#363)
+	if (pathname === TOKEN_REVOCATION_PATH) {
+		const response = await routeTokenRevocations(request, rctx.env, rctx.ctx, rctx.requestId);
 		return response ? addSecurityHeaders(response, rctx.isProduction) : null;
 	}
 
