@@ -485,8 +485,8 @@ Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; 
 
 ### Token Security
 
-- **Access tokens:** Short-lived (1 hour), JWT format
-- **Refresh tokens:** Longer-lived (30 days), rotated on use
+- **Access tokens:** Short-lived (`ACCESS_TOKEN_TTL`, 15 minutes), JWT format
+- **Refresh tokens:** 30 days from their last use (`REFRESH_TOKEN_TTL`, whole seconds from 1 hour to 365 days; #419). Every refresh rotates the token and the next one lives another 30 days, so an app in use stays signed in and one left unused for 30 days has to sign in again. Tokens issued before this with openauth's one-year default get the 30-day lifetime on their next refresh; one already unused for 30 days is refused (`revocation/token-gate.ts`).
 - **Single-use codes:** Authorization codes expire after 10 minutes
 
 ### Email Security

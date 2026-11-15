@@ -17,13 +17,19 @@
  *   their old `ttl.access` (the issuer copies it into every rotated token);
  *   it's capped here, so existing sessions get short tokens on their next
  *   refresh and nobody has to sign in again.
+ * - the same goes for `ttl.refresh` (#419): refresh tokens live
+ *   REFRESH_TOKEN_TTL (30 days by default) from their last use. Every refresh
+ *   rotates the token and stores the next one for that long, so a session in
+ *   use never ends, and one left unused for 30 days does. Tokens issued with
+ *   openauth's old one-year lifetime are capped the same way; one that has
+ *   already sat unused for longer than REFRESH_TOKEN_TTL reads as missing.
  *
  * handleTokenRevoke is POST /token/revoke (RFC 7009) in front of the issuer:
  * a refresh token is deleted (single sign-out). Access tokens are not listed
  * (see revocation-list.ts); they expire within ACCESS_TOKEN_TTL. Always 200,
  * as the RFC asks, so tokens can't be probed.
  */
-import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
+import { joinKey, type StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import { loadRefreshToken, refreshKey, removeRefreshToken } from '@al-ummah-now/openauth/refresh-token';
 import { logger } from '../logger';
 import { isRevoked, readRevocationForRefresh, readScopedRevocation, refreshScopeKeys } from './revocation-list';
@@ -52,6 +58,8 @@ export interface IssuerStorageGuard {
 	revocationsDb?: D1Database;
 	/** Access-token lifetime cap in seconds (ACCESS_TOKEN_TTL). */
 	accessTtl?: number;
+	/** Refresh-token lifetime cap in seconds, from the last use (REFRESH_TOKEN_TTL, #419). */
+	refreshTtl?: number;
 	/** AUTH_DB: codes and device grants of suspended/deleted accounts are refused (#662). */
 	db?: D1Database;
 }
@@ -64,17 +72,53 @@ export function parseAccessTtl(value: string | number | undefined): number | und
 	return Number.isInteger(n) && n >= 60 ? n : undefined;
 }
 
-/** Caps a code's or refresh token's access-token lifetime at ACCESS_TOKEN_TTL. */
-function capAccessTtl<T extends TokenRecord | undefined>(value: T, accessTtl: number | undefined): T {
-	const access = value?.ttl?.access;
-	if (value && accessTtl && typeof access === 'number' && access > accessTtl) {
-		return { ...value, ttl: { ...value.ttl, access: accessTtl } };
-	}
-	return value;
+/** A refresh token lives this long after its last use unless REFRESH_TOKEN_TTL says otherwise (#419). */
+export const DEFAULT_REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60;
+/** REFRESH_TOKEN_TTL is never longer than this (openauth's old default), never shorter than an hour. */
+export const MAX_REFRESH_TOKEN_TTL = 365 * 24 * 60 * 60;
+const MIN_REFRESH_TOKEN_TTL = 60 * 60;
+
+/** REFRESH_TOKEN_TTL in whole seconds (1 hour to 365 days), else 30 days. */
+export function parseRefreshTtl(value: string | number | undefined): number {
+	const n = Number(value);
+	return Number.isInteger(n) && n >= MIN_REFRESH_TOKEN_TTL && n <= MAX_REFRESH_TOKEN_TTL ? n : DEFAULT_REFRESH_TOKEN_TTL;
+}
+
+/**
+ * Caps the access-token lifetime (ACCESS_TOKEN_TTL) of a code or refresh
+ * token, and its refresh-token lifetime (REFRESH_TOKEN_TTL). Never raises one.
+ */
+function capTtl<T extends TokenRecord | undefined>(value: T, accessTtl: number | undefined, refreshTtl: number | undefined): T {
+	if (!value?.ttl) return value;
+	const { access, refresh } = value.ttl;
+	const cutAccess = !!accessTtl && typeof access === 'number' && access > accessTtl;
+	const cutRefresh = !!refreshTtl && typeof refresh === 'number' && refresh > refreshTtl;
+	if (!cutAccess && !cutRefresh) return value;
+	return {
+		...value,
+		ttl: { ...value.ttl, ...(cutAccess ? { access: accessTtl } : {}), ...(cutRefresh ? { refresh: refreshTtl } : {}) },
+	};
+}
+
+/**
+ * A refresh token stored with a longer lifetime than REFRESH_TOKEN_TTL (the
+ * old one-year tokens) that has not been used for REFRESH_TOKEN_TTL: its row
+ * expires `ttl.refresh` after it was written, which is when it was last used.
+ */
+async function idleTooLong(db: D1Database | undefined, key: string[], value: TokenRecord, refreshTtl: number | undefined) {
+	const stored = value.ttl?.refresh;
+	if (!db || !refreshTtl || typeof stored !== 'number' || stored <= refreshTtl) return false;
+	const row = await db
+		.prepare('SELECT expires_at FROM openauth_atomic WHERE key = ?')
+		.bind(joinKey(key))
+		.first<{ expires_at: number | null }>();
+	if (!row?.expires_at) return false;
+	const writtenAt = row.expires_at - stored * 1000;
+	return writtenAt + refreshTtl * 1000 <= Date.now();
 }
 
 export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorageGuard): StorageAdapter {
-	if (!guard.revocations && !guard.revocationsDb && !guard.accessTtl && !guard.db) return storage;
+	if (!guard.revocations && !guard.revocationsDb && !guard.accessTtl && !guard.refreshTtl && !guard.db) return storage;
 
 	/** The account is suspended or deleted in D1. A failed D1 read throws: nothing is issued on an error. */
 	async function accountRefused(userId: string | undefined): Promise<boolean> {
@@ -109,7 +153,7 @@ export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorage
 			logger.info('[revocation] Refused a code of a suspended or deleted account', { userId: value.properties?.id });
 			return undefined;
 		}
-		return capAccessTtl(value, guard.accessTtl);
+		return capTtl(value, guard.accessTtl, guard.refreshTtl);
 	}
 
 	const atomic = storage.atomic;
@@ -122,6 +166,14 @@ export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorage
 						...atomic,
 						async get(key: string[]) {
 							const value = (await atomic.get(key)) as TokenRecord | undefined;
+							// An old one-year token unused for longer than REFRESH_TOKEN_TTL (#419)
+							if (value && key[0] === 'oauth:refresh' && (await idleTooLong(guard.db, key, value, guard.refreshTtl))) {
+								await atomic.remove(key);
+								logger.info('[refresh] Refused a refresh token unused for longer than REFRESH_TOKEN_TTL', {
+									userId: value.properties?.id,
+								});
+								return undefined;
+							}
 							return check(key, value, () => atomic.remove(key));
 						},
 						// The device_code grant takes the approved record once, then mints tokens
@@ -141,7 +193,7 @@ export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorage
 						async replace(key: string[], expected: unknown, value: unknown, expiry?: Date) {
 							if (GUARDED.has(key[0] ?? '')) {
 								const raw = (await atomic.get(key)) as TokenRecord | undefined;
-								if (raw && JSON.stringify(capAccessTtl(raw, guard.accessTtl)) === JSON.stringify(expected)) expected = raw;
+								if (raw && JSON.stringify(capTtl(raw, guard.accessTtl, guard.refreshTtl)) === JSON.stringify(expected)) expected = raw;
 							}
 							return atomic.replace(key, expected, value, expiry);
 						},
