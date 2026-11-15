@@ -48,3 +48,37 @@ export async function headerMetrics(page: Page): Promise<{ height: number; brand
 		};
 	});
 }
+
+/** The widths the header must hold one line at (NAV.md "Header": 320 to 1440). */
+export const ONE_LINE_WIDTHS = [320, 360, 390, 414, 480, 640, 768, 1024, 1280, 1440] as const;
+
+/**
+ * One 64px line (56px below 640px) at every width from 320 to 1440: every visible control sits in
+ * the bar (none wraps below it), nothing scrolls sideways, and no link to another site is in the
+ * bar (owner, 2026-11-15: the other apps are in the account menu). Returns one line per problem.
+ */
+export async function oneLineProblems(page: Page, label: string): Promise<string[]> {
+	const problems: string[] = [];
+	const height = page.viewportSize()?.height ?? 900;
+	for (const width of ONE_LINE_WIDTHS) {
+		await page.setViewportSize({ width, height });
+		const r = await page.locator(HEADER).evaluate((h) => {
+			const bar = h.getBoundingClientRect();
+			const out: string[] = [];
+			for (const el of h.querySelectorAll<HTMLElement>('.aun-brand, .aun-env, .aun-lang, .aun-mode, .aun-acct-btn, .aun-signin, .aun-icon-btn')) {
+				const b = el.getBoundingClientRect();
+				if (!b.width || getComputedStyle(el).visibility === 'hidden' || el.closest('[hidden], .aun-menu')) continue;
+				if (b.top < bar.top - 0.5 || b.bottom > bar.bottom + 0.5) out.push(`${el.className} outside the bar`);
+				if (b.left < -0.5 || b.right > document.documentElement.clientWidth + 0.5) out.push(`${el.className} off screen`);
+			}
+			const sites = h.querySelectorAll('.aun-apps, .aun-app').length;
+			if (sites) out.push(`${sites} links to other sites`);
+			if (document.documentElement.scrollWidth > document.documentElement.clientWidth) out.push('scrolls sideways');
+			return { height: bar.height, out };
+		});
+		const want = width < 640 ? 56 : 64;
+		if (r.height !== want) problems.push(`${label} ${width}px: ${r.height}px tall, not ${want}`);
+		for (const o of r.out) problems.push(`${label} ${width}px: ${o}`);
+	}
+	return problems;
+}

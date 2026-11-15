@@ -20,7 +20,7 @@ export function requestedTheme(url: URL): string | null {
 }
 
 /** The sign-in pages' header for this request (AlUmmahNow docs/design/NAV.md "Header"). */
-export function signInHeaderFor(url: URL, lang: string, env: { ENVIRONMENT?: string; OPENAUTH_ISSUER?: string; PROFILE_APP_URL?: string }): SignInHeader {
+export function signInHeaderFor(url: URL, lang: string, env: { ENVIRONMENT?: string; PROFILE_APP_URL?: string }): SignInHeader {
 	const l = lang === 'ar' ? 'ar' : 'en';
 	let home = url.origin;
 	try {
@@ -30,7 +30,7 @@ export function signInHeaderFor(url: URL, lang: string, env: { ENVIRONMENT?: str
 	} catch {
 		// a bad PROFILE_APP_URL: the brand links to this host
 	}
-	return { lang: l, environment: env.ENVIRONMENT, url, issuer: env.OPENAUTH_ISSUER || url.origin, home };
+	return { lang: l, environment: env.ENVIRONMENT, url, home };
 }
 
 export async function finishThemedResponse(response: Response, compiled: CompiledTheme, url: URL, issuerOrigin: string, header?: SignInHeader): Promise<Response> {

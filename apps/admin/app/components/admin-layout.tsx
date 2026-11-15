@@ -15,8 +15,7 @@ import { AccountSwitcher } from "@al-ummah-now/ui";
 import { otherApps } from "../lib/app-links";
 import { langOf } from "../lib/deletion-copy";
 import { langSwitchHref, shellCopy, withLang, type NavKey } from "../lib/shell-copy";
-import { publicAppLinks } from "../../../../packages/ui/src/nav/page-header.ts";
-import { AppLinks, Brand, EnvBadge, LangButton, MenuButton } from "./site-header";
+import { Brand, EnvBadge, LangButton, MenuButton } from "./site-header";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "../lib/utils";
 import { useState } from "react";
@@ -84,7 +83,8 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
   return (
     <div data-shell="page" className="min-h-screen bg-[var(--color-background)]">
       {/* The shared header (AlUmmahNow docs/design/NAV.md "Header"): drawer toggle, brand, QA/stage
-          badge, then Website and Videos, language, light/dark and the account menu. Dark in every
+          badge, then language, light/dark and the account menu (no links to other sites: they are
+          in the account menu's apps). Dark in every
           theme and mode; a theme's header material is its background (.shell-header) */}
       <header data-shell="header" data-testid="aun-header" className="aun-header shell-header" style={{ zIndex: 50 }}>
         {/* The drawer toggle (the videos site's: lucide menu in every state). Phones and tablets:
@@ -103,7 +103,6 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
         <Brand lang={lang} href={withLang("/", lang)} app={t.app} />
         <EnvBadge environment={environment} lang={lang} />
         <div className="aun-header-tools">
-          <AppLinks lang={lang} links={authServerUrl ? publicAppLinks(authServerUrl, lang) : []} />
           <LangButton lang={lang} href={langSwitchHref(location.pathname, location.search, lang)} />
           <ThemeToggle lang={lang} />
           {user && authServerUrl && (

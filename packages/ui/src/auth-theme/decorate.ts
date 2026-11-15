@@ -7,7 +7,7 @@
  */
 import { streetHeadTags, streetOn } from '../fanous-street/index.ts';
 import { NAV_CSS } from '../nav/aun-nav.generated.ts';
-import { APP_NAMES, langHref, PAGE_HEADER_CSS, PAGE_MODE_SCRIPT, pageHeaderHtml, publicAppLinks } from '../nav/page-header.ts';
+import { APP_NAMES, langHref, PAGE_HEADER_CSS, PAGE_MODE_SCRIPT, pageHeaderHtml } from '../nav/page-header.ts';
 import type { CompiledTheme, Scheme } from './types.ts';
 
 export type AuthPage = 'sign-in' | 'register' | 'code' | 'reset' | 'consent' | 'account-switcher' | 'other';
@@ -46,15 +46,12 @@ export interface SignInHeader {
 	environment?: string;
 	/** This page's URL: the language button keeps its path and query. */
 	url: URL;
-	/** The issuer (auth.<domain>): Website and Videos are its sibling hosts. */
-	issuer: string;
 	/** The brand's link: the account home (the profile app). */
 	home: string;
 }
 
 /**
- * The sign-in pages' header: brand ("Account"), environment badge, Website and Videos, language,
- * light/dark. No account control and no Sign in: these pages are the sign-in.
+ * The sign-in pages' header: brand ("Account"), environment badge, language, light/dark. No account control and no Sign in: these pages are the sign-in.
  */
 export function signInHeaderHtml(h: SignInHeader): string {
 	return pageHeaderHtml({
@@ -62,7 +59,6 @@ export function signInHeaderHtml(h: SignInHeader): string {
 		brandHref: h.home,
 		app: APP_NAMES.account[h.lang],
 		environment: h.environment,
-		appLinks: publicAppLinks(h.issuer, h.lang),
 		langHref: langHref(h.url, h.lang === 'ar' ? 'en' : 'ar'),
 	});
 }

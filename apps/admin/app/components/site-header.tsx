@@ -5,7 +5,7 @@
  * compares it with the builder's output, so this header can't drift from the other apps'.
  */
 import { HEADER_LABELS, MENU_ICON_BODY } from "../../../../packages/ui/src/nav/header.js";
-import { APP_ICON_BASE, LOGO_SRC } from "../../../../packages/ui/src/nav/page-header.ts";
+import { LOGO_SRC } from "../../../../packages/ui/src/nav/page-header.ts";
 import type { AdminLang } from "../lib/deletion-copy";
 
 const labels = (lang: AdminLang) => HEADER_LABELS[lang === "ar" ? "ar" : "en"];
@@ -32,23 +32,6 @@ export function EnvBadge({ environment, lang }: { environment?: string; lang: Ad
     <span className="aun-env" role="note" aria-label={name} title={name}>
       {env.toUpperCase()}
     </span>
-  );
-}
-
-/** Website and Videos: the public sites other than this one, each with its app icon. */
-export function AppLinks({ lang, links }: { lang: AdminLang; links: { id: string; href: string }[] }) {
-  const l = labels(lang);
-  const items = links.filter((a) => a.href && (a.id === "www" || a.id === "videos")) as { id: "www" | "videos"; href: string }[];
-  if (!items.length) return null;
-  return (
-    <nav className="aun-apps" aria-label={l.apps}>
-      {items.map((a) => (
-        <a key={a.id} className="aun-app" href={a.href}>
-          <img className="aun-app-mark" src={`${APP_ICON_BASE}/${a.id}.webp`} alt="" width="22" height="22" />
-          <span className="aun-app-name">{l[a.id]}</span>
-        </a>
-      ))}
-    </nav>
   );
 }
 

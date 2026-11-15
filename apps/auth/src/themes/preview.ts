@@ -34,7 +34,7 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
 	const render = { theme, locale: lang, direction } as const;
 	const req = new Request(`${opts.issuer}/password/authorize?lang=${lang}&auth_flow=preview`);
 	// The live pages' header (AlUmmahNow docs/design/NAV.md "Header")
-	const header = { lang, url: new URL(req.url), issuer: opts.issuer, home: opts.profileUrl };
+	const header = { lang, url: new URL(req.url), home: opts.profileUrl };
 
 	if (page === 'profile') {
 		const html = renderHomePage({

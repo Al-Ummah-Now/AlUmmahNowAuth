@@ -7,7 +7,7 @@ import { streetHeadTags, streetOn } from '../../../packages/ui/src/fanous-street
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { iconLinks } from '../../../packages/ui/src/app-icons/serve.ts';
 import { FIT_TO_VIEWPORT_ES5 } from '../../../packages/ui/src/nav/menu-fit-es5.ts';
-import { APP_NAMES, langHref, PAGE_HEADER_CSS, sameSitePath, PAGE_MODE_SCRIPT, pageHeaderHtml, publicAppLinks } from '../../../packages/ui/src/nav/page-header.ts';
+import { APP_NAMES, langHref, PAGE_HEADER_CSS, sameSitePath, PAGE_MODE_SCRIPT, pageHeaderHtml } from '../../../packages/ui/src/nav/page-header.ts';
 
 /** The logo's night sky (the manifest's theme_color), for the browser chrome. */
 const PROFILE_THEME_COLOR = '#09273a';
@@ -214,14 +214,13 @@ export function renderHomePage(o: HomePageOptions): string {
                         <button type="button" class="dropdown-action danger aun-menu-item aun-menu-item--danger" role="menuitem" id="signOutAllBtn" onclick="requestSignOutAll()">${ICON_SIGNOUT}<span class="aun-menu-text">${e(t.signOutAll)}</span></button>
                     </div>
                 </div>`;
-  // The shared header (AlUmmahNow docs/design/NAV.md "Header"): brand, QA/stage badge, Website and
-  // Videos, language, light/dark, then the account menu, or Sign in when signed out
+  // The shared header (AlUmmahNow docs/design/NAV.md "Header"): brand, QA/stage badge, language,
+  // light/dark, then the account menu, or Sign in when signed out (no links to other sites)
   const header = pageHeaderHtml({
     lang: o.locale,
     brandHref: o.locale === "ar" ? "/?lang=ar" : "/",
     app: APP_NAMES.account[o.locale],
     environment: o.environment,
-    appLinks: publicAppLinks(o.authServerUrl, o.locale),
     langHref: langHref(here, other),
     account: isLoggedIn ? accountSwitcher : undefined,
     signInHref: `/login?return=${encodeURIComponent(here.pathname + here.search)}`,
