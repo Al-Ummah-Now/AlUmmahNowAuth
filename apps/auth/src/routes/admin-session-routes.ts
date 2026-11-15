@@ -16,9 +16,9 @@
 
 import { Hono } from 'hono';
 import * as v from 'valibot';
-import { revokeSessionTokens, revokeUserTokens } from '../custom/token-revocation';
+import { revokeUserTokens } from '../custom/token-revocation';
 import { revokeUser } from '../revocation/revocation-list';
-import { endAllSessions } from '../revocation/lifecycle';
+import { endAllSessions, endOneSession } from '../revocation/lifecycle';
 import { requireAdmin, requirePermission } from '../middleware/admin-auth';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventType, AuditEventSeverity } from '../audit-events';
@@ -56,6 +56,9 @@ const SessionListQuerySchema = v.object({
 	ip_address: v.optional(v.pipe(v.string(), v.ip('Invalid IP address format'))),
 	user_id: v.optional(v.pipe(v.string(), v.uuid('Invalid user ID format'))),
 });
+
+/** Sessions one bulk-terminate call ends; call again while `remaining` is true. */
+export const BULK_TERMINATE_LIMIT = 200;
 
 // Define Hono app with admin variables
 type AdminVariables = {
@@ -183,29 +186,11 @@ adminSessionRoutes.delete(
 		const sessionId = c.req.param('sessionId');
 		const adminUser = c.get('adminUser');
 
-		// Verify session belongs to user
-		const session = await c.env.AUTH_DB.prepare(`
-			SELECT a.id, a.browser_session_id, b.user_agent
-			FROM account_sessions a
-			JOIN browser_sessions b ON a.browser_session_id = b.id
-			WHERE a.id = ? AND a.user_id = ?
-		`)
-			.bind(sessionId, userId)
-			.first<{ id: string; browser_session_id: string; user_agent: string }>();
-
-		if (!session) {
+		// That one browser's sign-in ends; the user's other sessions keep working (#277)
+		const result = await endOneSession(c.env.AUTH_DB, c.env.TOKEN_REVOCATIONS, userId, sessionId, 'admin_session_terminated');
+		if (!result.ended) {
 			return c.json({ error: 'Session not found' }, 404);
 		}
-
-		// Revoke the account session
-		await c.env.AUTH_DB.prepare(`
-			UPDATE account_sessions SET is_active = 0 WHERE id = ?
-		`)
-			.bind(sessionId)
-			.run();
-
-		// Revoke associated tokens
-		const revokedTokens = await revokeSessionTokens(sessionId, c.env.AUTH_DB);
 
 		// Emit audit event
 		await emitAuditEvent({
@@ -220,8 +205,7 @@ adminSessionRoutes.delete(
 				action: 'admin.terminate_session',
 				targetUserId: userId,
 				sessionId: sessionId,
-				userAgent: session.user_agent,
-				tokensRevoked: revokedTokens.revoked,
+				userAgent: result.userAgent,
 			},
 			success: true,
 			errorMessage: null,
@@ -230,7 +214,6 @@ adminSessionRoutes.delete(
 		return c.json({
 			success: true,
 			message: `Session ${sessionId} terminated`,
-			tokensRevoked: revokedTokens.revoked,
 		});
 	}
 );
@@ -673,42 +656,31 @@ adminSessionRoutes.post(
 
 		const whereClause = whereConditions.join(' AND ');
 
-		// Get sessions to terminate
+		// Get sessions to terminate (at most BULK_TERMINATE_LIMIT per call; the answer says how many remain)
 		const sessions = await c.env.AUTH_DB.prepare(`
 			SELECT a.id, a.user_id
 			FROM account_sessions a
 			JOIN browser_sessions b ON a.browser_session_id = b.id
 			WHERE ${whereClause}
+			LIMIT ${BULK_TERMINATE_LIMIT + 1}
 		`)
 			.bind(...bindings)
 			.all<{ id: string; user_id: string }>();
 
-		const sessionCount = sessions.results?.length || 0;
+		const rows = sessions.results ?? [];
+		const batch = rows.slice(0, BULK_TERMINATE_LIMIT);
+		const remaining = rows.length > BULK_TERMINATE_LIMIT;
 
-		if (sessionCount === 0) {
-			return c.json({
-				success: true,
-				sessionsTerminated: 0,
-				tokensRevoked: 0,
-			});
+		if (batch.length === 0) {
+			return c.json({ success: true, sessionsTerminated: 0, remaining: false });
 		}
 
-		// Revoke all sessions and tokens
-		let totalTokensRevoked = 0;
-		for (const session of sessions.results || []) {
-			const result = await revokeSessionTokens(session.id, c.env.AUTH_DB);
-			totalTokensRevoked += result.revoked;
+		// Each browser sign-in ends on its own (#442): its account session and its tokens
+		let sessionCount = 0;
+		for (const session of batch) {
+			const result = await endOneSession(c.env.AUTH_DB, c.env.TOKEN_REVOCATIONS, session.user_id, session.id, 'admin_sessions_bulk_terminated');
+			if (result.ended) sessionCount++;
 		}
-
-		// Revoke the account sessions
-		const sessionIds = sessions.results?.map((s) => s.id) || [];
-		const placeholders = sessionIds.map(() => '?').join(',');
-		await c.env.AUTH_DB.prepare(`
-			UPDATE account_sessions SET is_active = 0
-			WHERE id IN (${placeholders})
-		`)
-			.bind(...sessionIds)
-			.run();
 
 		// Emit audit event
 		await emitAuditEvent({
@@ -723,7 +695,7 @@ adminSessionRoutes.post(
 				action: 'admin.bulk_terminate_sessions',
 				filters,
 				sessionsTerminated: sessionCount,
-				tokensRevoked: totalTokensRevoked,
+				remaining,
 			},
 			success: true,
 			errorMessage: null,
@@ -732,7 +704,7 @@ adminSessionRoutes.post(
 		return c.json({
 			success: true,
 			sessionsTerminated: sessionCount,
-			tokensRevoked: totalTokensRevoked,
+			remaining,
 		});
 	}
 );

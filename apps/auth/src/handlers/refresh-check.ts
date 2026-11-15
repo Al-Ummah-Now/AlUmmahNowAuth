@@ -13,6 +13,16 @@
  */
 import { logger } from '../logger';
 import { isSystemMetadata, isSystemUserId } from '../security/system-accounts';
+import { isStaff } from '../passkeys/policy';
+
+/**
+ * Staff-only clients (the native Admin apps, AlUmmahNowAuth#363): a refresh there
+ * needs a staff role NOW, read from RBAC, not the roles frozen in the token.
+ */
+export interface StaffOnlyClients {
+	clientIds: ReadonlySet<string>;
+	currentRoles(tenantId: string, userId: string): Promise<string[]>;
+}
 
 export interface RefreshUserLookup {
 	getUser(tenantId: string, userId: string): Promise<{ status: string; deleted_at: number | null; metadata?: unknown } | null>;
@@ -27,7 +37,12 @@ export type PasskeyDeadlineLookup = (userId: string, roles: string[]) => Promise
 /** Called when a system account's refresh token is refused (audit + admin Errors page). */
 export type SystemAccountRefreshHook = (userId: string, clientId: string) => void;
 
-export function createRefreshCheck(users: RefreshUserLookup, passkeyDeadline?: PasskeyDeadlineLookup, onSystemAccount?: SystemAccountRefreshHook) {
+export function createRefreshCheck(
+	users: RefreshUserLookup,
+	passkeyDeadline?: PasskeyDeadlineLookup,
+	onSystemAccount?: SystemAccountRefreshHook,
+	staffOnly?: StaffOnlyClients
+) {
 	return async (input: {
 		tenantId: string;
 		userId?: string;
@@ -56,7 +71,12 @@ export function createRefreshCheck(users: RefreshUserLookup, passkeyDeadline?: P
 			logger.info('[refresh] Refused: the user is not active', { userId: input.userId, status: user.status, clientId: input.clientID });
 			return { revoke: true, reason: `user_${user.status}` };
 		}
-		// The staff passkey deadline follows the setting on every refresh (undefined removes it)
+		// Lost the staff role: no more refreshes at the Admin apps (every install signs out)
+		if (staffOnly?.clientIds.has(input.clientID) && !isStaff(await staffOnly.currentRoles(input.tenantId, input.userId))) {
+			logger.info('[refresh] Refused: no staff role for an Admin app', { userId: input.userId, clientId: input.clientID });
+			return { revoke: true, reason: 'staff_role_removed' };
+		}
+				// The staff passkey deadline follows the setting on every refresh (undefined removes it)
 		if (passkeyDeadline) {
 			const roles = Array.isArray(input.properties?.roles) ? (input.properties!.roles as string[]) : [];
 			return { properties: { passkey_deadline: await passkeyDeadline(input.userId, roles) } };

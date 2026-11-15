@@ -3,7 +3,8 @@
  */
 import type { MiddlewareHandler } from 'hono';
 import { logger } from '../logger';
-import { revokeUser, type RevocationReason } from './revocation-list';
+import { sessionTokenId } from '@al-ummah-now/openauth/session/token-id';
+import { revokeScope, revokeUser, sessionScopeKey, type RevocationReason, type ScopedRevocationReason } from './revocation-list';
 import { revokeUserTokens } from '../custom/token-revocation';
 
 /**
@@ -85,4 +86,36 @@ export async function endAllSessions(
 	// Or /authorize (prompt=none) would sign the user straight back in from the SSO session
 	await endBrowserSignIns(db, userId);
 	return { sessionsTerminated: countResult?.count ?? 0, tokensRevoked: revoked };
+}
+
+/**
+ * Signs a user out of ONE browser (#277, AlUmmahNow#442): that browser's account
+ * session goes (so /authorize can't sign them back in silently there), and the
+ * sign-in's tokens die: its refresh tokens at the next refresh, its access tokens at
+ * the resource servers that read the `s:<sid>` entry. The user's other devices keep
+ * working. Returns false when the session is not the user's.
+ */
+export async function endOneSession(
+	db: D1Database,
+	kv: KVNamespace | undefined,
+	userId: string,
+	accountSessionId: string,
+	reason: ScopedRevocationReason
+): Promise<{ ended: false } | { ended: true; browserSessionId: string; userAgent: string | null }> {
+	const row = await db
+		.prepare(
+			`SELECT a.browser_session_id, b.user_agent FROM account_sessions a
+			 LEFT JOIN browser_sessions b ON b.id = a.browser_session_id
+			 WHERE a.id = ? AND a.user_id = ?`
+		)
+		.bind(accountSessionId, userId)
+		.first<{ browser_session_id: string; user_agent: string | null }>();
+	if (!row) return { ended: false };
+	await revokeScope({ db, kv }, sessionScopeKey(await sessionTokenId(row.browser_session_id, userId)), reason);
+	await db.prepare('DELETE FROM account_sessions WHERE id = ? AND user_id = ?').bind(accountSessionId, userId).run();
+	await db
+		.prepare('UPDATE browser_sessions SET active_user_id = NULL WHERE id = ? AND active_user_id = ?')
+		.bind(row.browser_session_id, userId)
+		.run();
+	return { ended: true, browserSessionId: row.browser_session_id, userAgent: row.user_agent };
 }

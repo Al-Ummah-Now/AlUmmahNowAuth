@@ -454,4 +454,5 @@ See [TESTING.md](./TESTING.md) for comprehensive testing documentation.
 - [SDK_USAGE.md](./SDK_USAGE.md) - Client SDK examples
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 - [docs/MODERATION_REQUESTS.md](./docs/MODERATION_REQUESTS.md) - Moderation requests from client apps (`/moderation/requests`, `/admin/moderation-requests`)
+- [docs/TOKEN_REVOCATIONS.md](./docs/TOKEN_REVOCATIONS.md) - Signing out one device or native install (`/internal/token-revocations`, `sid`, `install_id`)
 - [OpenAuth.js Documentation](https://github.com/openauthjs/openauth)

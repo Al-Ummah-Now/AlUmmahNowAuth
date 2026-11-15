@@ -157,3 +157,85 @@ export function isRevoked(entry: RevocationEntry | null | undefined, token: Toke
 	if (signedInAt === undefined) return true;
 	return signedInAt < entry.before;
 }
+
+/*
+ * Scoped revocations (AlUmmahNow#442, #277, #363): end part of a user's sign-ins.
+ *
+ *   s:<sid>                  one browser sign-in (openauth sessionTokenId(browser session, user));
+ *                            access tokens carry `sid`, so the KV copy lets the resource
+ *                            servers refuse them too
+ *   i:<user_id>:<install_id> one native app install's refresh tokens (D1 only)
+ *   c:<user_id>:<client_id>  every refresh token of one user at one client (D1 only)
+ *
+ * Same rule as `u:`: a token whose sign-in predates `before` is dead; a later
+ * sign-in on that device or install works. D1 `scoped_revocations` is read by the
+ * refresh path (current everywhere); `s:` entries are also written to KV with the
+ * same layout as `u:` for the resource servers.
+ */
+export type ScopedRevocationReason =
+	| 'admin_session_terminated'
+	| 'admin_sessions_bulk_terminated'
+	| 'device_signed_out'
+	| 'install_signed_out'
+	| 'client_signed_out';
+
+export const sessionScopeKey = (sid: string) => `s:${sid}`;
+export const installScopeKey = (userId: string, installId: string) => `i:${userId}:${installId}`;
+export const clientScopeKey = (userId: string, clientId: string) => `c:${userId}:${clientId}`;
+
+/** Ends the sign-ins under `scopeKey` made up to now. Returns the stored `before`. */
+export async function revokeScope(
+	stores: RevocationStores,
+	scopeKey: string,
+	reason: ScopedRevocationReason,
+	now = Date.now(),
+): Promise<number> {
+	if (!stores.db) throw new Error('scoped revocation needs AUTH_DB');
+	let before = nowSeconds(now) + 1;
+	const row = await stores.db
+		.prepare(
+			`INSERT INTO scoped_revocations (scope_key, revoked_before, reason, updated_at) VALUES (?1, ?2, ?3, ?4)
+			 ON CONFLICT(scope_key) DO UPDATE SET
+			   revoked_before = MAX(revoked_before, excluded.revoked_before),
+			   reason = excluded.reason,
+			   updated_at = excluded.updated_at
+			 RETURNING revoked_before`
+		)
+		.bind(scopeKey, before, reason, now)
+		.first<{ revoked_before: number }>();
+	if (row) before = row.revoked_before;
+	if (scopeKey.startsWith('s:')) {
+		if (stores.kv) {
+			const existing = await stores.kv.get<RevocationEntry>(scopeKey, 'json');
+			before = Math.max(existing?.before ?? 0, before);
+			await stores.kv.put(scopeKey, JSON.stringify({ v: REVOCATION_ENTRY_VERSION, before, reason, updatedAt: now }), {
+				expirationTtl: REVOCATION_TTL_SECONDS,
+			});
+		} else {
+			logger.warn('[revocation] TOKEN_REVOCATIONS is not bound; resource servers will not see this session revocation', { reason });
+		}
+	}
+	logger.info('[revocation] Scoped sign-ins revoked', { scope: scopeKey.slice(0, 2), reason, before });
+	return before;
+}
+
+/** The latest `before` among the given scope keys (primary-key lookups), or undefined. */
+export async function readScopedRevocation(db: D1Database | undefined, scopeKeys: string[]): Promise<number | undefined> {
+	const keys = [...new Set(scopeKeys.filter(Boolean))];
+	if (!db || keys.length === 0) return undefined;
+	const { results } = await db
+		.prepare(`SELECT MAX(revoked_before) AS before FROM scoped_revocations WHERE scope_key IN (${keys.map((_, i) => `?${i + 1}`).join(', ')})`)
+		.bind(...keys)
+		.all<{ before: number | null }>();
+	const before = results?.[0]?.before;
+	return typeof before === 'number' ? before : undefined;
+}
+
+/** The scope keys a refresh token answers to: its session, its install and its client. */
+export function refreshScopeKeys(record: { sid?: unknown; installId?: unknown; clientID?: unknown }, userId: string | undefined): string[] {
+	const keys: string[] = [];
+	if (typeof record.sid === 'string' && record.sid) keys.push(sessionScopeKey(record.sid));
+	if (userId && typeof record.installId === 'string' && record.installId) keys.push(installScopeKey(userId, record.installId));
+	if (userId && typeof record.clientID === 'string' && record.clientID) keys.push(clientScopeKey(userId, record.clientID));
+	return keys;
+}

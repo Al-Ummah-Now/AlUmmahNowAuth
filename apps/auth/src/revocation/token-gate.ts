@@ -26,7 +26,7 @@
 import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import { loadRefreshToken, refreshKey, removeRefreshToken } from '@al-ummah-now/openauth/refresh-token';
 import { logger } from '../logger';
-import { isRevoked, readRevocationForRefresh } from './revocation-list';
+import { isRevoked, readRevocationForRefresh, readScopedRevocation, refreshScopeKeys } from './revocation-list';
 import { isRefusedAccountState, readAccountState } from '../security/account-status';
 
 interface TokenRecord {
@@ -94,6 +94,13 @@ export function guardIssuerStorage(storage: StorageAdapter, guard: IssuerStorage
 			if (entry && isRevoked(entry, { authTime })) {
 				await remove();
 				logger.info('[revocation] Refused a refresh token of a revoked sign-in', { userId, reason: entry.reason });
+				return undefined;
+			}
+			// One device, install or client signed out (#442, #277, #363)
+			const scoped = await readScopedRevocation(guard.revocationsDb, refreshScopeKeys(value, userId));
+			if (scoped !== undefined && isRevoked({ v: 1, before: scoped, updatedAt: 0 }, { authTime })) {
+				await remove();
+				logger.info('[revocation] Refused a refresh token of a signed-out device or install', { userId });
 				return undefined;
 			}
 		}

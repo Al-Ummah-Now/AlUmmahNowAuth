@@ -51,3 +51,66 @@ describe('DELETE /admin/users/:userId/sessions', () => {
 		expect(token!.revoked).toBe(1);
 	});
 });
+
+describe('DELETE /admin/users/:userId/sessions/:sessionId (#277)', () => {
+	beforeAll(async () => {
+		const db = DB();
+		const now = Date.now();
+		await db.prepare(`INSERT OR IGNORE INTO users (id, tenant_id, email, status, created_at, updated_at) VALUES ('usr_one', 'default', 'one@example.com', 'active', ?, ?)`).bind(now, now).run();
+		for (const [bs, as] of [
+			['bs_laptop', 'as_laptop'],
+			['bs_phone', 'as_phone'],
+		]) {
+			await db.prepare(`INSERT INTO browser_sessions (id, tenant_id, created_at, last_activity, user_agent, active_user_id) VALUES (?, 'default', ?, ?, 'UA', 'usr_one')`).bind(bs, now, now).run();
+			await db
+				.prepare(`INSERT INTO account_sessions (id, browser_session_id, user_id, is_active, authenticated_at, expires_at, subject_type, refresh_token, client_id) VALUES (?, ?, 'usr_one', 1, ?, ?, 'user', 'rt', 'c')`)
+				.bind(as, bs, now, now + 3600_000)
+				.run();
+		}
+	});
+
+	it('ends that one session (no 500) and leaves the other', async () => {
+		const res = await adminSessionRoutes.fetch(new Request('https://auth.test/admin/users/usr_one/sessions/as_laptop', { method: 'DELETE' }), env as unknown as Env, ctx);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({ success: true });
+		const rows = await DB().prepare(`SELECT id FROM account_sessions WHERE user_id = 'usr_one' ORDER BY id`).all<{ id: string }>();
+		expect(rows.results.map((r) => r.id)).toEqual(['as_phone']);
+		const laptop = await DB().prepare(`SELECT active_user_id FROM browser_sessions WHERE id = 'bs_laptop'`).first<{ active_user_id: string | null }>();
+		expect(laptop!.active_user_id).toBeNull();
+		const phone = await DB().prepare(`SELECT active_user_id FROM browser_sessions WHERE id = 'bs_phone'`).first<{ active_user_id: string | null }>();
+		expect(phone!.active_user_id).toBe('usr_one');
+		const listed = await DB().prepare(`SELECT COUNT(*) n FROM scoped_revocations WHERE scope_key LIKE 's:%'`).first<{ n: number }>();
+		expect(listed!.n).toBeGreaterThan(0);
+	});
+
+	it("answers 404 for another user's session", async () => {
+		const res = await adminSessionRoutes.fetch(new Request('https://auth.test/admin/users/usr_target/sessions/as_phone', { method: 'DELETE' }), env as unknown as Env, ctx);
+		expect(res.status).toBe(404);
+	});
+});
+
+describe('POST /admin/sessions/bulk-terminate', () => {
+	it('ends the matching sessions one by one (no 500)', async () => {
+		const db = DB();
+		const now = Date.now();
+		await db.prepare(`INSERT INTO browser_sessions (id, tenant_id, created_at, last_activity, ip_address, active_user_id) VALUES ('bs_bulk', 'default', ?, ?, '203.0.113.9', 'usr_one')`).bind(now, now).run();
+		await db
+			.prepare(`INSERT INTO account_sessions (id, browser_session_id, user_id, is_active, authenticated_at, expires_at, subject_type, refresh_token, client_id) VALUES ('as_bulk', 'bs_bulk', 'usr_one', 1, ?, ?, 'user', 'rt', 'c')`)
+			.bind(now, now + 3600_000)
+			.run();
+		const app = new (await import('hono')).Hono<{ Variables: { tenantId: string } }>();
+		app.use('*', async (c, next) => {
+			c.set('tenantId', 'default');
+			await next();
+		});
+		app.route('/', adminSessionRoutes as never);
+		const res = await app.fetch(
+			new Request('https://auth.test/admin/sessions/bulk-terminate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ipAddress: '203.0.113.9' }) }),
+			env as unknown as Env,
+			ctx
+		);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({ success: true, sessionsTerminated: 1, remaining: false });
+		expect(await db.prepare(`SELECT id FROM account_sessions WHERE id = 'as_bulk'`).first()).toBeNull();
+	});
+});

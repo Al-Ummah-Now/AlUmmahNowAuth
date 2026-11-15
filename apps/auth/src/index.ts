@@ -56,6 +56,7 @@ import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
 import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
+import { ADMIN_NATIVE_CLIENT_IDS } from "./admin-native-clients";
 import { safePasswordChangeRequest } from "./security/password-change-redirect";
 import { injectTurnstile, widgetScriptUrl } from "./security/turnstile";
 import { handleModerationBatch, type ModerationQueueMessage } from './moderation/queue';
@@ -525,6 +526,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         userService,
         (userId, roles) => passkeyDeadline(env.AUTH_DB, userId, roles),
         (userId, clientId) => flagSystemAccountAttempt(env, ctx, { userId, attempt: 'token_refresh', detail: clientId, request, requestId }),
+        // The native Admin apps need a staff role at every refresh (#363)
+        {
+          clientIds: ADMIN_NATIVE_CLIENT_IDS,
+          currentRoles: async (tenantId, userId) => (await rbacService.getUserRoles(userId, tenantId)).map((r) => r.name),
+        },
       ),
       // Suspended/deleted accounts (D1) are refused with an en/ar page (#662)
       onSuccess: createOnSuccessHandler(userService, rbacService, {
