@@ -12,6 +12,7 @@ import {
 import { getAuthServerUrl, getOAuthClientId } from "./lib/config";
 import { fetchShellTheme } from "./lib/shell-theme";
 import { MODE_SCRIPT } from "./lib/color-mode";
+import { scheduleKeepTypedBeforeHydration, TYPED_RECORDER_SCRIPT } from "./lib/keep-typed-before-hydration";
 import { dirOf, langOf } from "./lib/deletion-copy";
 import { NAV_CSS } from "../../../packages/ui/src/nav/aun-nav.generated";
 import { PAGE_HEADER_CSS } from "../../../packages/ui/src/nav/page-header.ts";
@@ -66,6 +67,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         {/* Light or dark before first paint: the saved choice, else the device */}
         <script dangerouslySetInnerHTML={{ __html: MODE_SCRIPT }} />
+        {/* Text typed before hydration is kept (#1462 in AlUmmahNow, lib/keep-typed-before-hydration.ts) */}
+        <script dangerouslySetInnerHTML={{ __html: TYPED_RECORDER_SCRIPT }} />
         <Meta />
         <Links />
         {(data?.tabIcons ?? tabIconLinks("production")).map((l) => (
@@ -91,6 +94,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   const shellCss = useRouteLoaderData<typeof loader>("root")?.shellCss;
   const street = !!shellCss && streetOn(shellCss);
+  useEffect(() => scheduleKeepTypedBeforeHydration(), []);
   useEffect(() => {
     if (!street || document.querySelector("script[data-fanous-street]")) return;
     const script = document.createElement("script");
