@@ -30,7 +30,16 @@ const shot = (page: Page, name: string) => page.screenshot({ path: test.info().o
 const admin = (path: string) => `${TEST_URLS.adminDashboard}${path}`;
 
 function authorizeUrl(clientId: string, extra: Record<string, string> = {}) {
-  const q = new URLSearchParams({ client_id: clientId, response_type: 'code', state: 's', redirect_uri: CALLBACK, ...extra });
+  // Public clients must send PKCE S256 (#211): a fixed, well-formed challenge
+  const q = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    state: 's',
+    redirect_uri: CALLBACK,
+    code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+    code_challenge_method: 'S256',
+    ...extra,
+  });
   return `${TEST_URLS.authServer}/authorize?${q}`;
 }
 

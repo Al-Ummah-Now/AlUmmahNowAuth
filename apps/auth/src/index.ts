@@ -450,8 +450,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // Codes live 10 minutes (RFC 6749 maximum): the after-sign-in passkey card
       // (AUTH-PASSKEYS) shows before the redirect that carries the code
       ttl: { ...(accessTtl ? { access: accessTtl } : {}), code: 600 },
-      // Codes of these clients are redeemed only with PKCE (OA-1, see pkce-clients.ts)
-      pkce: { requireForCodeExchange: PKCE_REQUIRED_CLIENTS },
+      // Public clients (no secret) must send PKCE S256 on /authorize (#211), and
+      // codes of these clients are redeemed only with PKCE (OA-1, see pkce-clients.ts)
+      pkce: { requireForPublicClients: true, requireForCodeExchange: PKCE_REQUIRED_CLIENTS },
       sessionService,
       tenantService,
       sessionSecret,
