@@ -3,8 +3,8 @@ import { logger } from './logger';
 import { flagSystemAccountAttempt, isSystemUserId } from './security/system-accounts';
 import { extractBearerToken, RBACServiceImpl, RBACAdapter } from '@al-ummah-now/openauth';
 import { CloudflareStorage } from '@al-ummah-now/openauth/storage/cloudflare';
-import { createLocalJWKSet, jwtVerify, decodeJwt } from 'jose';
-import { getJWKS } from './utils/jwks-cache';
+import { jwtVerify, decodeJwt } from 'jose';
+import { issuerKeySet } from './utils/jwks-cache';
 
 /**
  * Default client ID and tenant ID for RBAC operations
@@ -76,14 +76,8 @@ async function verifyM2MAuth(
     throw new Error('Invalid token: not an M2M token (missing client_id)');
   }
 
-  // Get JWKS (from cache/storage or external fetch as fallback)
-  const jwks = await getJWKS(env);
-
-  // Create local JWK set for verification
-  const JWKS = createLocalJWKSet(jwks);
-
-  // Verify the token
-  const { payload } = await jwtVerify(token, JWKS, {
+  // Verify the token (the key set reloads once for a kid it does not hold)
+  const { payload } = await jwtVerify(token, issuerKeySet(env), {
     issuer,
   });
 
