@@ -14,10 +14,10 @@
  *
  * api-videos orchestrates the full deletion (content first, then this call).
  */
-import { createLocalJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { jwtVerify, type JWTPayload } from 'jose';
 import { D1UserAdapter } from '@al-ummah-now/openauth';
 import { D1UserService } from '../services/d1-user-service';
-import { getJWKS } from '../utils/jwks-cache';
+import { issuerKeySet } from '../utils/jwks-cache';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { authStorage } from '../storage/auth-storage';
 import { removeAllRefreshTokens } from '@al-ummah-now/openauth/refresh-token';
@@ -76,8 +76,7 @@ export async function verifyUserAccessToken(request: Request, env: Env): Promise
 export async function verifyUserToken(token: string, env: Env): Promise<VerifiedUser | Response> {
 	let claims: UserTokenClaims;
 	try {
-		const jwks = createLocalJWKSet(await getJWKS(env));
-		({ payload: claims } = await jwtVerify<UserTokenClaims>(token, jwks, {
+		({ payload: claims } = await jwtVerify<UserTokenClaims>(token, issuerKeySet(env), {
 			issuer: env.OPENAUTH_ISSUER || 'http://localhost:3301',
 		}));
 	} catch (error) {

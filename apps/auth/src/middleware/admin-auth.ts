@@ -13,8 +13,8 @@ import type { Context, MiddlewareHandler } from 'hono';
 import type { AccountSession } from '../types/sessions';
 import { extractBearerToken, requireScope, requireAnyScope } from '@al-ummah-now/openauth';
 import { logger } from '../logger';
-import { createLocalJWKSet, jwtVerify, decodeJwt } from 'jose';
-import { getJWKS } from '../utils/jwks-cache';
+import { jwtVerify, decodeJwt } from 'jose';
+import { issuerKeySet } from '../utils/jwks-cache';
 import { flagSystemAccountAttempt, isSystemUser } from '../security/system-accounts';
 
 /** The execution context when there is one (unit tests call middleware without it). */
@@ -96,12 +96,8 @@ export function requireAdmin(_requiredScope?: string): MiddlewareHandler<{
 					return c.json({ error: 'Invalid token: not an M2M token' }, 401);
 				}
 
-				// Get JWKS from local storage
-				const jwks = await getJWKS(c.env);
-				const JWKS = createLocalJWKSet(jwks);
-
-				// Verify the token
-				const { payload } = await jwtVerify(token, JWKS, {
+				// Verify the token (the key set reloads once for a kid it does not hold)
+				const { payload } = await jwtVerify(token, issuerKeySet(c.env), {
 					issuer,
 				});
 

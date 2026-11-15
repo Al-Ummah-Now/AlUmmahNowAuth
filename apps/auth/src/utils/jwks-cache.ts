@@ -17,7 +17,7 @@
  * The stored format is a SerializedKeyPair with publicKey in SPKI format.
  */
 
-import { importSPKI, exportJWK, type JWK } from 'jose';
+import { createLocalJWKSet, errors, importSPKI, exportJWK, type JWK, type JWTVerifyGetKey } from 'jose';
 import { logger } from '../logger';
 import { D1AtomicStorage } from '../storage/d1-atomic';
 
@@ -93,12 +93,11 @@ interface JWKSEnv {
  *
  * @example
  * ```typescript
- * import { getJWKS } from '../utils/jwks-cache';
- * import { createLocalJWKSet, jwtVerify } from 'jose';
+ * // Verifiers use issuerKeySet, which reloads once for an unknown kid
+ * import { issuerKeySet } from '../utils/jwks-cache';
+ * import { jwtVerify } from 'jose';
  *
- * const jwks = await getJWKS(env);
- * const JWKS = createLocalJWKSet(jwks);
- * const { payload } = await jwtVerify(token, JWKS, { issuer });
+ * const { payload } = await jwtVerify(token, issuerKeySet(env), { issuer });
  * ```
  */
 export async function getJWKS(env: JWKSEnv): Promise<{ keys: JWK[] }> {
@@ -178,4 +177,35 @@ export async function getJWKS(env: JWKSEnv): Promise<{ keys: JWK[] }> {
  */
 export function clearJWKSCache(): void {
 	cachedJWKS = null;
+	lastUnknownKidRefetch = 0;
+}
+
+/**
+ * Minimum gap between two reloads caused by a token whose kid is not in the
+ * cached set. A new signing key is used minutes after it is published, so one
+ * reload finds it; the gap stops tokens with made-up kids from turning every
+ * request into a KV + D1 read (jose's remote key set uses the same 30 s).
+ */
+export const UNKNOWN_KID_REFETCH_COOLDOWN = 30 * 1000;
+let lastUnknownKidRefetch = 0;
+
+/**
+ * The issuer's keys as a jose key resolver for jwtVerify. A token signed with
+ * a kid the cache does not hold (a key created or rotated after the cache was
+ * filled) reloads the keys once instead of failing until the cache expires.
+ */
+export function issuerKeySet(env: JWKSEnv): JWTVerifyGetKey {
+	return async (header, token) => {
+		try {
+			return await createLocalJWKSet(await getJWKS(env))(header, token);
+		} catch (error) {
+			if (!(error instanceof errors.JWKSNoMatchingKey)) throw error;
+			const now = Date.now();
+			if (now - lastUnknownKidRefetch < UNKNOWN_KID_REFETCH_COOLDOWN) throw error;
+			lastUnknownKidRefetch = now;
+			cachedJWKS = null;
+			logger.info('Reloading JWKS for an unknown kid', { kid: header.kid });
+			return createLocalJWKSet(await getJWKS(env))(header, token);
+		}
+	};
 }
