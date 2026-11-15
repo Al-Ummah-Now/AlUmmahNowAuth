@@ -183,11 +183,14 @@ function audit(type: AuditEventType, severity: AuditEventSeverity, userId: strin
 }
 
 /**
- * Queue a rotation step. Returns false when the queue is missing or refused
+ * Queue a rotation step (an admin's: rotate now, or `force: false` to retry a
+ * failed step without starting a rotation). Returns false when the queue is missing or refused
  * the message (the failure is recorded and flagged; nothing is retried).
  */
-export async function enqueueRotation(env: RotationEnv, trigger: RotationTrigger, adminId?: string): Promise<boolean> {
-	const message: RotationMessage = { type: 'signing-keys.rotate', trigger, requestedAt: Date.now(), ...(trigger === 'admin' ? { adminId, force: true } : {}) };
+export async function enqueueRotation(env: RotationEnv, trigger: RotationTrigger, adminId?: string, options: { force?: boolean } = {}): Promise<boolean> {
+	// An admin's request rotates now unless it only retries a failed step
+	const force = trigger === 'admin' && options.force !== false;
+	const message: RotationMessage = { type: 'signing-keys.rotate', trigger, requestedAt: Date.now(), ...(trigger === 'admin' ? { adminId } : {}), ...(force ? { force: true } : {}) };
 	if (!env.MODERATION_QUEUE) {
 		await flagFailed(env, message, 'The job queue is not configured (MODERATION_QUEUE)', 0);
 		return false;

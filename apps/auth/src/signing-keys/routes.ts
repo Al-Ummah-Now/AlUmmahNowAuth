@@ -3,6 +3,7 @@
  *
  *   GET  /admin/settings/signing-keys   the keys (no key material), their state, the policy and the job status
  *   POST /admin/settings/signing-keys   { action: "rotate" }   Super Admin: queue a rotation now
+ *                                        { action: "retry" }    Super Admin: run the step again (after a flagged failure)
  *
  * Admins only (verifyAdminRequest checks the acting user's roles in D1).
  */
@@ -60,9 +61,10 @@ export async function handleSigningKeys(request: Request, env: Env, ctx: Executi
 		} catch {
 			// handled below
 		}
-		if (body?.action !== 'rotate') return json({ error: 'invalid_request' }, 400);
+		const action = body?.action;
+		if (action !== 'rotate' && action !== 'retry') return json({ error: 'invalid_request' }, 400);
 		if (!(await withinRateLimit(env.ADMIN_SENSITIVE_LIMITER, `signing-keys:rotate:${actor.id}`))) return json({ error: 'rate_limited' }, 429);
-		const queued = await enqueueRotation(env, 'admin', actor.id);
+		const queued = await enqueueRotation(env, 'admin', actor.id, { force: action === 'rotate' });
 		ctx.waitUntil(
 			getAuditEmitter()
 				.emit(
@@ -72,7 +74,7 @@ export async function handleSigningKeys(request: Request, env: Env, ctx: Executi
 						ipAddress: getClientIP(request),
 						userAgent: request.headers.get('User-Agent'),
 						requestId,
-						metadata: { queued },
+						metadata: { queued, action },
 					})
 				)
 				.catch(() => undefined)
