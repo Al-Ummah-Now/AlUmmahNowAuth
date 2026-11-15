@@ -93,11 +93,13 @@ export interface PageHeaderOptions {
 	account?: string;
 	/** ...the Sign in link (signed out). Neither: no account slot (the sign-in pages themselves). */
 	signInHref?: string;
-	/** Centre the row in this max width (profile), else the bar spans the page. */
-	maxWidth?: string;
 }
 
-/** The whole header bar. */
+/**
+ * The whole header bar: full width in every app (the brand 16px from the edge, 12px on phones),
+ * never centred in a max width, and in the contract's typeface (aun-nav.css .aun-header), whatever
+ * font the page uses.
+ */
 export function pageHeaderHtml(o: PageHeaderOptions): string {
 	const account = o.account ?? (o.signInHref ? signInHtml({ lang: o.lang, href: o.signInHref }) : '');
 	const row =
@@ -109,9 +111,7 @@ export function pageHeaderHtml(o: PageHeaderOptions): string {
 		modeButtonBothHtml(o.lang) +
 		account +
 		`</div>`;
-	return o.maxWidth
-		? `<header class="aun-header" data-testid="aun-header" style="--aun-header-max:${o.maxWidth}"><div class="aun-header-row">${row}</div></header>`
-		: `<header class="aun-header" data-testid="aun-header">${row}</header>`;
+	return `<header class="aun-header" data-testid="aun-header">${row}</header>`;
 }
 
 /**

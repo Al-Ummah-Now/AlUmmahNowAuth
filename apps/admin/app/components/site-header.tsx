@@ -4,7 +4,7 @@
  * AlUmmahNow file, kept equal by `pnpm nav:check`). site-header.test.tsx renders each piece and
  * compares it with the builder's output, so this header can't drift from the other apps'.
  */
-import { HEADER_LABELS } from "../../../../packages/ui/src/nav/header.js";
+import { HEADER_LABELS, MENU_ICON_BODY } from "../../../../packages/ui/src/nav/header.js";
 import { APP_ICON_BASE, LOGO_SRC } from "../../../../packages/ui/src/nav/page-header.ts";
 import type { AdminLang } from "../lib/deletion-copy";
 
@@ -61,5 +61,55 @@ export function LangButton({ lang, href }: { lang: AdminLang; href: string }) {
       <span className="aun-visually-hidden">{`${l.switchLang}: `}</span>
       <span lang={to}>{l.otherLang}</span>
     </a>
+  );
+}
+
+/**
+ * The drawer toggle, first in the bar: the same 40px round `.aun-icon-btn` with lucide `menu` (0.487,
+ * exactly the shared menuButtonHtml's icon) as the videos site's drawer toggle, in every state (no X,
+ * no chevron). Not `.aun-menu`: that class is the menu surface in aun-nav.css (an absolutely placed
+ * 21rem panel), so it never goes on a header button here.
+ */
+export function MenuButton({
+  label,
+  onClick,
+  expanded,
+  pressed,
+  controls,
+}: {
+  label: string;
+  onClick: () => void;
+  expanded?: boolean;
+  pressed?: boolean;
+  controls?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="aun-icon-btn"
+      data-testid="nav-drawer-toggle"
+      aria-label={label}
+      title={label}
+      aria-expanded={expanded}
+      aria-pressed={pressed}
+      aria-controls={controls}
+      onClick={onClick}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="lucide lucide-menu"
+        aria-hidden="true"
+        focusable="false"
+        dangerouslySetInnerHTML={{ __html: MENU_ICON_BODY }}
+      />
+    </button>
   );
 }

@@ -6,9 +6,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { appLinksHtml, brandHtml, envBadgeHtml, HEADER_ORDER, langButtonHtml } from "../../../../packages/ui/src/nav/header.js";
+import { appLinksHtml, brandHtml, envBadgeHtml, HEADER_ORDER, langButtonHtml, menuButtonHtml } from "../../../../packages/ui/src/nav/header.js";
 import { modeButtonBothHtml, publicAppLinks } from "../../../../packages/ui/src/nav/page-header.ts";
-import { AppLinks, Brand, EnvBadge, LangButton } from "./site-header";
+import { AppLinks, Brand, EnvBadge, LangButton, MenuButton } from "./site-header";
 import { langSwitchHref } from "../lib/shell-copy";
 import { ModeButton } from "./theme-toggle";
 
@@ -48,6 +48,16 @@ describe("admin header = the shared builders", () => {
       const href = langSwitchHref("/users", lang === "ar" ? "?lang=ar&q=amina" : "?q=amina", lang);
       expect(href).toBe(lang === "ar" ? "/users?q=amina" : "/users?q=amina&lang=ar");
       expect(html(<LangButton lang={lang} href={href} />)).toBe(langButtonHtml({ lang, href }));
+    });
+
+    it(`${lang}: the drawer toggle is the shared menu button's 40px .aun-icon-btn with its lucide menu icon`, () => {
+      const shared = menuButtonHtml({ lang, panel: "p" });
+      const ours = html(<MenuButton label="Open menu" onClick={() => {}} expanded={false} controls="admin-rail" />);
+      expect(ours).toMatch(/^<button type="button" class="aun-icon-btn" /);
+      // the same icon, byte for byte (the videos site's drawer toggle draws lucide 0.487 menu too)
+      expect(ours.match(/<svg[\s\S]*<\/svg>/)![0]).toBe(shared.match(/<svg[\s\S]*<\/svg>/)![0]);
+      // never .aun-menu here: in aun-nav.css that is the menu surface (absolute, 21rem wide)
+      expect(ours).not.toMatch(/class="[^"]*\baun-menu\b/);
     });
 
     it(`${lang}: light/dark button, both modes`, () => {

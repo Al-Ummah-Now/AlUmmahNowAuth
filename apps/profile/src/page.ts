@@ -225,7 +225,6 @@ export function renderHomePage(o: HomePageOptions): string {
     langHref: langHref(here, other),
     account: isLoggedIn ? accountSwitcher : undefined,
     signInHref: `/login?return=${encodeURIComponent(here.pathname + here.search)}`,
-    maxWidth: "1200px",
   });
 
   return `<!DOCTYPE html>

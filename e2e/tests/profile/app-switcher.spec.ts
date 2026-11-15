@@ -81,7 +81,7 @@ test.describe('Profile app switcher', () => {
     await login(page, user.email);
 
     // The old standalone admin button is gone
-    await expect(page.locator('[data-testid="aun-header"] > .aun-header-row > a:has-text("Admin")')).toHaveCount(0);
+    await expect(page.locator('[data-testid="aun-header"] a:has-text("Admin")')).toHaveCount(0);
 
     const items = await openLauncher(page);
     await expect(items).toHaveCount(2);
