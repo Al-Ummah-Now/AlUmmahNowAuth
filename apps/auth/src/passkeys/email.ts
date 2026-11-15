@@ -130,7 +130,7 @@ export async function sendPasskeyEmail(env: PasskeyEmailEnv, to: string, email: 
 			return true;
 		}
 		if (!env.RESEND_API_KEY && env.ENVIRONMENT === 'development') {
-			logger.info('[passkeys] Email not sent (no RESEND_API_KEY in development)', { kind: email.kind, to, ...(email.kind === 'code' ? { code: email.code } : {}) });
+			logger.info('[passkeys] Email not sent (no RESEND_API_KEY in development)', { kind: email.kind, to, ...(email.kind === 'code' ? { devCode: email.code } : {}) });
 			return true;
 		}
 		const apiKey = await requireSecret(env.RESEND_API_KEY as never, 'RESEND_API_KEY', env as unknown as Record<string, unknown>);

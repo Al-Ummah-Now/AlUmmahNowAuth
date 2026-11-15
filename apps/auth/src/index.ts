@@ -564,29 +564,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       issuerResponse = await afterAccountPickerRemove(request, env, issuerResponse);
     }
 
-    // DEBUG: Log what the issuer returned
-    const isRedirect = issuerResponse.status >= 300 && issuerResponse.status < 400;
+    // Status and type only: Location holds the authorization code, bodies hold user details (#313)
     const contentType = issuerResponse.headers.get('Content-Type') || '';
-    logger.info('[DEBUG] Issuer response', {
-      status: issuerResponse.status,
-      isRedirect,
-      contentType,
-      location: issuerResponse.headers.get('Location') || 'none',
-      pathname: url.pathname,
-    });
-
-    // If it's JSON but should be a redirect, log more details
     if (contentType.includes('application/json') && url.pathname.includes('/password')) {
-      try {
-        const clonedResponse = issuerResponse.clone();
-        const body = await clonedResponse.text();
-        logger.warn('[DEBUG] Unexpected JSON from password flow', {
-          body: body.slice(0, 1000),
-          pathname: url.pathname,
-        });
-      } catch (e) {
-        logger.error('[DEBUG] Could not read response body', { error: String(e) });
-      }
+      logger.warn('Unexpected JSON from password flow', { status: issuerResponse.status, pathname: url.pathname });
     }
 
     // Handle session API responses - add CORS and enrich /session/accounts with user data
