@@ -32,7 +32,7 @@ async function shell(page: Page) {
 
 /** Every admin route with the admin shell; detail pages from the first link on their list. */
 async function adminRoutes(page: Page): Promise<string[]> {
-	const routes = ['/', '/users', '/roles', '/sessions', '/clients', '/audit', '/moderation', '/themes', '/deleted', '/security'];
+	const routes = ['/', '/users', '/roles', '/sessions', '/clients', '/audit', '/moderation', '/themes', '/deleted', '/security', '/signing-keys'];
 	const firstHref = async (list: string, selector: string) => {
 		await page.goto(url(list));
 		await shell(page);
@@ -169,7 +169,7 @@ test.describe('Accounts admin: light and dark', () => {
 		// wide tables scroll in their box on a phone: no axe violations there either (the Audit
 		// table's box was not keyboard-reachable)
 		const problems: string[] = [];
-		for (const route of ['/', '/users', '/roles', '/sessions', '/clients', '/audit', '/moderation', '/themes', '/deleted', '/security']) {
+		for (const route of ['/', '/users', '/roles', '/sessions', '/clients', '/audit', '/moderation', '/themes', '/deleted', '/security', '/signing-keys']) {
 			await page.goto(url(route));
 			await shell(page);
 			const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();

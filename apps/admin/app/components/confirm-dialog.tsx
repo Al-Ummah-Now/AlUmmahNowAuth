@@ -77,7 +77,7 @@ function OpenConfirmDialog({
         e.preventDefault();
         if (!busy) onCancel();
       }}
-      className="w-[min(32rem,calc(100vw-2rem))] rounded-lg ui-raised p-0 backdrop:bg-black/50"
+      className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-lg ui-raised p-0 backdrop:bg-black/50"
     >
       <form
         method="dialog"
