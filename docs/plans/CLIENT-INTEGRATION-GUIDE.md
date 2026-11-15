@@ -932,6 +932,10 @@ if (returnedState !== savedState) {
 
 ### 3. PKCE (Proof Key for Code Exchange)
 
+PKCE is required for every public client (one registered without a client
+secret): `/authorize` without `code_challenge` (S256) answers
+`error=invalid_request` (AlUmmahNowAuth#211). Only `S256` is accepted.
+
 ```typescript
 // SDK handles this automatically, but here's what happens:
 

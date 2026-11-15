@@ -9,8 +9,11 @@ import { TEST_URLS } from '../../utils/test-data';
 const PROFILE_CLIENT_ID = '109a1087-6626-40f7-8a7f-7f42f83f4f30';
 const PROFILE_CALLBACK = `${TEST_URLS.profileApp}/callback`;
 
+const PKCE_CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
+
 function authorizeUrl(clientId: string, redirect: string, extra = '') {
-  return `${TEST_URLS.authServer}/authorize?client_id=${encodeURIComponent(clientId)}&response_type=code&state=s&redirect_uri=${encodeURIComponent(redirect)}${extra}`;
+  // Public clients must send PKCE S256 (#211): a fixed, well-formed challenge
+  return `${TEST_URLS.authServer}/authorize?client_id=${encodeURIComponent(clientId)}&response_type=code&state=s&redirect_uri=${encodeURIComponent(redirect)}&code_challenge=${PKCE_CHALLENGE}&code_challenge_method=S256${extra}`;
 }
 
 async function expectClientError(page: Page, reason: string) {
