@@ -1,9 +1,9 @@
 {
   "repo": "Al-Ummah-Now/AlUmmahNow",
-  "ref": "e913c4b0b5109e9fa74efe9e0be968b2f1bfe308",
+  "ref": "8d0e68b36564cb0c87e0a902cb83d1cf78f2cbd6",
   "source": "packages/fanous-tokens/nav/aun-nav.css",
   "sourceSha256": "e83c3dd78bbdbb4bb026826c3ea6c00ab8c6905330f8b31423923d4345fe4a16",
-  "output": "aaf0017232b049832e9e5f1aa660cbc3d4da12f6dd1fe9dcb3b52581d9fb6e1a",
+  "output": "ddabaf89d4cb113b013e43ddca5142aad2d2b2d7fbd050a1850e20527a2f6780",
   "icons": {
     "apps/admin/public/aun-nav/icons/www.webp": "b0feb2c79ff71890862210489b49db96fb0d90f58d7818279f6bec53ae032b56",
     "apps/admin/public/aun-nav/icons/videos.webp": "856d631b870c5805002379271469e1dd475a23f3b07d61f5141b7f8149fd3366",
@@ -12,7 +12,7 @@
     "apps/admin/public/aun-nav/icons/admin.webp": "33d3ae62ec9a9cf98b65c3d04007c1cdbfd12a8633b506c0b610c35a43074c81",
     "apps/admin/public/aun-nav/icons/auth-admin.webp": "61f4fd5b7dc27ccc009d7dd0b8f8488d6a989800644d1f69fc5896ad1430764f",
     "apps/admin/public/brand/logo-64.webp": "c51a8d293fe139cf4682aace98b21c95bada76b69ba88dce7342f040712845a3",
-    "packages/ui/src/nav/aun-nav-icons.generated.ts": "d4bc3f0251c7347ea36acde8e43d07b0fd656c85de71ad7b3b8df7907cd1b886"
+    "packages/ui/src/nav/aun-nav-icons.generated.ts": "5ae48e1980852b4c9de716bd02ad27af1b57532a3f66aa932e261920b5a9bc0e"
   },
   "files": {
     "packages/ui/src/nav/header.js": "cf5c293650229e33899d953a0236c75fab8c740c13aa86a7d3c5c074da277cce",
