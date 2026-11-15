@@ -218,7 +218,8 @@ async function handleSetupPage(rctx: PasskeyRouteContext): Promise<Response> {
 	const url = new URL(request.url);
 	const locale = pageLocale(url);
 	const t = copyFor(locale);
-	const returnTo = safeReturnTo(url.searchParams.get('return_to'), env);
+	const rawReturn = url.searchParams.get('return_to');
+	const returnTo = safeReturnTo(rawReturn, env);
 	const ticket = url.searchParams.get('ticket');
 	const account = await signedInAccount(request, env);
 	const g = await gate(env, account, ticket);
@@ -255,6 +256,10 @@ async function handleSetupPage(rctx: PasskeyRouteContext): Promise<Response> {
 		needsCode: g.needsCode,
 		email: g.email,
 		continueUrl: returnTo,
+		// With a return target (an app, the hub's list where the new passkey shows,
+		// the admin's sign-in again) go there by itself once the passkey is added.
+		// Without one (the native apps' setup_url) the page stays put with Continue.
+		autoContinue: !!rawReturn,
 		ticket: g.ticket,
 		lang: locale,
 	});

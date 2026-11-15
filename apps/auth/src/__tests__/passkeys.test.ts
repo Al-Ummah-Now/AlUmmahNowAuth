@@ -10,6 +10,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { decodeJwt } from 'jose';
 import worker from '../index';
+import { AUTO_CONTINUE_MS } from '../passkeys/pages';
 import { setupDatabase } from '../test-setup';
 import { PROFILE, registerTestClients } from './helpers/clients';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
@@ -384,6 +385,31 @@ describe('passkeys (worker)', () => {
 		expect(signedOut.status).toBe(401);
 		const page = await browser.fetch('/passkeys/setup');
 		expect(await page.text()).toContain('Sign in first');
+	});
+
+	it('after a passkey is added the card and setup with a return target go on by themselves; setup without one stays', async () => {
+		const autoContinue = (html: string) => JSON.parse(html.match(/"autoContinue":(true|false)/)![1]);
+		const email = `pk-auto-${unique()}@example.com`;
+		await makeUser(email);
+		const browser = new Browser();
+		const card = await cardContinue(await browser.passwordSignIn(email));
+		expect(autoContinue(card.html)).toBe(true);
+		expect(card.html).toContain(`"delay":${AUTO_CONTINUE_MS}`);
+		expect(AUTO_CONTINUE_MS).toBe(1500);
+		await browser.exchange(card.location);
+
+		const withTarget = await (await browser.fetch(`/passkeys/setup?return_to=${encodeURIComponent('http://localhost:3000/#passkeys')}`)).text();
+		expect(withTarget).toContain('data-page="passkey"');
+		expect(autoContinue(withTarget)).toBe(true);
+		expect(withTarget).toContain('Taking you back');
+		const ar = await (await browser.fetch(`/passkeys/setup?lang=ar&return_to=${encodeURIComponent('http://localhost:3000/')}`)).text();
+		expect(ar).toContain('جارٍ إعادتك');
+
+		const noTarget = await (await browser.fetch('/passkeys/setup')).text();
+		expect(noTarget).toContain('data-page="passkey"');
+		expect(autoContinue(noTarget)).toBe(false);
+		// Continue stays on every page as the way to go at once
+		for (const html of [card.html, withTarget, noTarget]) expect(html).toContain('data-action="done"');
 	});
 
 	it('setup links are single use and per user', async () => {

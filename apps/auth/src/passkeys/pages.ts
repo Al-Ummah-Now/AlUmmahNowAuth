@@ -36,6 +36,7 @@ const COPY = {
 		codeLabel: 'Code from the email',
 		adding: 'Follow the steps from your browser or device…',
 		added: 'Passkey added. Next time, choose "Sign in with a passkey".',
+		goingBack: 'Taking you back…',
 		unsupported: "This browser can't save passkeys. Try another browser or device.",
 		failed: "The passkey wasn't added. Try again.",
 		cancelled: 'Cancelled. You can try again.',
@@ -69,6 +70,7 @@ const COPY = {
 		codeLabel: 'الرمز من الرسالة',
 		adding: 'اتبع الخطوات التي يعرضها متصفحك أو جهازك…',
 		added: 'أُضيف مفتاح المرور. في المرة القادمة اختر «الدخول بمفتاح المرور».',
+		goingBack: 'جارٍ إعادتك…',
 		unsupported: 'لا يستطيع هذا المتصفح حفظ مفاتيح المرور. جرّب متصفحًا أو جهازًا آخر.',
 		failed: 'لم يُضَف مفتاح المرور. حاول مرة أخرى.',
 		cancelled: 'أُلغي الطلب. يمكنك المحاولة مرة أخرى.',
@@ -104,6 +106,13 @@ export interface AddPasskeyPage {
 	email: string;
 	/** Where Continue / Not now / Back goes */
 	continueUrl: string;
+	/**
+	 * After a passkey is added, go to continueUrl by itself after
+	 * AUTO_CONTINUE_MS (Continue stays as the way to go at once). True for the
+	 * after-sign-in card and for /passkeys/setup with a return target; without
+	 * one the page stays put.
+	 */
+	autoContinue: boolean;
 	/** Admin setup link token, passed through to the register calls */
 	ticket?: string;
 	/** Lang query for the API calls (so emails are in the page's language) */
@@ -124,6 +133,12 @@ const STYLE = `
 [data-page="passkey"] label { display:flex; flex-direction:column; gap:.5rem; font-size:var(--font-size-sm); }
 `;
 
+/**
+ * How long "Passkey added" shows before the page moves on. No animation, so it
+ * is the same with prefers-reduced-motion.
+ */
+export const AUTO_CONTINUE_MS = 1500;
+
 /** The page's script: the code step, the registration ceremony, Not now. */
 function pageScript(p: AddPasskeyPage, t: ReturnType<typeof copyFor>): string {
 	const cfg = {
@@ -131,11 +146,14 @@ function pageScript(p: AddPasskeyPage, t: ReturnType<typeof copyFor>): string {
 		staff: p.staff,
 		needsCode: p.needsCode,
 		continueUrl: p.continueUrl,
+		autoContinue: p.autoContinue,
+		delay: AUTO_CONTINUE_MS,
 		ticket: p.ticket ?? null,
 		q: `?lang=${p.lang}`,
 		t: {
 			adding: t.adding,
 			added: t.added,
+			goingBack: t.goingBack,
 			unsupported: t.unsupported,
 			failed: t.failed,
 			cancelled: t.cancelled,
@@ -171,7 +189,7 @@ if(addBtn)addBtn.addEventListener('click',function(){
  post('/passkeys/register/options',body).then(function(j){
   if(!j.options){addBtn.disabled=false;say(C.t[j.error]||C.t.failed,'error');return;}
   return pk.create(j.options).then(function(cred){return post('/passkeys/register/verify',{credential:cred,token:j.token});}).then(function(v){
-   if(v&&v.ok){say(C.t.added);addBtn.hidden=true;if(skip)skip.hidden=true;if(codeBox)codeBox.hidden=true;done.hidden=false;done.focus();}
+   if(v&&v.ok){say(C.autoContinue?C.t.added+' '+C.t.goingBack:C.t.added);addBtn.hidden=true;if(skip)skip.hidden=true;if(codeBox)codeBox.hidden=true;done.hidden=false;done.focus();root.setAttribute('data-state','added');if(C.autoContinue)setTimeout(go,C.delay);}
    else{addBtn.disabled=false;say(C.t[v&&v.error]||C.t.failed,'error');}
   },function(e){addBtn.disabled=false;
    if(e&&e.name==='InvalidStateError')say(C.t.exists,'error');else if(e&&(e.name==='NotAllowedError'||e.name==='AbortError'))say(C.t.cancelled);else say(C.t.failed,'error');});
