@@ -14,6 +14,7 @@
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { logger } from '../logger';
+import { isRotationMessage } from '../signing-keys/rotation';
 import { ModerationStore, type ModerationRequestRow } from './store';
 import type { ActionOutcome, ActionRunner, AutomaticAction } from './actions';
 
@@ -117,6 +118,8 @@ export async function handleModerationBatch(batch: MessageBatch<ModerationQueueM
 	const dlq = batch.queue.endsWith('-dlq');
 	for (const msg of batch.messages) {
 		const body = msg.body;
+		// Other jobs on this queue are handled by their own handler (index.ts)
+		if (isRotationMessage(body)) continue;
 		if (!body || body.type !== 'moderation.execute' || !body.requestId) {
 			msg.ack();
 			continue;

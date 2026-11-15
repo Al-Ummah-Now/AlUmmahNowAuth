@@ -60,6 +60,7 @@ import { ADMIN_NATIVE_CLIENT_IDS } from "./admin-native-clients";
 import { safePasswordChangeRequest } from "./security/password-change-redirect";
 import { injectTurnstile, widgetScriptUrl } from "./security/turnstile";
 import { handleModerationBatch, type ModerationQueueMessage } from './moderation/queue';
+import { handleRotationMessages } from './signing-keys/rotation';
 import { createActionRunner } from './moderation/actions';
 import { openauthThemeFor } from '../../../packages/ui/src/auth-theme/compile.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
@@ -169,8 +170,9 @@ const worker = {
    * and wrangler.qa.json) and mapped to jobs in cron/token-cron.ts.
    */
   /**
-   * moderation-actions[-env] and its DLQ: approved moderation requests' actions,
-   * retried with backoff; failures flag the request (moderation/queue.ts).
+   * moderation-actions[-env] and its DLQ, the worker's job queue: approved
+   * moderation requests' actions (moderation/queue.ts) and signing-key rotation
+   * steps (signing-keys/rotation.ts), retried with backoff; failures are flagged.
    */
   async queue(batch: MessageBatch<ModerationQueueMessage>, env: Env, ctx: ExecutionContext) {
     applyLogLevel(env.LOG_LEVEL);
@@ -178,6 +180,8 @@ const worker = {
     logger.setContext(ctx);
     setupAuditEmitter(env, ctx);
     try {
+      // Signing-key rotation steps share the queue (signing-keys/rotation.ts)
+      await handleRotationMessages(batch as MessageBatch<unknown>, env);
       await handleModerationBatch(batch, env, createActionRunner(env));
     } finally {
       ctx.waitUntil(flushAuditEvents());
