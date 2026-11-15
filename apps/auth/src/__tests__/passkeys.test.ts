@@ -329,6 +329,10 @@ describe('passkeys (worker)', () => {
 		const browser = new Browser();
 		const card = await cardContinue(await browser.passwordSignIn(email));
 		expect(card.html).toContain('Your role needs a passkey');
+		// Three steps, the first current; enforcement off: the skip says the password keeps working
+		expect(card.html).toMatch(/<li data-step="1" data-state="current" aria-current="step">/);
+		expect(card.html).toContain('data-action="send-code"');
+		expect(card.html).toContain('>Not now, keep using my password</button>');
 		const { access_token } = await browser.exchange(card.location);
 		const a = await new SoftAuthenticator().init();
 		expect((await browser.addPasskey(a)).error).toBe('wrong_code');
@@ -357,6 +361,9 @@ describe('passkeys (worker)', () => {
 
 		const browser = new Browser();
 		const card = await cardContinue(await browser.passwordSignIn(email));
+		// In the grace period the skip button names the last day of password sign-in
+		const lastDay = new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(enforcedAt + 7 * 86_400_000));
+		expect(card.html).toContain(`>Not now, use my password until ${lastDay}</button>`);
 		const tokens = await browser.exchange(card.location);
 		const claims = decodeJwt(tokens.access_token) as any;
 		expect(claims.properties.passkey_deadline).toBe(Math.floor((enforcedAt + 7 * 86_400_000) / 1000));
