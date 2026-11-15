@@ -207,6 +207,9 @@ apps/auth/test-results/
 
 # Old backup files
 apps/auth/src/audit-emitter-enhanced-old.ts
+# The root .npmrc is committed (scope only, so Dependabot finds @al-ummah-now on GitHub Packages);
+# any other .npmrc stays local. scripts/check-committed-secrets.mjs refuses a committed token.
 .npmrc
+!/.npmrc
 .playwright-mcp/
 release-result.json
