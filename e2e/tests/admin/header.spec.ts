@@ -1,7 +1,7 @@
 /**
  * The accounts admin's header frame (AlUmmahNow docs/design/NAV.md "Header"), the same as the videos
  * site's: full width, 64px (56px on phones), the drawer toggle first at the inline-start edge as the
- * videos site's 40px round `.aun-icon-btn` with lucide `menu` (in every state: no X, no chevron),
+ * videos site's 40px round `.aun-icon-btn.aun-menu-btn` with lucide `menu` (in every state: no X, no chevron),
  * and the contract's typeface on every piece of text (system-ui; Noto Naskh Arabic in Arabic),
  * whatever font the theme gives the page. English and Arabic, desktop and phone; axe on the header.
  *
@@ -48,7 +48,7 @@ test.describe('Accounts admin header frame', () => {
 			expect(desk.fonts).toEqual([HEADER_FONT[lang]]);
 			expect((await page.locator(HEADER).boundingBox())!.width).toBe(1440);
 			const t = await toggle(page);
-			expect(t).toMatchObject({ w: 40, h: 40, first: true, cls: 'aun-icon-btn', icon: 'lucide lucide-menu' });
+			expect(t).toMatchObject({ w: 40, h: 40, first: true, cls: 'aun-icon-btn aun-menu-btn', icon: 'lucide lucide-menu' });
 			expect(t.inset).toBeLessThanOrEqual(16);
 			// collapsing the rail keeps the same icon
 			await page.locator(`${HEADER} [data-testid="nav-drawer-toggle"]:visible`).click();
@@ -61,7 +61,7 @@ test.describe('Accounts admin header frame', () => {
 			expect(phone.height).toBe(56);
 			expect(phone.fonts).toEqual([HEADER_FONT[lang]]);
 			const p = await toggle(page);
-			expect(p).toMatchObject({ w: 40, h: 40, first: true, cls: 'aun-icon-btn', icon: 'lucide lucide-menu' });
+			expect(p).toMatchObject({ w: 40, h: 40, first: true, cls: 'aun-icon-btn aun-menu-btn', icon: 'lucide lucide-menu' });
 			expect(p.inset).toBeLessThanOrEqual(12);
 			// the open drawer keeps the menu icon (no X), like the videos site
 			await page.locator(`${HEADER} [data-testid="nav-drawer-toggle"]:visible`).click();
