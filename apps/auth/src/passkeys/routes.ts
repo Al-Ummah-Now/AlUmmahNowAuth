@@ -82,7 +82,16 @@ export interface PasskeyRouteContext {
 	ctx: ExecutionContext;
 	requestId: string;
 	theme?: Theme;
+	/**
+	 * Whether Auth can send email (utils/email-availability.ts). Without it a
+	 * staff member's first passkey (confirmed only by an emailed code) is not
+	 * offered: /passkeys/setup and /passkeys/email-code answer 404 for them.
+	 */
+	emailAvailable: boolean;
 }
+
+/** A feature that config turns off: the same quiet 404 as an unknown path */
+const notFound = () => new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
 
 const json = (body: unknown, status = 200) =>
 	new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -246,6 +255,7 @@ async function handleSetupPage(rctx: PasskeyRouteContext): Promise<Response> {
 					: undefined;
 		return renderPasskeyNotice({ locale, theme: rctx.theme, message: messages[g.error] ?? t.failed, action, back: returnTo });
 	}
+	if (g.needsCode && !rctx.emailAvailable) return notFound();
 	const deadline = await passkeyDeadline(env.AUTH_DB, account!.userId, g.roles);
 	return renderAddPasskeyPage({
 		locale,
@@ -341,6 +351,7 @@ async function handleEmailCode(rctx: PasskeyRouteContext): Promise<Response> {
 	const account = await signedInAccount(request, env);
 	const g = await gate(env, account, null);
 	if ('error' in g) return json({ error: g.error }, g.error === 'not_signed_in' ? 401 : 403);
+	if (!rctx.emailAvailable) return notFound();
 	if (!g.needsCode) return json({ sent: false, error: 'code_failed' }, 400);
 	const code = generateUnbiasedCode(6);
 	await recordCode(env.AUTH_DB, g.email, code);

@@ -22,6 +22,10 @@ const EMAIL = 'restart-test@example.com';
 const PASSWORD = 'Restart-Test-123!';
 const RAW_ERROR = 'The browser was in an unknown state';
 
+// Register and forgot password exist only when Auth can send email (utils/email-availability.ts);
+// no test here sends one
+const E = { ...(env as object), RESEND_API_KEY: 're_test_unused' } as unknown as Env;
+
 class Browser {
 	jar = new Map<string, string>();
 	private take(res: Response) {
@@ -38,7 +42,7 @@ class Browser {
 		headers.set('host', new URL(ISSUER).host);
 		headers.set('cookie', [...this.jar].map(([k, v]) => `${k}=${v}`).join('; '));
 		const ctx = createExecutionContext();
-		const res = await worker.fetch(new Request(new URL(path, ISSUER), { ...init, headers, redirect: 'manual' }), env as unknown as Env, ctx);
+		const res = await worker.fetch(new Request(new URL(path, ISSUER), { ...init, headers, redirect: 'manual' }), E, ctx);
 		await waitOnExecutionContext(ctx);
 		this.take(res);
 		return res;

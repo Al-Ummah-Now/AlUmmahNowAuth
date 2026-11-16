@@ -56,7 +56,8 @@ import { resolveUserDisplayName } from "../../../packages/ui/src/display-name.ts
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl, parseRefreshTtl } from "./revocation/token-gate";
 import { revokeOnAdminUserAction, revokeOnPasswordChange } from "./revocation/lifecycle";
-import { guardPasswordRequest, type PasswordCopy } from "./security/password-guard";
+import { guardPasswordRequest, routedPath, type PasswordCopy } from "./security/password-guard";
+import { isEmailAvailable, isEmailOnlyPasswordRoute, withoutEmailLinks } from "./utils/email-availability";
 import { ADMIN_NATIVE_CLIENT_IDS } from "./admin-native-clients";
 import { safePasswordChangeRequest } from "./security/password-change-redirect";
 import { injectTurnstile, widgetScriptUrl } from "./security/turnstile";
@@ -356,8 +357,17 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Route request through extracted router
     // Router handles: admin routes, session routes, API routes, redirects, test endpoints
+    // Whether Auth can send email (the Resend key resolves), once per request.
+    // Every feature that needs an emailed code is hidden without it: the
+    // sign-in page's "Create account" / "Forgot password?" links, the
+    // /password/register and /password/change routes, and a staff member's
+    // first passkey (utils/email-availability.ts). Read by the router
+    // (passkeys), the password routes below and the after-sign-in card.
+    const emailAvailable = await isEmailAvailable(env);
+
     const routerContext: RouterContext = {
       request,
+      emailAvailable,
       env,
       ctx,
       url,
@@ -424,6 +434,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // a "too many attempts" message for this request.
     // In the page's own language: copy overrides openauth's translation in every locale.
     const passwordCopy: PasswordCopy = { input_code: CODE_INPUT_LABEL[getLocaleFromRequest(request)] };
+    // Register and forgot password only work by emailing a code: without email they are not there
+    if (!emailAvailable && isEmailOnlyPasswordRoute(routedPath(url.pathname))) {
+      return addSecurityHeaders(new Response('Not found', { status: 404 }), isProduction);
+    }
     const passwordGuard = await timer.stage('guard', () => guardPasswordRequest(request, env, url, passwordCopy, (promise) => ctx.waitUntil(promise)));
 
     // The page's theme, from Auth's own themes (Auth admin): the per-call ?theme=
@@ -556,6 +570,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         homeUrl: signInFallbackUrl(env),
         theme: openauthTheme,
         timer,
+        emailAvailable,
       }),
     });
 
@@ -566,6 +581,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
     // and the shared site header on top (AlUmmahNow docs/design/NAV.md "Header")
     if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin, signInHeaderFor(url, getLocaleFromRequest(request), env)));
+    // No email: the sign-in page leaves out "Create account" and "Forgot password?"
+    if (isPage && !emailAvailable && (issuerResponse.headers.get('Content-Type') ?? '').includes('text/html')) {
+      issuerResponse = withoutEmailLinks(issuerResponse);
+    }
     // Turnstile on sign-up, reset and (after failures) sign-in pages (security/turnstile.ts)
     if (isPage && passwordGuard.widget && (issuerResponse.headers.get('Content-Type') ?? '').includes('text/html') && env.TURNSTILE_SITE_KEY) {
       const widget = passwordGuard.widget;

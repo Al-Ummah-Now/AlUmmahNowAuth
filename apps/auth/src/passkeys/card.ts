@@ -51,6 +51,11 @@ export interface CardInput {
 	theme?: Theme;
 	/** The issuer's redirect back to the app (with the code) */
 	redirect: Response;
+	/**
+	 * Whether Auth can send email. A staff member's first passkey is confirmed
+	 * with an emailed code only, so without email their card is not shown.
+	 */
+	emailAvailable: boolean;
 	now?: number;
 }
 
@@ -62,6 +67,7 @@ export async function afterSignInCard(input: CardInput): Promise<Response | null
 	if (!location || input.redirect.status < 300 || input.redirect.status >= 400) return null;
 	if ((await countForUser(input.db, input.userId)) > 0) return null;
 	const staff = isStaff(input.roles);
+	if (staff && !input.emailAvailable) return null;
 	if (!staff) {
 		const dismissed = await promptDismissedAt(input.db, input.userId);
 		if (dismissed !== null && (input.now ?? Date.now()) - dismissed < PROMPT_SNOOZE_MS) return null;
