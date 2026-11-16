@@ -4,9 +4,12 @@ import { useLoaderData, useFetcher, useSearchParams } from "react-router";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { confirmCopy } from "../lib/confirm-copy";
-import { Plus, Key, Trash2, RefreshCw, Copy, Check, Globe, Lock, Settings } from "lucide-react";
+import { Plus, Key, Trash2, RefreshCw, Copy, Check, Globe, Lock, Settings, Languages } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
 import { LocalizedPair } from "../components/localized-pair";
+import { TranslateMissingDialog, type MissingRow, type ReviewedRow } from "../components/translate-missing-dialog";
+import { translateEnabled, type TranslateEnv } from "../lib/translate.server";
+import { fieldTranslator } from "../lib/translate-client";
 import { pairErrors } from "../lib/localized-errors";
 import { hasLang, missingLabel, type Lang, type LocalizedPairValue } from "../../../../packages/ui/src/l10n/localized";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -29,6 +32,7 @@ import {
   listClients,
   createClient,
   updateClient,
+  getClient,
   deleteClient as deleteOAuthClient,
   rotateClientSecret,
   isErrorResponse,
@@ -59,6 +63,8 @@ interface LoaderData {
   clients: OAuthClient[];
   authServerUrl: string;
   user: { id: string; email: string } | null;
+  /** Translate buttons and "Translate missing" (off when the service isn't configured) */
+  translate: boolean;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -97,6 +103,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const authServerUrl = getAuthServerUrl(request, env);
   const user = { id: currentUser.id, email: currentUser.email };
+  const translate = translateEnabled(env as TranslateEnv);
 
   try {
     // Fetch clients via M2M API
@@ -104,13 +111,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     if (isErrorResponse(clientsResponse)) {
       logger.error("Error loading clients:", { error: clientsResponse.error });
-      return { clients: [], authServerUrl, user };
+      return { clients: [], authServerUrl, user, translate };
     }
 
-    return { clients: clientsResponse.clients, authServerUrl, user };
+    return { clients: clientsResponse.clients, authServerUrl, user, translate };
   } catch (error) {
     logger.error("Error loading clients:", { error });
-    return { clients: [], authServerUrl, user };
+    return { clients: [], authServerUrl, user, translate };
   }
 }
 
@@ -241,6 +248,41 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return { success: true };
   }
 
+  if (intent === "save_names") {
+    // Reviewed "Translate missing" rows: each sets the client's English name and
+    // metadata.name_ar, keeping the rest of its metadata (read by id first).
+    let rows: Array<{ client_id: string; en: string; ar: string }>;
+    try {
+      rows = JSON.parse(String(formData.get("rows") ?? "[]"));
+    } catch {
+      return { error: "Invalid request" };
+    }
+    if (!Array.isArray(rows) || !rows.length || rows.length > 200) return { error: "Invalid request" };
+    const failed: string[] = [];
+    let saved = 0;
+    for (const row of rows) {
+      const names = { en: String(row?.en ?? "").trim(), ar: String(row?.ar ?? "").trim() };
+      const clientId = String(row?.client_id ?? "");
+      if (!clientId || pairErrors(names, "name")) {
+        failed.push(names.en || clientId);
+        continue;
+      }
+      const current = await getClient(env, actingUser, clientId);
+      if (isErrorResponse(current)) {
+        failed.push(names.en);
+        continue;
+      }
+      const result = await updateClient(env, actingUser, clientId, {
+        name: names.en,
+        metadata: { ...(current.metadata ?? {}), name_ar: names.ar },
+      });
+      if (isErrorResponse(result)) failed.push(names.en);
+      else saved++;
+    }
+    if (failed.length) return { error: `Saved ${saved}. Not saved: ${failed.join(", ")}`, namesSaved: saved };
+    return { success: true, namesSaved: saved };
+  }
+
   return { error: "Unknown action" };
 }
 
@@ -268,10 +310,12 @@ interface FetcherData {
   created_client_id?: string;
   client_secret?: string;
   newSecret?: string;
+  /** Rows saved by "Translate missing" */
+  namesSaved?: number;
 }
 
 export default function ClientsPage() {
-  const { clients: allClients, user, authServerUrl } = useLoaderData<LoaderData>();
+  const { clients: allClients, user, authServerUrl, translate: canTranslate } = useLoaderData<LoaderData>();
   const fetcher = useFetcher<FetcherData>();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -285,6 +329,37 @@ export default function ClientsPage() {
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
   const copy = confirmCopy(deleteLang);
+  const translateName = fieldTranslator(canTranslate, "clients.name", deleteLang);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewRows, setReviewRows] = useState<MissingRow[]>([]);
+  const namesFetcher = useFetcher<FetcherData>();
+  // Rows of the current filter that have the other language to translate from
+  const missingRows: MissingRow[] = missingFilter
+    ? clients
+        .map((c) => ({ c, n: clientNames(c) }))
+        .filter(({ n }) => hasLang(n, missingFilter === "ar" ? "en" : "ar"))
+        .map(({ c, n }) => ({ id: c.client_id, label: n.en || n.ar, source: missingFilter === "ar" ? n.en : n.ar, current: n[missingFilter] }))
+    : [];
+  const openReview = () => {
+    setReviewRows(missingRows);
+    setReviewOpen(true);
+  };
+  const saveReviewed = (rows: ReviewedRow[]) => {
+    const byId = new Map(allClients.map((c) => [c.client_id, clientNames(c)]));
+    const payload = rows.map((r) => {
+      const n = byId.get(r.id) ?? { en: "", ar: "" };
+      return { client_id: r.id, en: missingFilter === "en" ? r.text : n.en, ar: missingFilter === "ar" ? r.text : n.ar };
+    });
+    const fd = new FormData();
+    fd.append("intent", "save_names");
+    fd.append("rows", JSON.stringify(payload));
+    namesFetcher.submit(fd, { method: "post" });
+  };
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (namesFetcher.state === "idle" && namesFetcher.data?.success) setReviewOpen(false);
+  }, [namesFetcher.state, namesFetcher.data]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<OAuthClient | null>(null);
   const [createdClientId, setCreatedClientId] = useState<string | null>(null);
@@ -530,7 +605,20 @@ export default function ClientsPage() {
                 {f ? `${missingLabel(f, deleteLang)} (${missingCount[f]})` : `${deleteLang === "ar" ? "الكل" : "All"} (${allClients.length})`}
               </Button>
             ))}
+            {canTranslate && missingFilter && missingRows.length > 0 && (
+              <Button type="button" size="sm" variant="secondary" onClick={openReview} className="ms-auto">
+                <Languages className="me-1 h-4 w-4" aria-hidden="true" />
+                {deleteLang === "ar" ? `ترجم الناقص (${missingRows.length.toLocaleString("ar-EG-u-nu-arab")})` : `Translate missing (${missingRows.length})`}
+              </Button>
+            )}
           </div>
+          {namesFetcher.state === "idle" && namesFetcher.data?.success && (
+            <p role="status" className="pt-2 text-sm text-[var(--color-success-text,inherit)]">
+              {deleteLang === "ar"
+                ? `حُفظ ${(namesFetcher.data.namesSaved ?? 0).toLocaleString("ar-EG-u-nu-arab")}.`
+                : `Saved ${namesFetcher.data.namesSaved ?? 0} reviewed name${namesFetcher.data.namesSaved === 1 ? "" : "s"}.`}
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           {clients.length === 0 ? (
@@ -676,6 +764,8 @@ export default function ClientsPage() {
               value={newClientName}
               onChange={setNewClientName}
               errors={nameErrors}
+              uiLang={deleteLang}
+              translate={translateName}
               placeholder={{ en: "My Application", ar: "تطبيقي" }}
             />
             <div className="space-y-2">
@@ -764,6 +854,7 @@ export default function ClientsPage() {
               value={editName}
               onChange={setEditName}
               errors={nameErrors}
+              translate={translateName}
             />
             <div className="space-y-2">
               <Label htmlFor="edit_redirect_uris">Redirect URIs (one per line)</Label>
@@ -923,6 +1014,19 @@ export default function ClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {missingFilter && (
+        <TranslateMissingDialog
+          open={reviewOpen}
+          onOpenChange={setReviewOpen}
+          rows={reviewRows}
+          to={missingFilter}
+          field="clients.name"
+          uiLang={deleteLang}
+          saving={namesFetcher.state !== "idle"}
+          error={namesFetcher.state === "idle" ? namesFetcher.data?.error : null}
+          onSave={saveReviewed}
+        />
+      )}
     </AdminLayout>
   );
 }

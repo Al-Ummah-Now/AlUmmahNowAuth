@@ -10,6 +10,7 @@ declare namespace Cloudflare {
 		ADMIN_CLIENT_ID: string;
 		AUTH_SERVER_URL: string;
 		APP_URL: string;
+		VIDEOS_ADMIN_API_URL?: string;
 		ADMIN_CLIENT_SECRET: string;
 		ASSETS: Fetcher;
 	}
