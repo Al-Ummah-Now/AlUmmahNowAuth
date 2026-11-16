@@ -45,12 +45,12 @@ const COPY = {
   ar: {
     title: (to: Lang) => `ترجمة ${to === "ar" ? "العربية" : "الإنجليزية"} الناقصة`,
     description: "اقتراحات آلية. راجع كلًّا منها وعدّله؛ لا يُحفظ إلا ما حدّدته.",
-    translating: (n: number) => `جارٍ ترجمة ${n.toLocaleString("ar-EG-u-nu-arab")}…`,
-    done: (n: number, refused: number) => `${n.toLocaleString("ar-EG-u-nu-arab")} اقتراحًا جاهزًا للمراجعة${refused ? `، و${refused.toLocaleString("ar-EG-u-nu-arab")} لم تُترجم` : ""}.`,
+    translating: (n: number) => `جارٍ الترجمة (${n.toLocaleString("ar-EG-u-nu-arab")})…`,
+    done: (n: number, refused: number) => `جاهز للمراجعة: ${n.toLocaleString("ar-EG-u-nu-arab")}${refused ? `، ولم يُترجم: ${refused.toLocaleString("ar-EG-u-nu-arab")}` : ""}.`,
     now: "الآن:",
     include: (label: string) => `احفظ ${label}`,
     cancel: "إلغاء",
-    save: (n: number) => `احفظ ${n.toLocaleString("ar-EG-u-nu-arab")} بعد المراجعة`,
+    save: (n: number) => `احفظ ما راجعته (${n.toLocaleString("ar-EG-u-nu-arab")})`,
     saving: "جارٍ الحفظ…",
     retry: "حاول مرة أخرى",
     to: (to: Lang) => (to === "ar" ? "العربية" : "الإنجليزية"),
@@ -164,7 +164,7 @@ export function TranslateMissingDialog({
                     <div className="min-w-0 flex-1 space-y-1">
                       <label htmlFor={fid} className="block text-sm font-medium">
                         <span lang={from} dir={from === "ar" ? "rtl" : "ltr"}>{r.source}</span>
-                        <span className="text-[var(--color-muted-foreground)]"> → {t.to(to)}</span>
+                        <span className="text-[var(--color-muted-foreground)]"> {uiLang === "ar" ? "←" : "→"} {t.to(to)}</span>
                       </label>
                       <Input
                         id={fid}

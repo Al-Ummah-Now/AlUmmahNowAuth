@@ -179,7 +179,7 @@ export function LocalizedPair(props: LocalizedPairProps) {
         })}
       </div>
       <div className="flex min-h-5 items-center gap-2 text-xs text-[var(--color-muted-foreground)]">
-        <span role="status" aria-live="polite">
+        <span role="status" aria-live="polite" dir={uiLang === "ar" ? "rtl" : undefined} lang={uiLang}>
           {status}
         </span>
         {undo && (
