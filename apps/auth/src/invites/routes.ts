@@ -418,7 +418,11 @@ export async function routeInvitePage(request: Request, env: Env, ctx: Execution
 	if (send) {
 		if (state.kind !== 'setup') return show(state);
 		const { row, account } = state;
-		if (row.last_sent_at !== null && Date.now() - row.last_sent_at < SELF_SEND_COOLDOWN_MS) return page({ kind: 'cooldown', email: account.email });
+		// A link was emailed in the last few minutes and this one has not been used since: "we just sent one".
+		// (A link used after the last email asks for the first new one at once; each send replaces this
+		// link's token, so one old link can never send twice.)
+		const sentSinceUse = row.last_sent_at !== null && (row.token_used_at === null || row.last_sent_at > row.token_used_at);
+		if (sentSinceUse && Date.now() - row.last_sent_at! < SELF_SEND_COOLDOWN_MS) return page({ kind: 'cooldown', email: account.email });
 		if (!(await withinRateLimit(env.SEND_CODE_LIMITER, `invite:send:ip:${ip}`))) return page({ kind: 'busy' }, 429);
 		// Deliver first, store after: a link that never reached the inbox is never valid, and the
 		// page never shows the new token (only the invited inbox gets it)

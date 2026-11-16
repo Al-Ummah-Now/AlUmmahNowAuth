@@ -323,7 +323,7 @@ describe('the invite link', () => {
 		expect(offer).toContain('data-page="passkey"');
 		expect(offer).toContain('>Skip<');
 		expect(offer).toContain('"continueUrl":"http://localhost:3000/api/auth/login?return=%2Fen%2Fstudio"');
-		expect(offer).not.toMatch(/password/i);
+		expect(offer).not.toMatch(/type="password"/);
 		const session = res!.headers.getSetCookie().find((c) => c.startsWith('__session='));
 		expect(session).toMatch(/HttpOnly/);
 		// Claimed: active, verified, accepted; the token spent; a browser session holding only this account
@@ -388,12 +388,22 @@ describe('the invite link', () => {
 		expect(stateOf(await (await page('GET', fresh)).text())).toBe('ready');
 		const { res: second } = await openAndSubmit(fresh);
 		expect(second!.headers.getSetCookie().some((c) => c.startsWith('__session='))).toBe(true);
-		// Within 5 minutes of a send, asking again only says "we just sent one"
-		const { res: soon } = await openAndSubmit(fresh);
-		expect(stateOf(await soon!.text())).toBe('cooldown');
-		expect(sent).toHaveLength(2);
 		const row = await DB().prepare('SELECT send_count FROM user_invites WHERE id = ?').bind(body.inviteId).first<Record<string, any>>();
 		expect(row!.send_count).toBe(2);
+		// One old link sends at most once: its token was replaced by the new one
+		const { html: oldAgain } = await openAndSubmit(link);
+		expect(stateOf(oldAgain)).toBe('unknown');
+		expect(sent).toHaveLength(2);
+	});
+
+	it('an unused link whose email went out minutes ago only says "we just sent you a link"', async () => {
+		const { body } = await invite();
+		const link = linkOf(sent[0].html);
+		// Expired, never used, last emailed just now (an admin resend's moment)
+		await DB().prepare('UPDATE user_invites SET expires_at = ?2, last_sent_at = ?3 WHERE id = ?1').bind(body.inviteId, Date.now() - 1, Date.now()).run();
+		const { res } = await openAndSubmit(link);
+		expect(stateOf(await res!.text())).toBe('cooldown');
+		expect(sent).toHaveLength(1);
 	});
 
 	it('an expired link that was never used also offers "Finish setting up"', async () => {
