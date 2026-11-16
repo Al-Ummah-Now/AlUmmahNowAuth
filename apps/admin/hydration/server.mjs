@@ -87,11 +87,11 @@ const server = createHttpServer(async (req, res) => {
     const admin = /^\/admin\/(deleted|users|passkeys)$/.exec(url.pathname);
     if (admin) {
       const page = admin[1];
-      const pageUrl = (page === "passkeys" ? "/users/u-10/passkeys" : `/${page}`) + url.search;
+      const lang = url.searchParams.get("lang") === "ar" ? "ar" : "en";
+      const pageUrl = (page === "passkeys" ? "/users/u-10/passkeys" : `/${page}`) + (lang === "ar" ? "?lang=ar" : "");
       const { renderToString } = await import("react-dom/server");
       const React = await import("react");
       const { PageApp } = await vite.ssrLoadModule(resolve(here, "app.tsx"));
-      const lang = url.searchParams.get("lang") === "ar" ? "ar" : "en";
       const body = renderToString(React.createElement(PageApp, { page, url: pageUrl }));
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return res.end(
@@ -105,7 +105,7 @@ const server = createHttpServer(async (req, res) => {
       const origin = `http://localhost:${port}`;
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return res.end(
-        renderHomePage({ locale, apps: [], user: { id: "u-10", email: "first@example.com", roles: [] }, authServerUrl: origin, appUrl: origin, clientId: "profile", path: url.pathname + url.search }),
+        renderHomePage({ locale, apps: [], user: { id: "u-10", email: "first@example.com", roles: [] }, authServerUrl: origin, appUrl: origin, clientId: "profile", path: locale === "ar" ? "/profile?lang=ar" : "/profile" }),
       );
     }
     if (url.pathname === "/api/passkeys") return json(res, { passkeys: [{ id: "pk-1", name: "Laptop", synced: true, deviceType: "multiDevice", createdAt: NOW - 10 * DAY, lastUsedAt: NOW - DAY }], max: 10, staff: false, signedInWithPasskey: false });
@@ -132,7 +132,7 @@ const server = createHttpServer(async (req, res) => {
   } catch (error) {
     console.error(error);
     res.writeHead(500, { "Content-Type": "text/plain" });
-    res.end(String(error?.stack ?? error));
+    res.end("Internal error (see the server log)");
   }
 });
 server.listen(port, () => console.log(`hydration server on http://localhost:${port}`));
