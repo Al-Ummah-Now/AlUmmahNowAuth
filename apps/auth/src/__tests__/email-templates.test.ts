@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { codePurposeOf, renderVerificationCodeEmail } from '../email-templates';
-import { inviteChannels, renderInviteEmail } from '../invites/email';
+import { inviteChannels, inviteVideo, renderInviteEmail } from '../invites/email';
 import { EMAIL_LOGO_URL, escapeHtml, renderEmail, type RenderedEmailParts } from '../email/layout';
 
 const ARABIC = /[؀-ۿ]/;
@@ -157,6 +157,49 @@ describe('the invite email', () => {
 		expect(email.html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;<br>line two');
 		expect(email.html).not.toContain('javascript:');
 		expect(email.text).toContain('> line two');
+	});
+
+	const video = {
+		title: 'Tafsir of Surat al-Kahf, part 1',
+		channel: 'Noor Talks',
+		imageUrl: 'https://videos.test/og/v/vid_1.jpg',
+		urls: { en: 'https://videos.test/en/video/vid_1', ar: 'https://videos.test/ar/video/vid_1' },
+	};
+
+	for (const locale of ['en', 'ar'] as const) {
+		it(`${locale}: a picked video is a picture card linking to its watch page in that language`, () => {
+			const email = renderInviteEmail({ ...data, locale, video });
+			expectWellFormed(email, locale);
+			expectTextParity(email);
+			// The stable picture as the card's background (and Outlook's VML frame), the play button on top
+			expect(email.html).toContain("background-image:url('https://videos.test/og/v/vid_1.jpg')");
+			expect(email.html).toContain('<v:fill type="frame" src="https://videos.test/og/v/vid_1.jpg"');
+			expect(email.html).toContain(`href="${video.urls[locale]}"`);
+			expect(email.html).not.toContain(`href="${video.urls[locale === 'ar' ? 'en' : 'ar']}"`);
+			// The picture is described: role="img" with the title in the email's language
+			expect(email.html).toMatch(locale === 'ar' ? /role="img" aria-label="شغّل «Tafsir of Surat al-Kahf, part 1» على الأمة الآن"/ : /role="img" aria-label="Play &quot;Tafsir of Surat al-Kahf, part 1&quot; on Al Ummah Now"/);
+			// Phones: the picture keeps about 16:9 at full width
+			expect(email.html).toContain('.vid,.vida{height:190px!important;line-height:190px!important}');
+			// Plain text: the title, the channel and the link
+			expect(email.text).toContain(`${video.title}\nNoor Talks\n${video.urls[locale]}`);
+		});
+	}
+
+	it('leaves the card out without a video, or when the video is incomplete or not https', () => {
+		for (const bad of [null, undefined, { ...video, imageUrl: 'http://videos.test/og/v/vid_1.jpg' }, { ...video, title: ' ' }, { ...video, urls: { en: video.urls.en } }]) {
+			const email = renderInviteEmail({ ...data, locale: 'en', video: bad as never });
+			expect(email.html).not.toContain('role="img"');
+			expect(email.html).not.toContain('og/v/vid_1.jpg');
+			expect(email.text).not.toContain('shared this video');
+		}
+		expect(inviteVideo({ ...video, urls: { en: video.urls.en, ar: 'javascript:alert(1)' } })).toBeNull();
+		expect(inviteVideo(video)).toEqual(video);
+	});
+
+	it('ar: the expiry date uses Eastern Arabic digits (٠–٩)', () => {
+		const email = renderInviteEmail({ ...data, locale: 'ar' });
+		expect(email.text).toContain('٢٤ نوفمبر ٢٠٢٦');
+		expect(email.text).not.toMatch(/\d{2} نوفمبر/);
 	});
 });
 

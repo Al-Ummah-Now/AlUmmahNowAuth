@@ -7,7 +7,8 @@
  *
  *   POST /provisioning/invites                pre-provision the account + invite, email it
  *   GET  /provisioning/invites?ids=a,b        status of these invites (the app's sync)
- *   POST /provisioning/invites/:id/resend     new link, emailed again (expiry extended)
+ *   POST /provisioning/invites/:id/resend     new link, emailed again (expiry extended); `video` (or null) replaces the
+ *                                             details' video for this email (the videos admin reads it again at each send)
  *   POST /provisioning/invites/:id/link       {tokenHash}: the app's "copy link" token
  *   POST /provisioning/invites/:id/revoke     soft delete (restorable for 30 days)
  *   POST /provisioning/invites/:id/restore
@@ -29,7 +30,7 @@ import { isE2EAddress, markRunUser, shouldSinkCode, SINK_TTL_SECONDS, type RunUs
 import { requireSecret } from '../utils/secrets';
 import { signInFallbackUrl } from '../utils/sign-in-restart';
 import SendEmail from '../email';
-import { inviteChannels, renderInviteEmail } from './email';
+import { inviteChannels, inviteVideo, renderInviteEmail } from './email';
 import { inviteCopy, pageLocale, renderInviteState, type InvitePageState } from './page';
 import { claimInvitedAccount, InviteError, InviteService, newInviteToken, type Invite, type InviteActor, type InviteRow } from './service';
 import { hasSignInMethod, inviteAccount, startInviteSession, type InviteAccount } from './sign-in';
@@ -117,8 +118,11 @@ export function safeContinueUrl(value: unknown, env: Env): string | null {
 	return null;
 }
 
-/** Emails the invite (or, for QA/stage E2E addresses, keeps the link in the test sink). */
-export async function deliverInvite(env: Env, invite: Invite, link: string): Promise<{ sent: boolean; via: 'email' | 'e2e_sink' | 'none'; error?: string }> {
+/**
+ * Emails the invite (or, for QA/stage E2E addresses, keeps the link in the test sink). `opts.video`, when
+ * given (null too), is the video for this email instead of the one in the invite's details.
+ */
+export async function deliverInvite(env: Env, invite: Invite, link: string, opts: { video?: unknown } = {}): Promise<{ sent: boolean; via: 'email' | 'e2e_sink' | 'none'; error?: string }> {
 	if (isE2EAddress(invite.email) && (await shouldSinkCode(env, invite.email))) {
 		await env.AUTH_STORAGE.put(`test:invite:${invite.email}`, JSON.stringify({ link, at: Date.now() }), { expirationTtl: SINK_TTL_SECONDS });
 		return { sent: true, via: 'e2e_sink' };
@@ -133,6 +137,7 @@ export async function deliverInvite(env: Env, invite: Invite, link: string): Pro
 			note: invite.note,
 			locale: invite.locale,
 			channels: inviteChannels(invite.details),
+			video: inviteVideo('video' in opts ? opts.video : invite.details?.video),
 		});
 		const result = await SendEmail({ apiKey, from: INVITE_FROM, to: invite.email, subject: email.subject, html: email.html, text: email.text });
 		if (!result.success) return { sent: false, via: 'none', error: 'send_failed' };
@@ -228,7 +233,7 @@ export async function routeInviteProvisioning(request: Request, env: Env, ctx: E
 			case 'resend': {
 				await service.requireOwned(id!, client.id);
 				const { invite, token } = await service.rotateToken(id!, { extend: true, locale: str(body.locale) });
-				const delivery = await deliverInvite(env, invite, inviteLink(issuer, token, invite.locale));
+				const delivery = await deliverInvite(env, invite, inviteLink(issuer, token, invite.locale), 'video' in body ? { video: body.video } : {});
 				if (delivery.sent) await service.markSent(invite.id);
 				audit(AuditEventType.USER_INVITE_RESENT, invite, { emailSent: delivery.sent, via: delivery.via });
 				return json({ invite: await service.requireOwned(id!, client.id), emailSent: delivery.sent, emailError: delivery.error ?? null });
