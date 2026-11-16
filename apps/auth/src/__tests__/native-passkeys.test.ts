@@ -5,10 +5,11 @@
  * registration routes add a passkey. A software ES256 authenticator stands in
  * for the platform passkey API.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { decodeJwt } from 'jose';
 import worker from '../index';
+import { mockResend } from './helpers/mock-resend';
 import { setupDatabase } from '../test-setup';
 import wranglerProd from '../../wrangler.json';
 import wranglerQa from '../../wrangler.qa.json';
@@ -31,7 +32,12 @@ import qaAdminClients from '../../migrations-qa/0036_admin_native_clients.sql?ra
 
 const ISSUER = 'http://localhost:3301';
 const PASSWORD = 'Native-Passkeys-123!';
-const E = env as unknown as Env & Record<string, unknown>;
+// A Resend key that resolves, so a staff member's first passkey is offered (the web page emails
+// a code); one test blanks it. Resend itself is a mock: nothing leaves the test.
+const E = { ...(env as object), RESEND_API_KEY: 're_test_unused' } as unknown as Env & Record<string, unknown>;
+const resend = mockResend();
+beforeAll(() => resend.install());
+afterAll(() => resend.restore());
 const STUDIO = { id: '45364a42-21f4-4359-a76c-0a1e6615fd7b', redirect: 'alummahnow-studio://auth/callback' };
 const ADMIN_IOS = { id: '77330b47-5747-4058-ba00-921e159f1ced', redirect: 'alummahnow-admin://auth/callback' };
 const VIEWER = '31389afb-d4f8-4c26-9492-4c77f4d07e65';
@@ -425,6 +431,18 @@ describe('native passkeys (worker)', () => {
 		const refused = await post('/native/passkey/register/options', {}, { authorization: `Bearer ${viewer.access_token}` });
 		expect(refused.status).toBe(400);
 		expect(((await refused.json()) as any).error).toBe('invalid_client');
+
+		// Without email the web step isn't there: 404 feature_off and no setup_url, so the app hides it
+		E.RESEND_API_KEY = '';
+		try {
+			const off = await post('/native/passkey/register/options', {}, { authorization: `Bearer ${access_token}` });
+			expect(off.status).toBe(404);
+			const body = (await off.json()) as Record<string, unknown>;
+			expect(body.error).toBe('feature_off');
+			expect(body).not.toHaveProperty('setup_url');
+		} finally {
+			E.RESEND_API_KEY = 're_test_unused';
+		}
 	});
 
 	it('register: a revoked sign-in or a suspended account is invalid_token', async () => {

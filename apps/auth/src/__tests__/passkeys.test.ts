@@ -311,6 +311,7 @@ describe('passkeys (worker)', () => {
 
 		const list = (await (await browser.fetch('/account/passkeys', { headers: auth })).json()) as any;
 		expect(list.passkeys).toHaveLength(1);
+		expect(list.canAdd).toBe(true);
 		expect(list.passkeys[0].id).toBe(a.credentialId);
 		expect(list.passkeys[0]).not.toHaveProperty('publicKey');
 
@@ -338,6 +339,15 @@ describe('passkeys (worker)', () => {
 		const card = await cardContinue(await browser.passwordSignIn(email));
 		expect(card.html).toContain('Your role needs a passkey');
 		const { access_token } = await browser.exchange(card.location);
+		// The account hub's "Add a passkey": offered while Auth can send the code, hidden without email
+		const hub = async () => (await (await browser.fetch('/account/passkeys', { headers: { authorization: `Bearer ${access_token}` } })).json()) as any;
+		expect(await hub()).toMatchObject({ staff: true, canAdd: true });
+		(E as unknown as Record<string, unknown>).RESEND_API_KEY = '';
+		try {
+			expect(await hub()).toMatchObject({ staff: true, canAdd: false });
+		} finally {
+			(E as unknown as Record<string, unknown>).RESEND_API_KEY = 're_test_unused';
+		}
 		const a = await new SoftAuthenticator().init();
 		expect((await browser.addPasskey(a)).error).toBe('wrong_code');
 		expect((await browser.addPasskey(a, { code: '000000' })).error).toBe('wrong_code');
