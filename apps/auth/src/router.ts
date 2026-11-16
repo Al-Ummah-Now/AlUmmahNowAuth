@@ -377,42 +377,23 @@ async function handleApiPermissionsRoutes(rctx: RouterContext): Promise<RouteRes
 }
 
 /**
- * Handle redirect routes (/, /docs)
+ * Handle redirect routes (/, /docs): both go to the profile app. Without
+ * PROFILE_APP_URL there is nowhere to go, so they answer a plain 404 like any
+ * other unknown path (features that config turns off are hidden, never a
+ * "not configured" message); the missing variable is logged for the team.
  */
 function handleRedirectRoutes(rctx: RouterContext): RouteResult {
 	const { url, env, ctx, isProduction } = rctx;
 
-	if (url.pathname === '/' || url.pathname === '') {
-		logger.debug('Redirecting to profile app');
-
-		if (!env.PROFILE_APP_URL) {
-			logger.error('PROFILE_APP_URL not configured');
-			ctx.waitUntil(logger.finalizeRequest());
-			const response = new Response('Profile app URL not configured', { status: 500 });
-			return addSecurityHeaders(response, isProduction);
-		}
-
+	if (!env.PROFILE_APP_URL) {
+		logger.warn('PROFILE_APP_URL not configured; answering 404', { pathname: url.pathname });
 		ctx.waitUntil(logger.finalizeRequest());
-		const response = Response.redirect(env.PROFILE_APP_URL, 302);
-		return addSecurityHeaders(response, isProduction);
+		return addSecurityHeaders(new Response('Not found', { status: 404 }), isProduction);
 	}
 
-	if (url.pathname === '/docs') {
-		logger.debug('Redirecting /docs to profile app');
-
-		if (!env.PROFILE_APP_URL) {
-			logger.error('PROFILE_APP_URL not configured');
-			ctx.waitUntil(logger.finalizeRequest());
-			const response = new Response('Profile app URL not configured', { status: 500 });
-			return addSecurityHeaders(response, isProduction);
-		}
-
-		ctx.waitUntil(logger.finalizeRequest());
-		const response = Response.redirect(env.PROFILE_APP_URL, 302);
-		return addSecurityHeaders(response, isProduction);
-	}
-
-	return null;
+	logger.debug('Redirecting to profile app', { pathname: url.pathname });
+	ctx.waitUntil(logger.finalizeRequest());
+	return addSecurityHeaders(Response.redirect(env.PROFILE_APP_URL, 302), isProduction);
 }
 
 /**
