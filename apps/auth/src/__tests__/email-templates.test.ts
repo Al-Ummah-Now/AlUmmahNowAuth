@@ -225,7 +225,7 @@ describe('the invite email from the admin\'s copy', () => {
 		const copy = { ...BUILT_IN_COPY.ar, videoIntro: 'شاهد هذا:', videoAlt: 'شغّل {title}' };
 		const email = renderInviteEmail({ ...data, locale: 'ar', video }, copy);
 		expect(email.text).toContain('شاهد هذا:');
-		expect(email.html).toContain('alt="شغّل Ramadan reminders"');
+		expect(email.html).toContain('aria-label="شغّل Ramadan reminders"');
 		expect(email.html).toContain('href="https://alummahnow.link/v/v1?lang=ar"');
 	});
 
