@@ -9,6 +9,8 @@ import { hashClientSecret } from '@al-ummah-now/openauth';
 import migration0030 from '../../migrations/0030_user_invites.sql?raw';
 import { setupDatabase } from '../test-setup';
 import { hashToken } from '../utils/crypto';
+import { Storage } from '@al-ummah-now/openauth/storage/storage';
+import { authStorage } from '../storage/auth-storage';
 import { createOnSuccessHandler } from '../handlers/auth-handlers';
 import { D1UserService } from '../services/d1-user-service';
 import { claimInvitedAccount, purgeRevokedInvites, RETENTION_MS, InviteService } from '../invites/service';
@@ -31,7 +33,7 @@ vi.mock('../audit-emitter', async (importOriginal) => ({
 
 const { routeInviteProvisioning, routeInvitePage, safeContinueUrl } = await import('../invites/routes');
 
-const E = () => ({ ...(env as unknown as Env), RESEND_API_KEY: 're_test_key', OPENAUTH_ISSUER: 'https://auth.test' }) as unknown as Env;
+const E = () => ({ ...(env as unknown as Env), RESEND_API_KEY: 're_test_key', OPENAUTH_ISSUER: 'https://auth.test', SESSION_SECRET: 'ab'.repeat(32) }) as unknown as Env;
 const DB = () => (env as unknown as Env).AUTH_DB;
 const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext;
 
@@ -74,11 +76,46 @@ function linkOf(html: string): string {
 	return match[1].replace(/&amp;/g, '&');
 }
 
-async function page(method: 'GET' | 'POST', link: string) {
-	const res = await routeInvitePage(new Request(link, { method }), E(), ctx, 'req-page');
+async function page(method: 'GET' | 'POST', link: string, init: { cookie?: string; form?: Record<string, string>; origin?: string } = {}) {
+	const headers = new Headers();
+	if (init.cookie) headers.set('Cookie', init.cookie);
+	if (init.origin) headers.set('Origin', init.origin);
+	let body: FormData | undefined;
+	if (init.form) {
+		body = new FormData();
+		for (const [k, v] of Object.entries(init.form)) body.set(k, v);
+	}
+	const res = await routeInvitePage(new Request(link, { method, headers, body }), E(), ctx, 'req-page');
 	if (!res) throw new Error('not routed');
 	return res;
 }
+
+/** The cookies a response sets, as one Cookie header (name=value pairs). */
+function cookiesOf(res: Response): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const c of res.headers.getSetCookie()) {
+		const [pair] = c.split(';');
+		const i = pair.indexOf('=');
+		out[pair.slice(0, i)] = pair.slice(i + 1);
+	}
+	return out;
+}
+const cookieHeader = (jar: Record<string, string>) => Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
+
+/** A browser: GET the page (keeps its cookies and the form's CSRF token), then POST that form. */
+async function openAndSubmit(link: string, jar: Record<string, string> = {}, path?: string) {
+	const shown = await page('GET', link, { cookie: cookieHeader(jar) });
+	Object.assign(jar, cookiesOf(shown));
+	const html = await shown.text();
+	const csrf = /name="csrf" value="([0-9a-f]{64})"/.exec(html)?.[1];
+	const action = /<form[^>]*action="([^"]+)"/.exec(html)?.[1]?.replace(/&amp;/g, '&');
+	if (!csrf || !action) return { shown, html, res: null as Response | null, jar };
+	const res = await page('POST', `https://auth.test${path ?? action}`, { cookie: cookieHeader(jar), form: { csrf } });
+	Object.assign(jar, cookiesOf(res));
+	return { shown, html, res, jar, csrf, action };
+}
+
+const stateOf = (html: string) => /data-state="([a-z-]+)"/.exec(html)?.[1];
 
 beforeAll(async () => {
 	await setupDatabase();
@@ -268,37 +305,198 @@ describe('another client', () => {
 });
 
 describe('the invite link', () => {
-	it('GET shows the page and spends nothing; POST spends it once and goes to the app\'s sign-in', async () => {
-		await invite({ email: 'link@example.com', continueUrl: 'http://localhost:3000/api/auth/login?prompt=login' });
+	it('GET shows "Your account is ready" and spends nothing; Continue signs in directly and offers a passkey', async () => {
+		const { body } = await invite({ email: 'link@example.com', continueUrl: 'http://localhost:3000/api/auth/login?prompt=login&return=%2Fen%2Fstudio' });
 		const link = linkOf(sent[0].html);
 		for (let i = 0; i < 2; i++) {
 			const res = await page('GET', link);
 			expect(res.status).toBe(200);
-			expect(await res.text()).toContain('link@example.com');
+			const html = await res.text();
+			expect(stateOf(html)).toBe('ready');
+			expect(html).toContain('link@example.com');
+			expect(html).not.toContain('Create account');
 		}
-		const go = await page('POST', link);
-		expect(go.status).toBe(303);
-		expect(go.headers.get('Location')).toBe('http://localhost:3000/api/auth/login?prompt=login');
-		const again = await page('POST', link);
-		expect(again.status).toBe(410);
-		expect(await again.text()).toContain('sign in with the email address');
+		const { res } = await openAndSubmit(link);
+		expect(res!.status).toBe(200);
+		const offer = await res!.text();
+		// The passkey offer, with Skip; then the app's sign-in without prompt=login (single sign-on finishes it)
+		expect(offer).toContain('data-page="passkey"');
+		expect(offer).toContain('>Skip<');
+		expect(offer).toContain('"continueUrl":"http://localhost:3000/api/auth/login?return=%2Fen%2Fstudio"');
+		expect(offer).not.toMatch(/password/i);
+		const session = res!.headers.getSetCookie().find((c) => c.startsWith('__session='));
+		expect(session).toMatch(/HttpOnly/);
+		// Claimed: active, verified, accepted; the token spent; a browser session holding only this account
+		const user = await DB().prepare('SELECT status, metadata FROM users WHERE id = ?').bind(body.userId).first<Record<string, any>>();
+		expect(user!.status).toBe('active');
+		expect(JSON.parse(user!.metadata).email_verified).toBe(true);
+		const row = await DB().prepare('SELECT accepted_at, token_used_at FROM user_invites WHERE id = ?').bind(body.inviteId).first<Record<string, any>>();
+		expect(row!.accepted_at).toBeGreaterThan(0);
+		expect(row!.token_used_at).toBeGreaterThan(0);
+		const accounts = await DB().prepare('SELECT user_id, is_active, subject_properties FROM account_sessions WHERE user_id = ?').bind(body.userId).all<Record<string, any>>();
+		expect(accounts.results).toHaveLength(1);
+		expect(JSON.parse(accounts.results![0].subject_properties)).toMatchObject({ id: body.userId, email: 'link@example.com', amr: ['otp'] });
+		const events = audit.mock.calls.map((c) => c[0].eventType);
+		expect(events).toEqual(expect.arrayContaining(['user.invite.opened', 'user.invite.accepted']));
 	});
 
-	it('an expired link explains that signing in still works', async () => {
+	it('a POST without the page\'s CSRF token, or from another origin, does nothing', async () => {
+		const { body } = await invite();
+		const link = linkOf(sent[0].html);
+		const bare = await page('POST', link);
+		expect(bare.status).toBe(403);
+		expect(stateOf(await bare.text())).toBe('ready');
+		const shown = await page('GET', link);
+		const jar = cookiesOf(shown);
+		const csrf = /name="csrf" value="([0-9a-f]{64})"/.exec(await shown.text())![1];
+		expect((await page('POST', link, { cookie: cookieHeader(jar), form: { csrf: 'f'.repeat(64) } })).status).toBe(403);
+		expect((await page('POST', link, { cookie: cookieHeader(jar), form: { csrf }, origin: 'https://evil.example.com' })).status).toBe(403);
+		const row = await DB().prepare('SELECT token_used_at FROM user_invites WHERE id = ?').bind(body.inviteId).first<Record<string, any>>();
+		expect(row!.token_used_at).toBeNull();
+	});
+
+	it('is single use under concurrency: of two clicks at once exactly one signs in', async () => {
+		await invite();
+		const link = linkOf(sent[0].html);
+		const shown = await page('GET', link);
+		const jar = cookiesOf(shown);
+		const csrf = /name="csrf" value="([0-9a-f]{64})"/.exec(await shown.text())![1];
+		const both = await Promise.all([0, 1].map(() => page('POST', link, { cookie: cookieHeader(jar), form: { csrf } })));
+		const signedIn = both.filter((r) => r.headers.getSetCookie().some((c) => c.startsWith('__session=')));
+		expect(signedIn).toHaveLength(1);
+	});
+
+	it('second click, no password or passkey yet: "Finish setting up", never "sign in"; it emails a fresh link (audited, limited)', async () => {
+		const { body } = await invite({ email: 'second@example.com' });
+		const link = linkOf(sent[0].html);
+		await openAndSubmit(link);
+		const again = await page('GET', link);
+		const html = await again.text();
+		expect(stateOf(html)).toBe('setup');
+		expect(html).toContain('Finish setting up your account');
+		expect(html).not.toMatch(/sign in/i);
+		audit.mockClear();
+		const { res } = await openAndSubmit(link);
+		const sentPage = await res!.text();
+		expect(stateOf(sentPage)).toBe('sent');
+		expect(sent).toHaveLength(2);
+		const fresh = linkOf(sent[1].html);
+		// The new token reaches the inbox only, never the page
+		expect(sentPage).not.toContain(fresh.split('/invite/')[1].split('?')[0]);
+		expect(audit.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining([expect.objectContaining({ eventType: 'user.invite.resent', metadata: expect.objectContaining({ by: 'invitee', emailSent: true }) })]));
+		// The fresh link signs in again (the inbox is still the only way in)
+		expect(stateOf(await (await page('GET', fresh)).text())).toBe('ready');
+		const { res: second } = await openAndSubmit(fresh);
+		expect(second!.headers.getSetCookie().some((c) => c.startsWith('__session='))).toBe(true);
+		// Within 5 minutes of a send, asking again only says "we just sent one"
+		const { res: soon } = await openAndSubmit(fresh);
+		expect(stateOf(await soon!.text())).toBe('cooldown');
+		expect(sent).toHaveLength(2);
+		const row = await DB().prepare('SELECT send_count FROM user_invites WHERE id = ?').bind(body.inviteId).first<Record<string, any>>();
+		expect(row!.send_count).toBe(2);
+	});
+
+	it('an expired link that was never used also offers "Finish setting up"', async () => {
 		const { body } = await invite();
 		const link = linkOf(sent[0].html);
 		await DB().prepare('UPDATE user_invites SET expires_at = 1 WHERE id = ?').bind(body.inviteId).run();
 		const res = await page('GET', link);
-		expect(res.status).toBe(410);
+		expect(stateOf(await res.text())).toBe('setup');
 		const list = await call('GET', `/provisioning/invites?ids=${body.inviteId}`);
 		expect(list.json.invites[0].status).toBe('expired');
 	});
 
-	it('is in Arabic only with ?lang=ar', async () => {
+	it('an account that is already set up (password) gets "You\'re already set up" + Sign in', async () => {
+		await invite({ email: 'setup-done@example.com', continueUrl: 'http://localhost:3000/api/auth/login?prompt=login' });
+		const link = linkOf(sent[0].html);
+		await openAndSubmit(link);
+		await Storage.set(authStorage(E()), ['email', 'setup-done@example.com', 'password'], { hash: 'x' });
+		const html = await (await page('GET', link)).text();
+		expect(stateOf(html)).toBe('active');
+		expect(html).toContain('href="http://localhost:3000/api/auth/login"');
+		// and no new link can be asked for
+		expect(html).not.toContain('/send');
+	});
+
+	it('a link opened in the browser that is signed in as the invited account just continues', async () => {
+		await invite();
+		const link = linkOf(sent[0].html);
+		const { jar } = await openAndSubmit(link);
+		const html = await (await page('GET', link, { cookie: cookieHeader(jar) })).text();
+		expect(stateOf(html)).toBe('signed-in');
+	});
+
+	it('other accounts signed in change nothing: no extra step, the invited account joins them and becomes the active one', async () => {
+		await invite({ email: 'first@example.com' });
+		const { jar } = await openAndSubmit(linkOf(sent[0].html));
+		const first = await DB().prepare(`SELECT id FROM users WHERE email = 'first@example.com'`).first<{ id: string }>();
+		const before = await DB().prepare('SELECT browser_session_id, authenticated_at, expires_at FROM account_sessions WHERE user_id = ?').bind(first!.id).first<Record<string, any>>();
+		const firstBefore = await DB().prepare('SELECT metadata FROM users WHERE id = ?').bind(first!.id).first<{ metadata: string }>();
+		await invite({ email: 'invitee@example.com' });
+		const link = linkOf(sent[1].html);
+		const shown = await page('GET', link, { cookie: cookieHeader(jar) });
+		const html = await shown.text();
+		// The same page as for a signed-out browser: no interstitial, no warning, no mention of the other account
+		expect(stateOf(html)).toBe('ready');
+		expect(html).not.toContain('first@example.com');
+		const { res } = await openAndSubmit(link, jar);
+		expect(res!.status).toBe(200);
+		expect(await res!.text()).toContain('data-page="passkey"');
+		const invited = await DB().prepare(`SELECT id FROM users WHERE email = 'invitee@example.com'`).first<{ id: string }>();
+		// One browser session holding both; the invited account is the active one
+		const browser = await DB().prepare('SELECT active_user_id FROM browser_sessions WHERE id = ?').bind(before!.browser_session_id).first<{ active_user_id: string }>();
+		expect(browser!.active_user_id).toBe(invited!.id);
+		const rows = await DB().prepare('SELECT user_id, is_active, authenticated_at, expires_at FROM account_sessions WHERE browser_session_id = ? ORDER BY user_id').bind(before!.browser_session_id).all<Record<string, any>>();
+		expect(rows.results!.map((r) => [r.user_id, r.is_active])).toEqual(
+			[[first!.id, 0], [invited!.id, 1]].sort((x, y) => String(x[0]).localeCompare(String(y[0])))
+		);
+		// The other account is still signed in, its sign-in untouched
+		const other = rows.results!.find((r) => r.user_id === first!.id)!;
+		expect(other.authenticated_at).toBe(before!.authenticated_at);
+		expect(other.expires_at).toBe(before!.expires_at);
+		// The invite went to the invited account only: the other one's account is as it was
+		const firstUser = await DB().prepare('SELECT status, metadata FROM users WHERE id = ?').bind(first!.id).first<{ status: string; metadata: string }>();
+		expect(JSON.parse(firstUser!.metadata).invite_accepted_at).toBe(JSON.parse(firstBefore!.metadata).invite_accepted_at);
+	});
+
+	it('a browser whose session is full gets a clean new session for the invited account', async () => {
+		const jar: Record<string, string> = {};
+		for (let i = 0; i < 3; i++) {
+			await invite({ email: `full-${i}@example.com` });
+			await openAndSubmit(linkOf(sent[sent.length - 1].html), jar);
+		}
+		const oldSession = jar.__session;
+		await invite({ email: 'fourth@example.com' });
+		const { res } = await openAndSubmit(linkOf(sent[sent.length - 1].html), jar);
+		expect(res!.status).toBe(200);
+		expect(jar.__session).not.toBe(oldSession);
+		const fourth = await DB().prepare(`SELECT id FROM users WHERE email = 'fourth@example.com'`).first<{ id: string }>();
+		const row = await DB().prepare('SELECT browser_session_id FROM account_sessions WHERE user_id = ?').bind(fourth!.id).first<{ browser_session_id: string }>();
+		const count = await DB().prepare('SELECT COUNT(*) AS n FROM account_sessions WHERE browser_session_id = ?').bind(row!.browser_session_id).first<{ n: number }>();
+		expect(count!.n).toBe(1);
+	});
+
+	it('a revoked invite says it was withdrawn; an unknown link says so too, without "sign in"', async () => {
+		const { body } = await invite();
+		const link = linkOf(sent[0].html);
+		await call('POST', `/provisioning/invites/${body.inviteId}/revoke`, { actor: { id: 'usr_videosadmin' } });
+		const gone = await page('GET', link);
+		expect(gone.status).toBe(410);
+		expect(stateOf(await gone.text())).toBe('withdrawn');
+		const unknown = await page('GET', `https://auth.test/invite/${'0'.repeat(64)}`);
+		expect(unknown.status).toBe(410);
+		const html = await unknown.text();
+		expect(stateOf(html)).toBe('unknown');
+		expect(html).not.toMatch(/sign in/i);
+	});
+
+	it('speaks the invite\'s language unless ?lang= says otherwise', async () => {
 		await invite({ locale: 'ar' });
 		const link = linkOf(sent[0].html);
-		expect(await (await page('GET', link)).text()).toContain('دعوة للانضمام');
-		expect(await (await page('GET', link.replace('?lang=ar', ''))).text()).toContain('invited to Al Ummah Now');
+		const ar = await (await page('GET', link.replace('?lang=ar', ''))).text();
+		expect(ar).toContain('حسابك جاهز');
+		expect(ar).toContain('dir="rtl"');
+		expect(await (await page('GET', `${link.split('?')[0]}?lang=en`)).text()).toContain('Your account is ready');
 	});
 
 	it('resend makes a new link (the old one stops working) and emails it again', async () => {
@@ -308,7 +506,7 @@ describe('the invite link', () => {
 		expect(res.status).toBe(200);
 		expect(res.json.invite.sendCount).toBe(2);
 		expect((await page('GET', old)).status).toBe(410);
-		expect((await page('GET', linkOf(sent[1].html))).status).toBe(200);
+		expect(stateOf(await (await page('GET', linkOf(sent[1].html))).text())).toBe('ready');
 	});
 
 	it('copy link: the app\'s token hash replaces the emailed one', async () => {
