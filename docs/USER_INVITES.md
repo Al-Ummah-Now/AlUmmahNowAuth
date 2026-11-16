@@ -162,7 +162,7 @@ are limited by `ADMIN_SENSITIVE_LIMITER` per client, reads by `ADMIN_LIMITER`.
 | --- | --- | --- |
 | `POST /provisioning/invites` | `inviteId, userId, email, name?, locale (en/ar), note?, expiresInDays?, continueUrl?, details?, roles? (allow-list), sendEmail?, actor{id,email}` | `201 {invite, user, created, emailSent}`; `200` on replay; `409 user_exists {user}` or `already_invited {user, invite}` |
 | `GET /provisioning/invites?ids=a,b` | | `{invites}` (status `invited` / `active` / `expired` / `revoked`) |
-| `POST …/:id/resend` | `locale?, video? (object or null), actor` | `{invite, emailSent}` |
+| `POST …/:id/resend` | `locale?, video? (object or null), emailCopy?, actor` | `{invite, emailSent}` |
 | `POST …/:id/link` | `tokenHash` (hex SHA-256) | `{invite}` |
 | `POST …/:id/revoke` | `reason?, actor` | `{invite}` |
 | `POST …/:id/restore` | `actor` | `{invite}` (`409 email_taken`) |
@@ -177,6 +177,14 @@ are limited by `ADMIN_SENSITIVE_LIMITER` per client, reads by `ADMIN_LIMITER`.
   - The plain-text part gives the title, the channel and the link.
   - The videos admin keeps one video per email language and sends only the video for the language the email is in, never the other language's (owner, 2026-11-16). The card is static: no playable embed and no GIF.
   - A resend may pass `video` again, or `null` to leave the card out. The videos admin reads the video again at every send and sends `null` once it is no longer public.
+
+### The email's wording (`emailCopy`)
+
+The videos admin edits the invite's wording (videos admin › Settings › Emails › Creator invite; wiki "Email templates"). Create and resend carry it as `emailCopy: { key: 'creator_invite', version, locale, copy }`: the current version's text in the email's one language, with `{name}`, `{email}`, `{channels}`, `{expires}` and (picture description) `{title}` placeholders, filled here in one pass.
+
+- It is used only when `locale` is the invite's language and every field (`INVITE_COPY_FIELDS` in `apps/auth/src/invites/email.ts`) is a non-empty string.
+- Otherwise the built-in copy (`BUILT_IN_COPY`, the same words as the admin template's version 1) is sent, and `[invites] Built-in invite copy used` is logged with the reason (`missing`, `locale_mismatch` or `invalid`). It is an emergency default only.
+- The builder has a twin in the videos repo (`apps/admin-api/src/lib/email/invite.ts`) for the editor's preview and test email; keep them identical.
 
 Audit events: `user.invited`, `user.invite.resent`, `user.invite.link_created`,
 `user.invite.opened`, `user.invite.accepted`, `user.invite.revoked`,
