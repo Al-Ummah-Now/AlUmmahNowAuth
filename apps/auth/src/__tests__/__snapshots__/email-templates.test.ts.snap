@@ -81,7 +81,7 @@ exports[`the invite email > ar: one language, button, expiry date in that langua
 
 أنشأ لك أحد مشرفي الأمة الآن حساب صانع محتوى. ويضم القناة Noor Talks جاهزةً لتديرها.
 
-سجّل الدخول باستخدام new@example.com. إن لم تكن قد عيّنت كلمة مرور بعد، فاختر «إنشاء حساب» وسنرسل إليك رمزًا للتأكد من أنك صاحب البريد.
+اقبل الدعوة لتسجيل الدخول باسم new@example.com. لا تحتاج إلى كلمة مرور: يسجّل الزر دخولك، ويمكنك بعدها مباشرة إضافة مفتاح مرور (بصمة الوجه أو الإصبع).
 
 قبول الدعوة:
 https://auth.test/invite/abc?lang=ar
@@ -89,7 +89,7 @@ https://auth.test/invite/abc?lang=ar
 ملاحظة من المشرف
 > Welcome
 
-يعمل هذا الرابط حتى 24 نوفمبر 2026. وبعد ذلك يمكنك تسجيل الدخول بهذا البريد الإلكتروني.
+يعمل هذا الرابط مرة واحدة حتى 24 نوفمبر 2026. إن انتهت صلاحيته أو استُخدم من قبل، فافتحه واطلب رابطًا جديدًا.
 
 —
 
@@ -103,7 +103,7 @@ exports[`the invite email > en: one language, button, expiry date in that langua
 
 An Al Ummah Now admin has set up a creator account for you. It comes with the channel Noor Talks, ready for you to manage.
 
-Sign in with new@example.com. If you have not set a password yet, choose "Create account" and we will email you a code to confirm it is you.
+Accept the invite to sign in as new@example.com. You don't need a password: the button signs you in, and you can add a passkey (Face ID or fingerprint) right after.
 
 Accept the invite:
 https://auth.test/invite/abc?lang=ar
@@ -111,7 +111,7 @@ https://auth.test/invite/abc?lang=ar
 Note from the admin
 > Welcome
 
-This link works until 24 November 2026. After that you can still sign in with this email address.
+This link works once, until 24 November 2026. If it has expired or was already used, open it anyway and ask for a new one.
 
 —
 
