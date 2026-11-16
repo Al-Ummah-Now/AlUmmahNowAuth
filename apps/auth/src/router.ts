@@ -59,6 +59,8 @@ export interface RouterContext {
 	url: URL;
 	requestId: string;
 	isProduction: boolean;
+	/** Whether Auth can send email this request (index.ts, utils/email-availability.ts) */
+	emailAvailable: boolean;
 	// Hono apps for delegating
 	adminUserApp: Hono;
 	adminRbacApp: Hono;
@@ -577,7 +579,7 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 
 	// Passkeys (AUTH-PASSKEYS): setup page and ceremonies, the hub's list, the admin's recovery
 	if (pathname.startsWith('/passkeys/') || pathname === '/account/passkeys' || pathname.startsWith('/account/passkeys/') || pathname === '/admin/settings/staff-passkeys' || /^\/admin\/users\/[^/]+\/passkeys/.test(pathname)) {
-		const response = await routePasskeys({ request, env: rctx.env as never, ctx: rctx.ctx, requestId: rctx.requestId, theme: passkeyPageTheme(url) });
+		const response = await routePasskeys({ request, env: rctx.env as never, ctx: rctx.ctx, requestId: rctx.requestId, theme: passkeyPageTheme(url), emailAvailable: rctx.emailAvailable });
 		if (response) return addSecurityHeaders(response, rctx.isProduction);
 	}
 

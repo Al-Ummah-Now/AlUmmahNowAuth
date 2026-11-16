@@ -6,8 +6,9 @@
  *
  * A software ES256 authenticator stands in for the browser and device.
  */
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
+import { mockResend } from './helpers/mock-resend';
 import { decodeJwt } from 'jose';
 import worker from '../index';
 import { AUTO_CONTINUE_MS } from '../passkeys/pages';
@@ -24,7 +25,9 @@ import { safeReturnTo, signRegistration, readRegistration } from '../passkeys/ro
 const ISSUER = 'http://localhost:3301';
 const RP_ID = 'localhost';
 const PASSWORD = 'Passkeys-Test-123!';
-const E = env as unknown as Env;
+// A Resend key that resolves, so emailed-code features are on (email-unconfigured.test.ts
+// covers them without one). Resend itself is a mock: nothing leaves the test.
+const E = { ...(env as object), RESEND_API_KEY: 're_test_unused' } as unknown as Env;
 
 // ---------- minimal CBOR (maps, ints, byte and text strings) ----------
 function cborHead(major: number, n: number): number[] {
@@ -223,6 +226,10 @@ async function grant(user: string, roleId: string, assignedAt = Date.now()) {
 		.run();
 }
 const unique = () => crypto.randomUUID().slice(0, 8);
+
+const resend = mockResend();
+beforeAll(() => resend.install());
+afterAll(() => resend.restore());
 
 describe('passkeys (worker)', () => {
 	beforeAll(async () => {

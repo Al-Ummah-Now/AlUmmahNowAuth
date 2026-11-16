@@ -60,6 +60,8 @@ export interface AuthHandlerContext {
 	theme?: Theme;
 	/** This request's timings (Server-Timing, auth.timing log) */
 	timer?: RequestTimer;
+	/** Whether Auth can send email (utils/email-availability.ts); the passkey card needs it for staff */
+	emailAvailable?: boolean;
 }
 
 /**
@@ -385,6 +387,7 @@ export function createOnSuccessHandler(
 						locale: getLocaleFromRequest(request) === 'ar' ? 'ar' : 'en',
 						theme,
 						redirect: subjectResponse,
+						emailAvailable: handlerCtx.emailAvailable ?? true,
 					})
 				).catch((error: unknown) => {
 					logger.error('[passkeys] Could not build the after-sign-in card', { error: error instanceof Error ? error.message : String(error) });
