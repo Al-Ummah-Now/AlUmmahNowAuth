@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { codePurposeOf, renderVerificationCodeEmail } from '../email-templates';
-import { inviteChannels, inviteVideo, renderInviteEmail } from '../invites/email';
+import { BUILT_IN_COPY, fillPlaceholders, inviteChannels, inviteVideo, parseInviteCopy, renderInviteEmail } from '../invites/email';
 import { EMAIL_LOGO_URL, escapeHtml, renderEmail, type RenderedEmailParts } from '../email/layout';
 
 const ARABIC = /[؀-ۿ]/;
@@ -200,6 +200,54 @@ describe('the invite email', () => {
 		const email = renderInviteEmail({ ...data, locale: 'ar' });
 		expect(email.text).toContain('٢٤ نوفمبر ٢٠٢٦');
 		expect(email.text).not.toMatch(/\d{2} نوفمبر/);
+	});
+});
+
+describe('the invite email from the admin\'s copy', () => {
+	const data = { email: 'new@example.com', name: 'Ali', link: 'https://auth.test/invite/abc', expiresAt: Date.UTC(2026, 10, 24), note: 'Hi' as string | null };
+	const admin = (locale: 'en' | 'ar') => ({ ...BUILT_IN_COPY[locale], greeting: locale === 'ar' ? 'أهلًا {name}،' : 'Hello {name}!', expires: locale === 'ar' ? 'صالح حتى {expires} لـ {email}.' : 'Valid until {expires} for {email}.' });
+	const video = { title: 'Ramadan reminders', channel: 'Noor', imageUrl: 'https://videos.example/og/v/v1.jpg', urls: { en: 'https://alummahnow.link/v/v1', ar: 'https://alummahnow.link/v/v1?lang=ar' } };
+
+	it('fills every placeholder in both languages, with Arabic right to left', () => {
+		const en = renderInviteEmail({ ...data, locale: 'en', channels: [{ name: 'A', action: 'created' }] }, admin('en'));
+		expect(en.text).toContain('Hello Ali!');
+		expect(en.text).toContain('Valid until 24 November 2026 for new@example.com.');
+		expect(en.text).not.toMatch(/\{(name|email|channels|expires|title)\}/);
+		const ar = renderInviteEmail({ ...data, locale: 'ar', channels: [{ name: 'نور', action: 'transferred' }] }, admin('ar'));
+		expectWellFormed(ar, 'ar');
+		expectTextParity(ar);
+		expect(ar.text).toContain('أهلًا Ali،');
+		expect(ar.text).toContain('ونُقلت إليه القناة نور');
+		expect(ar.text).not.toMatch(/\{(name|email|channels|expires|title)\}/);
+	});
+
+	it('uses the admin\'s video line and picture text', () => {
+		const copy = { ...BUILT_IN_COPY.ar, videoIntro: 'شاهد هذا:', videoAlt: 'شغّل {title}' };
+		const email = renderInviteEmail({ ...data, locale: 'ar', video }, copy);
+		expect(email.text).toContain('شاهد هذا:');
+		expect(email.html).toContain('alt="شغّل Ramadan reminders"');
+		expect(email.html).toContain('href="https://alummahnow.link/v/v1?lang=ar"');
+	});
+
+	it('renders the built-in copy exactly as before it was editable', () => {
+		const viaDefault = renderInviteEmail({ ...data, locale: 'ar', channels: [{ name: 'X', action: 'created' }], video });
+		const viaCopy = renderInviteEmail({ ...data, locale: 'ar', channels: [{ name: 'X', action: 'created' }], video }, BUILT_IN_COPY.ar);
+		expect(viaCopy).toEqual(viaDefault);
+	});
+
+	it('takes the request\'s copy only when it is the invite, the same language and complete', () => {
+		const ok = { key: 'creator_invite', version: 3, locale: 'ar', copy: BUILT_IN_COPY.ar };
+		expect(parseInviteCopy(ok, 'ar')).toEqual({ copy: BUILT_IN_COPY.ar, version: 3 });
+		expect(parseInviteCopy(undefined, 'ar')).toEqual({ reason: 'missing' });
+		expect(parseInviteCopy(ok, 'en')).toEqual({ reason: 'locale_mismatch' });
+		expect(parseInviteCopy({ ...ok, key: 'other' }, 'ar')).toEqual({ reason: 'invalid' });
+		expect(parseInviteCopy({ ...ok, copy: { ...BUILT_IN_COPY.ar, button: '  ' } }, 'ar')).toEqual({ reason: 'invalid' });
+		expect(parseInviteCopy({ ...ok, copy: { ...BUILT_IN_COPY.ar, reason: 5 } }, 'ar')).toEqual({ reason: 'invalid' });
+	});
+
+	it('fills in one pass, so a typed name that looks like a placeholder stays as typed', () => {
+		expect(fillPlaceholders('{name} / {email}', { name: '{email}', email: 'a@b.c' })).toBe('{email} / a@b.c');
+		expect(fillPlaceholders('{unknown}', {})).toBe('{unknown}');
 	});
 });
 

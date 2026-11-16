@@ -14,7 +14,8 @@ import { authStorage } from '../storage/auth-storage';
 import { createOnSuccessHandler } from '../handlers/auth-handlers';
 import { D1UserService } from '../services/d1-user-service';
 import { claimInvitedAccount, purgeRevokedInvites, RETENTION_MS, InviteService } from '../invites/service';
-import { inviteEmailHtml, inviteEmailSubject, inviteEmailText } from '../invites/email';
+import { BUILT_IN_COPY, inviteEmailHtml, inviteEmailSubject, inviteEmailText } from '../invites/email';
+import { logger } from '../logger';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
 import type { D1UserAdapter } from '@al-ummah-now/openauth';
 
@@ -521,6 +522,30 @@ describe('the invite link', () => {
 		expect(res.json.invite.sendCount).toBe(2);
 		expect((await page('GET', old)).status).toBe(410);
 		expect(stateOf(await (await page('GET', linkOf(sent[1].html))).text())).toBe('ready');
+	});
+
+	it('sends the admin\'s copy (Settings › Emails) on create and resend, in the invite\'s language', async () => {
+		const warn = vi.spyOn(logger, 'warn');
+		const copy = (locale: 'en' | 'ar', button: string) => ({ key: 'creator_invite', version: 7, locale, copy: { ...BUILT_IN_COPY[locale], subject: `Join us, {name}`, button } });
+		const { body } = await invite({ name: 'Sam', emailCopy: copy('en', 'Start now') });
+		expect(sent[0].subject).toBe('Join us, Sam');
+		expect(sent[0].html).toContain('Start now');
+		await call('POST', `/provisioning/invites/${body.inviteId}/resend`, { locale: 'ar', emailCopy: copy('ar', 'ابدأ الآن') });
+		expect(sent[1].html).toContain('ابدأ الآن');
+		expect(sent[1].html).toContain('dir="rtl"');
+		expect(warn.mock.calls.filter((c) => c[0] === '[invites] Built-in invite copy used')).toHaveLength(0);
+		warn.mockRestore();
+	});
+
+	it('falls back to the built-in copy, and logs it, when the request has none or the wrong language', async () => {
+		const warn = vi.spyOn(logger, 'warn');
+		const { body } = await invite();
+		expect(sent[0].subject).toBe(inviteEmailSubject('en'));
+		await call('POST', `/provisioning/invites/${body.inviteId}/resend`, { locale: 'ar', emailCopy: { key: 'creator_invite', version: 2, locale: 'en', copy: BUILT_IN_COPY.en } });
+		expect(sent[1].subject).toBe(inviteEmailSubject('ar'));
+		const fallbacks = warn.mock.calls.filter((c) => c[0] === '[invites] Built-in invite copy used').map((c) => (c[1] as { reason: string }).reason);
+		expect(fallbacks).toEqual(['missing', 'locale_mismatch']);
+		warn.mockRestore();
 	});
 
 	it('copy link: the app\'s token hash replaces the emailed one', async () => {

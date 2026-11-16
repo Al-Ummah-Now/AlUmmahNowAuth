@@ -30,7 +30,7 @@ import { isE2EAddress, markRunUser, shouldSinkCode, SINK_TTL_SECONDS, type RunUs
 import { requireSecret } from '../utils/secrets';
 import { signInFallbackUrl } from '../utils/sign-in-restart';
 import SendEmail from '../email';
-import { inviteChannels, inviteVideo, renderInviteEmail } from './email';
+import { inviteChannels, inviteVideo, parseInviteCopy, renderInviteEmail } from './email';
 import { inviteCopy, pageLocale, renderInviteState, type InvitePageState } from './page';
 import { claimInvitedAccount, InviteError, InviteService, newInviteToken, type Invite, type InviteActor, type InviteRow } from './service';
 import { hasSignInMethod, inviteAccount, startInviteSession, type InviteAccount } from './sign-in';
@@ -121,14 +121,18 @@ export function safeContinueUrl(value: unknown, env: Env): string | null {
 /**
  * Emails the invite (or, for QA/stage E2E addresses, keeps the link in the test sink). `opts.video`, when
  * given (null too), is the video for this email instead of the one in the invite's details.
+ * `opts.emailCopy` is the admin's wording from the request (videos admin › Settings › Emails); without
+ * usable copy the built-in words are sent and that is logged, so a missing template is noticed.
  */
-export async function deliverInvite(env: Env, invite: Invite, link: string, opts: { video?: unknown } = {}): Promise<{ sent: boolean; via: 'email' | 'e2e_sink' | 'none'; error?: string }> {
+export async function deliverInvite(env: Env, invite: Invite, link: string, opts: { video?: unknown; emailCopy?: unknown } = {}): Promise<{ sent: boolean; via: 'email' | 'e2e_sink' | 'none'; error?: string }> {
 	if (isE2EAddress(invite.email) && (await shouldSinkCode(env, invite.email))) {
 		await env.AUTH_STORAGE.put(`test:invite:${invite.email}`, JSON.stringify({ link, at: Date.now() }), { expirationTtl: SINK_TTL_SECONDS });
 		return { sent: true, via: 'e2e_sink' };
 	}
 	try {
 		const apiKey = await requireSecret(env.RESEND_API_KEY as never, 'RESEND_API_KEY', env as unknown as Record<string, unknown>);
+		const parsed = parseInviteCopy(opts.emailCopy, invite.locale);
+		if ('reason' in parsed) logger.warn('[invites] Built-in invite copy used', { inviteId: invite.id, locale: invite.locale, reason: parsed.reason });
 		const email = renderInviteEmail({
 			email: invite.email,
 			name: invite.name,
@@ -138,7 +142,7 @@ export async function deliverInvite(env: Env, invite: Invite, link: string, opts
 			locale: invite.locale,
 			channels: inviteChannels(invite.details),
 			video: inviteVideo('video' in opts ? opts.video : invite.details?.video),
-		});
+		}, 'copy' in parsed ? parsed.copy : undefined);
 		const result = await SendEmail({ apiKey, from: INVITE_FROM, to: invite.email, subject: email.subject, html: email.html, text: email.text });
 		if (!result.success) return { sent: false, via: 'none', error: 'send_failed' };
 		return { sent: true, via: 'email' };
@@ -217,7 +221,7 @@ export async function routeInviteProvisioning(request: Request, env: Env, ctx: E
 				);
 				let delivery: Awaited<ReturnType<typeof deliverInvite>> = { sent: false, via: 'none' };
 				if (result.created && result.token && body.sendEmail !== false) {
-					delivery = await deliverInvite(env, result.invite, inviteLink(issuer, result.token, result.invite.locale));
+					delivery = await deliverInvite(env, result.invite, inviteLink(issuer, result.token, result.invite.locale), { emailCopy: body.emailCopy });
 					if (delivery.sent) await service.markSent(result.invite.id);
 				}
 				if (result.created) {
@@ -233,7 +237,7 @@ export async function routeInviteProvisioning(request: Request, env: Env, ctx: E
 			case 'resend': {
 				await service.requireOwned(id!, client.id);
 				const { invite, token } = await service.rotateToken(id!, { extend: true, locale: str(body.locale) });
-				const delivery = await deliverInvite(env, invite, inviteLink(issuer, token, invite.locale), 'video' in body ? { video: body.video } : {});
+				const delivery = await deliverInvite(env, invite, inviteLink(issuer, token, invite.locale), { ...('video' in body ? { video: body.video } : {}), emailCopy: body.emailCopy });
 				if (delivery.sent) await service.markSent(invite.id);
 				audit(AuditEventType.USER_INVITE_RESENT, invite, { emailSent: delivery.sent, via: delivery.via });
 				return json({ invite: await service.requireOwned(id!, client.id), emailSent: delivery.sent, emailError: delivery.error ?? null });
