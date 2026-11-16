@@ -22,7 +22,7 @@ import { TEST_URLS } from '../../utils/test-data';
 
 const AUTH_APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../apps/auth');
 const isLocal = /^http:\/\/localhost[:/]/.test(TEST_URLS.authServer);
-const PORT = Number(process.env.E2E_EMAIL_TOGGLE_PORT || 3341);
+const PORT = Number(process.env.E2E_AUTH_TOGGLE_PORT || 3341);
 const BASE = `http://localhost:${PORT}`;
 // The local Profile client (migrations/0004_seed_data.sql); public, so PKCE S256
 const PROFILE_CLIENT = '109a1087-6626-40f7-8a7f-7f42f83f4f30';
