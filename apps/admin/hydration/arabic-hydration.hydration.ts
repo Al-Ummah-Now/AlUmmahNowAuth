@@ -47,7 +47,7 @@ test("Recently deleted in Arabic: dates and days left in ٠–٩", async ({ page
 
 test("Users in Arabic: the system accounts count is in ٠–٩", async ({ page }) => {
   expect(await hydrate(page, "/admin/users?lang=ar")).toEqual([]);
-  await expect(page.getByTestId("system-accounts-toggle")).toContainText("(١)");
+  await expect(page.getByTestId("system-accounts-toggle")).toContainText("١");
 });
 
 test("Profile in Arabic: passkey dates and account times in ٠–٩", async ({ page }) => {

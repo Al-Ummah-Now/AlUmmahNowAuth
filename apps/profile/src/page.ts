@@ -73,7 +73,8 @@ const STYLES = `
         /* Your apps */
         .passkey-list { list-style: none; padding: 0; margin: 1rem 0 0; display: flex; flex-direction: column; gap: .75rem; }
         .passkey-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: .75rem 1rem; border: 1px solid var(--fanous-color-border, rgba(127,127,127,.35)); border-radius: 10px; }
-        .passkey-item .passkey-name { font-weight: 600; overflow-wrap: anywhere; }
+        .passkey-item .passkey-name { font-weight: 600; overflow-wrap: anywhere; text-align: start; }
+        .passkey-item > div:first-child { flex: 1 1 12rem; min-width: 0; text-align: start; }
         .passkey-item .passkey-meta { color: var(--fanous-color-text-secondary); font-size: .875rem; }
         .passkey-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
         .passkey-actions .btn, .passkey-toast .btn { padding: .4rem .8rem; font-size: .875rem; }
@@ -147,7 +148,7 @@ const STYLES = `
         .profile-field label {
             display: block; color: var(--fanous-color-text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
         }
-        .profile-field .value { color: var(--fanous-color-text-primary); font-size: 1.125rem; font-weight: 500; overflow-wrap: anywhere; }
+        .profile-field .value { color: var(--fanous-color-text-primary); font-size: 1.125rem; font-weight: 500; overflow-wrap: anywhere; text-align: start; }
         .badge { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 0.875rem; font-weight: 600; margin-inline-end: 8px; }
         .badge-admin { background: #b91c1c; color: #fff; }
         .badge-user { background: #047857; color: #fff; }
@@ -542,7 +543,9 @@ export function renderHomePage(o: HomePageOptions): string {
                 li.className = 'passkey-item';
                 li.setAttribute('data-passkey-id', p.id);
                 var info = document.createElement('div');
-                var name = document.createElement('div'); name.className = 'passkey-name'; name.setAttribute('dir', 'auto'); name.textContent = p.name;
+                var name = document.createElement('div'); name.className = 'passkey-name';
+                // Starts at the page's start edge; <bdi> keeps a name in another script in its own order
+                var nameText = document.createElement('bdi'); nameText.textContent = p.name; name.appendChild(nameText);
                 var meta = document.createElement('div'); meta.className = 'passkey-meta';
                 meta.textContent = [p.synced ? T.passkeySynced : T.passkeyDevice, T.passkeyCreated.replace('{date}', pkDate(p.createdAt)), p.lastUsedAt ? T.passkeyLastUsed.replace('{date}', pkDate(p.lastUsedAt)) : T.passkeyNeverUsed].join(' · ');
                 info.appendChild(name); info.appendChild(meta);

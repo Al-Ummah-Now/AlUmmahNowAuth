@@ -614,7 +614,17 @@ export default function Users() {
               navigate({ search: next.toString() ? `?${next}` : "" });
             }}
           >
-            {systemView ? systemCopy.hide : `${systemCopy.show} (${formatNumber(systemAccounts.length, deleteLang)})`}
+            {systemView ? (
+              systemCopy.hide
+            ) : (
+              <>
+                {systemCopy.show}
+                {/* A count badge, isolated: brackets around a number flip in WebKit's RTL layout */}
+                <span className="rounded-full bg-[var(--color-muted)] px-2 text-xs font-semibold" data-testid="system-accounts-count">
+                  <bdi>{formatNumber(systemAccounts.length, deleteLang)}</bdi>
+                </span>
+              </>
+            )}
           </Button>
         </div>
       )}

@@ -89,7 +89,7 @@ function actorName(item: DeletedItem, lang: AdminLang): string {
   if (item.deletedBy === "self") return t.self;
   if (item.deletedBy === "moderation") return t.moderation;
   if (item.deletedBy === "unknown") return t.unknownActor;
-  return item.deletedByEmail || item.deletedBy;
+  return item.deletedByName || item.deletedByEmail || t.unknownActor;
 }
 
 function formatTime(ms: number, lang: AdminLang): string {
@@ -113,7 +113,39 @@ export default function RecentlyDeleted() {
     q.set("kind", k);
     return `?${q}`;
   };
+  // People by name, else email; other items by their label (purge asks to type the label)
   const labelOf = (item: DeletedItem) => item.label ?? item.id;
+  const titleOf = (item: DeletedItem) => item.name || labelOf(item);
+  const removal = (item: DeletedItem) => (
+    <>
+      {item.purgeRequestedAt ? (
+        <span className="font-medium text-[var(--color-destructive-text)]">{t.queued}</span>
+      ) : (
+        t.daysLeft(daysUntil(item.purgeAt, now))
+      )}
+      {item.lastError && <div className="text-xs text-[var(--color-destructive-text)]">{t.lastError(item.lastError)}</div>}
+    </>
+  );
+  const actions = (item: DeletedItem) => (
+    <div className="flex flex-wrap justify-end gap-2">
+      <Button size="sm" variant="outline" onClick={() => setPending({ mode: "restore", item })}>
+        <RotateCcw aria-hidden="true" />
+        {t.restore}
+      </Button>
+      {!item.purgeRequestedAt && (
+        <Button size="sm" variant="destructive" onClick={() => setPending({ mode: "purge", item })}>
+          <Trash2 aria-hidden="true" />
+          {t.deletePermanently}
+        </Button>
+      )}
+    </div>
+  );
+  const itemCell = (item: DeletedItem) => (
+    <>
+      <div className="font-medium"><bdi>{titleOf(item)}</bdi></div>
+      {item.name && item.label && <div className="text-xs text-[var(--color-muted-foreground)]"><bdi>{item.label}</bdi></div>}
+    </>
+  );
 
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
@@ -159,7 +191,27 @@ export default function RecentlyDeleted() {
             <CardDescription>{items.length === 0 ? t.empty(kind) : null}</CardDescription>
           </CardHeader>
           {items.length > 0 && (
-            <CardContent className="overflow-x-auto">
+            <CardContent>
+              {/* Phone: one card per item, every field labelled; a table from md up */}
+              <ul className="space-y-3 md:hidden" data-testid="deleted-cards">
+                {items.map((item) => (
+                  <li key={item.id} data-testid="deleted-card" className="rounded-lg border border-[var(--color-border)] p-3">
+                    {itemCell(item)}
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                      <dt className="text-[var(--color-muted-foreground)]">{t.colDeletedBy}</dt>
+                      <dd><bdi>{actorName(item, lang)}</bdi></dd>
+                      <dt className="text-[var(--color-muted-foreground)]">{t.colDeletedAt}</dt>
+                      <dd>{formatTime(item.deletedAt, lang)}</dd>
+                      <dt className="text-[var(--color-muted-foreground)]">{t.colReason}</dt>
+                      <dd><bdi>{item.reason ?? "—"}</bdi></dd>
+                      <dt className="text-[var(--color-muted-foreground)]">{t.colRemoval}</dt>
+                      <dd>{removal(item)}</dd>
+                    </dl>
+                    <div className="mt-3">{actions(item)}</div>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -174,39 +226,17 @@ export default function RecentlyDeleted() {
                 <TableBody>
                   {items.map((item) => (
                     <TableRow key={item.id} data-testid="deleted-row">
-                      <TableCell>
-                        <div className="font-medium" dir="auto">{labelOf(item)}</div>
-                        {item.label && <div className="text-xs text-[var(--color-muted-foreground)]" dir="ltr">{item.id}</div>}
-                      </TableCell>
-                      <TableCell dir="auto">{actorName(item, lang)}</TableCell>
+                      <TableCell>{itemCell(item)}</TableCell>
+                      <TableCell><bdi>{actorName(item, lang)}</bdi></TableCell>
                       <TableCell>{formatTime(item.deletedAt, lang)}</TableCell>
-                      <TableCell dir="auto">{item.reason ?? "—"}</TableCell>
-                      <TableCell>
-                        {item.purgeRequestedAt ? (
-                          <span className="font-medium text-[var(--color-destructive-text)]">{t.queued}</span>
-                        ) : (
-                          t.daysLeft(daysUntil(item.purgeAt, now))
-                        )}
-                        {item.lastError && <div className="text-xs text-[var(--color-destructive-text)]">{t.lastError(item.lastError)}</div>}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setPending({ mode: "restore", item })}>
-                            <RotateCcw aria-hidden="true" />
-                            {t.restore}
-                          </Button>
-                          {!item.purgeRequestedAt && (
-                            <Button size="sm" variant="destructive" onClick={() => setPending({ mode: "purge", item })}>
-                              <Trash2 aria-hidden="true" />
-                              {t.deletePermanently}
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
+                      <TableCell><bdi>{item.reason ?? "—"}</bdi></TableCell>
+                      <TableCell>{removal(item)}</TableCell>
+                      <TableCell>{actions(item)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           )}
         </Card>

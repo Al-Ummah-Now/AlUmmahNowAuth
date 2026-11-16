@@ -29,8 +29,8 @@ export const FIXTURES: Record<PageName, unknown> = {
     user: ADMIN,
     authServerUrl: "",
     items: [
-      { kind: "user", id: "u-1", label: "deleted@example.com", deletedAt: NOW - 3 * DAY, deletedBy: "self", deletedByEmail: null, reason: null, purgeAt: NOW + 27 * DAY, purgeRequestedAt: null, lastError: null },
-      { kind: "user", id: "u-2", label: "old@example.com", deletedAt: NOW - 28 * DAY, deletedBy: "admin-1", deletedByEmail: "admin@example.com", reason: "Spam", purgeAt: NOW + 2 * DAY, purgeRequestedAt: null, lastError: null },
+      { kind: "user", id: "u-1", label: "deleted@example.com", name: "Amina Yusuf", deletedAt: NOW - 3 * DAY, deletedBy: "self", deletedByEmail: null, reason: null, purgeAt: NOW + 27 * DAY, purgeRequestedAt: null, lastError: null },
+      { kind: "user", id: "u-2", label: "old@example.com", deletedAt: NOW - 28 * DAY, deletedBy: "admin-1", deletedByEmail: "admin@example.com", deletedByName: "Omar Saleh", reason: "رسائل مزعجة متكررة", purgeAt: NOW + 2 * DAY, purgeRequestedAt: null, lastError: null },
     ],
   },
   users: {
