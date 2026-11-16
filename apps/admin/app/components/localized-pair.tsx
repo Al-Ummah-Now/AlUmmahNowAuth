@@ -41,9 +41,35 @@ export interface LocalizedPairProps {
   className?: string;
 }
 
-const FIELD: Record<Lang, { label: string; dir: "ltr" | "rtl"; to: string }> = {
-  en: { label: "English", dir: "ltr", to: "Translate to Arabic" },
-  ar: { label: "العربية", dir: "rtl", to: "Translate to English" },
+const FIELD: Record<Lang, { label: string; dir: "ltr" | "rtl" }> = {
+  en: { label: "English", dir: "ltr" },
+  ar: { label: "العربية", dir: "rtl" },
+};
+
+/** Translate copy in the admin's UI language. */
+const COPY = {
+  en: {
+    to: { en: "Translate to Arabic", ar: "Translate to English" } as Record<Lang, string>,
+    busy: "Translating…",
+    translating: (to: Lang) => `Translating to ${to === "ar" ? "Arabic" : "English"}…`,
+    filled: (to: Lang, from: Lang) => `${to === "ar" ? "Arabic" : "English"} filled from ${from === "en" ? "English" : "Arabic"}. Check it before saving.`,
+    empty: "The translation came back empty",
+    failed: (m: string) => `Couldn't translate: ${m}`,
+    retry: "try again",
+    restored: (l: Lang) => `${l === "ar" ? "Arabic" : "English"} text restored.`,
+    undo: "Undo",
+  },
+  ar: {
+    to: { en: "ترجم إلى العربية", ar: "ترجم إلى الإنجليزية" } as Record<Lang, string>,
+    busy: "جارٍ الترجمة…",
+    translating: (to: Lang) => `جارٍ الترجمة إلى ${to === "ar" ? "العربية" : "الإنجليزية"}…`,
+    filled: (to: Lang, from: Lang) => `مُلئت ${to === "ar" ? "العربية" : "الإنجليزية"} من ${from === "en" ? "الإنجليزية" : "العربية"}. راجعها قبل الحفظ.`,
+    empty: "عادت الترجمة فارغة",
+    failed: (m: string) => `تعذّرت الترجمة: ${m}`,
+    retry: "حاول مرة أخرى",
+    restored: (l: Lang) => `استُعيد النص ${l === "ar" ? "العربي" : "الإنجليزي"}.`,
+    undo: "تراجع",
+  },
 };
 
 const other = (l: Lang): Lang => (l === "en" ? "ar" : "en");
@@ -55,6 +81,7 @@ export function LocalizedPair(props: LocalizedPairProps) {
   const [status, setStatus] = useState("");
   const [undo, setUndo] = useState<{ lang: Lang; previous: string } | null>(null);
   const missing = flagMissing ? missingLangs(value) : [];
+  const t = COPY[uiLang ?? "en"];
   // A field's error hides once it is edited to non-empty text; it shows again if the
   // field is emptied or the next save reports a different message.
   const [edited, setEdited] = useState<Partial<Record<Lang, boolean>>>({});
@@ -66,17 +93,17 @@ export function LocalizedPair(props: LocalizedPairProps) {
     const source = value[from].trim();
     if (!source) return;
     setBusy(from);
-    setStatus(`Translating to ${to === "ar" ? "Arabic" : "English"}…`);
+    setStatus(t.translating(to));
     try {
       const text = (await translate(source, from, to)).trim();
-      if (!text) throw new Error("The translation came back empty");
+      if (!text) throw new Error(t.empty);
       const previous = value[to];
       onChange({ ...value, [to]: text });
       setEdited((m) => ({ ...m, [to]: true }));
       setUndo(previous.trim() && previous !== text ? { lang: to, previous } : null);
-      setStatus(`${to === "ar" ? "Arabic" : "English"} filled from ${from === "en" ? "English" : "Arabic"}. Check it before saving.`);
+      setStatus(t.filled(to, from));
     } catch (e) {
-      setStatus(`Couldn't translate: ${e instanceof Error ? e.message : "try again"}`);
+      setStatus(t.failed(e instanceof Error ? e.message : t.retry));
     } finally {
       setBusy(null);
     }
@@ -85,7 +112,7 @@ export function LocalizedPair(props: LocalizedPairProps) {
   function doUndo() {
     if (!undo) return;
     onChange({ ...value, [undo.lang]: undo.previous });
-    setStatus(`${undo.lang === "ar" ? "Arabic" : "English"} text restored.`);
+    setStatus(t.restored(undo.lang));
     setUndo(null);
   }
 
@@ -144,7 +171,7 @@ export function LocalizedPair(props: LocalizedPairProps) {
                   onClick={() => run(lang)}
                 >
                   <Languages className="me-1 h-3 w-3" aria-hidden="true" />
-                  {busy === lang ? "Translating…" : FIELD[lang].to}
+                  {busy === lang ? t.busy : t.to[lang]}
                 </Button>
               )}
             </div>
@@ -152,13 +179,13 @@ export function LocalizedPair(props: LocalizedPairProps) {
         })}
       </div>
       <div className="flex min-h-5 items-center gap-2 text-xs text-[var(--color-muted-foreground)]">
-        <span role="status" aria-live="polite">
+        <span role="status" aria-live="polite" dir={uiLang === "ar" ? "rtl" : undefined} lang={uiLang}>
           {status}
         </span>
         {undo && (
           <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={doUndo}>
             <Undo2 className="me-1 h-3 w-3" aria-hidden="true" />
-            Undo
+            {t.undo}
           </Button>
         )}
       </div>

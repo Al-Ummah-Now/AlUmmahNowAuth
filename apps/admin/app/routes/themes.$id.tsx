@@ -36,7 +36,9 @@ import {
 import { AUTH_RADII, SECTIONS, type SlotDef } from "../../../../packages/ui/src/auth-theme/catalog.ts";
 import type { AuthThemeJson, SchemeValue } from "../../../../packages/ui/src/auth-theme/types.ts";
 import { validateTheme } from "../../../../packages/ui/src/auth-theme/validate.ts";
-import { LocalizedPair } from "../components/localized-pair";
+import { LocalizedPair, type TranslateFn } from "../components/localized-pair";
+import { translateEnabled, type TranslateEnv } from "../lib/translate.server";
+import { fieldTranslator } from "../lib/translate-client";
 import { BASE } from "../../../../packages/ui/src/theme-packages/base.generated.ts";
 import { COMPONENT_PARTS } from "../../../../packages/ui/src/theme-packages/components.ts";
 import type { Issue } from "../../../../packages/ui/src/theme-packages/validate.ts";
@@ -47,6 +49,8 @@ type LoaderData = {
   detail: ThemeDetail;
   user: { id: string; email: string };
   authServerUrl: string;
+  /** Translate buttons on the en/ar texts (off when the service isn't configured) */
+  translate: boolean;
 };
 
 export async function loader({ request, context, params }: LoaderFunctionArgs): Promise<LoaderData> {
@@ -55,7 +59,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs): 
   const session = await getAuthenticatedUser(request, env);
   try {
     const detail = await themesApi(env, actor, request).get(params.id!);
-    return { detail, user: { id: actor.id, email: session?.user.email ?? actor.email }, authServerUrl: getAuthServerUrl(request, env) };
+    return { detail, user: { id: actor.id, email: session?.user.email ?? actor.email }, authServerUrl: getAuthServerUrl(request, env), translate: translateEnabled(env as TranslateEnv) };
   } catch (error) {
     throw new Response(errorMessage(error), { status: (error as { status?: number }).status === 404 ? 404 : 502 });
   }
@@ -178,7 +182,7 @@ function TextField({ value, onChange, disabled, label, placeholder, dir }: { val
  * required; an optional one may be left out entirely (both empty). Errors come
  * from validateTheme, which Auth runs again on save.
  */
-function ThemePair({ label, hint, path, optional, value, theme, update, readOnly, issuesAt, className, uiLang }: {
+function ThemePair({ label, hint, path, optional, value, theme, update, readOnly, issuesAt, className, uiLang, translate }: {
   label: string;
   hint?: string;
   path: string;
@@ -190,6 +194,7 @@ function ThemePair({ label, hint, path, optional, value, theme, update, readOnly
   issuesAt: (prefix: string) => Issue[];
   className?: string;
   uiLang: "en" | "ar";
+  translate?: TranslateFn;
 }) {
   const pair = { en: value?.en ?? "", ar: value?.ar ?? "" };
   const errorOf = (l: "en" | "ar") => issuesAt(`${path}.${l}`)[0]?.message;
@@ -197,6 +202,7 @@ function ThemePair({ label, hint, path, optional, value, theme, update, readOnly
     <LocalizedPair
       className={className}
       uiLang={uiLang}
+      translate={translate}
       label={label}
       hint={hint}
       required={!optional}
@@ -385,7 +391,7 @@ function SlotEditor({ theme, sectionId, slot, onTheme, disabled, assetUrls }: { 
 // ---------------------------------------------------------------- page
 
 export default function ThemeBuilderPage() {
-  const { detail, user, authServerUrl } = useLoaderData<LoaderData>();
+  const { detail, user, authServerUrl, translate: canTranslate } = useLoaderData<LoaderData>();
   const { summary, assets, assetUrls } = detail;
   const readOnly = summary.kind === "builtin";
   const [theme, setTheme] = useState<AuthThemeJson>(detail.theme);
@@ -406,6 +412,9 @@ export default function ThemeBuilderPage() {
   const [searchParams] = useSearchParams();
   const adminLang = langOf(searchParams);
   const copy = confirmCopy(adminLang);
+  const translateName = fieldTranslator(canTranslate, "themes.name", adminLang);
+  const translateDescription = fieldTranslator(canTranslate, "themes.description", adminLang);
+  const translateTitle = fieldTranslator(canTranslate, "themes.title", adminLang);
   const frameBox = useRef<HTMLDivElement>(null);
   const [boxWidth, setBoxWidth] = useState(320);
 
@@ -752,7 +761,7 @@ export default function ThemeBuilderPage() {
                   <section>
                     <h3 className="mb-2 font-medium">Site title on sign-in pages</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <ThemePair className="sm:col-span-2" label="Site title" hint="Optional. When set, both languages are needed; without it the pages show «Al Ummah Now» / «الأمة الآن»." path="x-auth.title" optional value={theme["x-auth"]?.title} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} />
+                      <ThemePair className="sm:col-span-2" label="Site title" hint="Optional. When set, both languages are needed; without it the pages show «Al Ummah Now» / «الأمة الآن»." path="x-auth.title" optional value={theme["x-auth"]?.title} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} translate={translateTitle} />
                     </div>
                   </section>
                 </div>
@@ -847,8 +856,8 @@ export default function ThemeBuilderPage() {
               {tab === "Details" && (
                 <div className="space-y-4">
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <ThemePair className="sm:col-span-2" label="Name" path="name" value={theme.name} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} />
-                    <ThemePair className="sm:col-span-2" label="Description" hint="Optional. When set, both languages are needed." path="description" optional value={theme.description} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} />
+                    <ThemePair className="sm:col-span-2" label="Name" path="name" value={theme.name} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} translate={translateName} />
+                    <ThemePair className="sm:col-span-2" label="Description" hint="Optional. When set, both languages are needed." path="description" optional value={theme.description} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} translate={translateDescription} />
                     <div className="space-y-1"><Label>Version</Label><TextField label="Version" disabled={readOnly} value={theme.version} onChange={(v) => v && update(setPath(theme, "version", v))} /></div>
                   </div>
                   <p className={`text-xs ${muted}`}>

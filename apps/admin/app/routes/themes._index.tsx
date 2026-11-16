@@ -19,6 +19,9 @@ import { getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { errorMessage, themeActor, themesApi, type ThemeEnv, type ThemeSummary } from "../lib/themes.server";
 import { swatchesOf, type Swatches } from "../lib/theme-builder";
+import { translateEnabled, type TranslateEnv } from "../lib/translate.server";
+import { fieldTranslator } from "../lib/translate-client";
+import type { TranslateFn } from "../components/localized-pair";
 
 export const meta: MetaFunction = () => [
   { title: "Sign-in themes - Al Ummah Now Admin" },
@@ -33,6 +36,8 @@ type LoaderData = {
   user: { id: string; email: string };
   authServerUrl: string;
   error?: string;
+  /** Translate buttons on the en/ar names (off when the service isn't configured) */
+  translate?: boolean;
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs): Promise<LoaderData> {
@@ -52,6 +57,7 @@ export async function loader({ request, context }: LoaderFunctionArgs): Promise<
       clients: isErrorResponse(clients) ? [] : clients.clients.map((c) => ({ id: c.client_id ?? c.id, name: c.name })),
       user,
       authServerUrl,
+      translate: translateEnabled(env as TranslateEnv),
     };
   } catch (error) {
     return { themes: [], authDefault: "fawanees", clientDefaults: {}, clients: [], user, authServerUrl, error: errorMessage(error) };
@@ -123,7 +129,7 @@ function ThemeSwatch({ swatches }: { swatches: Swatches | null }) {
 }
 
 export default function ThemesPage() {
-  const { themes, authDefault, clientDefaults, clients, user, authServerUrl, error } = useLoaderData<LoaderData>();
+  const { themes, authDefault, clientDefaults, clients, user, authServerUrl, error, translate: canTranslate } = useLoaderData<LoaderData>();
   const result = useActionData<ActionData>();
   const busy = useNavigation().state !== "idle";
   const [duplicateFrom, setDuplicateFrom] = useState<ThemeSummary | null>(null);
@@ -295,7 +301,7 @@ export default function ThemesPage() {
               <Input id="dup-id" name="id" required pattern="[a-z][a-z0-9\-]{1,39}" placeholder="eid-2027" defaultValue={duplicateFrom ? `${duplicateFrom.id}-copy` : ""} />
               <p className="text-xs text-[var(--color-muted-foreground)]">Lowercase letters, digits and dashes. Apps use it in links (?theme=…).</p>
             </div>
-            {duplicateFrom && <DuplicateNames key={duplicateFrom.id} from={duplicateFrom} />}
+            {duplicateFrom && <DuplicateNames key={duplicateFrom.id} from={duplicateFrom} uiLang={deleteLang} translate={fieldTranslator(canTranslate, "themes.name", deleteLang)} />}
           </Form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDuplicateFrom(null)}>Cancel</Button>
@@ -354,7 +360,7 @@ export default function ThemesPage() {
 }
 
 /** The new theme's name in both languages (both required). */
-function DuplicateNames({ from }: { from: ThemeSummary }) {
+function DuplicateNames({ from, translate, uiLang }: { from: ThemeSummary; translate?: TranslateFn; uiLang: "en" | "ar" }) {
   const [name, setName] = useState({ en: `${from.name.en} copy`, ar: `${from.name.ar} (نسخة)` });
-  return <LocalizedPair label="Name" required value={name} onChange={setName} names={{ en: "name_en", ar: "name_ar" }} />;
+  return <LocalizedPair label="Name" required value={name} onChange={setName} names={{ en: "name_en", ar: "name_ar" }} translate={translate} uiLang={uiLang} />;
 }
