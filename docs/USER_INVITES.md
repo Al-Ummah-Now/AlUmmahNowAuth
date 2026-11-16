@@ -162,11 +162,20 @@ are limited by `ADMIN_SENSITIVE_LIMITER` per client, reads by `ADMIN_LIMITER`.
 | --- | --- | --- |
 | `POST /provisioning/invites` | `inviteId, userId, email, name?, locale (en/ar), note?, expiresInDays?, continueUrl?, details?, roles? (allow-list), sendEmail?, actor{id,email}` | `201 {invite, user, created, emailSent}`; `200` on replay; `409 user_exists {user}` or `already_invited {user, invite}` |
 | `GET /provisioning/invites?ids=a,b` | | `{invites}` (status `invited` / `active` / `expired` / `revoked`) |
-| `POST …/:id/resend` | `locale?, actor` | `{invite, emailSent}` |
+| `POST …/:id/resend` | `locale?, video? (object or null), actor` | `{invite, emailSent}` |
 | `POST …/:id/link` | `tokenHash` (hex SHA-256) | `{invite}` |
 | `POST …/:id/revoke` | `reason?, actor` | `{invite}` |
 | `POST …/:id/restore` | `actor` | `{invite}` (`409 email_taken`) |
 | `POST …/:id/purge` | `confirm` (the email), `actor` | `{invite}` |
+
+`details` is the caller's own data. The email reads two keys from it:
+
+- `channels: [{ name, action }]`: the channels named in the email.
+- `video: { title, channel, imageUrl, urls: { en, ar } }`: a video shown as a 16:9 picture card. It has a play button, the title and the channel, and links to `urls[<email language>]`. Every URL must be https, and `imageUrl` must never expire (the videos admin sends its `/og/v/<id>.jpg`).
+  - Email cannot play video, so the card is a picture linking to the watch page.
+  - Outlook desktop gets the same picture through VML.
+  - The plain-text part gives the title, the channel and the link.
+  - A resend may pass `video` again, or `null` to leave the card out. The videos admin reads the video again at every send and sends `null` once it is no longer public.
 
 Audit events: `user.invited`, `user.invite.resent`, `user.invite.link_created`,
 `user.invite.opened`, `user.invite.accepted`, `user.invite.revoked`,

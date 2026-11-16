@@ -37,7 +37,13 @@ export type EmailBlock =
 	/** Small print (expiry, "ignore this if..."). */
 	| { kind: 'small'; text: string }
 	/** A plain link with its own label, shown under the text in the plain-text part. */
-	| { kind: 'link'; label: string; url: string };
+	| { kind: 'link'; label: string; url: string }
+	/**
+	 * A video: email cannot play one, so a 16:9 picture card with a play button, the title and the
+	 * channel, all linking to its watch page. `imageUrl` must be a stable https URL (never a signed
+	 * one: emails are opened weeks later); `alt` describes the picture for screen readers.
+	 */
+	| { kind: 'video'; url: string; imageUrl: string; title: string; channel?: string | null; alt: string };
 
 export interface EmailDoc {
 	locale: EmailLocale;
@@ -182,6 +188,8 @@ ${block.hint ? `<p class="s" style="margin:8px 0 0;font-size:13px;color:${c.soft
 				.join('')}</table>`;
 		case 'quote':
 			return `${block.label ? `<p class="s" style="margin:0 0 6px;font-size:13px;font-weight:600;color:${c.soft};">${escapeHtml(block.label)}</p>` : ''}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;"><tr><td class="quote" dir="auto" style="border-${start}:3px solid ${EMAIL_COLORS.lantern};padding:2px 14px;font-size:15px;line-height:1.6;color:${c.soft};text-align:${start};">${lines(block.text)}</td></tr></table>`;
+		case 'video':
+			return videoHtml(block, locale, c);
 		case 'notice': {
 			const warn = block.tone === 'warning';
 			return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 16px;"><tr><td class="notice" style="background:${warn ? c.warnBg : c.page};border-${start}:4px solid ${warn ? c.warnLine : c.line};border-radius:8px;padding:12px 16px;font-size:14px;line-height:1.6;color:${c.text};text-align:${start};">${lines(block.text)}</td></tr></table>`;
@@ -204,7 +212,37 @@ function blockText(block: EmailBlock): string {
 			return [block.label ?? '', block.text.split(/\r?\n/).map((l) => (l ? `> ${l}` : '>')).join('\n')].filter(Boolean).join('\n');
 		case 'notice':
 			return block.text;
+		case 'video':
+			return [block.title, block.channel ?? '', block.url].filter(Boolean).join('\n');
 	}
+}
+
+/** Inner width of the card's text column (600 - 2 x 36 padding): the video picture's width on desktop. */
+const VIDEO_W = 528;
+const VIDEO_H = 297; // 16:9
+
+/**
+ * The video card. The picture is the cell's background (Outlook desktop: a VML frame with the
+ * same picture), so the play button can sit on top of it in every client; the link covers the
+ * whole picture and carries the picture's description (role="img" + aria-label, title). The
+ * dark fill shows while pictures are off and in dark mode the card stays the same.
+ */
+function videoHtml(block: Extract<EmailBlock, { kind: 'video' }>, locale: EmailLocale, c: Palette): string {
+	const start = locale === 'ar' ? 'right' : 'left';
+	const href = escapeHtml(safeUrl(block.url));
+	const img = /^https:\/\/[^\s"'<>()]+$/.test(block.imageUrl) ? escapeHtml(block.imageUrl) : '';
+	const alt = escapeHtml(block.alt);
+	const fill = EMAIL_COLORS.dark.page;
+	const play = `<span class="vidplay" style="display:inline-block;width:68px;height:68px;line-height:68px;border-radius:34px;background:${EMAIL_COLORS.header};border:3px solid ${EMAIL_COLORS.lantern};color:#ffffff;font-size:26px;font-family:Arial,sans-serif;text-align:center;vertical-align:middle;mso-line-height-rule:exactly;" aria-hidden="true">&#9654;&#65038;</span>`;
+	return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px;"><tr><td class="vid" align="center" valign="middle" height="${VIDEO_H}" bgcolor="${fill}"${img ? ` background="${img}"` : ''} style="height:${VIDEO_H}px;background-color:${fill};${img ? `background-image:url('${img}');background-position:center center;background-size:cover;background-repeat:no-repeat;` : ''}border-radius:12px;">
+<!--[if mso]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${VIDEO_W}px;height:${VIDEO_H}px;"><v:fill type="frame"${img ? ` src="${img}"` : ''} color="${fill}"/><v:textbox inset="0,0,0,0" style="v-text-anchor:middle;"><center><![endif]-->
+<a class="vida" href="${href}" role="img" aria-label="${alt}" title="${alt}" style="display:block;height:${VIDEO_H}px;line-height:${VIDEO_H}px;text-align:center;text-decoration:none;">${play}</a>
+<!--[if mso]></center></v:textbox></v:rect><![endif]-->
+</td></tr>
+<tr><td style="padding:10px 2px 0;text-align:${start};">
+<a class="a" href="${href}" dir="auto" style="font-size:16px;line-height:1.45;font-weight:700;color:${c.link};text-decoration:none;">${escapeHtml(block.title)}</a>
+${block.channel ? `<p class="s" dir="auto" style="margin:2px 0 0;font-size:13px;line-height:1.5;color:${c.soft};">${escapeHtml(block.channel)}</p>` : ''}
+</td></tr></table>`;
 }
 
 function button(cta: { label: string; url: string }, theme: EmailThemeOverrides | undefined): string {
@@ -283,6 +321,7 @@ a{color:${c.link}}
 .pad{padding:24px 20px!important}
 .codetext{font-size:28px!important;letter-spacing:5px!important}
 .btn,.btna{display:block!important;width:100%!important;box-sizing:border-box}
+.vid,.vida{height:190px!important;line-height:190px!important}
 }
 @media (prefers-color-scheme:dark){${DARK_CSS.media}
 }
