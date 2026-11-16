@@ -108,6 +108,7 @@ export async function handleSelectAccountGet(
 		accounts,
 		clientId,
 		clientName: clientValidation.client!.name,
+		clientNameAr: clientValidation.client!.nameAr,
 		redirectUri,
 		state: state || undefined,
 		scope: scope || undefined,

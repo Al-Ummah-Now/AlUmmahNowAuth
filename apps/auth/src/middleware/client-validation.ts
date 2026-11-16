@@ -6,6 +6,7 @@
  */
 
 import type { D1Database } from '@cloudflare/workers-types';
+import { localizedOrUndefined } from '../../../../packages/ui/src/l10n/localized.ts';
 
 /**
  * Client validation result
@@ -16,6 +17,8 @@ export interface ClientValidationResult {
 	client?: {
 		id: string;
 		name: string;
+		/** Arabic display name (metadata.name_ar); undefined when missing. */
+		nameAr?: string;
 		redirectUris: string[];
 	};
 }
@@ -60,7 +63,7 @@ export async function validateClient(
 	// Fetch client from database
 	const client = await db
 		.prepare(
-			`SELECT id, name, redirect_uris
+			`SELECT id, name, redirect_uris, metadata
       FROM oauth_clients
       WHERE id = ? AND enabled = 1`
 		)
@@ -93,6 +96,7 @@ export async function validateClient(
 		client: {
 			id: client.id as string,
 			name: client.name as string,
+			nameAr: clientNameAr(client.metadata),
 			redirectUris,
 		},
 	};
@@ -114,11 +118,12 @@ export async function getClient(
 ): Promise<{
 	id: string;
 	name: string;
+	nameAr?: string;
 	redirectUris: string[];
 } | null> {
 	const client = await db
 		.prepare(
-			`SELECT id, name, redirect_uris
+			`SELECT id, name, redirect_uris, metadata
       FROM oauth_clients
       WHERE id = ? AND enabled = 1`
 		)
@@ -138,6 +143,24 @@ export async function getClient(
 	return {
 		id: client.id as string,
 		name: client.name as string,
+		nameAr: clientNameAr(client.metadata),
 		redirectUris,
 	};
+}
+
+/**
+ * The client's Arabic display name, kept in its metadata as `name_ar` (the
+ * `name` column is the English one). Undefined when missing or not Arabic.
+ */
+export function clientNameAr(metadata: unknown): string | undefined {
+	let meta: unknown = metadata;
+	if (typeof metadata === 'string') {
+		try {
+			meta = JSON.parse(metadata);
+		} catch {
+			return undefined;
+		}
+	}
+	const v = meta && typeof meta === 'object' ? (meta as Record<string, unknown>).name_ar : undefined;
+	return localizedOrUndefined({ ar: v }, 'ar');
 }

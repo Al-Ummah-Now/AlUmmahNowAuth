@@ -6,10 +6,12 @@ import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { confirmCopy } from "../lib/confirm-copy";
 import { Plus, Key, Trash2, RefreshCw, Copy, Check, Globe, Lock, Settings } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
+import { LocalizedPair } from "../components/localized-pair";
+import { pairErrors } from "../lib/localized-errors";
+import { hasLang, missingLabel, type Lang, type LocalizedPairValue } from "../../../../packages/ui/src/l10n/localized";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
-import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import {
@@ -141,7 +143,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const intent = formData.get("intent");
 
   if (intent === "create") {
-    const name = formData.get("name") as string;
+    const names = namesFrom(formData);
+    const nameErrors = pairErrors(names, "name");
+    if (nameErrors) return { error: "Enter the client name in English and Arabic", fieldErrors: nameErrors };
     const redirectUrisStr = formData.get("redirect_uris") as string;
     const redirectUris = redirectUrisStr ? redirectUrisStr.split("\n").filter(u => u.trim()) : [];
     const grantTypes = formData.getAll("grant_types") as string[];
@@ -158,11 +162,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
     }
 
     const result = await createClient(env, actingUser, {
-      name,
+      name: names.en,
       redirect_uris: redirectUris.length > 0 ? redirectUris : undefined,
       grant_types: grantTypes.length > 0 ? grantTypes : ["authorization_code", "refresh_token"],
       scopes: scopes.length > 0 ? scopes : ["openid", "profile", "email"],
-      metadata,
+      metadata: { ...metadata, name_ar: names.ar },
     });
 
     if (isErrorResponse(result)) {
@@ -205,6 +209,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   if (intent === "update") {
     const clientId = formData.get("client_id") as string;
+    const names = namesFrom(formData);
+    const nameErrors = pairErrors(names, "name");
+    if (nameErrors) return { error: "Enter the client name in English and Arabic", fieldErrors: nameErrors };
     const redirectUris = (formData.get("redirect_uris") as string).split("\n").filter(u => u.trim());
     const grantTypes = formData.getAll("grant_types") as string[];
     const scopes = formData.getAll("scopes") as string[];
@@ -220,10 +227,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
     }
 
     const result = await updateClient(env, actingUser, clientId, {
+      name: names.en,
       redirect_uris: redirectUris,
       grant_types: grantTypes,
       scopes,
-      metadata,
+      metadata: { ...metadata, name_ar: names.ar },
     });
 
     if (isErrorResponse(result)) {
@@ -236,23 +244,44 @@ export async function action({ request, context }: ActionFunctionArgs) {
   return { error: "Unknown action" };
 }
 
+/** The client's display name pair: `name` (English) and `metadata.name_ar` (Arabic). */
+function namesFrom(formData: FormData): LocalizedPairValue {
+  return { en: String(formData.get("name") ?? "").trim(), ar: String(formData.get("name_ar") ?? "").trim() };
+}
+
+function clientNames(client: Pick<OAuthClient, "name" | "metadata">): LocalizedPairValue {
+  const ar = client.metadata?.name_ar;
+  return { en: client.name ?? "", ar: typeof ar === "string" ? ar : "" };
+}
+
+/** Metadata as the JSON box shows it: the Arabic name has its own field. */
+function metadataForEditing(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
+  const rest = { ...(metadata ?? {}) };
+  delete rest.name_ar;
+  return rest;
+}
+
 interface FetcherData {
   success?: boolean;
   error?: string;
+  fieldErrors?: Partial<Record<Lang, string>>;
   created_client_id?: string;
   client_secret?: string;
   newSecret?: string;
 }
 
 export default function ClientsPage() {
-  const { clients, user, authServerUrl } = useLoaderData<LoaderData>();
+  const { clients: allClients, user, authServerUrl } = useLoaderData<LoaderData>();
   const fetcher = useFetcher<FetcherData>();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [rotating, setRotating] = useState<OAuthClient | null>(null);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const missingFilter = searchParams.get("missing") === "ar" ? "ar" : searchParams.get("missing") === "en" ? "en" : null;
+  const missingCount = { en: allClients.filter((c) => !hasLang(clientNames(c), "en")).length, ar: allClients.filter((c) => !hasLang(clientNames(c), "ar")).length };
+  const clients = missingFilter ? allClients.filter((c) => !hasLang(clientNames(c), missingFilter)) : allClients;
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
   const copy = confirmCopy(deleteLang);
@@ -265,7 +294,8 @@ export default function ClientsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Form state for create
-  const [newClientName, setNewClientName] = useState("");
+  const [newClientName, setNewClientName] = useState<LocalizedPairValue>({ en: "", ar: "" });
+  const [nameErrors, setNameErrors] = useState<Partial<Record<Lang, string>> | undefined>();
   const [newRedirectUris, setNewRedirectUris] = useState("");
   const [newGrantTypes, setNewGrantTypes] = useState<string[]>(["authorization_code", "refresh_token"]);
   const [newScopes, setNewScopes] = useState<string[]>(["openid", "profile", "email"]);
@@ -273,7 +303,8 @@ export default function ClientsPage() {
 
   // Open create dialog
   const openCreateDialog = () => {
-    setNewClientName("");
+    setNewClientName({ en: "", ar: "" });
+    setNameErrors(undefined);
     setNewRedirectUris("");
     setNewGrantTypes(["authorization_code", "refresh_token"]);
     setNewScopes(["openid", "profile", "email"]);
@@ -298,6 +329,7 @@ export default function ClientsPage() {
   };
 
   // Form state for edit
+  const [editName, setEditName] = useState<LocalizedPairValue>({ en: "", ar: "" });
   const [editRedirectUris, setEditRedirectUris] = useState("");
   const [editAllowedGrants, setEditAllowedGrants] = useState<string[]>([]);
   const [editScopes, setEditScopes] = useState<string[]>([]);
@@ -309,6 +341,7 @@ export default function ClientsPage() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (fetcher.data) {
+      setNameErrors(fetcher.data.fieldErrors);
       if (fetcher.data.error) {
         setError(fetcher.data.error);
       } else if (fetcher.data.success) {
@@ -320,7 +353,7 @@ export default function ClientsPage() {
           setNewClientSecret(fetcher.data.client_secret);
           setSecretDialogOpen(true);
           setCreateDialogOpen(false);
-          setNewClientName("");
+          setNewClientName({ en: "", ar: "" });
           setNewRedirectUris("");
           setNewGrantTypes(["authorization_code", "refresh_token"]);
           setNewScopes(["openid", "profile", "email"]);
@@ -351,8 +384,12 @@ export default function ClientsPage() {
   const handleCreate = () => {
     setError(null);
     const formData = new FormData();
+    const errs = pairErrors(newClientName, "name");
+    setNameErrors(errs);
+    if (errs) return;
     formData.append("intent", "create");
-    formData.append("name", newClientName);
+    formData.append("name", newClientName.en);
+    formData.append("name_ar", newClientName.ar);
     formData.append("redirect_uris", newRedirectUris);
     newGrantTypes.forEach(grant => formData.append("grant_types", grant));
     newScopes.forEach(scope => formData.append("scopes", scope));
@@ -378,8 +415,13 @@ export default function ClientsPage() {
     setError(null);
 
     const formData = new FormData();
+    const errs = pairErrors(editName, "name");
+    setNameErrors(errs);
+    if (errs) return;
     formData.append("intent", "update");
     formData.append("client_id", selectedClient.client_id);
+    formData.append("name", editName.en);
+    formData.append("name_ar", editName.ar);
     formData.append("redirect_uris", editRedirectUris);
     editAllowedGrants.forEach(grant => formData.append("grant_types", grant));
     editScopes.forEach(scope => formData.append("scopes", scope));
@@ -400,10 +442,12 @@ export default function ClientsPage() {
 
   const openEditDialog = (client: OAuthClient) => {
     setSelectedClient(client);
+    setEditName(clientNames(client));
+    setNameErrors(undefined);
     setEditRedirectUris(client.redirect_uris.join("\n"));
     setEditAllowedGrants(client.allowed_grants);
     setEditScopes(client.scopes || []);
-    setEditMetadata(JSON.stringify(client.metadata || {}, null, 2));
+    setEditMetadata(JSON.stringify(metadataForEditing(client.metadata), null, 2));
     setEditDialogOpen(true);
   };
 
@@ -466,13 +510,32 @@ export default function ClientsPage() {
         <CardHeader>
           <CardTitle>Registered Clients</CardTitle>
           <CardDescription>
-            {clients.length} OAuth client{clients.length !== 1 ? "s" : ""} registered
+            {allClients.length} OAuth client{allClients.length !== 1 ? "s" : ""} registered
           </CardDescription>
+          <div role="group" aria-label="Show clients" className="flex flex-wrap gap-2 pt-2">
+            {([null, "ar", "en"] as const).map((f) => (
+              <Button
+                key={f ?? "all"}
+                type="button"
+                size="sm"
+                variant={missingFilter === f ? "default" : "outline"}
+                aria-pressed={missingFilter === f}
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  if (f) next.set("missing", f);
+                  else next.delete("missing");
+                  setSearchParams(next, { replace: true });
+                }}
+              >
+                {f ? `${missingLabel(f, deleteLang)} (${missingCount[f]})` : `${deleteLang === "ar" ? "الكل" : "All"} (${allClients.length})`}
+              </Button>
+            ))}
+          </div>
         </CardHeader>
         <CardContent>
           {clients.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No OAuth clients registered yet. Click "Add Client" to create one.
+              {missingFilter ? "No clients are missing that language." : 'No OAuth clients registered yet. Click "Add Client" to create one.'}
             </div>
           ) : (
             <Table>
@@ -491,7 +554,19 @@ export default function ClientsPage() {
               <TableBody>
                 {clients.map((client) => (
                   <TableRow key={client.id}>
-                    <TableCell className="font-medium">{client.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <div>{client.name}</div>
+                      {hasLang(clientNames(client), "ar") && (
+                        <div lang="ar" dir="rtl" className="text-sm font-normal text-[var(--color-muted-foreground)]">
+                          {clientNames(client).ar}
+                        </div>
+                      )}
+                      {(["en", "ar"] as const).filter((l) => !hasLang(clientNames(client), l)).map((l) => (
+                        <Badge key={l} variant="outline" className="mt-1 border-[var(--color-warning-text)] text-[var(--color-warning-text)]">
+                          {missingLabel(l, deleteLang)}
+                        </Badge>
+                      ))}
+                    </TableCell>
                     <TableCell className="font-mono text-sm text-muted-foreground">{client.client_id}</TableCell>
                     <TableCell>
                       <Badge variant={client.client_type === "confidential" ? "default" : "secondary"}>
@@ -594,18 +669,15 @@ export default function ClientsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="client_name">Client Name *</Label>
-              <Input
-                id="client_name"
-                value={newClientName}
-                onChange={(e) => setNewClientName(e.target.value)}
-                placeholder="My Application"
-              />
-              <p className="text-xs text-muted-foreground">
-                A descriptive name for this OAuth client
-              </p>
-            </div>
+            <LocalizedPair
+              label="Client name"
+              hint="Shown to people when they choose an account to continue to this app."
+              required
+              value={newClientName}
+              onChange={setNewClientName}
+              errors={nameErrors}
+              placeholder={{ en: "My Application", ar: "تطبيقي" }}
+            />
             <div className="space-y-2">
               <Label htmlFor="redirect_uris">Redirect URIs (one per line)</Label>
               <textarea
@@ -666,7 +738,7 @@ export default function ClientsPage() {
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={isLoading || !newClientName.trim()}>
+            <Button onClick={handleCreate} disabled={isLoading}>
               {isLoading ? "Creating..." : "Create Client"}
             </Button>
           </DialogFooter>
@@ -683,6 +755,16 @@ export default function ClientsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <LocalizedPair
+              label="Client name"
+              hint="Shown to people when they choose an account to continue to this app."
+              required
+              flagMissing
+              uiLang={deleteLang}
+              value={editName}
+              onChange={setEditName}
+              errors={nameErrors}
+            />
             <div className="space-y-2">
               <Label htmlFor="edit_redirect_uris">Redirect URIs (one per line)</Label>
               <textarea

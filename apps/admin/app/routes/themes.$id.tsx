@@ -36,6 +36,7 @@ import {
 import { AUTH_RADII, SECTIONS, type SlotDef } from "../../../../packages/ui/src/auth-theme/catalog.ts";
 import type { AuthThemeJson, SchemeValue } from "../../../../packages/ui/src/auth-theme/types.ts";
 import { validateTheme } from "../../../../packages/ui/src/auth-theme/validate.ts";
+import { LocalizedPair } from "../components/localized-pair";
 import { BASE } from "../../../../packages/ui/src/theme-packages/base.generated.ts";
 import { COMPONENT_PARTS } from "../../../../packages/ui/src/theme-packages/components.ts";
 import type { Issue } from "../../../../packages/ui/src/theme-packages/validate.ts";
@@ -168,6 +169,42 @@ function TextField({ value, onChange, disabled, label, placeholder, dir }: { val
         const text = e.target.value.trim();
         if (text !== (value ?? "")) onChange(text === "" ? undefined : text);
       }}
+    />
+  );
+}
+
+/**
+ * A theme text in English and Arabic (name, description, site title). Both are
+ * required; an optional one may be left out entirely (both empty). Errors come
+ * from validateTheme, which Auth runs again on save.
+ */
+function ThemePair({ label, hint, path, optional, value, theme, update, readOnly, issuesAt, className, uiLang }: {
+  label: string;
+  hint?: string;
+  path: string;
+  optional?: boolean;
+  value: { en?: string; ar?: string } | undefined;
+  theme: AuthThemeJson;
+  update: (next: AuthThemeJson) => void;
+  readOnly: boolean;
+  issuesAt: (prefix: string) => Issue[];
+  className?: string;
+  uiLang: "en" | "ar";
+}) {
+  const pair = { en: value?.en ?? "", ar: value?.ar ?? "" };
+  const errorOf = (l: "en" | "ar") => issuesAt(`${path}.${l}`)[0]?.message;
+  return (
+    <LocalizedPair
+      className={className}
+      uiLang={uiLang}
+      label={label}
+      hint={hint}
+      required={!optional}
+      flagMissing={!optional || !!(value?.en || value?.ar)}
+      disabled={readOnly}
+      value={pair}
+      errors={{ en: errorOf("en"), ar: errorOf("ar") }}
+      onChange={(v) => update(setPath(theme, path, optional && !v.en.trim() && !v.ar.trim() ? undefined : { en: v.en, ar: v.ar }))}
     />
   );
 }
@@ -715,8 +752,7 @@ export default function ThemeBuilderPage() {
                   <section>
                     <h3 className="mb-2 font-medium">Site title on sign-in pages</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <TextField label="Site title (English)" disabled={readOnly} value={theme["x-auth"]?.title?.en} onChange={(v) => update(setPath(theme, "x-auth.title", v ? { en: v, ar: theme["x-auth"]?.title?.ar ?? v } : undefined))} />
-                      <TextField label="Site title (Arabic)" dir="rtl" disabled={readOnly} value={theme["x-auth"]?.title?.ar} onChange={(v) => update(setPath(theme, "x-auth.title", { en: theme["x-auth"]?.title?.en ?? "", ar: v ?? "" }))} />
+                      <ThemePair className="sm:col-span-2" label="Site title" hint="Optional. When set, both languages are needed; without it the pages show «Al Ummah Now» / «الأمة الآن»." path="x-auth.title" optional value={theme["x-auth"]?.title} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} />
                     </div>
                   </section>
                 </div>
@@ -811,10 +847,8 @@ export default function ThemeBuilderPage() {
               {tab === "Details" && (
                 <div className="space-y-4">
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1"><Label>Name (English)</Label><TextField label="Name (English)" disabled={readOnly} value={theme.name.en} onChange={(v) => v && update(setPath(theme, "name.en", v))} /></div>
-                    <div className="space-y-1"><Label>Name (Arabic)</Label><TextField label="Name (Arabic)" dir="rtl" disabled={readOnly} value={theme.name.ar} onChange={(v) => v && update(setPath(theme, "name.ar", v))} /></div>
-                    <div className="space-y-1"><Label>Description (English)</Label><TextField label="Description (English)" disabled={readOnly} value={theme.description?.en} onChange={(v) => update(setPath(theme, "description", v ? { en: v, ar: theme.description?.ar ?? v } : undefined))} /></div>
-                    <div className="space-y-1"><Label>Description (Arabic)</Label><TextField label="Description (Arabic)" dir="rtl" disabled={readOnly} value={theme.description?.ar} onChange={(v) => update(setPath(theme, "description", { en: theme.description?.en ?? "", ar: v ?? "" }))} /></div>
+                    <ThemePair className="sm:col-span-2" label="Name" path="name" value={theme.name} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} />
+                    <ThemePair className="sm:col-span-2" label="Description" hint="Optional. When set, both languages are needed." path="description" optional value={theme.description} theme={theme} update={update} readOnly={readOnly} issuesAt={issuesAt} uiLang={adminLang} />
                     <div className="space-y-1"><Label>Version</Label><TextField label="Version" disabled={readOnly} value={theme.version} onChange={(v) => v && update(setPath(theme, "version", v))} /></div>
                   </div>
                   <p className={`text-xs ${muted}`}>

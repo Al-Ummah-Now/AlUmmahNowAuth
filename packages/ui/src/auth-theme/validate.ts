@@ -10,6 +10,7 @@ import { SCHEMA } from '../theme-packages/schema.generated.ts';
 import { MAX_ASSET_BYTES, MAX_PACKAGE_BYTES, contrastIssues, validatePackage, type Issue } from '../theme-packages/validate.ts';
 import { AUTH_RADII, SECTIONS, SPEC_SLOTS } from './catalog.ts';
 import type { StoredAsset } from './types.ts';
+import { emptyLangs } from '../l10n/localized.ts';
 
 export { MAX_ASSET_BYTES, MAX_PACKAGE_BYTES, type Issue };
 
@@ -125,10 +126,25 @@ export function validateTheme(theme: unknown, opts: ValidateThemeOptions = {}): 
 	if (ext !== undefined) {
 		for (const e of checkSchema(ext, EXT_ROOT)) errors.push({ path: e.path === '(root)' ? 'x-auth' : `x-auth.${e.path}`, message: e.message });
 	}
+	errors.push(...localizedIssues(theme));
 	if (!opts.files && opts.stored) {
 		for (const path of referencedAssets(theme)) if (!opts.stored[path]) errors.push({ path, message: `names ${path}, which is not in the package` });
 	}
 	return { errors, contrast, warnings: result.warnings };
+}
+
+/** Staff-set texts with en + ar: when present, both languages are required (no fallback). */
+const LOCALIZED_PATHS: string[][] = [['name'], ['description'], ['x-auth', 'title']];
+
+export function localizedIssues(theme: unknown): Issue[] {
+	const issues: Issue[] = [];
+	for (const path of LOCALIZED_PATHS) {
+		let v: unknown = theme;
+		for (const k of path) v = v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined;
+		if (v === undefined) continue;
+		for (const lang of emptyLangs(v)) issues.push({ path: `${path.join('.')}.${lang}`, message: `needs ${lang === 'en' ? 'English' : 'Arabic'} text; both languages are required` });
+	}
+	return issues;
 }
 
 export function formatIssues(issues: Issue[]): string {

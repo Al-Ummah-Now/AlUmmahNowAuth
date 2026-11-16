@@ -6,6 +6,8 @@ import { useState } from "react";
 import { Copy, Download, Palette, Star, Trash2, Upload } from "lucide-react";
 import { AdminLayout } from "../components/admin-layout";
 import { Badge } from "../components/ui/badge";
+import { LocalizedPair } from "../components/localized-pair";
+import { missingLangs, missingLabel } from "../../../../packages/ui/src/l10n/localized";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
@@ -175,6 +177,11 @@ export default function ThemesPage() {
                       <span dir="rtl" lang="ar">{t.name.ar}</span> · <code className="text-xs">{t.id}</code>
                       {t.version && <> · v{t.version}</>}
                     </CardDescription>
+                    {missingLangs(t.name).map((l) => (
+                      <Badge key={l} variant="outline" className="mt-1 border-[var(--color-warning-text)] text-[var(--color-warning-text)]">
+                        {missingLabel(l, deleteLang)}
+                      </Badge>
+                    ))}
                   </div>
                   {t.isAuthDefault && (
                     <Badge title="Every app without its own default gets this theme">
@@ -288,16 +295,7 @@ export default function ThemesPage() {
               <Input id="dup-id" name="id" required pattern="[a-z][a-z0-9\-]{1,39}" placeholder="eid-2027" defaultValue={duplicateFrom ? `${duplicateFrom.id}-copy` : ""} />
               <p className="text-xs text-[var(--color-muted-foreground)]">Lowercase letters, digits and dashes. Apps use it in links (?theme=…).</p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="dup-en">Name (English)</Label>
-                <Input id="dup-en" name="name_en" required defaultValue={duplicateFrom ? `${duplicateFrom.name.en} copy` : ""} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="dup-ar">Name (Arabic)</Label>
-                <Input id="dup-ar" name="name_ar" required dir="rtl" lang="ar" defaultValue={duplicateFrom ? `${duplicateFrom.name.ar} (نسخة)` : ""} />
-              </div>
-            </div>
+            {duplicateFrom && <DuplicateNames key={duplicateFrom.id} from={duplicateFrom} />}
           </Form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDuplicateFrom(null)}>Cancel</Button>
@@ -353,4 +351,10 @@ export default function ThemesPage() {
       </Dialog>
     </AdminLayout>
   );
+}
+
+/** The new theme's name in both languages (both required). */
+function DuplicateNames({ from }: { from: ThemeSummary }) {
+  const [name, setName] = useState({ en: `${from.name.en} copy`, ar: `${from.name.ar} (نسخة)` });
+  return <LocalizedPair label="Name" required value={name} onChange={setName} names={{ en: "name_en", ar: "name_ar" }} />;
 }
