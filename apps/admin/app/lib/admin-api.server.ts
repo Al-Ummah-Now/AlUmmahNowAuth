@@ -897,9 +897,13 @@ export interface DeletedItem {
   kind: DeletionKind;
   id: string;
   label: string | null;
+  /** A deleted user's display name (label is their email) */
+  name?: string | null;
   deletedAt: number;
   deletedBy: string;
   deletedByEmail: string | null;
+  /** The deleting admin's display name */
+  deletedByName?: string | null;
   reason: string | null;
   purgeRequestedAt: number | null;
   purgeRequestedBy: string | null;

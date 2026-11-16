@@ -5,6 +5,7 @@
  * that removes data, 30 days later or on its next run after an admin asks for
  * permanent deletion. Every step is audit-logged.
  */
+import { resolveUserDisplayName } from '../../../../packages/ui/src/display-name.ts';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { emitAuditEvent } from '../audit-emitter';
 import { logger } from '../logger';
@@ -32,6 +33,10 @@ export interface DeletionView {
 	reason: string | null;
 	purgeRequestedAt: number | null;
 	purgeRequestedBy: string | null;
+	/** A deleted user's display name, when they had one (the label is their email). */
+	name?: string | null;
+	/** The deleting admin's display name, when they have one. */
+	deletedByName?: string | null;
 	/** When the cleanup removes it at the latest (ms). */
 	purgeAt: number;
 	lastError: string | null;
@@ -168,5 +173,29 @@ export async function requestPurge(
 }
 
 export async function listDeleted(env: Pick<Env, 'AUTH_DB'>, kind?: DeletionKind, tenantId = 'default'): Promise<DeletionView[]> {
-	return (await new DeletionStore(env.AUTH_DB).list(kind, tenantId)).map(toView);
+	const views = (await new DeletionStore(env.AUTH_DB).list(kind, tenantId)).map(toView);
+	// People are shown by name (display name → first + last), the email when they have none
+	const ids = [...new Set(views.flatMap((v) => [...(v.kind === 'user' ? [v.id] : []), v.deletedBy]).filter((id) => id && !NOT_A_USER.has(id)))];
+	const names = await userNames(env.AUTH_DB, ids);
+	return views.map((v) => ({ ...v, name: v.kind === 'user' ? names.get(v.id) ?? null : null, deletedByName: names.get(v.deletedBy) ?? null }));
+}
+
+/** deleted_by values that name no account. */
+const NOT_A_USER = new Set(['self', 'moderation', 'unknown', 'system']);
+
+/** Display names of these users, by primary key (never a scan), in chunks under D1's bound-parameter limit. */
+async function userNames(db: D1Database, ids: string[]): Promise<Map<string, string>> {
+	const out = new Map<string, string>();
+	for (let i = 0; i < ids.length; i += 50) {
+		const chunk = ids.slice(i, i + 50);
+		const { results } = await db
+			.prepare(`SELECT id, name, metadata FROM users WHERE id IN (${chunk.map(() => '?').join(',')})`)
+			.bind(...chunk)
+			.all<{ id: string; name: string | null; metadata: string | null }>();
+		for (const row of results ?? []) {
+			const name = resolveUserDisplayName(row);
+			if (name) out.set(row.id, name);
+		}
+	}
+	return out;
 }
