@@ -110,6 +110,7 @@ const STYLES = `
         }
         /* display: inline-flex above would otherwise show a button the page hid (e.g. Add a passkey) */
         .btn[hidden] { display: none; }
+        .profile-card[hidden] { display: none; }
         .btn-primary { background: var(--auth-profile-button-background, linear-gradient(135deg, var(--fanous-color-primary) 0%, var(--fanous-color-primary-hover) 100%)); color: var(--auth-profile-button-text, var(--fanous-color-on-primary)); box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3); }
         .btn-primary:hover { background: linear-gradient(135deg, var(--fanous-color-primary-hover) 0%, var(--fanous-color-primary-pressed) 100%); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(14, 165, 233, 0.4); }
         .btn-secondary { background: rgba(255, 255, 255, 0.1); color: var(--fanous-color-text-primary); border: 1px solid rgba(255, 255, 255, 0.2); }
@@ -509,6 +510,9 @@ export function renderHomePage(o: HomePageOptions): string {
             document.getElementById('passkeysEmpty').hidden = items.length > 0;
             document.getElementById('passkeysStaffNote').hidden = !(data && data.staff);
             document.getElementById('passkeyAdd').hidden = !!data && (items.length >= (data.max || 10) || data.canAdd === false);
+            // Nothing to list and adding isn't offered (a staff member's first passkey needs an emailed code
+            // Auth can't send): the whole card is hidden, no "add one" text for a feature that isn't there
+            document.getElementById('passkeys').hidden = !!data && data.canAdd === false && items.length === 0;
             list.innerHTML = '';
             items.forEach(function (p) {
                 var li = document.createElement('li');
