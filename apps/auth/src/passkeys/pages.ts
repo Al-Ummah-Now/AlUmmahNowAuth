@@ -117,6 +117,8 @@ export interface AddPasskeyPage {
 	ticket?: string;
 	/** Lang query for the API calls (so emails are in the page's language) */
 	lang: PageLocale;
+	/** Wording of another flow that offers the card (the invite's first sign-in): title, text, skip label */
+	wording?: { title: string; text: string; skip: string };
 }
 
 function formatDate(epochSeconds: number, locale: PageLocale): string {
@@ -212,9 +214,9 @@ function codeIntroHtml(intro: (email: string) => string, email: string) {
 
 export async function renderAddPasskeyPage(p: AddPasskeyPage): Promise<Response> {
 	const t = copyFor(p.locale);
-	const title = p.mode === 'card' ? (p.staff ? t.staffTitle : t.cardTitle) : p.staff ? t.staffTitle : t.setupTitle;
-	const text = p.mode === 'card' ? (p.staff ? t.staffText : t.cardText) : p.staff ? t.staffText : t.setupText;
-	const skipLabel = p.mode === 'card' ? (p.staff ? t.continue : t.notNow) : t.back;
+	const title = p.wording?.title ?? (p.mode === 'card' ? (p.staff ? t.staffTitle : t.cardTitle) : p.staff ? t.staffTitle : t.setupTitle);
+	const text = p.wording?.text ?? (p.mode === 'card' ? (p.staff ? t.staffText : t.cardText) : p.staff ? t.staffText : t.setupText);
+	const skipLabel = p.wording?.skip ?? (p.mode === 'card' ? (p.staff ? t.continue : t.notNow) : t.back);
 	const body = html`<style>
 			${raw(STYLE)}
 		</style>

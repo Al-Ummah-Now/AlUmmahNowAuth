@@ -3,18 +3,22 @@
 An app admin (today: the videos admin, "Invite creator") invites someone by
 email. The account exists from that moment, so the app can give it a plan,
 channels and anything else keyed by the user id before the person ever signs
-in. When they first sign in with that email they land in that account. There
-are no extra steps.
+in. The invite link signs them straight in: no password, no second code, no
+"Create account".
 
 ```
 videos admin-api ── queue ──▶ POST /provisioning/invites (client credentials, invites:provision)
                                    │ users row: status 'invited', metadata.email_verified = false
                                    │ user_invites row: token hash, expiry, who invited
                                    ▼
-                         invite email (en + ar) ──▶ GET /invite/:token ── Continue (POST) ──▶ app sign-in
-                                                                                              │
-                     issuer onSuccess: same email, any method ◀───────────────────────────────┘
-                     → claimInvitedAccount: status 'active', email_verified = true, invite accepted
+             invite email ──▶ GET /invite/:token "Your account is ready" ── Continue (POST)
+                                   │ spend the token (single use), claim: status 'active', email verified, invite accepted
+                                   │ signed in on this browser as the active account (__session); other accounts untouched
+                                   ▼
+                     "Sign in faster next time": add a passkey, or Skip
+                                   ▼
+             app sign-in (continueUrl without prompt) ─▶ /authorize ─▶ single sign-on ─▶ app
+             (videos: Studio on the invited channel, else the account page, with a first-run welcome)
 ```
 
 ## Accounts
@@ -29,9 +33,10 @@ videos admin-api ── queue ──▶ POST /provisioning/invites (client crede
   after a sign-up. It gets **no tokens** by any route other than the claim: the
   token gate, the refresh check and single sign-on all refuse any status other
   than `active` (`security/account-status.ts`).
-- **Claim.** The issuer's `onSuccess` (`handlers/auth-handlers.ts`) looks the
-  user up by email, as for every sign-in. If the account is `invited`, it claims
-  it: status becomes `active`, `metadata.email_verified` becomes true, and the
+- **Claim.** Normally the invite link's Continue claims it (above). Any other
+  sign-in with that email also does: the issuer's `onSuccess`
+  (`handlers/auth-handlers.ts`) looks the user up by email, and if the account
+  is `invited`, it claims it: status becomes `active`, `metadata.email_verified` becomes true, and the
   invite becomes accepted (audit `user.invite.accepted`).
 - **Roles.** Member always. The app may add roles from the allow-list
   `INVITE_GRANTABLE_ROLES` by name (today only `Scholar` → `role_scholar`),
@@ -49,33 +54,87 @@ videos admin-api ── queue ──▶ POST /provisioning/invites (client crede
 
 ## The link
 
-- The token is 32 random bytes. Only its SHA-256 (`user_invites.token_hash`) is
-  stored, and it is never logged or audited.
-- `GET /invite/:token` shows who the invite is for. It is in English unless the
-  URL has `?lang=ar`; Arabic invites get that in the email link. A GET never
-  spends the token, because mail scanners open links.
-- **Continue** (`POST`) spends the token once (`token_used_at`) and redirects
-  to the app's sign-in (`continueUrl`). That URL must be one of our origins
-  (`ALLOWED_ORIGINS`), or localhost outside production. Otherwise the default
-  sign-in page is used.
-- An expired, used, revoked or unknown link shows the same page: "sign in with
-  the email the invite was sent to". The link is only a convenience. An expired
-  invite can still be claimed by signing in.
+- The token is 32 random bytes (256 bits). Only its SHA-256
+  (`user_invites.token_hash`) is stored, and it is never logged or audited.
+  The hash stays after the token is spent, so a second click finds its
+  invite; `token_used_at` makes it single use.
+- Page language: `?lang=en|ar`, else the invite's language. Arabic pages are
+  RTL; addresses are isolated (`<bdi dir="ltr">`).
+- A GET never spends the token, because mail scanners open links.
+
+### Continue (POST /invite/:token)
+
+Spending the link proves the person reads the invited inbox, the same proof
+as an emailed code. So Continue:
+
+1. checks the CSRF token (form field = `invite_csrf` cookie, `SameSite=Strict`,
+   `Path=/invite`; an `Origin` header must be ours). A failed check shows the
+   page again and does nothing;
+2. spends the token atomically (`UPDATE … WHERE token_used_at IS NULL`): of two
+   concurrent clicks exactly one signs in, the other sees the used-link page;
+3. claims the account (`claimInvitedAccount`: active, email verified, invite
+   accepted; audit `user.invite.opened` + `user.invite.accepted` +
+   `auth.login.success`) and re-reads it, so a revoke a moment earlier wins;
+4. signs the account in on this browser and makes it the **active** account
+   (`invites/sign-in.ts`, `amr: ["otp"]`). Other accounts already signed in on
+   the browser change nothing: no extra step or warning, they stay signed in,
+   and the invite only ever goes to the invited account. Like the issuer's own
+   sign-ins, the account joins the browser's existing session when it has a
+   valid one (the encrypted, HttpOnly `__session` cookie decrypts and its D1
+   row exists); a browser with no session, or one already holding the most
+   accounts a session allows (3), gets a new session with only this account;
+5. shows "Sign in faster next time" (add a passkey: Face ID, fingerprint,
+   screen lock) with **Skip**. Never a password. Browsers without WebAuthn go
+   straight on;
+6. goes to the app's sign-in (`continueUrl`, minus any `prompt`). The app's
+   `/authorize` completes by single sign-on; the issuer's onSuccess runs as for
+   any sign-in (account state, current roles).
+
+`continueUrl` must be one of our origins (`ALLOWED_ORIGINS`), or localhost
+outside production; otherwise the default sign-in page is used (no open
+redirect). Deployed environments refuse the direct sign-in without
+`SESSION_SECRET`.
+
+**Already signed in as the invited account** (a used link opened again):
+"You're signed in" + Continue.
+
+### A used, expired or withdrawn link
+
+| State | Page |
+| --- | --- |
+| The account has no password and no passkey (never set up, or skipped the passkey) | **Finish setting up your account** + "Email me a new link" (POST `/invite/:token/send`) |
+| The account has a password or a passkey | **You're already set up** + Sign in |
+| Revoked invite, or the account suspended/deleted | **This invite was withdrawn**: contact the person who invited you or the team |
+| Unknown link (replaced by a newer email, or purged) | **This link doesn't work**: open the newest email, or contact the team |
+
+"Email me a new link" is the admin resend, asked by the invitee: same email,
+same audit event (`user.invite.resent`, `by: invitee`), expiry extended. It
+emails a fresh single-use link to the invited address only; the page never
+shows it. The email is sent first and the new hash stored only after it was
+delivered. Limits: one per invite every 5 minutes (any send, admin or
+invitee), `SEND_CODE_LIMITER` per IP, and every `/invite/*` request counts
+against `PASSWORD_IP_LIMITER` per IP. For an accepted account without a
+password or passkey the new link signs in again the same way (the inbox is
+still the only way in).
+
 - Expiry: `expiresInDays` per invite (1–90). The default is `INVITE_TTL_DAYS`,
   or 14 if that is not set.
-- **Resend** makes a new token, emails it and extends the expiry. The old link
-  stops working.
+- **Resend** (admin) makes a new token, emails it and extends the expiry. The
+  old link then shows "This link doesn't work".
 - **Copy link**: the app makes a token, shows the link once and sends only the
   hash (`POST …/link {tokenHash}`). That replaces the emailed link.
+- Signing in some other way with the invited email (password reset, passkey)
+  still claims the account and spends the link.
 
 ## Revoke, restore, purge (admin soft delete)
 
 - **Revoke** soft deletes the invite (`deleted_at` / `deleted_by` /
   `deleted_reason`, the same fields as `admin_deletions`). It also soft deletes
-  the account if it was never used (status `deleted`). Nothing can claim it
-  afterwards, and the email is free for a normal sign-up. An accepted invite
+  the account if it was never used (status `deleted`). The link is spent and
+  shows "This invite was withdrawn". Nothing can claim it afterwards, and the email is free for a normal sign-up. An accepted invite
   cannot be revoked; manage the account instead.
-- **Restore** brings both back within the 30 days, provided no other account
+- **Restore** brings both back within the 30 days (the old link then offers
+  "Email me a new link"), provided no other account
   has taken the email in the meantime (`409 email_taken`).
 - **Delete permanently now** (`{confirm: <email>}`) only sets
   `purge_requested_at`. The item can still be restored until the cleanup runs.

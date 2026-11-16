@@ -14,10 +14,12 @@
  * refresh check and session sign-on all treat a non-active status as refused.
  *
  * The invite link carries a random single-use token; only its SHA-256 is
- * stored and it is never logged. The link is a convenience: an expired (or
- * already used) link still lets the person sign in with the email and claim
- * the account. Only revoking an invite stops the claim (the account is soft
- * deleted with it, so the email is free for a normal sign-up).
+ * stored and it is never logged. Continue on the link claims the account and
+ * signs it in directly (routes.ts, sign-in.ts). The hash is kept after use,
+ * so a second click finds its invite and the page can offer a fresh link (an
+ * account with no password or passkey) or Sign in. Revoking an invite stops
+ * the claim (the account is soft deleted with it, so the email is free for a
+ * normal sign-up).
  *
  * Revoke is an admin soft delete (deleted_at/by/reason): restorable for 30
  * days, then purged with its never-used account by the hourly cleanup
@@ -63,7 +65,7 @@ export interface InviteActor {
 	clientId: string;
 }
 
-interface InviteRow {
+export interface InviteRow {
 	id: string;
 	tenant_id: string;
 	user_id: string;
@@ -484,13 +486,14 @@ export class InviteService {
 	}
 
 	/** A new link token (the old link stops working). Optionally extends the expiry. */
-	async rotateToken(id: string, opts: { extend?: boolean; locale?: string; sent?: boolean } = {}): Promise<{ invite: Invite; token: string }> {
+	async rotateToken(id: string, opts: { extend?: boolean; locale?: string; sent?: boolean; allowAccepted?: boolean; preset?: { token: string; hash: string } } = {}): Promise<{ invite: Invite; token: string }> {
 		const row = await this.requireRow(id);
 		const now = this.now();
 		if (row.deleted_at !== null) throw new InviteError(410, 'revoked', 'This invite was revoked; restore it first');
-		if (row.accepted_at !== null) throw new InviteError(409, 'already_accepted', 'This invite was already accepted');
-		const { token, hash } = await newInviteToken();
-		const expires = opts.extend ? Math.max(row.expires_at, now + this.defaultTtl * DAY_MS) : row.expires_at;
+		// allowAccepted: the invitee's own "Email me a new link" for an account that still has no password or passkey
+		if (row.accepted_at !== null && !opts.allowAccepted) throw new InviteError(409, 'already_accepted', 'This invite was already accepted');
+		const { token, hash } = opts.preset ?? (await newInviteToken());
+		const expires = opts.extend ? this.extendedExpiry(row.expires_at) : row.expires_at;
 		const locale = opts.locale === 'ar' || opts.locale === 'en' ? opts.locale : row.locale;
 		await this.db
 			.prepare(
@@ -502,6 +505,11 @@ export class InviteService {
 			.bind(this.tenantId, id, hash, expires, locale, now, opts.sent ? 1 : 0)
 			.run();
 		return { invite: toInvite(await this.requireRow(id), now), token };
+	}
+
+	/** A resend's expiry: at least the default lifetime from now. */
+	extendedExpiry(current: number): number {
+		return Math.max(current, this.now() + this.defaultTtl * DAY_MS);
 	}
 
 	async markSent(id: string): Promise<void> {
@@ -539,7 +547,7 @@ export class InviteService {
 		const statements = [
 			this.db
 				.prepare(
-					`UPDATE user_invites SET deleted_at = ?3, deleted_by = ?4, deleted_by_email = ?5, deleted_reason = ?6, token_hash = NULL, updated_at = ?3
+					`UPDATE user_invites SET deleted_at = ?3, deleted_by = ?4, deleted_by_email = ?5, deleted_reason = ?6, token_used_at = COALESCE(token_used_at, ?3), updated_at = ?3
 					 WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL`
 				)
 				.bind(this.tenantId, id, now, actor.userId, actor.email || null, why),
@@ -621,11 +629,16 @@ export class InviteService {
 		return this.db.prepare('SELECT * FROM user_invites WHERE token_hash = ?1').bind(await hashToken(token)).first<InviteRow>();
 	}
 
-	/** Spends a link token (single use). False when it was already spent (a concurrent click won). */
+	/**
+	 * Spends a link token (single use). False when it was already spent (a
+	 * concurrent click won). The hash stays, so a second click on the same link
+	 * still finds its invite and can say what to do next; a used token never
+	 * signs anyone in again.
+	 */
 	async useToken(id: string): Promise<boolean> {
 		const now = this.now();
 		const result = await this.db
-			.prepare('UPDATE user_invites SET token_used_at = ?2, token_hash = NULL, updated_at = ?2 WHERE id = ?1 AND token_hash IS NOT NULL AND token_used_at IS NULL')
+			.prepare('UPDATE user_invites SET token_used_at = ?2, updated_at = ?2 WHERE id = ?1 AND token_hash IS NOT NULL AND token_used_at IS NULL')
 			.bind(id, now)
 			.run();
 		return (result.meta?.changes ?? 0) > 0;
@@ -653,7 +666,7 @@ export async function claimInvitedAccount(db: D1Database, tenantId: string, user
 			.bind(tenantId, userId, now),
 		db
 			.prepare(
-				`UPDATE user_invites SET accepted_at = ?3, token_hash = NULL, updated_at = ?3
+				`UPDATE user_invites SET accepted_at = ?3, token_used_at = COALESCE(token_used_at, ?3), updated_at = ?3
 				 WHERE tenant_id = ?1 AND user_id = ?2 AND accepted_at IS NULL AND deleted_at IS NULL`
 			)
 			.bind(tenantId, userId, now),
