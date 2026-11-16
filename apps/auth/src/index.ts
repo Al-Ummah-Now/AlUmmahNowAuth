@@ -387,7 +387,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Native apps add a passkey with their access token (AUTH-PASSKEYS "Native apps");
     // native sign-in itself is the issuer's /native/passkey/options and /verify below
-    const nativeRegistration = routeNativePasskeys({ request, env: env as never, ctx, requestId, storage });
+    const nativeRegistration = routeNativePasskeys({ request, env: env as never, ctx, requestId, storage, emailAvailable });
     if (nativeRegistration) {
       return addSecurityHeaders(await nativeRegistration, isProduction);
     }

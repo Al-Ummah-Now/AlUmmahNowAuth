@@ -185,6 +185,12 @@ export interface NativeRouteContext {
 	requestId: string;
 	storage: StorageAdapter;
 	now?: number;
+	/**
+	 * Whether Auth can send email (utils/email-availability.ts). Without it a
+	 * staff member's first passkey (web page with an emailed code) is not offered:
+	 * 404 feature_off and no setup_url, so the app hides the entry point.
+	 */
+	emailAvailable?: boolean;
 }
 
 interface RegistrationRecord {
@@ -278,6 +284,7 @@ function limits(rctx: NativeRouteContext, c: SignedInCaller): Response | null {
 	// Same codes as the web's /passkeys/register/* (limit, exists)
 	if (c.count >= MAX_PASSKEYS) return fail(403, 'limit', 'This account already has the most passkeys allowed.');
 	if (isStaff(c.roles) && c.count === 0 && !c.amr.includes('passkey')) {
+		if (rctx.emailAvailable === false) return fail(404, 'feature_off', 'Not found.');
 		return fail(403, 'email_code_required', 'Add your first passkey on the web; it asks for a code we email you.', {
 			setup_url: `${issuerOrigin(rctx.env, rctx.request)}/passkeys/setup`,
 		});

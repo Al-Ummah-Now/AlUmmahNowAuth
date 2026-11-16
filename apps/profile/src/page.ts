@@ -506,7 +506,7 @@ export function renderHomePage(o: HomePageOptions): string {
             var items = (data && data.passkeys) || [];
             document.getElementById('passkeysEmpty').hidden = items.length > 0;
             document.getElementById('passkeysStaffNote').hidden = !(data && data.staff);
-            document.getElementById('passkeyAdd').hidden = data && items.length >= (data.max || 10);
+            document.getElementById('passkeyAdd').hidden = !!data && (items.length >= (data.max || 10) || data.canAdd === false);
             list.innerHTML = '';
             items.forEach(function (p) {
                 var li = document.createElement('li');

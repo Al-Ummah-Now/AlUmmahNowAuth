@@ -379,7 +379,12 @@ async function handleAccountPasskeys(rctx: PasskeyRouteContext, path: string): P
 		if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405);
 		const rows = await listForUser(db, user.userId);
 		const roles = await userRoleNames(db, user.userId);
-		return json({ passkeys: rows.map(summaryOf), max: MAX_PASSKEYS, staff: isStaff(roles), signedInWithPasskey: !!user.amr?.includes('passkey') });
+		const staff = isStaff(roles);
+		const signedInWithPasskey = !!user.amr?.includes('passkey');
+		// A staff member's first passkey needs an emailed code: without email the hub
+		// hides "Add a passkey" instead of linking to a page that isn't there
+		const canAdd = !(staff && rows.length === 0 && !signedInWithPasskey && !rctx.emailAvailable);
+		return json({ passkeys: rows.map(summaryOf), max: MAX_PASSKEYS, staff, signedInWithPasskey, canAdd });
 	}
 	const m = path.match(/^\/account\/passkeys\/([A-Za-z0-9_-]{1,512})(\/restore)?$/);
 	if (!m) return json({ error: 'not_found' }, 404);
