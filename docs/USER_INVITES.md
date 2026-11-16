@@ -175,6 +175,7 @@ are limited by `ADMIN_SENSITIVE_LIMITER` per client, reads by `ADMIN_LIMITER`.
   - Email cannot play video, so the card is a picture linking to the watch page.
   - Outlook desktop gets the same picture through VML.
   - The plain-text part gives the title, the channel and the link.
+  - The videos admin keeps one video per email language and sends only the video for the language the email is in, never the other language's (owner, 2026-11-16). The card is static: no playable embed and no GIF.
   - A resend may pass `video` again, or `null` to leave the card out. The videos admin reads the video again at every send and sends `null` once it is no longer public.
 
 Audit events: `user.invited`, `user.invite.resent`, `user.invite.link_created`,
