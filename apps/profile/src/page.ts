@@ -108,6 +108,8 @@ const STYLES = `
             padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s ease;
             cursor: pointer; border: none; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; font-family: inherit;
         }
+        /* display: inline-flex above would otherwise show a button the page hid (e.g. Add a passkey) */
+        .btn[hidden] { display: none; }
         .btn-primary { background: var(--auth-profile-button-background, linear-gradient(135deg, var(--fanous-color-primary) 0%, var(--fanous-color-primary-hover) 100%)); color: var(--auth-profile-button-text, var(--fanous-color-on-primary)); box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3); }
         .btn-primary:hover { background: linear-gradient(135deg, var(--fanous-color-primary-hover) 0%, var(--fanous-color-primary-pressed) 100%); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(14, 165, 233, 0.4); }
         .btn-secondary { background: rgba(255, 255, 255, 0.1); color: var(--fanous-color-text-primary); border: 1px solid rgba(255, 255, 255, 0.2); }
