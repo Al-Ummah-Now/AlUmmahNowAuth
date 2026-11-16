@@ -22,6 +22,9 @@ describe('account hub: "Add a passkey"', () => {
     expect(html).toContain('id="passkeyAdd"');
     expect(html).toContain("document.getElementById('passkeyAdd').hidden = !!data && (items.length >= (data.max || 10) || data.canAdd === false);");
     expect(html).toMatch(/\.btn\[hidden\] \{ display: none; \}/);
+    // no passkeys and adding not offered: the whole Passkeys card goes (no "add one" text)
+    expect(html).toContain("document.getElementById('passkeys').hidden = !!data && data.canAdd === false && items.length === 0;");
+    expect(html).toContain(".profile-card[hidden] { display: none; }");
     // the hidden rule comes after .btn's display, so it wins
     expect(html.indexOf(".btn[hidden]")).toBeGreaterThan(html.indexOf("display: inline-flex"));
   });
