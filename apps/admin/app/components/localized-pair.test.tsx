@@ -83,6 +83,22 @@ describe("LocalizedPair", () => {
 });
 
 describe("pairErrors", () => {
+  it("hides a field's error once it is typed in, and shows it again if emptied", () => {
+    const errors = { ar: "Enter the Arabic name" };
+    function Fixed() {
+      const [value, setValue] = useState<LocalizedPairValue>({ en: "Scholar sites", ar: "" });
+      return <LocalizedPair label="Client name" value={value} onChange={setValue} errors={errors} />;
+    }
+    render(<Fixed />);
+    const ar = screen.getByLabelText("العربية") as HTMLInputElement;
+    expect(screen.getByText("Enter the Arabic name")).toBeTruthy();
+    fireEvent.change(ar, { target: { value: "مواقع العلماء" } });
+    expect(screen.queryByText("Enter the Arabic name")).toBeNull();
+    expect(ar.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.change(ar, { target: { value: "" } });
+    expect(screen.getByText("Enter the Arabic name")).toBeTruthy();
+  });
+
   it("needs both languages", () => {
     expect(pairErrors({ en: "a", ar: "ب" })).toBeUndefined();
     expect(pairErrors({ en: " ", ar: "ب" }, "name")).toEqual({ en: "Enter the English name" });

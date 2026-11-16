@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Languages, Undo2 } from "lucide-react";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
@@ -55,6 +55,10 @@ export function LocalizedPair(props: LocalizedPairProps) {
   const [status, setStatus] = useState("");
   const [undo, setUndo] = useState<{ lang: Lang; previous: string } | null>(null);
   const missing = flagMissing ? missingLangs(value) : [];
+  // A field's error hides once it is edited to non-empty text; it shows again if the
+  // field is emptied or the next save reports a different message.
+  const [edited, setEdited] = useState<Partial<Record<Lang, boolean>>>({});
+  useEffect(() => setEdited({}), [errors?.en, errors?.ar]);
 
   async function run(from: Lang) {
     if (!translate) return;
@@ -68,6 +72,7 @@ export function LocalizedPair(props: LocalizedPairProps) {
       if (!text) throw new Error("The translation came back empty");
       const previous = value[to];
       onChange({ ...value, [to]: text });
+      setEdited((m) => ({ ...m, [to]: true }));
       setUndo(previous.trim() && previous !== text ? { lang: to, previous } : null);
       setStatus(`${to === "ar" ? "Arabic" : "English"} filled from ${from === "en" ? "English" : "Arabic"}. Check it before saving.`);
     } catch (e) {
@@ -101,7 +106,7 @@ export function LocalizedPair(props: LocalizedPairProps) {
       <div className="grid gap-3 sm:grid-cols-2">
         {(["en", "ar"] as const).map((lang) => {
           const fid = `${id}-${lang}`;
-          const err = errors?.[lang];
+          const err = edited[lang] && value[lang].trim() ? undefined : errors?.[lang];
           return (
             <div key={lang} className="space-y-1">
               <label htmlFor={fid} className="text-xs font-medium text-[var(--color-muted-foreground)]" lang={lang}>
@@ -118,7 +123,10 @@ export function LocalizedPair(props: LocalizedPairProps) {
                 aria-required={required || undefined}
                 aria-invalid={err ? true : undefined}
                 aria-describedby={err ? `${fid}-error` : undefined}
-                onChange={(e) => onChange({ ...value, [lang]: e.target.value })}
+                onChange={(e) => {
+                  setEdited((m) => (m[lang] ? m : { ...m, [lang]: true }));
+                  onChange({ ...value, [lang]: e.target.value });
+                }}
                 onBlur={() => onBlur?.(value)}
               />
               {err && (
