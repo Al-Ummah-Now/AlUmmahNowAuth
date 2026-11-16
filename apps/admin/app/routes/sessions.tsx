@@ -1,3 +1,4 @@
+import { formatDateTime } from "../lib/date-utils";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useSearchParams } from "react-router";
 import { UserAutocomplete } from "../components/autocomplete";
@@ -260,10 +261,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
 function formatDate(dateValue: string | number) {
   if (!dateValue) return 'N/A';
   try {
-    const date = typeof dateValue === 'number'
-      ? new Date(dateValue * 1000)  // Unix seconds to milliseconds
-      : new Date(dateValue);
-    return date.toLocaleString();
+    return formatDateTime(dateValue);
   } catch {
     return String(dateValue);
   }

@@ -3,6 +3,8 @@
  * `?lang=` at the time): the code that confirms a staff member's first
  * passkey, the "passkey added/removed" notices, and the admin setup link.
  */
+import { formatNumber } from '../../../../packages/ui/src/format.ts';
+import { CODE_TTL_SECONDS } from '../security/password-attempts';
 import SendEmail from '../email';
 import { formatEmailDate, renderEmail, type EmailDoc, type EmailLocale } from '../email/layout';
 import { logger } from '../logger';
@@ -11,13 +13,16 @@ import { shouldSinkCode, storeSinkCode, type E2ESinkEnv } from '../utils/e2e-sin
 
 const FROM = 'Al Ummah Now <login@alummahnow.net>';
 
+/** The emailed code works this long (recordCode/checkCode). */
+const CODE_MINUTES = CODE_TTL_SECONDS / 60;
+
 const COPY = {
 	en: {
 		codeSubject: 'Your code to add a passkey',
 		codePre: 'Enter this code to add a passkey to your Al Ummah Now account.',
 		codeIntro: 'Your role on Al Ummah Now needs a passkey. Enter this code on the page to confirm it is you, then add your passkey.',
 		codeLabel: 'Your code',
-		codeHint: 'It works for 15 minutes.',
+		codeHint: `It works for ${formatNumber(CODE_MINUTES, 'en')} minutes.`,
 		codeReason: 'You got this email because someone asked to add a passkey to this account. If it was not you, change your password.',
 		addedSubject: 'A passkey was added to your account',
 		addedPre: 'A new passkey can now sign in to your account.',
@@ -41,7 +46,7 @@ const COPY = {
 		codePre: 'أدخل هذا الرمز لإضافة مفتاح مرور إلى حسابك في الأمة الآن.',
 		codeIntro: 'يحتاج دورك في الأمة الآن إلى مفتاح مرور. أدخل هذا الرمز في الصفحة لتأكيد هويتك، ثم أضف مفتاح المرور.',
 		codeLabel: 'رمزك',
-		codeHint: 'يعمل لمدة 15 دقيقة.',
+		codeHint: `يعمل لمدة ${formatNumber(CODE_MINUTES, 'ar')} دقيقة.`,
 		codeReason: 'وصلتك هذه الرسالة لأن أحدًا طلب إضافة مفتاح مرور إلى هذا الحساب. إن لم تكن أنت، فغيّر كلمة المرور.',
 		addedSubject: 'أُضيف مفتاح مرور إلى حسابك',
 		addedPre: 'يمكن لمفتاح مرور جديد الآن تسجيل الدخول إلى حسابك.',

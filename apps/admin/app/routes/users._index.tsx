@@ -1,3 +1,5 @@
+import { formatNumber } from "../../../../packages/ui/src/format.ts";
+import { formatDateMs } from "../lib/date-utils";
 import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useNavigate, useRevalidator, useSearchParams } from "react-router";
@@ -612,7 +614,7 @@ export default function Users() {
               navigate({ search: next.toString() ? `?${next}` : "" });
             }}
           >
-            {systemView ? systemCopy.hide : `${systemCopy.show} (${systemAccounts.length})`}
+            {systemView ? systemCopy.hide : `${systemCopy.show} (${formatNumber(systemAccounts.length, deleteLang)})`}
           </Button>
         </div>
       )}
@@ -787,7 +789,7 @@ export default function Users() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {new Date(user.created_at).toLocaleDateString()}
+                        {formatDateMs(user.created_at)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">

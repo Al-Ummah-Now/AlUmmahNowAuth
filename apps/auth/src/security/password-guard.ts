@@ -18,6 +18,7 @@
  * blanked, so the user gets the normal page (their email kept) with a "too many
  * attempts" message and HTTP 429. The provider never sees the guess.
  */
+import { toAsciiDigits } from '../../../../packages/ui/src/format.ts';
 import { getClientIP } from '../rate-limit';
 import { logger } from '../logger';
 import { checkCode, releaseLoginAttempt, reserveLoginSlot } from './password-attempts';
@@ -138,6 +139,15 @@ export async function guardPasswordRequest(
 		form = await request.clone().formData();
 	} catch {
 		return guard; // not a form post; the provider rejects it
+	}
+	// A code typed with Eastern Arabic (Hindi) numerals ٠–٩ is the same code in Arabic numerals 0–9
+	const typedCode = form.get('code');
+	if (typeof typedCode === 'string' && toAsciiDigits(typedCode) !== typedCode) {
+		form.set('code', toAsciiDigits(typedCode));
+		const headers = new Headers(request.headers);
+		headers.delete('content-type'); // the FormData body sets its own boundary
+		headers.delete('content-length');
+		guard.request = new Request(request.url, { method: 'POST', headers, body: form });
 	}
 	const email = form.get('email')?.toString().trim().toLowerCase() || undefined;
 	const action = form.get('action')?.toString();

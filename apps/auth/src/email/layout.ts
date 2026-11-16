@@ -1,3 +1,4 @@
+import { formatDate } from '../../../../packages/ui/src/format.ts';
 /**
  * The Al Ummah Now email design: one layout for every email the platform sends.
  *
@@ -147,11 +148,8 @@ export const dirOf = (locale: EmailLocale) => (locale === 'ar' ? 'rtl' : 'ltr');
 export function formatEmailDate(at: number | string | Date, locale: EmailLocale, withTime = false): string {
 	const date = at instanceof Date ? at : new Date(at);
 	if (Number.isNaN(date.getTime())) return String(at);
-	const text = new Intl.DateTimeFormat(locale === 'ar' ? 'ar' : 'en-GB', {
-		dateStyle: 'long',
-		...(withTime ? { timeStyle: 'short' } : {}),
-		timeZone: 'UTC',
-	}).format(date);
+	// Arabic: Eastern Arabic (Hindi) numerals ٠–٩ (packages/ui/src/format.ts)
+	const text = formatDate(date, locale, { dateStyle: 'long', ...(withTime ? { timeStyle: 'short' } : {}), timeZone: 'UTC' });
 	return withTime ? `${text} UTC` : text;
 }
 

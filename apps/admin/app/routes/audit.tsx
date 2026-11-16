@@ -1,3 +1,4 @@
+import { formatDateMs, formatDateTimeMs } from "../lib/date-utils";
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useSearchParams, useNavigate } from "react-router";
@@ -232,7 +233,7 @@ export default function AuditLogs() {
   };
 
   const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString();
+    return formatDateTimeMs(timestamp);
   };
 
   const getSeverityColor = (severity: string) => {
@@ -385,12 +386,12 @@ export default function AuditLogs() {
                 )}
                 {startDate && (
                   <Badge variant="outline">
-                    From: {new Date(startDate).toLocaleDateString()}
+                    From: {formatDateMs(startDate)}
                   </Badge>
                 )}
                 {endDate && (
                   <Badge variant="outline">
-                    To: {new Date(endDate).toLocaleDateString()}
+                    To: {formatDateMs(endDate)}
                   </Badge>
                 )}
                 <Button variant="ghost" size="sm" onClick={clearFilters}>

@@ -1,3 +1,4 @@
+import { formatDate } from "../../../../packages/ui/src/format.ts";
 import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData } from "react-router";
@@ -68,7 +69,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   return { ok: false, error: "Unknown action", notice: null };
 }
 
-const fmt = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString("en-GB", { dateStyle: "medium", timeZone: "UTC" }) : "Never");
+const fmt = (ms: number | null) => (ms ? formatDate(ms, "en", { dateStyle: "medium", timeZone: "UTC" }) : "Never");
 
 export default function UserPasskeys() {
   const data = useLoaderData<typeof loader>();

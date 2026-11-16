@@ -1,3 +1,4 @@
+import { formatDate } from '../../../../packages/ui/src/format.ts';
 /**
  * @fileoverview Admin Sessions Dashboard UI component
  *
@@ -583,14 +584,8 @@ function getDeviceIcon(deviceType: string): string {
  * @returns Formatted date and time
  */
 function formatDateTime(dateString: string): string {
-	const date = new Date(dateString);
-	return date.toLocaleString('en-US', {
-		month: 'short',
-		day: 'numeric',
-		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit',
-	});
+	// An English-only admin page
+	return formatDate(dateString, 'en', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }, 'en-US');
 }
 
 /**

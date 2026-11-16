@@ -24,6 +24,7 @@
  * stolen password alone can't enrol a thief's passkey. Every add/remove is
  * audited and emailed to the user.
  */
+import { toAsciiDigits } from '../../../../packages/ui/src/format.ts';
 import { registrationOptions, verifyRegistration } from '@al-ummah-now/openauth/passkey';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
 import { getAuditEmitter } from '../audit-emitter';
@@ -283,7 +284,8 @@ async function handleRegisterOptions(rctx: PasskeyRouteContext): Promise<Respons
 	const g = await gate(env, account, ticket);
 	if ('error' in g) return json({ error: g.error }, g.error === 'not_signed_in' ? 401 : 403);
 	if (g.needsCode) {
-		const code = typeof body.code === 'string' ? body.code.trim() : '';
+		// Typed with Eastern Arabic (Hindi) numerals ٠–٩: the same code in Arabic numerals 0–9
+		const code = typeof body.code === 'string' ? toAsciiDigits(body.code.trim()) : '';
 		if (!/^\d{6}$/.test(code)) return json({ error: 'wrong_code' }, 403);
 		const check = await checkCode(env.AUTH_DB, g.email, code);
 		if (check !== 'ok') return json({ error: check === 'locked' ? 'locked_code' : 'wrong_code' }, 403);

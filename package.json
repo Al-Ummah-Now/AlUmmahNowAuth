@@ -54,6 +54,7 @@
     "test:watch": "pnpm --filter \"./apps/*\" test:watch",
     "test:coverage": "pnpm --filter \"./apps/*\" test:coverage",
     "test:e2e": "playwright test",
+    "test:hydration": "playwright test -c apps/admin/playwright.hydration.config.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
