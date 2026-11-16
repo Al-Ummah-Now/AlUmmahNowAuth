@@ -98,7 +98,7 @@ describe("Profile page in Arabic", () => {
   it("the footer year is in ٠–٩ (no grouping mark)", () => {
     const footer = /<footer class="footer">([\s\S]*?)<\/footer>/.exec(page("ar"))![1];
     expect(footer).toContain(formatNumber(new Date().getUTCFullYear(), "ar", { useGrouping: false }));
-    expect(footer.replace(/<[^>]*>/g, "")).not.toMatch(ASCII_DIGIT);
+    expect(footer.split(/<[^>]*>/).join(" ")).not.toMatch(ASCII_DIGIT);
   });
 
   it("the in-browser formatter uses the pinned locale; English keeps 0–9", () => {

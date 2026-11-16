@@ -219,7 +219,8 @@ jobs:
   # and Chromium, plus the Profile page's in-browser dates. No accounts or QA: fixed data
   # (apps/admin/hydration/server.mjs). Runs on every PR.
   arabic-hydration:
-    runs-on: ubuntu-latest
+    # Playwright's WebKit is not built for ubuntu-latest (26.04) yet
+    runs-on: ubuntu-24.04
     name: Arabic hydration (WebKit)
     timeout-minutes: 20
     steps:
