@@ -171,7 +171,7 @@ are limited by `ADMIN_SENSITIVE_LIMITER` per client, reads by `ADMIN_LIMITER`.
 `details` is the caller's own data. The email reads two keys from it:
 
 - `channels: [{ name, action }]`: the channels named in the email.
-- `video: { title, channel, imageUrl, urls: { en, ar } }`: a video shown as a 16:9 picture card. It has a play button, the title and the channel, and links to `urls[<email language>]`. Every URL must be https, and `imageUrl` must never expire (the videos admin sends its `/og/v/<id>.jpg`).
+- `video: { title, channel, imageUrl, urls: { en, ar } }`: a video shown as a 16:9 picture card. It has a play button, the title and the channel, and links to `urls[<email language>]` (the videos admin sends the short link, `alummahnow.link/v/<id>`, with `?lang=ar` for Arabic). Every URL must be https, and `imageUrl` must never expire (the videos admin sends its `/og/v/<id>.jpg`).
   - Email cannot play video, so the card is a picture linking to the watch page.
   - Outlook desktop gets the same picture through VML.
   - The plain-text part gives the title, the channel and the link.
