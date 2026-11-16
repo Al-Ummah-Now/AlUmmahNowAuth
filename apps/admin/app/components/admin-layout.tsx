@@ -1,3 +1,4 @@
+import { formatDate } from "../../../../packages/ui/src/format.ts";
 import { Link, useLocation, useRouteLoaderData, useSearchParams } from "react-router";
 import {
   LayoutDashboard,
@@ -177,7 +178,7 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
         <div className="p-6" lang={lang === "ar" ? "en" : undefined} dir={lang === "ar" ? "ltr" : undefined}>
           {passkeyGraceUntil ? (
             <div role="status" data-testid="passkey-grace-banner" className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-muted)] p-3 text-sm text-[var(--color-foreground)]">
-              Add a passkey by {new Date(passkeyGraceUntil * 1000).toLocaleDateString("en-GB", { dateStyle: "long", timeZone: "UTC" })}: after that, the admin tools need a passkey sign-in.{" "}
+              Add a passkey by {formatDate(passkeyGraceUntil * 1000, "en", { dateStyle: "long", timeZone: "UTC" })}: after that, the admin tools need a passkey sign-in.{" "}
               <Link className="font-semibold underline" to="/passkey-needed?mode=grace">Add a passkey</Link>
             </div>
           ) : null}

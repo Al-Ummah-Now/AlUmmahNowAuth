@@ -1,3 +1,4 @@
+import { formatDate } from "../lib/date-utils";
 import { useState, useEffect } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useSearchParams } from "react-router";
@@ -540,7 +541,7 @@ export default function ClientsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(client.created_at * 1000).toLocaleDateString()}
+                      {formatDate(client.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

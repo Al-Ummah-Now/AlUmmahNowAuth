@@ -10,6 +10,8 @@
  * from `?lang=`, Light/Dark from the theme. No browser dialogs: every message
  * is in the page. Browsers without WebAuthn skip the card automatically.
  */
+import { formatDate as formatShared, formatNumber } from '../../../../packages/ui/src/format.ts';
+import { MAX_PASSKEYS } from './store';
 import { html, raw } from 'hono/html';
 import { Layout } from '@al-ummah-now/openauth/ui/base';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
@@ -41,7 +43,7 @@ const COPY = {
 		failed: "The passkey wasn't added. Try again.",
 		cancelled: 'Cancelled. You can try again.',
 		exists: 'This device already has a passkey for your account.',
-		limit: 'You already have 10 passkeys. Remove one in your account first.',
+		limit: `You already have ${formatNumber(MAX_PASSKEYS, 'en')} passkeys. Remove one in your account first.`,
 		wrongCode: 'That code is not right. Check the email and try again.',
 		lockedCode: 'That code no longer works. Ask for a new one.',
 		codeFailed: "We couldn't send the code. Try again in a minute.",
@@ -75,7 +77,7 @@ const COPY = {
 		failed: 'لم يُضَف مفتاح المرور. حاول مرة أخرى.',
 		cancelled: 'أُلغي الطلب. يمكنك المحاولة مرة أخرى.',
 		exists: 'لهذا الجهاز مفتاح مرور لحسابك بالفعل.',
-		limit: 'لديك 10 مفاتيح مرور بالفعل. أزل واحدًا من حسابك أولًا.',
+		limit: `لديك ${formatNumber(MAX_PASSKEYS, 'ar')} مفاتيح مرور بالفعل. أزل واحدًا من حسابك أولًا.`,
 		wrongCode: 'الرمز غير صحيح. تحقق من الرسالة وحاول مرة أخرى.',
 		lockedCode: 'لم يعد هذا الرمز صالحًا. اطلب رمزًا جديدًا.',
 		codeFailed: 'تعذّر إرسال الرمز. حاول مرة أخرى بعد دقيقة.',
@@ -122,7 +124,7 @@ export interface AddPasskeyPage {
 }
 
 function formatDate(epochSeconds: number, locale: PageLocale): string {
-	return new Intl.DateTimeFormat(locale === 'ar' ? 'ar' : 'en-GB', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(epochSeconds * 1000));
+	return formatShared(epochSeconds * 1000, locale, { dateStyle: 'long', timeZone: 'UTC' });
 }
 
 const STYLE = `
@@ -204,7 +206,7 @@ if(skip)skip.addEventListener('click',function(){skip.disabled=true;if(C.mode===
 if(sendBtn)sendBtn.addEventListener('click',function(){sendBtn.disabled=true;post('/passkeys/email-code').then(function(j){sendBtn.disabled=false;if(j.sent){say(C.t.codeSent);codeInput.hidden=false;codeInput.parentNode.hidden=false;addBtn.hidden=false;codeInput.focus();}else{say(C.t[j.error]||C.t.code_failed,'error');}},function(){sendBtn.disabled=false;say(C.t.code_failed,'error');});});
 if(addBtn)addBtn.addEventListener('click',function(){
  addBtn.disabled=true;say(C.t.adding);
- var body={};if(C.ticket)body.ticket=C.ticket;if(C.needsCode&&codeInput)body.code=codeInput.value.trim();
+ var body={};if(C.ticket)body.ticket=C.ticket;if(C.needsCode&&codeInput)body.code=codeInput.value.trim().replace(/[\\u0660-\\u0669\\u06F0-\\u06F9]/g,function(c){return String(c.charCodeAt(0)&15);});
  post('/passkeys/register/options',body).then(function(j){
   if(!j.options){addBtn.disabled=false;say(C.t[j.error]||C.t.failed,'error');return;}
   return pk.create(j.options).then(function(cred){return post('/passkeys/register/verify',{credential:cred,token:j.token});}).then(function(v){

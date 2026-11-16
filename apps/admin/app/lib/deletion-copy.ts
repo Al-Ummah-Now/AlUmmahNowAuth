@@ -4,7 +4,12 @@
  * default; ?lang=ar shows Arabic (right-to-left).
  */
 
+import { formatNumber } from '../../../../packages/ui/src/format.ts';
+
 export type AdminLang = 'en' | 'ar';
+
+/** A number in Arabic copy: Eastern Arabic (Hindi) numerals ٠–٩. */
+const N = (n: number) => formatNumber(n, 'ar');
 export type DeletionKind = 'user' | 'client' | 'role' | 'theme';
 
 export const RETENTION_DAYS = 30;
@@ -113,10 +118,10 @@ const ar: DeletionCopy = {
   reasonPlaceholder: 'لماذا يُحذف هذا العنصر؟',
   deleteTitle: (k) => `حذف ${KIND.ar[k]}`,
   deleteBody: (k, label) =>
-    `ينتقل "${label}" إلى المحذوفات مؤخرًا ويتوقف عن العمل فورًا. يمكن استعادته خلال ${RETENTION_DAYS} يومًا، وبعدها يُحذف نهائيًا.` +
+    `ينتقل "${label}" إلى المحذوفات مؤخرًا ويتوقف عن العمل فورًا. يمكن استعادته خلال ${N(RETENTION_DAYS)} يومًا، وبعدها يُحذف نهائيًا.` +
     (k === 'user' ? ' ويُسجَّل خروج المستخدم من كل الأجهزة.' : ''),
   deleteConfirm: 'حذف',
-  roleHolders: (n) => ` يحمل هذا الدور ${n === 1 ? 'مستخدم واحد' : `${n} من المستخدمين`}؛ يفقدونه الآن ويستعيدونه إذا استُعيد الدور.`,
+  roleHolders: (n) => ` يحمل هذا الدور ${n === 1 ? 'مستخدم واحد' : `${N(n)} من المستخدمين`}؛ يفقدونه الآن ويستعيدونه إذا استُعيد الدور.`,
   restoreTitle: (k) => `استعادة ${KIND.ar[k]}`,
   restoreBody: (label) => `استعادة "${label}"؟ سيعود كما كان قبل حذفه تمامًا.`,
   restoreConfirm: 'استعادة',
@@ -125,7 +130,7 @@ const ar: DeletionCopy = {
   purgeTypeLabel: (label) => `اكتب "${label}" للتأكيد`,
   purgeConfirm: 'حذف نهائي',
   pageTitle: 'المحذوفات مؤخرًا',
-  pageIntro: `تبقى العناصر المحذوفة هنا ${RETENTION_DAYS} يومًا ويمكن استعادتها. بعد ذلك، أو عند اختيار "حذف نهائي"، يزيلها التنظيف الذي يعمل كل ساعة نهائيًا.`,
+  pageIntro: `تبقى العناصر المحذوفة هنا ${N(RETENTION_DAYS)} يومًا ويمكن استعادتها. بعد ذلك، أو عند اختيار "حذف نهائي"، يزيلها التنظيف الذي يعمل كل ساعة نهائيًا.`,
   empty: (k) => `لا توجد عناصر محذوفة في ${TAB.ar[k]}.`,
   colItem: 'العنصر',
   colDeletedBy: 'حذفه',
@@ -133,7 +138,7 @@ const ar: DeletionCopy = {
   colReason: 'السبب',
   colRemoval: 'الحذف النهائي',
   colActions: 'الإجراءات',
-  daysLeft: (d) => (d <= 0 ? 'في تشغيل التنظيف التالي' : d === 1 ? 'بعد يوم واحد' : d === 2 ? 'بعد يومين' : d <= 10 ? `بعد ${d} أيام` : `بعد ${d} يومًا`),
+  daysLeft: (d) => (d <= 0 ? 'في تشغيل التنظيف التالي' : d === 1 ? 'بعد يوم واحد' : d === 2 ? 'بعد يومين' : d <= 10 ? `بعد ${N(d)} أيام` : `بعد ${N(d)} يومًا`),
   queued: 'في قائمة الحذف النهائي',
   lastError: (e) => `فشلت آخر محاولة تنظيف: ${e}`,
   restore: 'استعادة',

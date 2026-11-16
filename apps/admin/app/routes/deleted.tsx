@@ -1,3 +1,4 @@
+import { formatDateTime } from "../../../../packages/ui/src/format.ts";
 import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
@@ -92,7 +93,7 @@ function actorName(item: DeletedItem, lang: AdminLang): string {
 }
 
 function formatTime(ms: number, lang: AdminLang): string {
-  return new Intl.DateTimeFormat(lang === "ar" ? "ar" : "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(ms) + " UTC";
+  return formatDateTime(ms, lang, { timeZone: "UTC" }) + " UTC";
 }
 
 export default function RecentlyDeleted() {

@@ -11,6 +11,7 @@
  * This component is designed for user-facing session management in profile/settings.
  */
 
+import { formatDate as formatShared } from '../../../../packages/ui/src/format.ts';
 import { CONFIRM_COPY, confirmAttributes, renderConfirmDialog, type ConfirmCopy, type UiLocale } from './confirm-dialog';
 
 /**
@@ -401,12 +402,8 @@ function getDeviceIconSvg(deviceType: string): string {
  * @returns Formatted date string
  */
 function formatDate(dateString: string): string {
-	const date = new Date(dateString);
-	return date.toLocaleDateString('en-US', {
-		year: 'numeric',
-		month: 'short',
-		day: 'numeric',
-	});
+	// The sentences around it are English ("Session started …"), so the date is too
+	return formatShared(dateString, 'en', { year: 'numeric', month: 'short', day: 'numeric' }, 'en-US');
 }
 
 /**

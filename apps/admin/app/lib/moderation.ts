@@ -1,3 +1,4 @@
+import { formatDateTimeMs } from "./date-utils";
 /** Labels shared by the moderation request pages (docs/MODERATION_REQUESTS.md). */
 
 export const MODERATION_STATUS_LABELS: Record<string, string> = {
@@ -42,8 +43,7 @@ export const label = (map: Record<string, string>, key: string) => map[key] ?? k
 
 export function formatWhen(value: string | number | null | undefined): string {
   if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+  return formatDateTimeMs(value) || String(value);
 }
 
 /** The Users page, searching for this user. */

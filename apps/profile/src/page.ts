@@ -1,3 +1,4 @@
+import { clientFormatScript, formatNumber } from '../../../packages/ui/src/format.ts';
 import type { Locale, VisibleApp } from "./apps";
 import { dirFor, MESSAGES } from "./i18n";
 import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
@@ -196,7 +197,7 @@ const ICON_SIGNOUT = '<svg class="aun-menu-icon aun-flip" width="18" height="18"
 
 /** A year in the page's digits: Eastern Arabic (Hindi) numerals ٠–٩ in Arabic (owner rule 2026-11-15). */
 export function yearText(year: number, locale: Locale): string {
-  return locale === "ar" ? String(year).replace(/[0-9]/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)]) : String(year);
+  return formatNumber(year, locale, { useGrouping: false });
 }
 
 export function renderHomePage(o: HomePageOptions): string {
@@ -310,7 +311,7 @@ export function renderHomePage(o: HomePageOptions): string {
     </main>
 
     <footer class="footer">
-        <p>${e(t.footer.replace("{year}", yearText(new Date().getUTCFullYear(), o.locale)))}</p>
+        <p>${e(t.footer.replace("{year}", formatNumber(new Date().getUTCFullYear(), o.locale, { useGrouping: false })))}</p>
     </footer>
 
     <dialog class="confirm-dialog" id="confirmDialog" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
@@ -333,6 +334,7 @@ export function renderHomePage(o: HomePageOptions): string {
         var T = ${scriptJson(t)};
         var SIGNOUT_ICON = ${scriptJson(ICON_SIGNOUT)};
         var PAGE_LANG = ${scriptJson(o.locale)};
+        ${clientFormatScript(o.locale)}
 
 
         var accounts = [];
@@ -347,9 +349,9 @@ export function renderHomePage(o: HomePageOptions): string {
         function formatRelativeTime(dateString) {
             var diffMins = Math.floor((Date.now() - new Date(dateString).getTime()) / 60000);
             if (diffMins < 1) return T.justNow;
-            if (diffMins < 60) return T.minutesAgo.replace('{n}', diffMins);
-            if (diffMins < 1440) return T.hoursAgo.replace('{n}', Math.floor(diffMins / 60));
-            return T.daysAgo.replace('{n}', Math.floor(diffMins / 1440));
+            if (diffMins < 60) return T.minutesAgo.replace('{n}', aunNum(diffMins));
+            if (diffMins < 1440) return T.hoursAgo.replace('{n}', aunNum(Math.floor(diffMins / 60)));
+            return T.daysAgo.replace('{n}', aunNum(Math.floor(diffMins / 1440)));
         }
         // Every sign-in goes through this app's /login (it keeps the return path).
         // No prompt = auth decides (silent for its active account, else the form);
@@ -521,14 +523,16 @@ export function renderHomePage(o: HomePageOptions): string {
             return fetch('/api/passkeys' + path + q, { method: method || 'GET', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
                 .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j.__status = r.status; return j; }); });
         }
-        function pkDate(ms) { return new Intl.DateTimeFormat(PAGE_LANG === 'ar' ? 'ar' : 'en-GB', { dateStyle: 'medium' }).format(new Date(ms)); }
+        function pkDate(ms) { return aunDate(ms, { dateStyle: 'medium' }); }
+        var passkeyMax = 10; // until the list arrives with the server's limit
         function pkSay(msg, tone) { var el = document.getElementById('passkeyStatus'); el.textContent = msg || ''; if (tone) el.setAttribute('data-tone', tone); else el.removeAttribute('data-tone'); }
         function renderPasskeys(data) {
             var list = document.getElementById('passkeyList');
             var items = (data && data.passkeys) || [];
             document.getElementById('passkeysEmpty').hidden = items.length > 0;
             document.getElementById('passkeysStaffNote').hidden = !(data && data.staff);
-            document.getElementById('passkeyAdd').hidden = !!data && (items.length >= (data.max || 10) || data.canAdd === false);
+            if (data && data.max) passkeyMax = data.max;
+            document.getElementById('passkeyAdd').hidden = !!data && (items.length >= passkeyMax || data.canAdd === false);
             // Nothing to list and adding isn't offered (a staff member's first passkey needs an emailed code
             // Auth can't send): the whole card is hidden, no "add one" text for a feature that isn't there
             document.getElementById('passkeys').hidden = !!data && data.canAdd === false && items.length === 0;
@@ -595,7 +599,7 @@ export function renderHomePage(o: HomePageOptions): string {
             if (!passkeyUndoId) return;
             var id = passkeyUndoId; passkeyUndoId = null; clearTimeout(passkeyUndoTimer);
             document.getElementById('passkeyToast').hidden = true;
-            pkApi('/' + encodeURIComponent(id) + '/restore', 'POST').then(function (j) { if (j.__status !== 200) pkSay(j.error === 'limit' ? T.passkeyLimit.replace('{n}', '10') : T.passkeyError, 'error'); loadPasskeys(); });
+            pkApi('/' + encodeURIComponent(id) + '/restore', 'POST').then(function (j) { if (j.__status !== 200) pkSay(j.error === 'limit' ? T.passkeyLimit.replace('{n}', aunNum(passkeyMax)) : T.passkeyError, 'error'); loadPasskeys(); });
         });
         loadPasskeys();
 

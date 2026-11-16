@@ -1,3 +1,4 @@
+import { formatNumber } from '../../../packages/ui/src/format.ts';
 import type { EmailTheme } from '../../../packages/ui/src/auth-theme/types.ts';
 import { renderEmail, type EmailDoc, type EmailLocale, type RenderedEmailParts } from './email/layout';
 /**
@@ -30,28 +31,28 @@ export function codePurposeOf(pathname: string): CodePurpose {
 const COPY = {
 	en: {
 		subject: { register: 'Your Al Ummah Now code to create your account', reset: 'Your Al Ummah Now code to reset your password' },
-		preheader: (code: string, min: number) => `Your code is ${code}. It works for ${min} minutes.`,
+		preheader: (code: string, min: number) => `Your code is ${code}. It works for ${formatNumber(min, 'en')} minutes.`,
 		greeting: 'Assalamu alaikum,',
 		intro: {
 			register: () => 'Use this code to confirm your email address and finish creating your Al Ummah Now account.',
 			reset: () => 'Use this code to choose a new password for your Al Ummah Now account.',
 		},
 		label: 'Your code',
-		hint: (min: number) => `It works for ${min} minutes, once.`,
+		hint: (min: number) => `It works for ${formatNumber(min, 'en')} minutes, once.`,
 		enter: 'Enter it on the page where you asked for it.',
 		notice: "Didn't ask for this? You can ignore this email: nothing changes without the code. Never share it with anyone, including people who say they are from Al Ummah Now.",
 		reason: { register: 'You got this email because someone started creating an Al Ummah Now account with this address.', reset: 'You got this email because someone asked to reset the password of the Al Ummah Now account with this address.' },
 	},
 	ar: {
 		subject: { register: 'رمزك لإنشاء حسابك في الأمة الآن', reset: 'رمزك لإعادة تعيين كلمة المرور في الأمة الآن' },
-		preheader: (code: string, min: number) => `رمزك هو ${code}، وهو صالح لمدة ${min} دقيقة.`,
+		preheader: (code: string, min: number) => `رمزك هو ${code}، وهو صالح لمدة ${formatNumber(min, 'ar')} دقيقة.`,
 		greeting: 'السلام عليكم،',
 		intro: {
 			register: () => 'استخدم هذا الرمز لتأكيد بريدك الإلكتروني وإكمال إنشاء حسابك في الأمة الآن.',
 			reset: () => 'استخدم هذا الرمز لاختيار كلمة مرور جديدة لحسابك في الأمة الآن.',
 		},
 		label: 'رمزك',
-		hint: (min: number) => `صالح لمدة ${min} دقيقة، ولمرة واحدة.`,
+		hint: (min: number) => `صالح لمدة ${formatNumber(min, 'ar')} دقيقة، ولمرة واحدة.`,
 		enter: 'أدخله في الصفحة التي طلبته منها.',
 		notice: 'لم تطلب هذا الرمز؟ يمكنك تجاهل هذه الرسالة، فلن يتغير شيء من دونه. لا تشارك الرمز مع أحد، حتى مع من يقول إنه من الأمة الآن.',
 		reason: { register: 'وصلتك هذه الرسالة لأن أحدًا بدأ إنشاء حساب في الأمة الآن بهذا العنوان.', reset: 'وصلتك هذه الرسالة لأن أحدًا طلب إعادة تعيين كلمة مرور حساب الأمة الآن المرتبط بهذا العنوان.' },

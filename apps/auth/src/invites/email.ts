@@ -7,6 +7,7 @@
  * sends them in the invite's details: `channels: [{ name, action }]`), by name;
  * otherwise the email talks about the creator account only.
  */
+import { formatList } from '../../../../packages/ui/src/format.ts';
 import { formatEmailDate, renderEmail, type EmailDoc, type RenderedEmailParts } from '../email/layout';
 import type { InviteLocale } from './service';
 
@@ -35,7 +36,7 @@ export function inviteChannels(details: Record<string, unknown> | null | undefin
 }
 
 const joinNames = (names: string[], locale: InviteLocale) =>
-	new Intl.ListFormat(locale === 'ar' ? 'ar' : 'en', { style: 'long', type: 'conjunction' }).format(names);
+	formatList(names, locale);
 
 const COPY = {
 	en: {

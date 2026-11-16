@@ -214,6 +214,41 @@ jobs:
             apps/*/coverage/
           retention-days: 30
 
+  # Arabic pages hydrate in Safari's engine (WebKit) without React #418 and show Eastern Arabic
+  # (Hindi) numerals ٠–٩: the real admin route components rendered in Node and hydrated in WebKit
+  # and Chromium, plus the Profile page's in-browser dates. No accounts or QA: fixed data
+  # (apps/admin/hydration/server.mjs). Runs on every PR.
+  arabic-hydration:
+    runs-on: ubuntu-latest
+    name: Arabic hydration (WebKit)
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup GitHub Packages
+        run: |
+          echo "@al-ummah-now:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install WebKit and Chromium
+        run: pnpm exec playwright install --with-deps webkit chromium
+
+      - name: Arabic hydration check
+        run: pnpm test:hydration
+
   # QA deploy + E2E (reusable workflow), one run at a time: every run shares the
   # single QA environment. Serialised by the auth-qa lock (scripts/ci/qa-lock.ts,
   # a git ref changed by compare-and-swap; same as AlUmmahNow's E2E lock), not a
@@ -226,7 +261,7 @@ jobs:
   qa-lock:
     name: QA lock
     if: github.event_name == 'push'
-    needs: [lint-and-type-check, unit-tests, release-checks]
+    needs: [lint-and-type-check, unit-tests, release-checks, arabic-hydration]
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     permissions:

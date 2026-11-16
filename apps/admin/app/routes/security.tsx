@@ -1,3 +1,4 @@
+import { formatDateTime } from "../../../../packages/ui/src/format.ts";
 import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData } from "react-router";
@@ -57,7 +58,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   return { ok: true, error: null as string | null };
 }
 
-const fmt = (ms: number) => new Date(ms).toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short", timeZone: "UTC" }) + " UTC";
+const fmt = (ms: number) => formatDateTime(ms, "en", { dateStyle: "long", timeStyle: "short", timeZone: "UTC" }) + " UTC";
 
 export default function Security() {
   const { user, authServerUrl, settings, loadError, canChange, passkeyGraceUntil } = useLoaderData<typeof loader>();

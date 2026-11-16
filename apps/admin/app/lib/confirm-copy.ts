@@ -4,7 +4,8 @@
  * user's role), in English and Arabic. Same rule as deletion-copy: English
  * is the default; ?lang=ar shows Arabic (right-to-left).
  */
-import type { AdminLang } from './deletion-copy';
+import { RETENTION_DAYS, type AdminLang } from './deletion-copy';
+import { formatNumber } from '../../../../packages/ui/src/format.ts';
 
 export { dirOf, langOf, type AdminLang } from './deletion-copy';
 
@@ -41,7 +42,7 @@ const en: ConfirmCopy = {
     confirm: 'Run action again',
   },
   deletesAccount: (email) =>
-    `This deletes the account of ${email}: it is signed out everywhere and moves to Recently deleted, restorable for 30 days.`,
+    `This deletes the account of ${email}: it is signed out everywhere and moves to Recently deleted, restorable for ${RETENTION_DAYS} days.`,
   endSession: {
     title: 'End this session?',
     body: (email) => `${email} is signed out on that device and has to sign in again there.`,
@@ -80,7 +81,7 @@ const ar: ConfirmCopy = {
     confirm: 'تشغيل الإجراء مرة أخرى',
   },
   deletesAccount: (email) =>
-    `يحذف هذا حساب ${email}: يُسجَّل خروجه من كل مكان وينتقل إلى المحذوفات مؤخرًا، ويمكن استعادته خلال 30 يومًا.`,
+    `يحذف هذا حساب ${email}: يُسجَّل خروجه من كل مكان وينتقل إلى المحذوفات مؤخرًا، ويمكن استعادته خلال ${formatNumber(RETENTION_DAYS, 'ar')} يومًا.`,
   endSession: {
     title: 'إنهاء هذه الجلسة؟',
     body: (email) => `يُسجَّل خروج ${email} على ذلك الجهاز ويلزمه تسجيل الدخول مجددًا هناك.`,
