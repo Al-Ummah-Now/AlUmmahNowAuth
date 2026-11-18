@@ -208,7 +208,11 @@ export async function enqueueRotation(env: RotationEnv, trigger: RotationTrigger
 async function flagFailed(env: RotationEnv, message: RotationMessage, error: string, attempts: number) {
 	logger.error('[signing-keys] rotation failed', { trigger: message.trigger, attempts, error });
 	// The Errors page (AlUmmahNowAuth#341)
-	reportAuthError(env, undefined, new Error(error), { route: 'queue:signing-keys.rotate', extra: { trigger: message.trigger, attempts } });
+	reportAuthError(env, undefined, new Error(error), {
+		route: 'queue:signing-keys.rotate',
+		extra: { trigger: message.trigger, attempts },
+		context: { job: { queue: 'signing-keys.rotate', attempt: attempts } },
+	});
 	await writeRotationStatus(env.AUTH_DB, { error, errorAt: Date.now(), attempts, queuedAt: null, queuedBy: null }, message.adminId ?? null);
 	await audit(
 		AuditEventType.SIGNING_KEY_ROTATION_FAILED,

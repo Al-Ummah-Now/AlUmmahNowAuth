@@ -42,6 +42,25 @@ export interface ErrorDetails {
 	/** E2E / probe errors: grouped as test, never alert, deleted after a day */
 	test?: boolean;
 	extra?: Record<string, string | number | boolean | null>;
+	/**
+	 * What an admin needs to act (AlUmmahNow error-reporting/context.ts, validated again on ingest):
+	 * the failed dependency, the queue job, steps. Ids only. Ingest adds the Worker name.
+	 */
+	context?: ErrorContext;
+}
+
+export interface ErrorContext {
+	upstream?: { service: string; status?: number; route?: string };
+	job?: { queue?: string; id?: string; attempt?: number };
+	breadcrumbs?: { at: string; kind: string; message: string }[];
+}
+
+/** A D1/KV failure names its store as the failed upstream call when the caller did not. */
+export function inferContext(message: string, given: ErrorContext | undefined): ErrorContext | undefined {
+	if (given?.upstream) return given;
+	const service = /^D1_|D1_ERROR/.test(message) ? 'd1' : /\bKV (GET|PUT|DELETE|LIST) failed|KV namespace/i.test(message) ? 'kv' : null;
+	if (!service) return given;
+	return { ...(given ?? {}), upstream: { service } };
 }
 
 /** A reference the user can quote (ERR-XXXX-XXXX, Crockford base32), as the videos apps show. */
@@ -80,6 +99,7 @@ export function buildErrorEvent(error: unknown, d: ErrorDetails, env: ErrorRepor
 		workerVersion: env.CF_VERSION_METADATA?.id,
 		occurredAt: new Date().toISOString(),
 		extra: d.extra,
+		context: inferContext(message, d.context),
 		test: d.test || undefined,
 		count: 1,
 	};
