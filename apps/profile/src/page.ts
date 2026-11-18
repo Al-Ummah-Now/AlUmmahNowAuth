@@ -111,10 +111,16 @@ const STYLES = `
         /* display: inline-flex above would otherwise show a button the page hid (e.g. Add a passkey) */
         .btn[hidden] { display: none; }
         .profile-card[hidden] { display: none; }
-        .btn-primary { background: var(--auth-profile-button-background, linear-gradient(135deg, var(--fanous-color-primary) 0%, var(--fanous-color-primary-hover) 100%)); color: var(--auth-profile-button-text, var(--fanous-color-on-primary)); box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3); }
-        .btn-primary:hover { background: linear-gradient(135deg, var(--fanous-color-primary-hover) 0%, var(--fanous-color-primary-pressed) 100%); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(14, 165, 233, 0.4); }
-        .btn-secondary { background: rgba(255, 255, 255, 0.1); color: var(--fanous-color-text-primary); border: 1px solid rgba(255, 255, 255, 0.2); }
-        .btn-secondary:hover { background: rgba(255, 255, 255, 0.2); color: white; }
+        /* A card's buttons sit in its footer, end-aligned */
+        .card-actions { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }
+        .btn-primary { background: var(--auth-profile-button-background, var(--fanous-color-primary)); color: var(--auth-profile-button-text, var(--fanous-color-on-primary)); }
+        .btn-primary:hover { background: var(--fanous-color-primary-hover); color: var(--fanous-color-on-primary-hover, var(--fanous-color-on-primary)); }
+        /* Secondary: the theme's secondary button (a visible outline on the card in light and dark) */
+        .btn-secondary {
+            background: var(--fanous-c-button-secondary-bg, transparent); color: var(--fanous-c-button-secondary-text, var(--fanous-color-text-primary));
+            border: 1px solid var(--fanous-c-button-secondary-border, var(--fanous-color-outline));
+        }
+        .btn-secondary:hover { background: var(--fanous-c-button-secondary-hover, var(--fanous-color-surface-raised)); }
 
         .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; flex: 1; }
         .hero { text-align: center; margin-bottom: 3rem; }
@@ -128,23 +134,24 @@ const STYLES = `
             background: var(--auth-profile-card-background, linear-gradient(135deg, var(--fanous-color-surface-raised) 0%, var(--fanous-color-surface) 100%)); padding: 2rem; border-radius: var(--auth-profile-card-radius, 12px);
             border: 1px solid var(--auth-profile-card-border, color-mix(in srgb, var(--fanous-color-text-secondary) 20%, transparent)); box-shadow: var(--auth-profile-card-shadow, 0 4px 20px rgba(0, 0, 0, 0.4)); max-width: 600px; margin: 0 auto;
         }
-        .profile-card h2 { color: var(--auth-profile-heading-text, var(--fanous-color-primary)); margin-bottom: 1.5rem; font-size: 1.75rem; }
+        .profile-card h2 { color: var(--auth-profile-heading-text, var(--fanous-color-text-primary)); margin-bottom: 1.5rem; font-size: 1.5rem; }
         /* Signed-in page: one vertical rhythm between every block (welcome, apps, profile, passkeys) */
         #loggedInView > * { margin-block: 0; margin-inline: auto; }
         #loggedInView > * + * { margin-block-start: var(--auth-profile-stack-gap, 2rem); }
-        .profile-field { margin-bottom: 1rem; padding: 1rem; background: rgba(15, 23, 42, 0.6); border-radius: 8px; }
+        .profile-field { margin-bottom: 1rem; padding: 1rem; background: var(--fanous-color-background); border: 1px solid var(--fanous-color-divider, transparent); border-radius: 8px; }
+        .profile-field[hidden] { display: none; }
         .profile-field label {
             display: block; color: var(--fanous-color-text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;
         }
         .profile-field .value { color: var(--fanous-color-text-primary); font-size: 1.125rem; font-weight: 500; overflow-wrap: anywhere; }
         .badge { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 0.875rem; font-weight: 600; margin-inline-end: 8px; }
-        .badge-admin { background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); color: white; }
-        .badge-user { background: linear-gradient(135deg, #059669 0%, #047857 100%); color: white; }
+        .badge-admin { background: #b91c1c; color: #fff; }
+        .badge-user { background: #047857; color: #fff; }
         .welcome-message {
             background: linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%);
             border: 1px solid #059669; padding: 1.5rem; border-radius: 12px; margin: 0 auto 2rem; text-align: center; max-width: 600px;
         }
-        .welcome-message h3 { color: #10b981; margin-bottom: 0.5rem; font-size: 1.5rem; }
+        .welcome-message h3 { color: var(--fanous-color-success-text, #0f5a2c); margin-bottom: 0.5rem; font-size: 1.5rem; }
         .error-message {
             background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; color: var(--fanous-color-error-text);
         }
@@ -183,6 +190,11 @@ const STYLES = `
 const ICON_SIGNIN = '<svg class="aun-menu-icon aun-flip" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>';
 const ICON_SESSIONS = '<svg class="aun-menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
 const ICON_SIGNOUT = '<svg class="aun-menu-icon aun-flip" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>';
+
+/** A year in the page's digits: Eastern Arabic (Hindi) numerals ٠–٩ in Arabic (owner rule 2026-11-15). */
+export function yearText(year: number, locale: Locale): string {
+  return locale === "ar" ? String(year).replace(/[0-9]/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)]) : String(year);
+}
 
 export function renderHomePage(o: HomePageOptions): string {
   const theme = o.theme ?? { id: BUILTIN_DEFAULT_THEME, css: compileBuiltin(BUILTIN_DEFAULT_THEME, o.authServerUrl)!.tokensCss };
@@ -267,17 +279,17 @@ export function renderHomePage(o: HomePageOptions): string {
             ${isLoggedIn ? renderAppCards(o.apps, t) : ""}
 
             <div class="profile-card">
-                <h2>👤 ${e(t.profileHeading)}</h2>
-                <div class="profile-field"><label>${e(t.userId)}</label><div class="value" id="userId" dir="ltr">-</div></div>
+                <h2>${e(t.profileHeading)}</h2>
+                <div class="profile-field" id="userNameField" hidden><label>${e(t.name)}</label><div class="value" id="userName" dir="auto"></div></div>
                 <div class="profile-field"><label>${e(t.email)}</label><div class="value" id="userEmail" dir="ltr">-</div></div>
                 <div class="profile-field"><label>${e(t.role)}</label><div class="value" id="userRole">-</div></div>
-                <div style="margin-top: 2rem; text-align: center;">
-                    <button type="button" onclick="handleLogout()" class="btn btn-secondary">🚪 ${e(t.signOut)}</button>
+                <div class="card-actions">
+                    <button type="button" onclick="handleLogout()" class="btn btn-secondary">${e(t.signOut)}</button>
                 </div>
             </div>
 
             <section class="profile-card passkeys-card" id="passkeys" aria-labelledby="passkeysHeading">
-                <h2 id="passkeysHeading">🔑 ${e(t.passkeysHeading)}</h2>
+                <h2 id="passkeysHeading">${e(t.passkeysHeading)}</h2>
                 <p class="apps-section-sub">${e(t.passkeysIntro)}</p>
                 <p class="apps-section-sub" id="passkeysStaffNote" hidden>${e(t.passkeysStaffNote)}</p>
                 <ul class="passkey-list" id="passkeyList" aria-live="polite"></ul>
@@ -287,7 +299,7 @@ export function renderHomePage(o: HomePageOptions): string {
                     <span id="passkeyToastText">${e(t.passkeyRemoved)}</span>
                     <button type="button" class="btn btn-secondary" id="passkeyUndo">${e(t.passkeyUndo)}</button>
                 </div>
-                <div style="margin-top: 1rem;">
+                <div class="card-actions">
                     <a class="btn btn-primary" id="passkeyAdd" href="/passkeys/add${o.locale === "ar" ? "?lang=ar" : ""}">${e(t.passkeyAdd)}</a>
                 </div>
             </section>
@@ -295,7 +307,7 @@ export function renderHomePage(o: HomePageOptions): string {
     </main>
 
     <footer class="footer">
-        <p>${e(t.footer.replace("{year}", String(new Date().getUTCFullYear())))}</p>
+        <p>${e(t.footer.replace("{year}", yearText(new Date().getUTCFullYear(), o.locale)))}</p>
     </footer>
 
     <dialog class="confirm-dialog" id="confirmDialog" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
@@ -426,6 +438,10 @@ export function renderHomePage(o: HomePageOptions): string {
             var name = nameOf(displayAccount);
             document.getElementById('activeAvatar').textContent = initialOf(name);
             document.getElementById('activeEmail').textContent = name;
+            // Your profile: the account's name (never its id); no row when it has none (the email shows below)
+            var hasName = !!(displayAccount.email && name && name !== displayAccount.email);
+            document.getElementById('userNameField').hidden = !hasName;
+            document.getElementById('userName').textContent = hasName ? name : '';
             document.getElementById('accountWho').innerHTML =
                 '<span class="aun-avatar aun-avatar--lg" aria-hidden="true">' + esc(initialOf(name)) + '</span>' +
                 '<span class="aun-menu-who-text"><span class="aun-menu-who-name" dir="auto">' + esc(name) + '</span>' +
@@ -624,7 +640,6 @@ export function renderHomePage(o: HomePageOptions): string {
         function renderUserUI(user) {
             document.getElementById('loggedInView').style.display = 'block';
             document.getElementById('loggedOutView').style.display = 'none';
-            document.getElementById('userId').textContent = user.id;
             document.getElementById('userEmail').textContent = user.email;
 
             var roleDiv = document.getElementById('userRole');
@@ -634,7 +649,7 @@ export function renderHomePage(o: HomePageOptions): string {
                 var badge = document.createElement('span');
                 var lower = role.toLowerCase();
                 badge.className = lower === 'admin' || lower === 'super admin' ? 'badge badge-admin' : 'badge badge-user';
-                badge.textContent = role.toUpperCase();
+                badge.textContent = T.roleNames[lower] || role;
                 roleDiv.appendChild(badge);
             });
             if (roles.length === 0) roleDiv.textContent = T.noRoles;

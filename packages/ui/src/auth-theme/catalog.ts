@@ -43,7 +43,8 @@ export interface SectionDef {
 
 const ROOT = '[data-component="root"]';
 const CARD = '[data-component="center"]';
-const INNER = '[data-component="branding"], [data-component="form"], [data-component="form-footer"]';
+// [data-passkey] is the "or" + "Sign in with a passkey" block under the sign-in form: inset like the form
+const INNER = '[data-component="branding"], [data-component="form"], [data-component="form-footer"], [data-passkey]';
 
 /** The slots every OpenAuth page (sign-in, register, code, reset, consent) shares. */
 const OPENAUTH_SLOTS: SlotDef[] = [

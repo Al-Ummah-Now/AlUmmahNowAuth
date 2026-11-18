@@ -131,6 +131,11 @@ const STYLE = `
 [data-page="passkey"] [data-slot="actions"] { display:flex; flex-direction:column; gap:.75rem; }
 [data-page="passkey"] [data-component="button"] { width:100%; text-decoration:none; }
 [data-page="passkey"] label { display:flex; flex-direction:column; gap:.5rem; font-size:var(--font-size-sm); }
+[data-page="passkey"] [data-component="title"] { font-size:1.25rem; font-weight:600; line-height:1.4; }
+[data-page="passkey"] [data-slot="code"] { display:flex; flex-direction:column; gap:1rem; }
+[data-page="passkey"] bdi { overflow-wrap:anywhere; }
+/* No message yet: no blank row (it stays a live region for screen readers) */
+[data-page="passkey"] [data-slot="status"]:empty { position:absolute; width:1px; height:1px; min-height:0; overflow:hidden; clip-path:inset(50%); }
 `;
 
 /**
@@ -199,6 +204,12 @@ if(done)done.addEventListener('click',go);
 })();`;
 }
 
+/** The code step's sentence with the address isolated left to right (an Arabic sentence keeps its order and full stop). */
+function codeIntroHtml(intro: (email: string) => string, email: string) {
+	const [before, after = ''] = intro('\u0000').split('\u0000');
+	return html`${before}<bdi dir="ltr">${email}</bdi>${after}`;
+}
+
 export async function renderAddPasskeyPage(p: AddPasskeyPage): Promise<Response> {
 	const t = copyFor(p.locale);
 	const title = p.mode === 'card' ? (p.staff ? t.staffTitle : t.cardTitle) : p.staff ? t.staffTitle : t.setupTitle;
@@ -215,7 +226,7 @@ export async function renderAddPasskeyPage(p: AddPasskeyPage): Promise<Response>
 				: ''}
 			${p.needsCode
 				? html`<div data-slot="code">
-						<p data-component="description">${t.codeIntro(p.email)}</p>
+						<p data-component="description">${codeIntroHtml(t.codeIntro, p.email)}</p>
 						<button type="button" data-component="button" data-color="ghost" data-action="send-code">${t.sendCode}</button>
 						<label hidden
 							>${t.codeLabel}

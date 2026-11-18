@@ -29,6 +29,17 @@ const fontStack = (families: readonly string[]) => families.map((f) => (GENERIC.
 const num = (px: string) => String(Number(px.replace(/px$/, '')));
 const schemeOf = (v: SchemeValue, s: Scheme) => (typeof v === 'string' ? v : v[s]);
 
+/**
+ * Fixed rules on every OpenAuth page, from the theme's tokens. OpenAuth colours the "or" divider and
+ * the ghost (secondary) button from the page background alone: white on a light card and navy on a
+ * navy card (Auth #427). They follow the theme's secondary text, outline and secondary-button tokens.
+ */
+export const OPENAUTH_FIXED_CSS =
+	`[data-component="divider"]{color:var(--fanous-color-text-secondary,currentColor)}` +
+	`[data-component="divider"]::before,[data-component="divider"]::after{border-top-color:var(--fanous-color-outline,currentColor);opacity:1}` +
+	`:root [data-component="button"][data-color="ghost"]{background:var(--fanous-c-button-secondary-bg,transparent);color:var(--fanous-c-button-secondary-text,var(--fanous-color-text-primary,inherit));border:1px solid var(--fanous-c-button-secondary-border,var(--fanous-color-outline,currentColor));box-shadow:none}` +
+	`:root [data-component="button"][data-color="ghost"]:hover{background:var(--fanous-c-button-secondary-hover,transparent)}\n`;
+
 export function compileTheme(pkg: StoredPackage, opts: CompileOptions): CompiledTheme {
 	const t = pkg.theme;
 	const x = t['x-auth'] ?? {};
@@ -173,7 +184,7 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 			logo: logo ? { light: fileUrl(logo.light), dark: fileUrl(logo.dark) } : undefined,
 			radius: x.radius ?? 'md',
 			font: body ? { family: fontStack(body.latin) } : undefined,
-			css: `${fontCss}${tokens}\n${bgCss}${graphicCss}${openauthRules}${streetCss}`,
+			css: `${fontCss}${tokens}\n${bgCss}${graphicCss}${openauthRules}${OPENAUTH_FIXED_CSS}${streetCss}`,
 		},
 		backgrounds,
 		graphic,
