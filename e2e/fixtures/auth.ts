@@ -265,7 +265,10 @@ export async function getCurrentUser(page: Page): Promise<{
   await page.goto(TEST_URLS.profileApp);
   await expect(page.locator('#loggedInView')).toBeVisible();
 
-  const userId = await page.locator('#userId').textContent();
+  // The hub never shows the account's id (owner rule: people by name); the app's /api/me has it
+  await expect(page.locator('#userEmail')).not.toHaveText('-');
+  const me = (await page.evaluate(() => fetch('/api/me', { credentials: 'include' }).then((r) => r.json()))) as { id?: string };
+  const userId = me.id;
   const userEmail = await page.locator('#userEmail').textContent();
   const userRole = await page.locator('#userRole').textContent();
 
