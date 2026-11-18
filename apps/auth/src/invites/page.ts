@@ -17,7 +17,7 @@
  * Everything is in the page: no browser dialogs. Forms carry the CSRF token
  * that matches the `invite_csrf` cookie set with the page.
  */
-import { html } from 'hono/html';
+import { html, raw } from 'hono/html';
 import { Layout } from '@al-ummah-now/openauth/ui/base';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
 
@@ -114,7 +114,7 @@ export interface PageOptions {
 }
 
 async function respond(body: ReturnType<typeof html>, lang: Locale, opts: PageOptions): Promise<Response> {
-	const page = Layout({ theme: opts.theme, locale: lang, children: html`<style>${STYLE}</style>${body}` });
+	const page = Layout({ theme: opts.theme, locale: lang, children: html`<style>${raw(STYLE)}</style>${body}` });
 	const headers = new Headers({
 		'Content-Type': 'text/html; charset=utf-8',
 		'Content-Language': lang,

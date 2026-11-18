@@ -315,6 +315,8 @@ describe('the invite link', () => {
 			expect(stateOf(html)).toBe('ready');
 			expect(html).toContain('link@example.com');
 			expect(html).not.toContain('Create account');
+			// The page's CSS reaches the browser unescaped (an escaped quote breaks every selector)
+			expect(html).toContain('[data-page^="invite"] [data-component="button"] { width:100%;');
 		}
 		const { res } = await openAndSubmit(link);
 		expect(res!.status).toBe(200);
