@@ -44,6 +44,7 @@ import {
 import { userRoleRoutes } from "./custom/user-role-routes";
 import { userListRoutes } from "./custom/user-list-routes";
 import { adminContextMiddleware, methodCompatMiddleware, clientResponseCompatMiddleware } from "./custom/admin-context-middleware";
+import { requireLocalizedClientName } from "./middleware/client-localized-name";
 import { requireAdmin } from "./middleware/admin-auth";
 import { handleTokenCron } from "./cron/token-cron";
 import { hideDeleted, refuseDeletedRoleAssignment, softDeleteRoute } from "./deletions/routes";
@@ -349,6 +350,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminClientApp.use('*', clientResponseCompatMiddleware); // Response transform (runs last in response phase)
     adminClientApp.use('*', adminContextMiddleware);
     adminClientApp.use('*', methodCompatMiddleware);
+    // English + Arabic display names are both required (metadata.name_ar)
+    adminClientApp.use('*', requireLocalizedClientName(() => env.AUTH_DB));
     // Deleted clients: hidden from OpenAuth's client routes; DELETE is a soft delete
     adminClientApp.use('*', hideDeleted('client', { prefix: 'clients', listKey: 'clients' }));
     adminClientApp.delete('/clients/:clientId', softDeleteRoute('client', 'clientId'));

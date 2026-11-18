@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import vendoredSchema from '../../../../packages/ui/src/theme-packages/theme-package.v1.schema.json?raw';
 import { BUILTIN_IDS, blobBytes, builtinBlob, builtinPackage, compileBuiltin } from '../../../../packages/ui/src/auth-theme/builtin.ts';
-import { compileTheme, openauthThemeFor } from '../../../../packages/ui/src/auth-theme/compile.ts';
+import { compileTheme, openauthThemeFor, siteTitle } from '../../../../packages/ui/src/auth-theme/compile.ts';
 import { carryThemeOnLocation, decorateHtml, forceScheme, pageKind } from '../../../../packages/ui/src/auth-theme/decorate.ts';
 import { BUILTIN_DEFAULT_THEME, chooseTheme } from '../../../../packages/ui/src/auth-theme/resolve.ts';
 import { sanitizeSvg } from '../../../../packages/ui/src/auth-theme/svg.ts';
@@ -42,6 +42,16 @@ describe('built-in packages', () => {
 });
 
 describe('validateTheme', () => {
+	it('needs English and Arabic for the name, description and site title (no fallback)', () => {
+		const t = fawanees().theme;
+		const paths = (theme: unknown) => validateTheme(theme).errors.map((e) => e.path);
+		expect(paths({ ...t, description: { en: 'Lanterns', ar: '' } })).toContain('description.ar');
+		expect(paths({ ...t, 'x-auth': { ...t['x-auth'], title: { en: '', ar: 'الأمة الآن' } } })).toContain('x-auth.title.en');
+		// Optional texts may be left out entirely
+		const { description: _d, ...noDescription } = t;
+		expect(paths(JSON.parse(JSON.stringify({ ...noDescription, 'x-auth': { ...t['x-auth'], title: undefined } })))).toEqual([]);
+	});
+
 	it('rejects unknown keys, but keeps x- extension keys', () => {
 		const t = fawanees().theme as Record<string, unknown>;
 		expect(validateTheme({ ...t, extends: 'classic' }).errors.map((e) => `${e.path}: ${e.message}`).join()).toMatch(/extends: is not a known field/);
@@ -83,6 +93,13 @@ describe('validateTheme', () => {
 });
 
 describe('compileTheme', () => {
+	it('never shows one language\'s site title in the other\'s place', () => {
+		expect(siteTitle({ en: 'Eid', ar: 'العيد' })).toEqual({ en: 'Eid', ar: 'العيد' });
+		// The old editor copied the English title into an empty Arabic one
+		expect(siteTitle({ en: 'Eid', ar: 'Eid' })).toEqual({ en: 'Eid', ar: 'الأمة الآن' });
+		expect(siteTitle({ en: '', ar: 'العيد' })).toEqual({ en: 'Al Ummah Now', ar: 'العيد' });
+	});
+
 	it('gives OpenAuth the colours, title, logo and font', () => {
 		const c = compileBuiltin('fawanees', BASE)!;
 		expect(c.openauth.primary).toEqual({ light: '#f4ae3a', dark: '#f4ae3a' });

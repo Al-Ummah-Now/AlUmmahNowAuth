@@ -6,7 +6,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env } from 'cloudflare:test';
 import { setupDatabase } from '../test-setup';
-import { getClient, validateClient } from '../middleware/client-validation';
+import { clientNameAr, getClient, validateClient } from '../middleware/client-validation';
+import { renderAccountSelector } from '../ui/select-account';
 import { handleSelectAccountGet } from '../routes/select-account';
 
 const DB = () => (env as unknown as Env).AUTH_DB;
@@ -53,5 +54,42 @@ describe('GET /select-account', () => {
 		const body = await res.text();
 		expect(body).not.toContain('<script>');
 		expect(body).toContain('Invalid client_id');
+	});
+});
+
+describe('client display names (English + Arabic)', () => {
+	const AR_CLIENT = 'select-account-ar-client';
+	beforeAll(async () => {
+		const now = Date.now();
+		await DB()
+			.prepare(`INSERT OR REPLACE INTO oauth_clients (id, tenant_id, name, redirect_uris, metadata, enabled, created_at, updated_at) VALUES (?, 'default', 'Videos', ?, ?, 1, ?, ?)`)
+			.bind(AR_CLIENT, JSON.stringify([CLIENT.redirect]), JSON.stringify({ name_ar: 'المرئيات' }), now, now)
+			.run();
+	});
+
+	it('reads the Arabic name from metadata.name_ar; a legacy client has none', async () => {
+		expect((await validateClient(DB(), AR_CLIENT, CLIENT.redirect)).client?.nameAr).toBe('المرئيات');
+		expect((await validateClient(DB(), CLIENT.id, CLIENT.redirect)).client?.nameAr).toBeUndefined();
+		expect((await getClient(DB(), AR_CLIENT))?.nameAr).toBe('المرئيات');
+	});
+
+	it('an Arabic name copied from the English one counts as missing', () => {
+		expect(clientNameAr(JSON.stringify({ name_ar: 'Videos' }))).toBeUndefined();
+		expect(clientNameAr('not json')).toBeUndefined();
+		expect(clientNameAr({ name_ar: ' المرئيات ' })).toBe('المرئيات');
+	});
+
+	const page = (locale: 'en' | 'ar', clientNameAr?: string) =>
+		renderAccountSelector({ accounts: [], clientId: 'c', clientName: 'Videos', clientNameAr, redirectUri: CLIENT.redirect, allowAddAccount: true, locale });
+
+	it('each page language names the app in that language', () => {
+		expect(page('en', 'المرئيات')).toContain('<p>to continue to Videos</p>');
+		expect(page('ar', 'المرئيات')).toContain('<p>للمتابعة إلى المرئيات</p>');
+	});
+
+	it('without an Arabic name the Arabic page names no app, never the English name', () => {
+		const html = page('ar');
+		expect(html).toContain('<p>للمتابعة</p>');
+		expect(html).not.toContain('Videos</p>');
 	});
 });

@@ -16,6 +16,7 @@ import { kebab as fanousKebab, toCss } from '../theme-packages/refs.ts';
 import { SECTIONS, SPEC_SLOTS, kebab, type SectionDef } from './catalog.ts';
 import { sanitizeSvg } from './svg.ts';
 import { BG_PLACEHOLDER, type CompiledTheme, type EmailTheme, type Scheme, type SchemeValue, type StoredPackage } from './types.ts';
+import { localizedOrUndefined } from '../l10n/localized.ts';
 
 export interface CompileOptions {
 	/** Public URL of a package file (assets/…) with the given content hash. */
@@ -166,7 +167,7 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 		version: t.version,
 		name: t.name,
 		openauth: {
-			title: x.title ? { en: x.title.en, ar: x.title.ar } : undefined,
+			title: x.title ? siteTitle(x.title) : undefined,
 			primary: { light: colors.light.roles.primary, dark: colors.dark.roles.primary },
 			background: { light: colors.light.roles.background, dark: colors.dark.roles.background },
 			favicon: favicon ? fileUrl(favicon) : undefined,
@@ -204,3 +205,18 @@ export function openauthThemeFor(compiled: CompiledTheme, pick: () => number = M
 	const photo = compiled.backgrounds.length ? compiled.backgrounds[Math.floor(pick() * compiled.backgrounds.length)] : '';
 	return { ...compiled.openauth, css: compiled.openauth.css.split(BG_PLACEHOLDER).join(photo) };
 }
+
+/**
+ * The sign-in pages' site title by language. A language the theme lacks (an
+ * older theme saved before both were required, or one whose Arabic is a copy of
+ * the English) shows the platform name in that language, never the other
+ * language's text. OpenAuth would otherwise fall back to English.
+ */
+export function siteTitle(title: { en?: string; ar?: string }): { en: string; ar: string } {
+	return {
+		en: localizedOrUndefined(title, 'en') ?? PLATFORM_NAME.en,
+		ar: localizedOrUndefined(title, 'ar') ?? PLATFORM_NAME.ar,
+	};
+}
+
+export const PLATFORM_NAME = { en: 'Al Ummah Now', ar: 'الأمة الآن' } as const;

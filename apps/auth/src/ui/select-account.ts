@@ -11,10 +11,11 @@ import { CONFIRM_COPY, type UiLocale } from './confirm-dialog';
 import { tabIconHtml } from '../../../../packages/ui/src/app-icons/serve.ts';
 
 /** The selector's own words, English unless the request asks for Arabic. */
-const SELECTOR_COPY: Record<UiLocale, { title: string; continueTo: string; active: string; signedIn: string; useAnother: string }> = {
+const SELECTOR_COPY: Record<UiLocale, { title: string; continueTo: string; continueNoName: string; active: string; signedIn: string; useAnother: string }> = {
 	en: {
 		title: 'Choose an account',
 		continueTo: 'to continue to',
+		continueNoName: 'to continue',
 		active: 'Active',
 		signedIn: 'Signed in',
 		useAnother: 'Use another account',
@@ -22,6 +23,7 @@ const SELECTOR_COPY: Record<UiLocale, { title: string; continueTo: string; activ
 	ar: {
 		title: 'اختر حسابًا',
 		continueTo: 'للمتابعة إلى',
+		continueNoName: 'للمتابعة',
 		active: 'نشط',
 		signedIn: 'مسجّل الدخول',
 		useAnother: 'استخدام حساب آخر',
@@ -46,7 +48,10 @@ export interface AccountSelectorAccount {
 export interface AccountSelectorProps {
 	accounts: AccountSelectorAccount[];
 	clientId: string;
+	/** The app's English name. */
 	clientName: string;
+	/** The app's Arabic name; when missing, the Arabic page names no app (never the English name). */
+	clientNameAr?: string;
 	redirectUri: string;
 	state?: string;
 	scope?: string;
@@ -71,6 +76,7 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
 	const { accounts, clientName, allowAddAccount } = props;
 	const locale = props.locale ?? 'en';
 	const t = SELECTOR_COPY[locale];
+	const appName = (locale === 'ar' ? props.clientNameAr : clientName)?.trim();
 	const errors = CONFIRM_COPY[locale];
 
 	return `
@@ -254,7 +260,7 @@ export function renderAccountSelector(props: AccountSelectorProps): string {
   <div class="container">
     <div class="header">
       <h1>${escapeHtml(t.title)}</h1>
-      <p>${escapeHtml(t.continueTo)} ${escapeHtml(clientName)}</p>
+      <p>${appName ? `${escapeHtml(t.continueTo)} ${escapeHtml(appName)}` : escapeHtml(t.continueNoName)}</p>
     </div>
     <div class="accounts">
       ${accounts.map((account) => renderAccountOption(account, props, t)).join('')}
