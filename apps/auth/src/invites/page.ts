@@ -131,13 +131,13 @@ const addr = (email: string) => html`<bdi dir="ltr">${email}</bdi>`;
 
 function textWith(template: string, values: Record<string, string>) {
 	// Splits the translated sentence around its email placeholders, so each address is a <bdi>
-	const parts = template.split(/(\u0000[a-z]+\u0000)/);
+	const parts = template.split(/(\uE000[a-z]+\uE000)/);
 	return parts.map((part) => {
-		const m = /^\u0000([a-z]+)\u0000$/.exec(part);
+		const m = /^\uE000([a-z]+)\uE000$/.exec(part);
 		return m ? addr(values[m[1]] ?? '') : part;
 	});
 }
-const P = (k: string) => `\u0000${k}\u0000`;
+const P = (k: string) => `\uE000${k}\uE000`;
 
 export type InvitePageState =
 	| { kind: 'ready'; email: string; action: string; csrf: string }
