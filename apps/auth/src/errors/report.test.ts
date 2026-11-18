@@ -58,4 +58,12 @@ describe('auth error reporter', () => {
 		expect(buildErrorEvent(new Error('probe'), { test: true }, env).test).toBe(true);
 		expect(buildErrorEvent(new Error('real'), {}, env).test).toBeUndefined();
 	});
+
+	it('carries the context: a D1 failure names d1 as the failed call; the caller wins', () => {
+		expect(buildErrorEvent(new Error('D1_ERROR: storage unavailable'), {}, env).context).toEqual({ upstream: { service: 'd1' } });
+		expect(buildErrorEvent(new Error('boom'), {}, env).context).toBeUndefined();
+		const job = { job: { queue: 'signing-keys.rotate', attempt: 3 } };
+		expect(buildErrorEvent(new Error('boom'), { context: job }, env).context).toEqual(job);
+		expect(buildErrorEvent(new Error('D1_ERROR: x'), { context: { upstream: { service: 'kv' } } }, env).context).toEqual({ upstream: { service: 'kv' } });
+	});
 });
