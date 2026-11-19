@@ -32,7 +32,8 @@ import { signInFallbackUrl } from '../utils/sign-in-restart';
 import SendEmail from '../email';
 import { inviteChannels, inviteVideo, parseInviteCopy, renderInviteEmail } from './email';
 import { inviteCopy, pageLocale, renderInviteState, type InvitePageState } from './page';
-import { claimInvitedAccount, InviteError, InviteService, newInviteToken, type Invite, type InviteActor, type InviteRow } from './service';
+import { claimInvitedAccount, InviteError, InviteService, newInviteToken, normalizeInviteEmail, type Invite, type InviteActor, type InviteRow, type SupersededReason } from './service';
+import { hashToken } from '../utils/crypto';
 import { hasSignInMethod, inviteAccount, startInviteSession, type InviteAccount } from './sign-in';
 import { signedInAccount } from '../passkeys/session';
 import { renderAddPasskeyPage } from '../passkeys/pages';
@@ -338,22 +339,39 @@ type LinkState =
 	| { kind: 'withdrawn'; row: InviteRow }
 	| { kind: 'usable'; row: InviteRow; account: InviteAccount }
 	| { kind: 'signed-in'; row: InviteRow; account: InviteAccount }
-	| { kind: 'setup'; row: InviteRow; account: InviteAccount }
+	| { kind: 'setup'; row: InviteRow; account: InviteAccount; why: 'used' | 'expired' }
+	| { kind: 'superseded'; row: InviteRow; account: InviteAccount; reason: SupersededReason }
 	| { kind: 'active'; row: InviteRow; account: InviteAccount };
 
-/** What this link can do now, from the invite and its account (all reads by key). */
+/**
+ * What this link can do now, from the invite and its account (all reads by key). A link a newer
+ * email or "Copy link" replaced still finds its invite (migration 0043) and says so; a link that
+ * matches nothing at all is 'unknown' (also links used before their hash was kept, AlUmmahNowAuth#434).
+ */
 async function linkState(env: Env, service: InviteService, token: string, signedInUserId: string | null): Promise<LinkState> {
-	const row = await service.byToken(token);
+	const current = await service.byToken(token);
+	const replaced = current ? null : await service.bySupersededToken(token);
+	const row = current ?? replaced?.row;
 	if (!row) return { kind: 'unknown' };
 	if (row.deleted_at !== null) return { kind: 'withdrawn', row };
 	const account = await inviteAccount(env.AUTH_DB, row.tenant_id, row.user_id);
 	if (!account || account.deleted_at !== null || (account.status !== 'invited' && account.status !== 'active')) return { kind: 'withdrawn', row };
-	const unspent = row.token_used_at === null && row.expires_at > Date.now();
-	if (account.status === 'invited') return unspent ? { kind: 'usable', row, account } : { kind: 'setup', row, account };
+	const unspent = current !== null && row.token_used_at === null && row.expires_at > Date.now();
+	const stuck: LinkState = replaced
+		? { kind: 'superseded', row, account, reason: replaced.reason }
+		: { kind: 'setup', row, account, why: row.token_used_at !== null ? 'used' : 'expired' };
+	if (account.status === 'invited') return unspent ? { kind: 'usable', row, account } : stuck;
 	if (signedInUserId === account.id) return { kind: 'signed-in', row, account };
 	// Active: the link signs in only while the account has no password and no passkey
 	if (await hasSignInMethod(env.AUTH_DB, authStorage(env), account)) return { kind: 'active', row, account };
-	return unspent ? { kind: 'usable', row, account } : { kind: 'setup', row, account };
+	return unspent ? { kind: 'usable', row, account } : stuck;
+}
+
+/** A plausible address (the check the browser's type=email does, without a backtracking regex). */
+function plausibleEmail(value: string): boolean {
+	if (value.length > 254 || /\s/.test(value)) return false;
+	const at = value.indexOf('@');
+	return at > 0 && at === value.lastIndexOf('@') && value.indexOf('.', at + 2) > at + 1 && !value.endsWith('.');
 }
 
 /**
@@ -362,10 +380,11 @@ async function linkState(env: Env, service: InviteService, token: string, signed
  */
 export async function routeInvitePage(request: Request, env: Env, ctx: ExecutionContext, requestId: string, theme?: Theme): Promise<Response | null> {
 	const url = new URL(request.url);
-	const match = /^\/invite\/([^/]+)(\/send)?\/?$/.exec(url.pathname);
+	const match = /^\/invite\/([^/]+)(?:\/(send|request))?\/?$/.exec(url.pathname);
 	if (!match) return null;
-	const [, token, send] = match;
-	const allowed = send ? 'POST' : 'GET, POST';
+	const [, token, sub] = match;
+	const send = sub === 'send';
+	const allowed = sub ? 'POST' : 'GET, POST';
 	if (!allowed.split(', ').includes(request.method)) return json({ error: 'method_not_allowed' }, 405, { Allow: allowed });
 	const ip = getClientIP(request);
 	if (!(await withinRateLimit(env.PASSWORD_IP_LIMITER, `invite:ip:${ip}`))) {
@@ -400,8 +419,10 @@ export async function routeInvitePage(request: Request, env: Env, ctx: Execution
 	/** The page for a state, with a CSRF token on the pages that have a form. */
 	const show = (s: LinkState, status = 200): Promise<Response> => {
 		switch (s.kind) {
-			case 'unknown':
-				return page({ kind: 'unknown', homeUrl }, 410);
+			case 'unknown': {
+				const csrf = csrfFor(request);
+				return page({ kind: 'unknown', signInUrl: homeUrl, action: `/invite/${token}/request${url.search}`, csrf: csrf.token }, status === 200 ? 410 : status, csrf.cookies);
+			}
 			case 'withdrawn':
 				return page({ kind: 'withdrawn', homeUrl }, 410);
 			case 'signed-in':
@@ -410,7 +431,11 @@ export async function routeInvitePage(request: Request, env: Env, ctx: Execution
 				return page({ kind: 'active', email: s.account.email, signInUrl: appContinueUrl(s.row.continue_url, env) }, status);
 			case 'setup': {
 				const csrf = csrfFor(request);
-				return page({ kind: 'setup', email: s.account.email, action: `/invite/${token}/send${url.search}`, csrf: csrf.token }, status, csrf.cookies);
+				return page({ kind: 'setup', email: s.account.email, why: s.why, action: `/invite/${token}/send${url.search}`, csrf: csrf.token }, status, csrf.cookies);
+			}
+			case 'superseded': {
+				const csrf = csrfFor(request);
+				return page({ kind: 'superseded', reason: s.reason, action: `/invite/${token}/send${url.search}`, csrf: csrf.token }, status, csrf.cookies);
 			}
 			case 'usable': {
 				// Other accounts signed in on this browser change nothing: Continue adds this one beside them
@@ -424,15 +449,18 @@ export async function routeInvitePage(request: Request, env: Env, ctx: Execution
 	// A POST that is not from our page: show the page again (with a fresh form), never act
 	if (!(await csrfOk(request))) return show(state, 403);
 
-	if (send) {
-		if (state.kind !== 'setup') return show(state);
-		const { row, account } = state;
+	/**
+	 * Email a fresh single-use link to the invited inbox (never to anyone else): the same delivery
+	 * and audit as an admin's resend. `shown` is the address the page may show (absent when the
+	 * person has not proved the inbox, e.g. a replaced or unmatched link).
+	 */
+	const emailNewLink = async (row: InviteRow, account: InviteAccount, shown: string | undefined, by: string, again: string): Promise<Response | null> => {
 		// A link was emailed in the last few minutes and this one has not been used since: "we just sent one".
 		// (A link used after the last email asks for the first new one at once; each send replaces this
 		// link's token, so one old link can never send twice.)
-		const sentSinceUse = row.last_sent_at !== null && (row.token_used_at === null || row.last_sent_at > row.token_used_at);
-		if (sentSinceUse && Date.now() - row.last_sent_at! < SELF_SEND_COOLDOWN_MS) return page({ kind: 'cooldown', email: account.email });
-		if (!(await withinRateLimit(env.SEND_CODE_LIMITER, `invite:send:ip:${ip}`))) return page({ kind: 'busy' }, 429);
+		// A replaced or unmatched link isn't the latest link, so its use says nothing: any recent send counts.
+		const sentSinceUse = row.last_sent_at !== null && (by !== 'invitee' || row.token_used_at === null || row.last_sent_at > row.token_used_at);
+		if (sentSinceUse && Date.now() - row.last_sent_at! < SELF_SEND_COOLDOWN_MS) return shown === undefined && by === 'invitee_request' ? null : page({ kind: 'cooldown', email: shown });
 		// Deliver first, store after: a link that never reached the inbox is never valid, and the
 		// page never shows the new token (only the invited inbox gets it)
 		const ttl = Number(env.INVITE_TTL_DAYS) || undefined;
@@ -440,14 +468,54 @@ export async function routeInvitePage(request: Request, env: Env, ctx: Execution
 		const scoped = new InviteService(env.AUTH_DB, { tenantId: row.tenant_id, defaultTtlDays: ttl });
 		const planned = InviteService.view({ ...row, locale: lang, expires_at: scoped.extendedExpiry(row.expires_at) });
 		const delivery = await deliverInvite(env, planned, inviteLink(issuerOf(env, request), fresh.token, lang));
-		// Same event as an admin's resend; the invitee asked for it from the link
-		audit(AuditEventType.USER_INVITE_RESENT, row, { by: 'invitee', emailSent: delivery.sent, via: delivery.via, targetEmail: row.email });
+		// Same event as an admin's resend; the invitee asked for it
+		audit(AuditEventType.USER_INVITE_RESENT, row, { by, emailSent: delivery.sent, via: delivery.via, targetEmail: row.email });
 		if (!delivery.sent) {
+			if (by === 'invitee_request') return null;
 			const csrf = csrfFor(request);
-			return page({ kind: 'send-failed', email: account.email, action: `/invite/${token}/send${url.search}`, csrf: csrf.token }, 502, csrf.cookies);
+			return page({ kind: 'send-failed', email: shown, action: again, csrf: csrf.token }, 502, csrf.cookies);
 		}
 		await scoped.rotateToken(row.id, { extend: true, locale: lang, allowAccepted: true, sent: true, preset: fresh });
-		return page({ kind: 'sent', email: account.email });
+		return shown === undefined && by === 'invitee_request' ? null : page({ kind: 'sent', email: shown });
+	};
+
+	if (send) {
+		if (state.kind !== 'setup' && state.kind !== 'superseded') return show(state);
+		if (!(await withinRateLimit(env.SEND_CODE_LIMITER, `invite:send:ip:${ip}`))) return page({ kind: 'busy' }, 429);
+		const shown = state.kind === 'setup' ? state.account.email : undefined;
+		const response = await emailNewLink(state.row, state.account, shown, state.kind === 'setup' ? 'invitee' : 'invitee_superseded', `/invite/${token}/send${url.search}`);
+		return response ?? page({ kind: 'sent', email: shown });
+	}
+
+	if (sub === 'request') {
+		// A link we can't match: the person types the invited address. The answer is the same whether
+		// or not an invite is waiting for it, so the page never tells who was invited.
+		if (state.kind !== 'unknown') return show(state);
+		const typed = (await request.formData().catch(() => null))?.get('email');
+		const email = typeof typed === 'string' ? normalizeInviteEmail(typed) : '';
+		if (!plausibleEmail(email)) {
+			const csrf = csrfFor(request);
+			return page({ kind: 'unknown', signInUrl: homeUrl, action: `/invite/${token}/request${url.search}`, csrf: csrf.token, invalidEmail: true, email }, 400, csrf.cookies);
+		}
+		if (
+			!(await withinRateLimit(env.SEND_CODE_LIMITER, `invite:request:ip:${ip}`)) ||
+			!(await withinRateLimit(env.SEND_CODE_LIMITER, `invite:request:email:${await hashToken(email)}`))
+		) {
+			return page({ kind: 'busy' }, 429);
+		}
+		// Look up and send after the answer, so the response time doesn't tell either
+		const lookUpAndSend = async (): Promise<void> => {
+			const row = await service.openByEmail(email);
+			const account = row ? await inviteAccount(env.AUTH_DB, row.tenant_id, row.user_id) : null;
+			const waiting =
+				row !== null &&
+				account !== null &&
+				account.deleted_at === null &&
+				(account.status === 'invited' || (account.status === 'active' && !(await hasSignInMethod(env.AUTH_DB, authStorage(env), account))));
+			if (waiting) await emailNewLink(row!, account!, undefined, 'invitee_request', '');
+		};
+		ctx.waitUntil(lookUpAndSend().catch((error) => logger.error('invite link request failed', { requestId, error: String(error) })));
+		return page({ kind: 'requested', signInUrl: homeUrl });
 	}
 
 	// Continue: spend the link, sign in, make the invited account the active one
