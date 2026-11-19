@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "../../../../packages/ui/src/format.ts";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { AdminLayout } from "../components/admin-layout";
@@ -51,7 +52,7 @@ const HOUR = 3_600_000;
 
 function formatTime(ms: number | undefined | null, lang: AdminLang, t: SigningKeysCopy): string {
   if (!ms) return t.never;
-  return new Intl.DateTimeFormat(lang === "ar" ? "ar" : "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(ms) + " UTC";
+  return formatDate(ms, lang, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC";
 }
 
 function errorText(t: SigningKeysCopy, code: string): string {
