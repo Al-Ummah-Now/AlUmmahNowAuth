@@ -132,6 +132,8 @@ const STYLE = `
 [data-page="passkey"] [data-slot="status"][data-tone="error"] { color:var(--color-error); }
 [data-page="passkey"] [data-slot="actions"] { display:flex; flex-direction:column; gap:.75rem; }
 [data-page="passkey"] [data-component="button"] { width:100%; text-decoration:none; }
+/* Secondary actions: an outline that stays visible on the dark card, never a second filled button */
+[data-page="passkey"] [data-component="button"][data-color="ghost"] { background:transparent; color:inherit; border:1px solid color-mix(in srgb, currentColor 55%, transparent); box-shadow:none; }
 [data-page="passkey"] label { display:flex; flex-direction:column; gap:.5rem; font-size:var(--font-size-sm); }
 [data-page="passkey"] [data-component="title"] { font-size:1.25rem; font-weight:600; line-height:1.4; }
 [data-page="passkey"] [data-slot="code"] { display:flex; flex-direction:column; gap:1rem; }

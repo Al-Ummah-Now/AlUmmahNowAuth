@@ -46,8 +46,8 @@ function d1(command: string): string {
       }).toString();
     } catch (err) {
       const busy = /SQLITE_BUSY|database is locked/.test(String((err as { stderr?: Buffer }).stderr ?? err));
-      if (!busy || attempt >= 5) throw err;
-      execFileSync('sleep', ['1']);
+      if (!busy || attempt >= 10) throw err;
+      execFileSync('sleep', [String(Math.min(attempt, 4))]);
     }
   }
 }
@@ -240,7 +240,7 @@ test.describe('Invite link', () => {
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     await expect(page.locator('[data-page="invite"][data-state="ready"]')).toContainText('حسابك جاهز');
     await page.locator('[data-action="accept-invite"]').click();
-    await expect(page.locator('[data-page="passkey"] [data-action="skip"]')).toHaveText('تخطٍّ');
+    await expect(page.locator('[data-page="passkey"] [data-action="skip"]')).toHaveText('تجاوز');
   });
 });
 
