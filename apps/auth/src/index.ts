@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { roleAdminRoutes } from './custom/role-admin-routes';
 import { isWellKnownRequest, serveWellKnown } from './well-known-cache';
 import { createMultiTenantIssuer } from "@al-ummah-now/openauth";
 import { RBACAdapter, RBACServiceImpl, rbacEndpoints, rbacAdminEndpoints } from "@al-ummah-now/openauth/rbac/index";
@@ -332,6 +333,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminRbacApp.use('*', hideDeleted('role', { prefix: 'roles', listKey: 'roles' }));
     adminRbacApp.use('*', refuseDeletedRoleAssignment());
     adminRbacApp.delete('/roles/:roleId', softDeleteRoute('role', 'roleId'));
+    // The accounts admin's role page: a role's users and every permission (custom/role-admin-routes.ts)
+    adminRbacApp.route('/', roleAdminRoutes(env.AUTH_DB));
     adminRbacApp.route('/', rbacAdminEndpoints(rbacService));
 
     // Create public RBAC app (Phase 3: OpenAuth migration)

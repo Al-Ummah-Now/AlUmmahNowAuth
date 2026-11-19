@@ -96,7 +96,7 @@ function rewriteRequest(request: Request, originalPath: string, newPath: string)
 async function handleAdminRbacRoutes(rctx: RouterContext): Promise<RouteResult> {
 	const { url, request, env, ctx, adminRbacApp, isProduction } = rctx;
 
-	if (!url.pathname.startsWith('/admin/roles')) {
+	if (!url.pathname.startsWith('/admin/roles') && url.pathname !== '/admin/permissions') {
 		return null;
 	}
 
@@ -718,7 +718,7 @@ async function routeAdminPaths(rctx: RouterContext): Promise<RouteResult> {
 	const { pathname } = rctx.url;
 
 	// Check specific patterns first
-	if (pathname.startsWith('/admin/roles')) {
+	if (pathname.startsWith('/admin/roles') || pathname === '/admin/permissions') {
 		return await handleAdminRbacRoutes(rctx);
 	}
 

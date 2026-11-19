@@ -2,11 +2,14 @@
  * RBAC API Client for Admin App
  *
  * This module provides typed API client functions for interacting with the
- * auth service's RBAC endpoints. All functions forward authentication cookies
- * and handle errors appropriately.
+ * auth service's RBAC endpoints. Every call is M2M (the admin client's token), acting as the
+ * signed-in admin, like admin-api.server: Auth's /admin/* routes take no cookies, so the
+ * cookie-forwarding calls this file used to make were refused and the role page answered 404
+ * (QA E2E color-mode.spec, 2026-11-18).
  */
 
-import { getAuthServerUrl } from './config';
+import { m2mFetch, type ActingUser } from './admin-api.server';
+import { getAuthenticatedUser } from './auth.server';
 
 /**
  * Permission definition following resource:action format
@@ -96,39 +99,12 @@ async function authRequest<T>(
   options: RequestInit = {}
 ): Promise<T | ErrorResponse> {
   try {
-    const authServerUrl = getAuthServerUrl(request, env);
-    const url = `${authServerUrl}${endpoint}`;
-
-    // Forward cookies from the original request
-    const cookies = request.headers.get('Cookie');
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    // Merge any provided headers
-    if (options.headers) {
-      const providedHeaders = options.headers;
-      if (providedHeaders instanceof Headers) {
-        providedHeaders.forEach((value, key) => {
-          headers[key] = value;
-        });
-      } else if (Array.isArray(providedHeaders)) {
-        providedHeaders.forEach(([key, value]) => {
-          headers[key] = value;
-        });
-      } else {
-        Object.assign(headers, providedHeaders);
-      }
-    }
-
-    if (cookies) {
-      headers['Cookie'] = cookies;
-    }
-
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    const session = await getAuthenticatedUser(request, env as never);
+    if (!session?.user?.id) return { error: 'Not signed in' };
+    const acting: ActingUser = { id: session.user.id, email: session.user.email ?? '', roles: session.user.roles ?? [] };
+    const headers = new Headers(options.headers);
+    if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    const response = await m2mFetch(env as never, endpoint, acting, { ...options, headers }, request);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -195,14 +171,16 @@ export async function getRoleById(
   env: { AUTH_SERVER_URL?: string },
   roleId: string
 ): Promise<RoleWithPermissions | ErrorResponse> {
-  return authRequest<RoleWithPermissions>(
+  // Auth answers { role, permissions }; the page takes the role with its permissions
+  const res = await authRequest<{ role?: Role; permissions?: Permission[] } & Partial<RoleWithPermissions>>(
     request,
     env,
     `/admin/roles/${encodeURIComponent(roleId)}`,
-    {
-      method: 'GET',
-    }
+    { method: 'GET' }
   );
+  if (isErrorResponse(res)) return res;
+  if (res.role) return { ...res.role, permissions: res.permissions ?? [] };
+  return { ...(res as RoleWithPermissions), permissions: res.permissions ?? [] };
 }
 
 /**
@@ -366,7 +344,7 @@ export async function getAllPermissions(
   return authRequest<{ total: number; permissions: Record<string, Permission[]> }>(
     request,
     env,
-    '/api/permissions',
+    '/admin/permissions',
     {
       method: 'GET',
     }
@@ -443,7 +421,7 @@ export async function removeUserFromRole(
   return authRequest<SuccessResponse>(
     request,
     env,
-    `/admin/roles/${encodeURIComponent(roleId)}/users/${encodeURIComponent(userId)}`,
+    `/admin/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(roleId)}`,
     {
       method: 'DELETE',
     }
