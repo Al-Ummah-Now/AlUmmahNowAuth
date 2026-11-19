@@ -40,8 +40,10 @@ const COPY = {
 		added: 'Passkey added. Next time, choose "Sign in with a passkey".',
 		goingBack: 'Taking you back…',
 		unsupported: "This browser can't save passkeys. Try another browser or device.",
-		failed: "The passkey wasn't added. Try again.",
-		cancelled: 'Cancelled. You can try again.',
+		failed: "We couldn't add the passkey. Nothing changed on your account. Check that this device has a screen lock or a password manager turned on, then try again.",
+		cancelled: "The passkey wasn't saved because the request was closed or timed out. Press Add a passkey to try again.",
+		network: "We couldn't reach Al Ummah Now. Check your connection, then try again.",
+		expired: "That took too long, so the passkey wasn't saved. Press Add a passkey to try again.",
 		exists: 'This device already has a passkey for your account.',
 		limit: `You already have ${formatNumber(MAX_PASSKEYS, 'en')} passkeys. Remove one in your account first.`,
 		wrongCode: 'That code is not right. Check the email and try again.',
@@ -74,8 +76,10 @@ const COPY = {
 		added: 'أُضيف مفتاح المرور. في المرة القادمة اختر «الدخول بمفتاح المرور».',
 		goingBack: 'جارٍ إعادتك…',
 		unsupported: 'لا يستطيع هذا المتصفح حفظ مفاتيح المرور. جرّب متصفحًا أو جهازًا آخر.',
-		failed: 'لم يُضَف مفتاح المرور. حاول مرة أخرى.',
-		cancelled: 'أُلغي الطلب. يمكنك المحاولة مرة أخرى.',
+		failed: 'تعذّرت إضافة مفتاح المرور، ولم يتغيّر شيء في حسابك. تأكّد أن لهذا الجهاز قفل شاشة أو أن مدير كلمات المرور مفعّل، ثم حاول مرة أخرى.',
+		cancelled: 'لم يُحفَظ مفتاح المرور لأن الطلب أُغلق أو انتهت مهلته. اضغط «إضافة مفتاح مرور» للمحاولة مرة أخرى.',
+		network: 'تعذّر الاتصال بالأمة الآن. تحقّق من اتصالك ثم حاول مرة أخرى.',
+		expired: 'استغرق الأمر وقتًا طويلًا، فلم يُحفَظ مفتاح المرور. اضغط «إضافة مفتاح مرور» للمحاولة مرة أخرى.',
 		exists: 'لهذا الجهاز مفتاح مرور لحسابك بالفعل.',
 		limit: `لديك ${formatNumber(MAX_PASSKEYS, 'ar')} مفاتيح مرور بالفعل. أزل واحدًا من حسابك أولًا.`,
 		wrongCode: 'الرمز غير صحيح. تحقق من الرسالة وحاول مرة أخرى.',
@@ -177,6 +181,8 @@ function pageScript(p: AddPasskeyPage, t: ReturnType<typeof copyFor>): string {
 			unsupported: t.unsupported,
 			failed: t.failed,
 			cancelled: t.cancelled,
+			network: t.network,
+			expired: t.expired,
 			exists: t.exists,
 			limit: t.limit,
 			wrong_code: t.wrongCode,
@@ -200,10 +206,10 @@ var done=root.querySelector('[data-action="done"]');
 function say(msg,tone){status.textContent=msg||'';if(tone)status.setAttribute('data-tone',tone);else status.removeAttribute('data-tone');}
 var leaving=false,timer=null;
 function go(){if(leaving)return;leaving=true;if(timer)clearTimeout(timer);[addBtn,skip,done].forEach(function(b){if(b)b.disabled=true;});window.location.assign(C.continueUrl);}
-function post(path,body){return fetch(path+C.q,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){j.__status=r.status;return j;});});}
+function post(path,body){return fetch(path+C.q,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body||{})}).catch(function(){var n=new Error('network');n.__network=true;throw n;}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){j.__status=r.status;return j;});});}
 if(!pk||!pk.supported()){ if(C.mode==='card'&&!C.staff){go();return;} say(C.t.unsupported,'error'); if(addBtn)addBtn.hidden=true; if(codeBox)codeBox.hidden=true; }
 if(skip)skip.addEventListener('click',function(){skip.disabled=true;if(C.mode==='card'&&!C.staff){post('/passkeys/prompt/dismiss').then(go,go);}else{go();}});
-if(sendBtn)sendBtn.addEventListener('click',function(){sendBtn.disabled=true;post('/passkeys/email-code').then(function(j){sendBtn.disabled=false;if(j.sent){say(C.t.codeSent);codeInput.hidden=false;codeInput.parentNode.hidden=false;addBtn.hidden=false;codeInput.focus();}else{say(C.t[j.error]||C.t.code_failed,'error');}},function(){sendBtn.disabled=false;say(C.t.code_failed,'error');});});
+if(sendBtn)sendBtn.addEventListener('click',function(){sendBtn.disabled=true;post('/passkeys/email-code').then(function(j){sendBtn.disabled=false;if(j.sent){say(C.t.codeSent);codeInput.hidden=false;codeInput.parentNode.hidden=false;addBtn.hidden=false;codeInput.focus();}else{say(C.t[j.error]||C.t.code_failed,'error');}},function(){sendBtn.disabled=false;say(C.t.network,'error');});});
 if(addBtn)addBtn.addEventListener('click',function(){
  addBtn.disabled=true;say(C.t.adding);
  var body={};if(C.ticket)body.ticket=C.ticket;if(C.needsCode&&codeInput)body.code=codeInput.value.trim().replace(/[\\u0660-\\u0669\\u06F0-\\u06F9]/g,function(c){return String(c.charCodeAt(0)&15);});
@@ -213,8 +219,8 @@ if(addBtn)addBtn.addEventListener('click',function(){
    if(v&&v.ok){say(C.autoContinue?C.t.added+' '+C.t.goingBack:C.t.added);addBtn.hidden=true;if(skip)skip.hidden=true;if(codeBox)codeBox.hidden=true;done.hidden=false;done.focus();root.setAttribute('data-state','added');if(C.autoContinue)timer=setTimeout(go,C.delay);}
    else{addBtn.disabled=false;say(C.t[v&&v.error]||C.t.failed,'error');}
   },function(e){addBtn.disabled=false;
-   if(e&&e.name==='InvalidStateError')say(C.t.exists,'error');else if(e&&(e.name==='NotAllowedError'||e.name==='AbortError'))say(C.t.cancelled);else say(C.t.failed,'error');});
- },function(){addBtn.disabled=false;say(C.t.failed,'error');});
+   if(e&&e.__network)say(C.t.network,'error');else if(e&&e.name==='InvalidStateError')say(C.t.exists,'error');else if(e&&(e.name==='NotAllowedError'||e.name==='AbortError'))say(C.t.cancelled);else say(C.t.failed,'error');});
+ },function(){addBtn.disabled=false;say(C.t.network,'error');});
 });
 if(done)done.addEventListener('click',go);
 })();`;

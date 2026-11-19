@@ -163,6 +163,13 @@ export async function signRegistration(env: PasskeyEnv, claims: RegistrationClai
 	return `${body}.${b64url(sig)}`;
 }
 
+/** A signed registration token whose 5 minutes are up (so the page can say "that took too long"). */
+export async function registrationExpired(env: PasskeyEnv, token: unknown, now = Date.now()): Promise<boolean> {
+	if (typeof token !== 'string' || !token.includes('.')) return false;
+	const claims = await readRegistration(env, token, 0);
+	return !!claims && claims.e <= now;
+}
+
 export async function readRegistration(env: PasskeyEnv, token: unknown, now = Date.now()): Promise<RegistrationClaims | null> {
 	if (typeof token !== 'string' || !token.includes('.')) return null;
 	const [body, sig] = token.split('.');
@@ -312,7 +319,7 @@ async function handleRegisterVerify(rctx: PasskeyRouteContext): Promise<Response
 	const { request, env } = rctx;
 	const body = await readJson(request);
 	const claims = await readRegistration(env, body.token);
-	if (!claims) return json({ error: 'failed' }, 400);
+	if (!claims) return json({ error: (await registrationExpired(env, body.token)) ? 'expired' : 'failed' }, 400);
 	const account = await signedInAccount(request, env);
 	if (!account || account.userId !== claims.u || account.browserSessionId !== claims.s) return json({ error: 'not_signed_in' }, 401);
 	if (!isFresh(account)) return json({ error: 'stale_sign_in' }, 403);
