@@ -65,6 +65,9 @@ export interface InviteActor {
 	clientId: string;
 }
 
+/** What replaced an invite's earlier link: a newer invite email, or an admin's "Copy link". */
+export type SupersededReason = 'email' | 'link';
+
 export interface InviteRow {
 	id: string;
 	tenant_id: string;
@@ -427,13 +430,15 @@ export class InviteService {
 		if (row.deleted_at !== null) throw new InviteError(410, 'revoked', 'This invite was revoked; restore it first');
 		if (row.accepted_at !== null) throw new InviteError(409, 'already_accepted', 'This invite was already accepted');
 		const now = this.now();
-		await this.db
-			.prepare(
-				`UPDATE user_invites SET token_hash = ?3, token_used_at = NULL, expires_at = MAX(expires_at, ?4), updated_at = ?5
-				 WHERE tenant_id = ?1 AND id = ?2`
-			)
-			.bind(this.tenantId, id, tokenHash, now + this.defaultTtl * DAY_MS, now)
-			.run();
+		await this.db.batch([
+			...this.keepReplacedLink(row, tokenHash, now, 'link'),
+			this.db
+				.prepare(
+					`UPDATE user_invites SET token_hash = ?3, token_used_at = NULL, expires_at = MAX(expires_at, ?4), updated_at = ?5
+					 WHERE tenant_id = ?1 AND id = ?2`
+				)
+				.bind(this.tenantId, id, tokenHash, now + this.defaultTtl * DAY_MS, now),
+		]);
 		return toInvite(await this.requireRow(id), now);
 	}
 
@@ -495,16 +500,58 @@ export class InviteService {
 		const { token, hash } = opts.preset ?? (await newInviteToken());
 		const expires = opts.extend ? this.extendedExpiry(row.expires_at) : row.expires_at;
 		const locale = opts.locale === 'ar' || opts.locale === 'en' ? opts.locale : row.locale;
-		await this.db
-			.prepare(
-				`UPDATE user_invites SET token_hash = ?3, token_used_at = NULL, expires_at = ?4, locale = ?5, updated_at = ?6,
-				   last_sent_at = CASE WHEN ?7 THEN ?6 ELSE last_sent_at END,
-				   send_count = send_count + CASE WHEN ?7 THEN 1 ELSE 0 END
-				 WHERE tenant_id = ?1 AND id = ?2`
-			)
-			.bind(this.tenantId, id, hash, expires, locale, now, opts.sent ? 1 : 0)
-			.run();
+		await this.db.batch([
+			...this.keepReplacedLink(row, hash, now, 'email'),
+			this.db
+				.prepare(
+					`UPDATE user_invites SET token_hash = ?3, token_used_at = NULL, expires_at = ?4, locale = ?5, updated_at = ?6,
+					   last_sent_at = CASE WHEN ?7 THEN ?6 ELSE last_sent_at END,
+					   send_count = send_count + CASE WHEN ?7 THEN 1 ELSE 0 END
+					 WHERE tenant_id = ?1 AND id = ?2`
+				)
+				.bind(this.tenantId, id, hash, expires, locale, now, opts.sent ? 1 : 0),
+		]);
 		return { invite: toInvite(await this.requireRow(id), now), token };
+	}
+
+	/**
+	 * The link being replaced stays findable (migration 0043): an older invite email can then offer
+	 * "Email me a new link" instead of a dead end. Only the hash is kept.
+	 */
+	private keepReplacedLink(row: InviteRow, nextHash: string, now: number, reason: SupersededReason): D1PreparedStatement[] {
+		if (!row.token_hash || row.token_hash === nextHash) return [];
+		return [
+			this.db
+				.prepare(
+					`INSERT OR IGNORE INTO user_invite_superseded_tokens (token_hash, invite_id, user_id, tenant_id, reason, superseded_at)
+					 VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+				)
+				.bind(row.token_hash, row.id, row.user_id, row.tenant_id, reason, now),
+		];
+	}
+
+	/** The invite an older link of it belongs to, and what replaced that link. */
+	async bySupersededToken(token: string): Promise<{ row: InviteRow; reason: SupersededReason } | null> {
+		if (!/^[0-9a-f]{64}$/.test(token)) return null;
+		const found = await this.db
+			.prepare(
+				`SELECT i.*, s.reason AS superseded_reason FROM user_invite_superseded_tokens s
+				 JOIN user_invites i ON i.id = s.invite_id AND i.tenant_id = s.tenant_id
+				 WHERE s.token_hash = ?1`
+			)
+			.bind(await hashToken(token))
+			.first<InviteRow & { superseded_reason: string }>();
+		if (!found) return null;
+		const { superseded_reason, ...row } = found;
+		return { row, reason: superseded_reason === 'link' ? 'link' : 'email' };
+	}
+
+	/** The newest open (not withdrawn) invite for an address: "Email me a new link" from a link we can't match. */
+	async openByEmail(email: string): Promise<InviteRow | null> {
+		return this.db
+			.prepare('SELECT * FROM user_invites WHERE tenant_id = ?1 AND email = ?2 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1')
+			.bind(this.tenantId, email)
+			.first<InviteRow>();
 	}
 
 	/** A resend's expiry: at least the default lifetime from now. */
@@ -700,6 +747,7 @@ export async function purgeRevokedInvites(db: D1Database, now = Date.now(), batc
 					)
 					.bind(row.user_id),
 				db.prepare(`DELETE FROM users WHERE id = ?1 AND status = 'deleted' AND last_login_at IS NULL`).bind(row.user_id),
+				db.prepare('DELETE FROM user_invite_superseded_tokens WHERE invite_id = ?1').bind(row.id),
 				db.prepare('DELETE FROM user_invites WHERE id = ?1 AND deleted_at IS NOT NULL').bind(row.id),
 			]);
 			purged++;

@@ -36,7 +36,8 @@ const { routeInviteProvisioning, routeInvitePage, safeContinueUrl } = await impo
 
 const E = () => ({ ...(env as unknown as Env), RESEND_API_KEY: 're_test_key', OPENAUTH_ISSUER: 'https://auth.test', SESSION_SECRET: 'ab'.repeat(32) }) as unknown as Env;
 const DB = () => (env as unknown as Env).AUTH_DB;
-const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext;
+const pending: Promise<unknown>[] = [];
+const ctx = { waitUntil: (p: Promise<unknown>) => void pending.push(p), passThroughOnException: () => {} } as unknown as ExecutionContext;
 
 const VIDEOS = { id: 'd7464de8-363d-4fc1-b1af-7c71653f0afc', secret: 'videos-admin-test-secret-0123456789' };
 const OTHER = { id: 'other-invite-client', secret: 'other-invite-client-secret-0123456789' };
@@ -395,9 +396,10 @@ describe('the invite link', () => {
 		expect(second!.headers.getSetCookie().some((c) => c.startsWith('__session='))).toBe(true);
 		const row = await DB().prepare('SELECT send_count FROM user_invites WHERE id = ?').bind(body.inviteId).first<Record<string, any>>();
 		expect(row!.send_count).toBe(2);
-		// One old link sends at most once: its token was replaced by the new one
-		const { html: oldAgain } = await openAndSubmit(link);
-		expect(stateOf(oldAgain)).toBe('unknown');
+		// The old link now knows a newer email replaced it; asking again so soon only says "we just sent one"
+		const { html: oldAgain, res: oldSend } = await openAndSubmit(link);
+		expect(stateOf(oldAgain)).toBe('superseded');
+		expect(stateOf(await oldSend!.text())).toBe('cooldown');
 		expect(sent).toHaveLength(2);
 	});
 
@@ -491,7 +493,7 @@ describe('the invite link', () => {
 		expect(count!.n).toBe(1);
 	});
 
-	it('a revoked invite says it was withdrawn; an unknown link says so too, without "sign in"', async () => {
+	it('a revoked invite says it was withdrawn; a link we can\'t match offers Sign in and a new link by address', async () => {
 		const { body } = await invite();
 		const link = linkOf(sent[0].html);
 		await call('POST', `/provisioning/invites/${body.inviteId}/revoke`, { actor: { id: 'usr_videosadmin' } });
@@ -502,7 +504,11 @@ describe('the invite link', () => {
 		expect(unknown.status).toBe(410);
 		const html = await unknown.text();
 		expect(stateOf(html)).toBe('unknown');
-		expect(html).not.toMatch(/sign in/i);
+		// No guessing about why: never "replaced by a newer email" when we can't know it
+		expect(html).not.toContain('newer');
+		expect(html).toContain('data-action="sign-in"');
+		expect(html).toContain('name="email"');
+		expect(html).toContain('data-action="request-link"');
 	});
 
 	it('speaks the invite\'s language unless ?lang= says otherwise', async () => {
@@ -520,7 +526,8 @@ describe('the invite link', () => {
 		const res = await call('POST', `/provisioning/invites/${body.inviteId}/resend`, { actor: { id: 'usr_videosadmin' } });
 		expect(res.status).toBe(200);
 		expect(res.json.invite.sendCount).toBe(2);
-		expect((await page('GET', old)).status).toBe(410);
+		// The old link no longer signs in: it says a newer email replaced it
+		expect(stateOf(await (await page('GET', old)).text())).toBe('superseded');
 		expect(stateOf(await (await page('GET', linkOf(sent[1].html))).text())).toBe('ready');
 	});
 
@@ -554,7 +561,7 @@ describe('the invite link', () => {
 		const token = 'a'.repeat(64);
 		const res = await call('POST', `/provisioning/invites/${body.inviteId}/link`, { tokenHash: await hashToken(token) });
 		expect(res.status).toBe(200);
-		expect((await page('GET', emailed)).status).toBe(410);
+		expect(stateOf(await (await page('GET', emailed)).text())).toBe('superseded');
 		expect((await page('GET', `https://auth.test/invite/${token}`)).status).toBe(200);
 	});
 
@@ -564,6 +571,167 @@ describe('the invite link', () => {
 		expect(safeContinueUrl('https://evil.example.com/', e)).toBeNull();
 		expect(safeContinueUrl('http://localhost:3000/', e)).toBeNull();
 		expect(safeContinueUrl('javascript:alert(1)', e)).toBeNull();
+	});
+});
+
+/** POST the unknown-link page's form with an address (a browser: GET for the CSRF token, then POST). */
+async function requestByAddress(link: string, email: string) {
+	const shown = await page('GET', link);
+	const jar = cookiesOf(shown);
+	const html = await shown.text();
+	const csrf = /name="csrf" value="([0-9a-f]{64})"/.exec(html)![1];
+	const action = /<form[^>]*action="([^"]+)"/.exec(html)![1].replace(/&amp;/g, '&');
+	const res = await page('POST', `https://auth.test${action}`, { cookie: cookieHeader(jar), form: { csrf, email } });
+	// The lookup and send run after the answer (ctx.waitUntil)
+	await Promise.all(pending.splice(0));
+	return res;
+}
+
+describe('a refused link says the true reason', () => {
+	it('a link an admin\'s resend replaced: "a newer invite email", no address shown, Email me a new link goes to the invited inbox', async () => {
+		const { body } = await invite();
+		const first = linkOf(sent[0].html);
+		// The resend happened long enough ago that asking again is allowed
+		await call('POST', `/provisioning/invites/${body.inviteId}/resend`, {});
+		await DB().prepare('UPDATE user_invites SET last_sent_at = last_sent_at - 3600000 WHERE id = ?').bind(body.inviteId).run();
+		const shown = await page('GET', first);
+		expect(shown.status).toBe(200);
+		const html = await shown.text();
+		expect(stateOf(html)).toBe('superseded');
+		expect(html).toContain('data-reason="superseded-email"');
+		expect(html).toContain('A newer invite email replaced this link');
+		expect(html).toContain('Finish setting up your account');
+		// The link may have been passed on: the address is never on the page
+		expect(html).not.toContain(body.email);
+		audit.mockClear();
+		const { res } = await openAndSubmit(first);
+		const done = await res!.text();
+		expect(stateOf(done)).toBe('sent');
+		expect(done).not.toContain(body.email);
+		expect(sent).toHaveLength(3);
+		expect(sent[2].to).toBe(body.email);
+		expect(audit.mock.calls.map((c) => c[0])).toEqual(
+			expect.arrayContaining([expect.objectContaining({ eventType: 'user.invite.resent', metadata: expect.objectContaining({ by: 'invitee_superseded', emailSent: true }) })])
+		);
+		// The newest link is the one that works
+		expect(stateOf(await (await page('GET', linkOf(sent[2].html))).text())).toBe('ready');
+	});
+
+	it('a link an admin\'s "Copy link" replaced says a newer link replaced it, not an email', async () => {
+		const { body } = await invite();
+		const first = linkOf(sent[0].html);
+		const token = 'c'.repeat(64);
+		await call('POST', `/provisioning/invites/${body.inviteId}/link`, { tokenHash: await hashToken(token) });
+		const html = await (await page('GET', first)).text();
+		expect(stateOf(html)).toBe('superseded');
+		expect(html).toContain('data-reason="superseded-link"');
+		expect(html).toContain('A newer link to this invite replaced this one');
+		expect(html).not.toContain('newer invite email');
+		expect(stateOf(await (await page('GET', `https://auth.test/invite/${token}`)).text())).toBe('ready');
+	});
+
+	it('a replaced link of a withdrawn invite stays neutral', async () => {
+		const { body } = await invite();
+		const first = linkOf(sent[0].html);
+		await call('POST', `/provisioning/invites/${body.inviteId}/resend`, {});
+		await call('POST', `/provisioning/invites/${body.inviteId}/revoke`, { actor: { id: 'usr_videosadmin' } });
+		const html = await (await page('GET', first)).text();
+		expect(stateOf(html)).toBe('withdrawn');
+		expect(html).not.toContain('newer');
+	});
+
+	it('used and expired links each say which', async () => {
+		const { body } = await invite();
+		const link = linkOf(sent[0].html);
+		await DB().prepare('UPDATE user_invites SET expires_at = ?, last_sent_at = 0 WHERE id = ?').bind(Date.now() - 1000, body.inviteId).run();
+		const expired = await (await page('GET', link)).text();
+		expect(stateOf(expired)).toBe('setup');
+		expect(expired).toContain('data-reason="expired"');
+		expect(expired).toContain('This link has expired');
+		const used = await invite();
+		const usedLink = linkOf(sent[1].html);
+		await openAndSubmit(usedLink);
+		const again = await (await page('GET', usedLink)).text();
+		expect(again).toContain('data-reason="used"');
+		expect(again).toContain('This link has already been used');
+		expect(again).toContain(used.body.email);
+	});
+
+	it('a link from before #434 kept its hash: still valid when unused (same format, same hash)', async () => {
+		const { body } = await invite();
+		// The pre-#434 code made the same 64-hex token and stored its SHA-256: write it as it did
+		const token = 'a1'.repeat(32);
+		await DB().prepare('UPDATE user_invites SET token_hash = ?, token_used_at = NULL WHERE id = ?').bind(await hashToken(token), body.inviteId).run();
+		const html = await (await page('GET', `https://auth.test/invite/${token}`)).text();
+		expect(stateOf(html)).toBe('ready');
+		expect(html).toContain(body.email);
+	});
+
+	it('a link used before #434 (its hash was erased) offers Sign in, and a new link by address that really works', async () => {
+		const { body } = await invite();
+		const old = linkOf(sent[0].html);
+		// What the pre-#434 code did on use: erase the hash
+		await DB().prepare('UPDATE user_invites SET token_hash = NULL, token_used_at = ?, last_sent_at = 0 WHERE id = ?').bind(Date.now() - 86_400_000, body.inviteId).run();
+		const html = await (await page('GET', old)).text();
+		expect(stateOf(html)).toBe('unknown');
+		audit.mockClear();
+		const res = await requestByAddress(old, ` ${body.email.toUpperCase()} `);
+		expect(res.status).toBe(200);
+		const done = await res.text();
+		expect(stateOf(done)).toBe('requested');
+		expect(sent).toHaveLength(2);
+		expect(sent[1].to).toBe(body.email);
+		expect(audit.mock.calls.map((c) => c[0])).toEqual(
+			expect.arrayContaining([expect.objectContaining({ eventType: 'user.invite.resent', metadata: expect.objectContaining({ by: 'invitee_request' }) })])
+		);
+		expect(stateOf(await (await page('GET', linkOf(sent[1].html))).text())).toBe('ready');
+	});
+
+	it('asking by address answers the same whether or not an invite is waiting, and never mails a withdrawn invite', async () => {
+		const unknown = `https://auth.test/invite/${'0'.repeat(64)}`;
+		const nobody = await (await requestByAddress(unknown, 'nobody-here@example.com')).text();
+		const { body } = await invite();
+		await call('POST', `/provisioning/invites/${body.inviteId}/revoke`, { actor: { id: 'usr_videosadmin' } });
+		sent.length = 0;
+		const withdrawn = await (await requestByAddress(unknown, body.email)).text();
+		expect(stateOf(nobody)).toBe('requested');
+		expect(stateOf(withdrawn)).toBe('requested');
+		const text = (h: string) => h.replace(/value="[0-9a-f]{64}"/g, '');
+		expect(text(withdrawn)).toBe(text(nobody));
+		expect(sent).toHaveLength(0);
+	});
+
+	it('a typo in the address is answered on the page, with the field marked', async () => {
+		const res = await requestByAddress(`https://auth.test/invite/${'0'.repeat(64)}`, 'not-an-address');
+		expect(res.status).toBe(400);
+		const html = await res.text();
+		expect(stateOf(html)).toBe('unknown');
+		expect(html).toContain('aria-invalid="true"');
+		expect(html).toContain('Enter a valid email address.');
+		expect(sent).toHaveLength(0);
+	});
+
+	it('Arabic: the replaced and unmatched pages speak Arabic', async () => {
+		const { body } = await invite({ locale: 'ar' });
+		const first = linkOf(sent[0].html);
+		await call('POST', `/provisioning/invites/${body.inviteId}/resend`, {});
+		const replaced = await (await page('GET', first)).text();
+		expect(replaced).toContain('حلّت محلّ هذا الرابط رسالة دعوة أحدث');
+		const unknown = await (await page('GET', `https://auth.test/invite/${'0'.repeat(64)}?lang=ar`)).text();
+		expect(unknown).toContain('لا يمكننا استخدام هذا الرابط');
+		expect(unknown).toContain('dir="rtl"');
+	});
+
+	it('the replaced links go with the invite when it is purged', async () => {
+		const { body } = await invite();
+		await call('POST', `/provisioning/invites/${body.inviteId}/resend`, {});
+		const before = await DB().prepare('SELECT count(*) AS n FROM user_invite_superseded_tokens WHERE invite_id = ?').bind(body.inviteId).first<{ n: number }>();
+		expect(before!.n).toBe(1);
+		await call('POST', `/provisioning/invites/${body.inviteId}/revoke`, { actor: { id: 'usr_videosadmin' } });
+		await DB().prepare('UPDATE user_invites SET deleted_at = ? WHERE id = ?').bind(Date.now() - RETENTION_MS - 1000, body.inviteId).run();
+		await purgeRevokedInvites(DB());
+		const after = await DB().prepare('SELECT count(*) AS n FROM user_invite_superseded_tokens WHERE invite_id = ?').bind(body.inviteId).first<{ n: number }>();
+		expect(after!.n).toBe(0);
 	});
 });
 
