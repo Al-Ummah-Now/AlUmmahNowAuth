@@ -29,7 +29,7 @@ async function hydrate(page: Page, path: string): Promise<string[]> {
 }
 
 for (const lang of ["ar", "en"] as const) {
-  for (const name of ["deleted", "users", "passkeys"] as const) {
+  for (const name of ["deleted", "users", "passkeys", "audit", "sessions", "clients"] as const) {
     test(`admin ${name} (${lang}) hydrates without errors`, async ({ page }) => {
       expect(await hydrate(page, `/admin/${name}?lang=${lang}`)).toEqual([]);
     });
@@ -60,3 +60,20 @@ test("Profile in Arabic: passkey dates and account times in ٠–٩", async ({ p
   expect(await page.locator("footer").innerText()).not.toMatch(ASCII_DIGIT);
   expect(errors).toEqual([]);
 });
+
+// Every localized page in Arabic: no Arabic numerals 0–9 outside ids, emails, IPs, URLs and code
+for (const name of ["users", "passkeys", "audit", "sessions", "clients", "deleted"] as const) {
+  test(`admin ${name} in Arabic: right-to-left, Arabic words, ٠–٩`, async ({ page }) => {
+    expect(await hydrate(page, `/admin/${name}?lang=ar`)).toEqual([]);
+    const main = page.locator("main");
+    expect(await main.evaluate((el) => getComputedStyle(el.querySelector("h1, h2")!).direction)).toBe("rtl");
+    // The visible text, without the values that stay as typed (bdi, code, dir=ltr, mono)
+    const text = await main.evaluate((el) => {
+      const copy = el.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll("bdi, code, [dir=ltr], .font-mono, .sr-only, [hidden]").forEach((n) => n.remove());
+      return copy.innerText;
+    });
+    expect(text).toMatch(/[\u0600-\u06FF]/);
+    expect(text, text).not.toMatch(ASCII_DIGIT);
+  });
+}

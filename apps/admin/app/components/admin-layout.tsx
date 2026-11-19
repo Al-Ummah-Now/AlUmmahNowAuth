@@ -48,9 +48,11 @@ interface AdminLayoutProps {
   authServerUrl?: string;
   /** epoch s: staff grace end while this admin has no passkey sign-in (AUTH-PASSKEYS) */
   passkeyGraceUntil?: number;
+  /** The page is written in both languages: its content follows ?lang= (others stay English). */
+  localized?: boolean;
 }
 
-export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }: AdminLayoutProps) {
+export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil, localized }: AdminLayoutProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
@@ -174,12 +176,21 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
           "ps-0"
         )}
       >
-        {/* Page content is English unless a page sets its own language (?lang=ar dialogs and pages) */}
-        <div className="p-6" lang={lang === "ar" ? "en" : undefined} dir={lang === "ar" ? "ltr" : undefined}>
+        {/* Page content follows ?lang= on pages written in both languages (localized); the rest stay English */}
+        <div className="p-4 md:p-6" lang={lang === "ar" && !localized ? "en" : undefined} dir={lang === "ar" && !localized ? "ltr" : undefined}>
           {passkeyGraceUntil ? (
             <div role="status" data-testid="passkey-grace-banner" className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-muted)] p-3 text-sm text-[var(--color-foreground)]">
-              Add a passkey by {formatDate(passkeyGraceUntil * 1000, "en", { dateStyle: "long", timeZone: "UTC" })}: after that, the admin tools need a passkey sign-in.{" "}
-              <Link className="font-semibold underline" to="/passkey-needed?mode=grace">Add a passkey</Link>
+              {localized && lang === "ar" ? (
+                <>
+                  أضف مفتاح مرور قبل {formatDate(passkeyGraceUntil * 1000, "ar", { dateStyle: "long", timeZone: "UTC" })}: بعد ذلك تحتاج أدوات الإدارة إلى تسجيل الدخول بمفتاح مرور.{" "}
+                  <Link className="font-semibold underline" to="/passkey-needed?mode=grace&lang=ar">إضافة مفتاح مرور</Link>
+                </>
+              ) : (
+                <>
+                  Add a passkey by {formatDate(passkeyGraceUntil * 1000, "en", { dateStyle: "long", timeZone: "UTC" })}: after that, the admin tools need a passkey sign-in.{" "}
+                  <Link className="font-semibold underline" to="/passkey-needed?mode=grace">Add a passkey</Link>
+                </>
+              )}
             </div>
           ) : null}
           {children}

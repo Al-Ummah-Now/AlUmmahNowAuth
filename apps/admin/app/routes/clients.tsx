@@ -1,4 +1,5 @@
 import { formatDate } from "../lib/date-utils";
+import { pagesCopy } from "../lib/pages-copy";
 import { useState, useEffect } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useSearchParams } from "react-router";
@@ -257,6 +258,9 @@ export default function ClientsPage() {
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
   const copy = confirmCopy(deleteLang);
+  const lang = deleteLang;
+  const t = pagesCopy(lang).clients;
+  const c = pagesCopy(lang).common;
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<OAuthClient | null>(null);
   const [createdClientId, setCreatedClientId] = useState<string | null>(null);
@@ -416,23 +420,20 @@ export default function ClientsPage() {
     }
   };
 
-  const availableGrants = [
-    { value: "authorization_code", label: "Authorization Code" },
-    { value: "refresh_token", label: "Refresh Token" },
-    { value: "client_credentials", label: "Client Credentials" },
-  ];
+  const availableGrants = ["authorization_code", "refresh_token", "client_credentials"].map((value) => ({ value, label: t.grantNames[value] ?? value }));
 
   const availableScopes = [
-    { value: "openid", label: "OpenID", description: "Required for OIDC" },
-    { value: "profile", label: "Profile", description: "User profile info" },
-    { value: "email", label: "Email", description: "Email address" },
-    { value: "offline_access", label: "Offline Access", description: "Refresh tokens" },
-    { value: "admin", label: "Admin", description: "Admin access" },
-    { value: "admin:users", label: "Admin: Users", description: "Manage users" },
-    { value: "admin:roles", label: "Admin: Roles", description: "Manage roles" },
-    { value: "admin:clients", label: "Admin: Clients", description: "Manage clients" },
-    { value: "admin:audit", label: "Admin: Audit", description: "View audit logs" },
-  ];
+    // Scope names are protocol values (shown as they are); the hint is in the page's language
+    { value: "openid", label: "OpenID" },
+    { value: "profile", label: "Profile" },
+    { value: "email", label: "Email" },
+    { value: "offline_access", label: "Offline Access" },
+    { value: "admin", label: "Admin" },
+    { value: "admin:users", label: "Admin: Users" },
+    { value: "admin:roles", label: "Admin: Roles" },
+    { value: "admin:clients", label: "Admin: Clients" },
+    { value: "admin:audit", label: "Admin: Audit" },
+  ].map((scope) => ({ ...scope, description: t.scopeHints[scope.value] ?? "" }));
 
   const toggleScope = (scope: string, scopes: string[], setScopes: (s: string[]) => void) => {
     if (scopes.includes(scope)) {
@@ -442,186 +443,206 @@ export default function ClientsPage() {
     }
   };
 
+  const typeBadge = (client: OAuthClient) => (
+    <Badge variant={client.client_type === "confidential" ? "default" : "secondary"}>
+      {client.client_type === "confidential" ? (
+        <><Lock className="me-1 h-3 w-3" aria-hidden="true" /> {t.confidential}</>
+      ) : (
+        <><Globe className="me-1 h-3 w-3" aria-hidden="true" /> {t.public}</>
+      )}
+    </Badge>
+  );
+  const grantBadges = (client: OAuthClient) =>
+    client.allowed_grants.map((grant) => (
+      <Badge key={grant} variant="outline" className="text-xs">
+        {t.grantNames[grant] ?? grant.replace(/_/g, " ")}
+      </Badge>
+    ));
+  const scopeBadges = (client: OAuthClient) => (
+    <>
+      {(client.scopes || []).slice(0, 3).map((scope) => (
+        <Badge key={scope} variant="secondary" className="text-xs" dir="ltr">
+          {scope}
+        </Badge>
+      ))}
+      {(client.scopes || []).length > 3 && (
+        <Badge variant="secondary" className="text-xs">
+          {t.plus(client.scopes.length - 3)}
+        </Badge>
+      )}
+    </>
+  );
+  const redirectList = (client: OAuthClient) => (
+    <>
+      {client.redirect_uris.slice(0, 2).map((uri, i) => (
+        <div key={i} className="text-xs text-muted-foreground truncate" dir="ltr" title={uri}>
+          {uri}
+        </div>
+      ))}
+      {client.redirect_uris.length > 2 && <div className="text-xs text-muted-foreground">{t.more(client.redirect_uris.length - 2)}</div>}
+    </>
+  );
+  const clientActions = (client: OAuthClient) => (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => openEditDialog(client)} title={t.edit} aria-label={t.editOf(client.name)}>
+        <Settings className="h-4 w-4" aria-hidden="true" />
+      </Button>
+      {client.client_type === "confidential" && (
+        <Button variant="ghost" size="sm" onClick={() => setRotating(client)} title={t.rotate} aria-label={t.rotateOf(client.name)}>
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setSelectedClient(client);
+          setDeleteDialogOpen(true);
+        }}
+        className="text-destructive hover:text-destructive"
+        title={t.delete}
+        aria-label={t.deleteOf(client.name)}
+      >
+        <Trash2 className="h-4 w-4" aria-hidden="true" />
+      </Button>
+    </>
+  );
+
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl}>
+    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
       <div className="mb-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-between items-center gap-3">
           <div>
-            <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">OAuth Clients</h2>
-            <p className="text-[var(--color-muted-foreground)]">Manage OAuth client applications</p>
+            <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
+            <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>
           </div>
           <Button onClick={openCreateDialog}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Client
+            <Plus className="me-2 h-4 w-4" aria-hidden="true" />
+            {t.add}
           </Button>
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-          {error}
+        <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive" dir="auto">
+          {error === "Invalid metadata JSON" && lang === "ar" ? "البيانات الوصفية ليست JSON صحيحًا." : error}
         </div>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle>Registered Clients</CardTitle>
-          <CardDescription>
-            {clients.length} OAuth client{clients.length !== 1 ? "s" : ""} registered
-          </CardDescription>
+          <CardTitle>{t.tableTitle}</CardTitle>
+          <CardDescription>{t.count(clients.length)}</CardDescription>
         </CardHeader>
         <CardContent>
           {clients.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No OAuth clients registered yet. Click "Add Client" to create one.
+              {t.empty}
             </div>
           ) : (
+            <>
+              {/* Phone: a card per client; a table from md up */}
+              <ul className="space-y-3 md:hidden" data-testid="client-cards">
+                {clients.map((client) => (
+                  <li key={client.id} className="rounded-lg border border-[var(--color-border)] p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-medium"><bdi>{client.name}</bdi></div>
+                        <div className="font-mono text-xs text-muted-foreground break-all" dir="ltr">{client.client_id}</div>
+                      </div>
+                      {typeBadge(client)}
+                    </div>
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                      <dt className="text-muted-foreground">{t.grants}</dt>
+                      <dd className="flex flex-wrap gap-1">{grantBadges(client)}</dd>
+                      <dt className="text-muted-foreground">{t.scopes}</dt>
+                      <dd className="flex flex-wrap gap-1">{scopeBadges(client)}</dd>
+                      <dt className="text-muted-foreground">{t.redirects}</dt>
+                      <dd className="min-w-0">{redirectList(client)}</dd>
+                      <dt className="text-muted-foreground">{c.created}</dt>
+                      <dd>{formatDate(client.created_at, lang)}</dd>
+                    </dl>
+                    <div className="mt-3 flex justify-end gap-2">{clientActions(client)}</div>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Client ID</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Grants</TableHead>
-                  <TableHead>Scopes</TableHead>
-                  <TableHead>Redirect URIs</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{c.name}</TableHead>
+                  <TableHead>{t.clientId}</TableHead>
+                  <TableHead>{t.type}</TableHead>
+                  <TableHead>{t.grants}</TableHead>
+                  <TableHead>{t.scopes}</TableHead>
+                  <TableHead>{t.redirects}</TableHead>
+                  <TableHead>{c.created}</TableHead>
+                  <TableHead className="text-end">{c.actions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {clients.map((client) => (
                   <TableRow key={client.id}>
-                    <TableCell className="font-medium">{client.name}</TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground">{client.client_id}</TableCell>
+                    <TableCell className="font-medium"><bdi>{client.name}</bdi></TableCell>
+                    <TableCell className="font-mono text-sm text-muted-foreground" dir="ltr">{client.client_id}</TableCell>
+                    <TableCell>{typeBadge(client)}</TableCell>
                     <TableCell>
-                      <Badge variant={client.client_type === "confidential" ? "default" : "secondary"}>
-                        {client.client_type === "confidential" ? (
-                          <><Lock className="mr-1 h-3 w-3" /> Confidential</>
-                        ) : (
-                          <><Globe className="mr-1 h-3 w-3" /> Public</>
-                        )}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1">{grantBadges(client)}</div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {client.allowed_grants.map((grant) => (
-                          <Badge key={grant} variant="outline" className="text-xs">
-                            {grant.replace(/_/g, " ")}
-                          </Badge>
-                        ))}
-                      </div>
+                      <div className="flex flex-wrap gap-1 max-w-[150px]">{scopeBadges(client)}</div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1 max-w-[150px]">
-                        {(client.scopes || []).slice(0, 3).map((scope) => (
-                          <Badge key={scope} variant="secondary" className="text-xs">
-                            {scope}
-                          </Badge>
-                        ))}
-                        {(client.scopes || []).length > 3 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{client.scopes.length - 3}
-                          </Badge>
-                        )}
-                      </div>
+                      <div className="max-w-[200px]">{redirectList(client)}</div>
                     </TableCell>
-                    <TableCell>
-                      <div className="max-w-[200px]">
-                        {client.redirect_uris.slice(0, 2).map((uri, i) => (
-                          <div key={i} className="text-xs text-muted-foreground truncate" title={uri}>
-                            {uri}
-                          </div>
-                        ))}
-                        {client.redirect_uris.length > 2 && (
-                          <div className="text-xs text-muted-foreground">
-                            +{client.redirect_uris.length - 2} more
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(client.created_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditDialog(client)}
-                          title="Edit"
-                        >
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                        {client.client_type === "confidential" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setRotating(client)}
-                            title="Rotate Secret"
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedClient(client);
-                            setDeleteDialogOpen(true);
-                          }}
-                          className="text-destructive hover:text-destructive"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(client.created_at, lang)}</TableCell>
+                    <TableCell className="text-end">
+                      <div className="flex justify-end gap-2">{clientActions(client)}</div>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
       {/* Create Client Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" dir={dirOf(lang)} lang={lang}>
           <DialogHeader>
-            <DialogTitle>Create OAuth Client</DialogTitle>
-            <DialogDescription>
-              Register a new OAuth client application. Client ID and secret will be generated automatically.
-            </DialogDescription>
+            <DialogTitle>{t.createTitle}</DialogTitle>
+            <DialogDescription>{t.createIntro}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="client_name">Client Name *</Label>
+              <Label htmlFor="client_name">{t.nameLabel}</Label>
               <Input
                 id="client_name"
                 value={newClientName}
                 onChange={(e) => setNewClientName(e.target.value)}
-                placeholder="My Application"
+                placeholder={t.namePlaceholder}
               />
-              <p className="text-xs text-muted-foreground">
-                A descriptive name for this OAuth client
-              </p>
+              <p className="text-xs text-muted-foreground">{t.nameHint}</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="redirect_uris">Redirect URIs (one per line)</Label>
+              <Label htmlFor="redirect_uris">{t.redirectsLabel}</Label>
               <textarea
                 id="redirect_uris"
                 className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                dir="ltr"
                 placeholder="https://example.com/callback"
                 value={newRedirectUris}
                 onChange={(e) => setNewRedirectUris(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label>Grant Types</Label>
+              <Label>{t.grantTypes}</Label>
               <div className="space-y-2">
                 {availableGrants.map((grant) => (
-                  <label key={grant.value} className="flex items-center space-x-2">
+                  <label key={grant.value} className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={newGrantTypes.includes(grant.value)}
@@ -637,20 +658,20 @@ export default function ClientsPage() {
               <Label>Scopes</Label>
               <div className="grid grid-cols-2 gap-2">
                 {availableScopes.map((scope) => (
-                  <label key={scope.value} className="flex items-center space-x-2" title={scope.description}>
+                  <label key={scope.value} className="flex items-center gap-2" title={scope.description}>
                     <input
                       type="checkbox"
                       checked={newScopes.includes(scope.value)}
                       onChange={() => toggleScope(scope.value, newScopes, setNewScopes)}
                       className="rounded border-[var(--color-input)] accent-[var(--color-primary)]"
                     />
-                    <span className="text-sm">{scope.label}</span>
+                    <span className="text-sm" dir="ltr">{scope.label}</span>
                   </label>
                 ))}
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new_metadata">Metadata (JSON)</Label>
+              <Label htmlFor="new_metadata">{t.metadata}</Label>
               <textarea
                 id="new_metadata"
                 className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -658,17 +679,15 @@ export default function ClientsPage() {
                 value={newMetadata}
                 onChange={(e) => setNewMetadata(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Optional custom data in JSON format
-              </p>
+              <p className="text-xs text-muted-foreground">{t.metadataHint}</p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-              Cancel
+              {c.cancel}
             </Button>
             <Button onClick={handleCreate} disabled={isLoading || !newClientName.trim()}>
-              {isLoading ? "Creating..." : "Create Client"}
+              {isLoading ? t.creating : t.createButton}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -676,28 +695,29 @@ export default function ClientsPage() {
 
       {/* Edit Client Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" dir={dirOf(lang)} lang={lang}>
           <DialogHeader>
-            <DialogTitle>Edit Client: {selectedClient?.name}</DialogTitle>
+            <DialogTitle>{t.editTitle(selectedClient?.name ?? "")}</DialogTitle>
             <DialogDescription>
-              Update client configuration for {selectedClient?.client_id}
+              {t.editIntro} <bdi className="font-mono">{selectedClient?.client_id}</bdi>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit_redirect_uris">Redirect URIs (one per line)</Label>
+              <Label htmlFor="edit_redirect_uris">{t.redirectsLabel}</Label>
               <textarea
                 id="edit_redirect_uris"
+                dir="ltr"
                 className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={editRedirectUris}
                 onChange={(e) => setEditRedirectUris(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label>Allowed Grants</Label>
+              <Label>{t.allowedGrants}</Label>
               <div className="space-y-2">
                 {availableGrants.map((grant) => (
-                  <label key={grant.value} className="flex items-center space-x-2">
+                  <label key={grant.value} className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={editAllowedGrants.includes(grant.value)}
@@ -713,20 +733,20 @@ export default function ClientsPage() {
               <Label>Scopes</Label>
               <div className="grid grid-cols-2 gap-2">
                 {availableScopes.map((scope) => (
-                  <label key={scope.value} className="flex items-center space-x-2" title={scope.description}>
+                  <label key={scope.value} className="flex items-center gap-2" title={scope.description}>
                     <input
                       type="checkbox"
                       checked={editScopes.includes(scope.value)}
                       onChange={() => toggleScope(scope.value, editScopes, setEditScopes)}
                       className="rounded border-[var(--color-input)] accent-[var(--color-primary)]"
                     />
-                    <span className="text-sm">{scope.label}</span>
+                    <span className="text-sm" dir="ltr">{scope.label}</span>
                   </label>
                 ))}
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit_metadata">Metadata (JSON)</Label>
+              <Label htmlFor="edit_metadata">{t.metadata}</Label>
               <textarea
                 id="edit_metadata"
                 className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -738,10 +758,10 @@ export default function ClientsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
+              {c.cancel}
             </Button>
             <Button onClick={handleUpdate} disabled={isLoading}>
-              {isLoading ? "Saving..." : "Save Changes"}
+              {isLoading ? (lang === "ar" ? c.saving : "Saving...") : t.saveChanges}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -787,29 +807,24 @@ export default function ClientsPage() {
           setNewClientSecret(null);
         }
       }}>
-        <DialogContent>
+        <DialogContent dir={dirOf(lang)} lang={lang}>
           <DialogHeader>
             <DialogTitle>
-              <Key className="inline mr-2 h-5 w-5" />
-              {createdClientId ? "Client Credentials" : "New Client Secret"}
+              <Key className="inline me-2 h-5 w-5" aria-hidden="true" />
+              {createdClientId ? t.credentialsTitle : t.secretTitle}
             </DialogTitle>
-            <DialogDescription>
-              {createdClientId
-                ? "Your OAuth client has been created. Copy these credentials now - they will not be shown again."
-                : "Copy this new secret now. It will not be shown again."
-              }
-            </DialogDescription>
+            <DialogDescription>{createdClientId ? t.credentialsIntro : t.secretIntro}</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
             {/* Show Client ID only for new client creation */}
             {createdClientId && (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Client ID</Label>
+                <Label className="text-sm font-medium">{t.clientId}</Label>
                 <div className="flex items-center gap-2">
-                  <code className="ui-code flex-1 p-3 rounded-md font-mono text-sm break-all">
+                  <code className="ui-code flex-1 p-3 rounded-md font-mono text-sm break-all" dir="ltr">
                     {createdClientId}
                   </code>
-                  <Button variant="outline" size="sm" onClick={copyClientId}>
+                  <Button variant="outline" size="sm" onClick={copyClientId} aria-label={copiedClientId ? c.copied : t.copyId}>
                     {copiedClientId ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </div>
@@ -817,18 +832,18 @@ export default function ClientsPage() {
             )}
             {/* Always show Client Secret */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Client Secret</Label>
+              <Label className="text-sm font-medium">{t.secret}</Label>
               <div className="flex items-center gap-2">
-                <code className="ui-code flex-1 p-3 rounded-md font-mono text-sm break-all">
+                <code className="ui-code flex-1 p-3 rounded-md font-mono text-sm break-all" dir="ltr">
                   {newClientSecret}
                 </code>
-                <Button variant="outline" size="sm" onClick={copySecret}>
+                <Button variant="outline" size="sm" onClick={copySecret} aria-label={copiedSecret ? c.copied : t.copySecret}>
                   {copiedSecret ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
             <p className="text-sm text-[var(--color-warning-text)]">
-              Store these credentials securely. The secret will not be shown again.
+              {t.keepSafe}
             </p>
           </div>
           <DialogFooter>
@@ -837,7 +852,7 @@ export default function ClientsPage() {
               setCreatedClientId(null);
               setNewClientSecret(null);
             }}>
-              Done
+              {t.done}
             </Button>
           </DialogFooter>
         </DialogContent>

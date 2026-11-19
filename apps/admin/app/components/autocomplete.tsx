@@ -16,7 +16,7 @@
  * shows a skeleton while loading, a note when there is nothing and a retry when it fails. The
  * current value is marked when the admin changes it.
  */
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { fitToViewport } from "@al-ummah-now/ui/menu-fit";
 import { flushSync } from "react-dom";
 import { Input } from "./ui/input";
@@ -41,9 +41,10 @@ import {
   type Suggestion,
 } from "../lib/autocomplete-model";
 
-import { AUTOCOMPLETE_STRINGS } from "../lib/autocomplete-strings";
+import { autocompleteStrings, type AutocompleteStrings } from "../lib/autocomplete-strings";
 
-const S = AUTOCOMPLETE_STRINGS;
+/** The picker's words in the page's language (lang prop), for its inner parts too */
+const StringsContext = createContext<AutocompleteStrings>(autocompleteStrings("en"));
 
 export interface UserAutocompleteProps {
   mode: AutocompleteMode;
@@ -67,6 +68,8 @@ export interface UserAutocompleteProps {
   testId?: string;
   /** Open with the newest users before anything is typed (default: pick mode yes, search mode no: the list below shows them) */
   initialResults?: boolean;
+  /** The words' language: pages written in both languages pass ?lang= (default English) */
+  lang?: "en" | "ar";
 }
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -75,7 +78,8 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor, onChange, submitOnChange = false, onSearch, onQueryChange, placeholder, className = "", testId, initialResults }: UserAutocompleteProps) {
+export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor, onChange, submitOnChange = false, onSearch, onQueryChange, placeholder, className = "", testId, initialResults, lang = "en" }: UserAutocompleteProps) {
+  const S = autocompleteStrings(lang);
   const initialOn = initialResults ?? mode === "pick";
   const ids = useId();
   const inputId = `${ids}-input`;
@@ -258,6 +262,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
               : S.count(suggestionCount);
 
   return (
+    <StringsContext.Provider value={S}>
     <div className={`flex flex-col gap-1 ${className}`} data-testid={testId} data-mode={mode}>
       <label htmlFor={inputId} className="text-sm font-medium">
         {label}
@@ -397,6 +402,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
         {announcement}
       </p>
     </div>
+    </StringsContext.Provider>
   );
 }
 
@@ -409,6 +415,7 @@ function Initial({ label }: { label: string }) {
 }
 
 function OptionContent({ option, current }: { option: AutocompleteOption; current?: string }) {
+  const S = useContext(StringsContext);
   if (option.type === "searchAll") {
     return (
       <span>
@@ -469,6 +476,7 @@ function Chip({
   onChange: () => void;
   onClear: () => void;
 }) {
+  const S = useContext(StringsContext);
   const { id, item, missing } = picked;
   const name = item?.label ?? (missing ? S.notFound : S.lookingUp);
   return (

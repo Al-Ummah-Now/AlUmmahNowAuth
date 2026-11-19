@@ -1,5 +1,6 @@
 import { formatNumber } from "../../../../packages/ui/src/format.ts";
 import { formatDateMs } from "../lib/date-utils";
+import { pagesCopy } from "../lib/pages-copy";
 import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useNavigate, useRevalidator, useSearchParams } from "react-router";
@@ -400,6 +401,11 @@ export default function Users() {
   // ?view=system (the Errors page links here): the System accounts section first
   const systemView = searchParams.get("view") === "system";
   const systemCopy = systemAccountsCopy(deleteLang);
+  const lang = deleteLang;
+  const t = pagesCopy(lang).users;
+  const c = pagesCopy(lang).common;
+  // People by name: display name, else email (rule: never a bare "-")
+  const nameOf = (u: { name?: string; email: string }) => u.name?.trim() || u.email;
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -505,11 +511,11 @@ export default function Users() {
   const handleCreateUser = () => {
     // Validate email format before submitting
     if (!newUserEmail.trim()) {
-      setEmailError("Email is required");
+      setEmailError(t.emailRequired);
       return;
     }
     if (!isValidEmail(newUserEmail)) {
-      setEmailError("Please enter a valid email address");
+      setEmailError(t.emailInvalid);
       return;
     }
     setEmailError(null);
@@ -590,16 +596,43 @@ export default function Users() {
     revalidator.revalidate();
   };
 
+  type Row = (typeof users)[number];
+  const rolesOf = (u: Row) =>
+    u.roles.length === 0 ? (
+      <span className="text-sm text-[var(--color-muted-foreground)]">{t.noRoles}</span>
+    ) : (
+      u.roles.map((role) => <UserRoleBadge key={role.id} role={role.name} />)
+    );
+  const actionsOf = (u: Row) => (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => handleEditUser(u)} title={t.editOf(nameOf(u))}>
+        <Pencil className="h-4 w-4 me-1" aria-hidden="true" />
+        {t.edit}
+      </Button>
+      <Button variant="ghost" size="icon" onClick={() => openRoleManager(u.id)} title={t.manageRoles(nameOf(u))} aria-label={t.manageRoles(nameOf(u))}>
+        <Settings className="h-4 w-4" aria-hidden="true" />
+      </Button>
+      <Button variant="ghost" size="sm" asChild title={t.passkeysOf(nameOf(u))}>
+        <a href={`/users/${encodeURIComponent(u.id)}/passkeys${lang === "ar" ? "?lang=ar" : ""}`}>
+          <KeyRound className="h-4 w-4 me-1" aria-hidden="true" />
+          {t.passkeys}
+        </a>
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(u.id)} title={t.deleteOf(nameOf(u))}>
+        <Trash2 className="h-4 w-4 me-1 text-[var(--color-destructive-text)]" aria-hidden="true" />
+        {t.delete}
+      </Button>
+    </>
+  );
+
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl}>
+    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
       <div className="mb-6">
-        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">User Management</h2>
-        <p className="text-[var(--color-muted-foreground)]">
-          Manage user accounts and role assignments
-        </p>
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
+        <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>
       </div>
 
-      <LoadErrorBanner what="users" error={loadError} />
+      <LoadErrorBanner title={c.couldNotLoad(t.what)} error={loadError} />
 
       {systemAccounts && (
         <div className="mb-4 flex justify-end">
@@ -633,32 +666,31 @@ export default function Users() {
 
       <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>Users</CardTitle>
-                <CardDescription>Manage user accounts and RBAC role assignments</CardDescription>
+                <CardTitle>{t.cardTitle}</CardTitle>
+                <CardDescription>{t.cardIntro}</CardDescription>
               </div>
               <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                 <DialogTrigger asChild>
                   <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create User
+                    <Plus className="h-4 w-4 me-2" aria-hidden="true" />
+                    {t.create}
                   </Button>
                 </DialogTrigger>
-                <DialogContent data-testid="create-user-dialog" data-selected-roles={JSON.stringify(selectedRoles)}>
+                <DialogContent data-testid="create-user-dialog" data-selected-roles={JSON.stringify(selectedRoles)} dir={dirOf(lang)} lang={lang}>
                   <DialogHeader>
-                    <DialogTitle>Create New User</DialogTitle>
-                    <DialogDescription>
-                      Add a new user to the system. They will receive an email to set up their account.
-                    </DialogDescription>
+                    <DialogTitle>{t.createTitle}</DialogTitle>
+                    <DialogDescription>{t.createIntro}</DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="email">Email</Label>
+                      <Label htmlFor="email">{c.email}</Label>
                       <Input
                         id="email"
                         type="email"
-                        placeholder="user@example.com"
+                        dir="ltr"
+                        placeholder={t.emailPlaceholder}
                         value={newUserEmail}
                         onChange={(e) => {
                           setNewUserEmail(e.target.value);
@@ -681,7 +713,7 @@ export default function Users() {
                       </div>
                     )}
                     <div className="grid gap-2">
-                      <Label htmlFor="roles">Initial Roles</Label>
+                      <Label htmlFor="roles">{t.initialRoles}</Label>
                       <div className="space-y-2" data-testid="roles-list" data-available-roles={JSON.stringify(allRoles.map(r => ({ id: r.id, name: r.name })))}>
                         {allRoles.map((role) => (
                           <label key={role.id} className="flex items-center gap-2 cursor-pointer">
@@ -702,7 +734,7 @@ export default function Users() {
                             <span className="text-sm">{role.name}</span>
                             {role.description && (
                               <span className="text-xs text-[var(--color-muted-foreground)]">
-                                - {role.description}
+                                — <bdi>{role.description}</bdi>
                               </span>
                             )}
                           </label>
@@ -719,10 +751,10 @@ export default function Users() {
                       setNewUserEmail("");
                       setSelectedRoles([]);
                     }}>
-                      Cancel
+                      {c.cancel}
                     </Button>
                     <Button onClick={handleCreateUser} disabled={isSubmitting}>
-                      {isSubmitting ? "Creating..." : "Create User"}
+                      {isSubmitting ? t.creating : t.create}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -734,8 +766,9 @@ export default function Users() {
               <UserAutocomplete
                 mode="search"
                 name="q"
-                label="Search users"
-                placeholder="Search users by name or email..."
+                label={t.searchLabel}
+                placeholder={t.searchPlaceholder}
+                lang={lang}
                 defaultValue={searchQuery}
                 onQueryChange={setSearchQuery}
                 // Enter: the server-side search (every user, not only the loaded page)
@@ -749,25 +782,40 @@ export default function Users() {
 
             {loadError && users.length === 0 ? null : users.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <User className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No users found</h3>
-                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
-                  Get started by creating your first user account.
-                </p>
+                <User className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" aria-hidden="true" />
+                <h3 className="text-lg font-semibold mb-2">{t.emptyTitle}</h3>
+                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">{t.emptyText}</p>
                 <Button onClick={() => setCreateDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create User
+                  <Plus className="h-4 w-4 me-2" aria-hidden="true" />
+                  {t.create}
                 </Button>
               </div>
             ) : (
+              <>
+                {/* Phone: one card per user; a table from md up */}
+                <ul className="space-y-3 md:hidden" data-testid="user-cards">
+                  {filteredUsers.map((u) => (
+                    <li key={u.id} className="rounded-lg border border-[var(--color-border)] p-3" data-testid="user-card">
+                      <div className="font-medium"><bdi>{nameOf(u)}</bdi></div>
+                      {u.name?.trim() && <div className="text-sm text-[var(--color-muted-foreground)]"><bdi>{u.email}</bdi></div>}
+                      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                        <dt className="text-[var(--color-muted-foreground)]">{t.colRoles}</dt>
+                        <dd className="flex flex-wrap gap-1">{rolesOf(u)}</dd>
+                        <dt className="text-[var(--color-muted-foreground)]">{t.colCreated}</dt>
+                        <dd>{formatDateMs(u.created_at, lang)}</dd>
+                      </dl>
+                      <div className="mt-3 flex flex-wrap justify-end gap-2">{actionsOf(u)}</div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>RBAC Roles</TableHead>
-                    <TableHead>Created At</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t.colUser}</TableHead>
+                    <TableHead>{t.colRoles}</TableHead>
+                    <TableHead>{t.colCreated}</TableHead>
+                    <TableHead className="text-end">{c.actions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -775,72 +823,31 @@ export default function Users() {
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-                          {user.name || '-'}
+                          <User className="h-4 w-4 shrink-0 text-[var(--color-muted-foreground)]" aria-hidden="true" />
+                          <div>
+                            <div><bdi>{nameOf(user)}</bdi></div>
+                            {user.name?.trim() && (
+                              <div className="flex items-center gap-1 text-xs font-normal text-[var(--color-muted-foreground)]">
+                                <Mail className="h-3 w-3" aria-hidden="true" />
+                                <bdi>{user.email}</bdi>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-                          {user.email}
-                        </div>
+                        <div className="flex flex-wrap items-center gap-2">{rolesOf(user)}</div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {user.roles.length === 0 ? (
-                            <span className="text-sm text-[var(--color-muted-foreground)]">
-                              No roles
-                            </span>
-                          ) : (
-                            user.roles.map((role) => (
-                              <UserRoleBadge key={role.id} role={role.name} />
-                            ))
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {formatDateMs(user.created_at)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditUser(user)}
-                            title="Edit User"
-                          >
-                            <Pencil className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openRoleManager(user.id)}
-                            title="Manage Roles"
-                          >
-                            <Settings className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" asChild title="Passkeys">
-                            <a href={`/users/${encodeURIComponent(user.id)}/passkeys`}>
-                              <KeyRound className="h-4 w-4 mr-1" />
-                              Passkeys
-                            </a>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteUser(user.id)}
-                            title="Delete User"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1 text-[var(--color-destructive-text)]" />
-                            Delete
-                          </Button>
-                        </div>
+                      <TableCell>{formatDateMs(user.created_at, lang)}</TableCell>
+                      <TableCell className="text-end">
+                        <div className="flex justify-end gap-2">{actionsOf(user)}</div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -856,7 +863,7 @@ export default function Users() {
             }
           }}
           userId={u.id}
-          userEmail={u.email}
+          userEmail={nameOf(u)}
           currentRoles={u.roles}
           allRoles={allRoles}
         />
@@ -864,26 +871,25 @@ export default function Users() {
 
       {/* Edit User Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent>
+        <DialogContent dir={dirOf(lang)} lang={lang}>
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>
-              Update user information.
-            </DialogDescription>
+            <DialogTitle>{t.editTitle}</DialogTitle>
+            <DialogDescription>{t.editIntro}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{c.email}</Label>
               <Input
                 id="email"
                 type="email"
+                dir="ltr"
                 value={editEmail}
                 onChange={(e) => setEditEmail(e.target.value)}
                 disabled={isEditSubmitting}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="role">Role</Label>
+              <Label htmlFor="role">{t.role}</Label>
               <select
                 id="role"
                 className="flex h-10 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2"
@@ -904,10 +910,10 @@ export default function Users() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={isEditSubmitting}>
-              Cancel
+              {c.cancel}
             </Button>
             <Button type="submit" onClick={handleSaveEdit} disabled={isEditSubmitting}>
-              {isEditSubmitting ? "Saving..." : "Save"}
+              {isEditSubmitting ? (lang === "ar" ? c.saving : "Saving...") : c.save}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -917,7 +923,7 @@ export default function Users() {
       <ConfirmDialog
         open={deleteDialogOpen}
         title={deleteCopy.deleteTitle("user")}
-        description={deleteCopy.deleteBody("user", users.find((u) => u.id === deletingUserId)?.email ?? "")}
+        description={deleteCopy.deleteBody("user", (() => { const u = users.find((x) => x.id === deletingUserId); return u ? nameOf(u) : ""; })())}
         confirmLabel={deleteCopy.deleteConfirm}
         cancelLabel={deleteCopy.cancel}
         reason={{ label: deleteCopy.reasonLabel, placeholder: deleteCopy.reasonPlaceholder }}
