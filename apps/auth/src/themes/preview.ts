@@ -98,13 +98,23 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
  * and since 2026-11-14 the builder preview showed no sign-in form (Auth QA themes.spec.ts:72).
  */
 export function inert(html: string): string {
-	// Until nothing changes (a removal can't join the halves of another tag), then any "<script"
-	// left is escaped. The frame is also sandbox="" with a CSP that allows no script at all.
-	let out = html;
-	let previous: string;
-	do {
-		previous = out;
-		out = out.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '').replace(/<\/?script\b[^>]*>/gi, '');
-	} while (out !== previous);
-	return out.replace(/<(\/?)script/gi, '&lt;$1script');
+	// Scan, not regex removal: drop each <script …>…</script …> element; an unclosed one drops the
+	// rest of the page, as a browser would have treated it as script. Then any "<" that still starts
+	// a script tag is escaped. The frame is also sandbox="" with a CSP that allows no script at all.
+	const lower = html.toLowerCase();
+	let out = '';
+	let at = 0;
+	for (;;) {
+		const open = lower.indexOf('<script', at);
+		if (open < 0) {
+			out += html.slice(at);
+			break;
+		}
+		out += html.slice(at, open);
+		const close = lower.indexOf('</script', open);
+		if (close < 0) break;
+		const end = lower.indexOf('>', close);
+		at = end < 0 ? html.length : end + 1;
+	}
+	return out.replace(/<(?=\/?script)/gi, '&lt;');
 }
