@@ -100,6 +100,7 @@ const STYLE = `
 [data-page=error] .ep-ref p{margin:6px 0 0;opacity:.85;line-height:1.5}
 [data-page=error] .ep-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 20px;font-size:14px}
 [data-page=error] .ep-links button{border:0;background:none;padding:0;font:inherit;cursor:pointer}
+[data-page=error] a[data-component=button]{text-decoration:none}
 `;
 
 const COPY_SCRIPT = `(function(){var b=document.querySelector('[data-ep-back]');if(b&&history.length>1){b.hidden=false;b.addEventListener('click',function(){history.back()})}var c=document.querySelector('[data-ep-copy]');if(!c)return;c.addEventListener('click',function(){var r=document.getElementById('ep-ref').textContent;navigator.clipboard.writeText(r).then(function(){var s=c.querySelector('span');var o=s.textContent;s.textContent=c.dataset.copied;setTimeout(function(){s.textContent=o},2000)})})})();`;
@@ -157,7 +158,7 @@ async function renderFamilyPage(o: RenderOptions): Promise<Response> {
 			<p class="ep-links">
 				<button type="button" data-component="link" data-ep-back hidden>${t.goBack}</button>
 				${retry ? html`<a data-component="link" href="${header.home}">${t.goHome}</a>` : ''}
-				<a data-component="link" href="${contactHref(url, locale, o.reference)}">${t.needHelp} ${t.contactUs}</a>
+				<span>${t.needHelp} <a data-component="link" href="${contactHref(url, locale, o.reference)}">${t.contactUs}</a></span>
 			</p>
 		</div>
 		<script>${raw(COPY_SCRIPT)}</script>`;
