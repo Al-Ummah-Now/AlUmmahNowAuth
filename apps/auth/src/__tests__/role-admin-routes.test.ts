@@ -8,7 +8,6 @@ import { env } from 'cloudflare:test';
 import { Hono } from 'hono';
 import '../test-setup';
 import { roleAdminRoutes } from '../custom/role-admin-routes';
-import { SYSTEM_USER_ID } from '../security/system-accounts';
 
 const T = 'default';
 const now = Date.now();
@@ -43,18 +42,16 @@ describe('role admin routes', () => {
 			.run();
 	});
 
-	it("lists a role's live users, newest grant first, without system or deleted accounts", async () => {
+	it("lists a role's live users, newest grant first, without deleted accounts (a system account can't hold a role: D1 refuses the grant)", async () => {
 		const a = `usr_ra_a_${now}`;
 		const b = `usr_ra_b_${now}`;
 		const gone = `usr_ra_gone_${now}`;
 		await user(a);
 		await user(b);
 		await user(gone, true);
-		await user(SYSTEM_USER_ID);
 		await grant(a, now - 1000);
 		await grant(b, now);
 		await grant(gone, now);
-		await grant(SYSTEM_USER_ID, now);
 		const res = await app().request(`/roles/${ROLE}/users`);
 		expect(res.status).toBe(200);
 		const users = (await res.json()) as { id: string; email: string; assigned_by: string }[];
