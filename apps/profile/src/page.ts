@@ -533,7 +533,7 @@ export function renderHomePage(o: HomePageOptions): string {
             document.getElementById('passkeysEmpty').hidden = items.length > 0;
             document.getElementById('passkeysStaffNote').hidden = !(data && data.staff);
             if (data && data.max) passkeyMax = data.max;
-            document.getElementById('passkeyAdd').hidden = !!data && (items.length >= passkeyMax || data.canAdd === false);
+            document.getElementById('passkeyAdd').hidden = !!data && (items.length >= (data.max || 10) || data.canAdd === false);
             // Nothing to list and adding isn't offered (a staff member's first passkey needs an emailed code
             // Auth can't send): the whole card is hidden, no "add one" text for a feature that isn't there
             document.getElementById('passkeys').hidden = !!data && data.canAdd === false && items.length === 0;
