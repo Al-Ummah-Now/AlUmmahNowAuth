@@ -317,6 +317,8 @@ describe('the invite link', () => {
 			expect(html).not.toContain('Create account');
 			// The page's CSS reaches the browser unescaped (an escaped quote breaks every selector)
 			expect(html).toContain('[data-page^="invite"] [data-component="button"] { width:100%;');
+			// The comma after the address wraps with it, never alone at the start of a line
+			expect(html).toContain('<span data-slot="addr"><bdi dir="ltr">link@example.com</bdi>,</span>');
 		}
 		const { res } = await openAndSubmit(link);
 		expect(res!.status).toBe(200);

@@ -103,7 +103,7 @@ const STYLE = `
 [data-page^="invite"] { display:flex; flex-direction:column; gap:1rem; }
 [data-page^="invite"] [data-slot="actions"] { display:flex; flex-direction:column; gap:.75rem; }
 [data-page^="invite"] [data-component="button"] { width:100%; text-decoration:none; text-align:center; }
-[data-page^="invite"] bdi { overflow-wrap:anywhere; }
+[data-page^="invite"] [data-slot="addr"] { display:inline-block; max-width:100%; overflow-wrap:anywhere; }
 `;
 
 export interface PageOptions {
@@ -126,15 +126,17 @@ async function respond(body: ReturnType<typeof html>, lang: Locale, opts: PageOp
 	return new Response(`<!DOCTYPE html>${await page.toString()}`, { status: opts.status ?? 200, headers });
 }
 
-// An email in running text: isolated so an address reads correctly inside Arabic
-const addr = (email: string) => html`<bdi dir="ltr">${email}</bdi>`;
+// An email in running text: isolated so an address reads correctly inside Arabic. Punctuation
+// right after it stays with it ([data-slot="addr"] keeps together), so a wrapped address never
+// leaves a comma alone at the start of the next line.
+const addr = (email: string, after: string) => html`<span data-slot="addr"><bdi dir="ltr">${email}</bdi>${after}</span>`;
 
 function textWith(template: string, values: Record<string, string>) {
-	// Splits the translated sentence around its email placeholders, so each address is a <bdi>
-	const parts = template.split(/(\uE000[a-z]+\uE000)/);
+	// Splits the translated sentence around its email placeholders (with any punctuation after them)
+	const parts = template.split(/(\uE000[a-z]+\uE000[،,.:;؛]?)/);
 	return parts.map((part) => {
-		const m = /^\uE000([a-z]+)\uE000$/.exec(part);
-		return m ? addr(values[m[1]] ?? '') : part;
+		const m = /^\uE000([a-z]+)\uE000([،,.:;؛]?)$/.exec(part);
+		return m ? addr(values[m[1]] ?? '', m[2]) : part;
 	});
 }
 const P = (k: string) => `\uE000${k}\uE000`;
