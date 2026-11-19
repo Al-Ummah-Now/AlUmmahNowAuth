@@ -65,6 +65,8 @@ export const ERROR_COPY: Record<ErrorLocale, { kinds: Record<AuthErrorKind, { ti
 	},
 };
 
+const escapeText = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
 const STATUS: Record<AuthErrorKind, number> = { notFound: 404, server: 500, unavailable: 503 };
 
 /** "Error 500" / «خطأ ٥٠٠» (Eastern Arabic digits in Arabic, never the implicit 'ar' default). */
