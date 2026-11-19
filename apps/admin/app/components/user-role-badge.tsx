@@ -1,5 +1,4 @@
 import { Badge } from "./ui/badge";
-import { cn } from "../lib/utils";
 import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
 
 interface UserRoleBadgeProps {
@@ -28,7 +27,7 @@ export function UserRoleBadge({ role, lang = "en", className }: UserRoleBadgePro
   return (
     <Badge
       variant={variant}
-      className={cn(lang === "ar" ? undefined : "uppercase", className)}
+      className={className}
     >
       {roleLabel(role, lang)}
     </Badge>

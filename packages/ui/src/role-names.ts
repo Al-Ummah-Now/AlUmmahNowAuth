@@ -13,8 +13,12 @@ export const ROLE_NAMES_AR: Record<string, string> = {
   "senior reviewer": "مراجع أول",
 };
 
-/** A role's name in the page language: "Super_Admin" → «مشرف عام» in Arabic, unchanged in English. */
+/**
+ * A role's name in the page language: "super_admin" → «مشرف عام» in Arabic and "Super admin" in English
+ * (sentence case, as Profile shows roles); a role with no Arabic name keeps its own name.
+ */
 export function roleLabel(role: string, lang: string): string {
-  if (lang !== "ar") return role;
-  return ROLE_NAMES_AR[role.toLowerCase().replace(/[_-]+/g, " ").trim()] ?? role;
+  const key = role.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (lang === "ar") return ROLE_NAMES_AR[key] ?? role;
+  return key ? key.charAt(0).toUpperCase() + key.slice(1) : role;
 }
