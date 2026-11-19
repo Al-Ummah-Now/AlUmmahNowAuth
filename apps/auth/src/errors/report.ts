@@ -13,6 +13,7 @@
  */
 import { getSecret } from '../utils/secrets';
 import { logger } from '../logger';
+import { requestOrigin, type AuthRequestOrigin } from './origin';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const DEDUPE_MS = 10_000;
@@ -47,9 +48,12 @@ export interface ErrorDetails {
 	 * the failed dependency, the queue job, steps. Ids only. Ingest adds the Worker name.
 	 */
 	context?: ErrorContext;
+	/** The request that failed: its origin (surface, device, country, source; no PII) goes in the context */
+	request?: Request;
 }
 
 export interface ErrorContext {
+	origin?: AuthRequestOrigin;
 	upstream?: { service: string; status?: number; route?: string };
 	job?: { queue?: string; id?: string; attempt?: number };
 	breadcrumbs?: { at: string; kind: string; message: string }[];
@@ -61,6 +65,11 @@ export function inferContext(message: string, given: ErrorContext | undefined): 
 	const service = /^D1_|D1_ERROR/.test(message) ? 'd1' : /\bKV (GET|PUT|DELETE|LIST) failed|KV namespace/i.test(message) ? 'kv' : null;
 	if (!service) return given;
 	return { ...(given ?? {}), upstream: { service } };
+}
+
+function withOrigin(context: ErrorContext | undefined, request: Request | undefined): ErrorContext | undefined {
+	const origin = request ? requestOrigin(request) : undefined;
+	return origin ? { ...(context ?? {}), origin } : context;
 }
 
 /** A reference the user can quote (ERR-XXXX-XXXX, Crockford base32), as the videos apps show. */
@@ -99,7 +108,7 @@ export function buildErrorEvent(error: unknown, d: ErrorDetails, env: ErrorRepor
 		workerVersion: env.CF_VERSION_METADATA?.id,
 		occurredAt: new Date().toISOString(),
 		extra: d.extra,
-		context: inferContext(message, d.context),
+		context: withOrigin(inferContext(message, d.context), d.request),
 		test: d.test || undefined,
 		count: 1,
 	};

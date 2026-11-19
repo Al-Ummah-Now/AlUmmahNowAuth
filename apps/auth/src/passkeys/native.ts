@@ -172,7 +172,7 @@ export function nativePasskeyOptions(env: NativeEnv, ctx: ExecutionContext, requ
 		provider: 'passkey',
 		onFailure: (reason) => logger.warn('[passkeys] Native sign-in refused', { reason }),
 		// The reference rides on X-Error-Ref, so the 5xx wrapper does not report it again
-		onError: (error, req) => reportAuthError(env as never, ctx, error, { route: new URL(req.url).pathname, method: req.method, requestId }),
+		onError: (error, req) => reportAuthError(env as never, ctx, error, { route: new URL(req.url).pathname, method: req.method, requestId, request: req }),
 	};
 }
 
