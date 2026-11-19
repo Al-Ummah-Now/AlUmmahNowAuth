@@ -79,6 +79,9 @@ const STYLES = `
         .passkey-rename { display: flex; gap: .5rem; flex-wrap: wrap; width: 100%; }
         .passkey-rename input { flex: 1; min-width: 10rem; padding: .4rem .6rem; border-radius: 8px; border: 1px solid var(--fanous-color-border, rgba(127,127,127,.5)); background: transparent; color: inherit; }
         .passkey-status { min-height: 1.25rem; font-size: .9rem; color: var(--fanous-color-text-secondary); }
+        /* Nothing listed / no message yet: no blank space above the card's footer (the status stays a live region) */
+        .passkey-list:empty { display: none; }
+        .passkey-status:empty { position: absolute; width: 1px; height: 1px; min-height: 0; overflow: hidden; clip-path: inset(50%); }
         .passkey-status[data-tone="error"] { color: var(--fanous-color-danger, #c0392b); }
         .passkey-toast { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: .5rem; }
         .passkey-toast[hidden] { display: none; }

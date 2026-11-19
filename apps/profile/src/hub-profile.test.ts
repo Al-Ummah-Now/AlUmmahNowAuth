@@ -45,4 +45,10 @@ describe("account hub: Your profile", () => {
     const html = renderHomePage({ ...base, locale: "ar" });
     expect(html).toMatch(/<footer class="footer">\s*<p>© [٠-٩]{4} الأمة الآن\.<\/p>/);
   });
+  it("Passkeys card: an empty list and an empty status line leave no space above Add a passkey", () => {
+    const html = renderHomePage({ ...base, locale: "en" });
+    expect(html).toContain(".passkey-list:empty { display: none; }");
+    expect(html).toMatch(/\.passkey-status:empty \{ position: absolute;[^}]*min-height: 0;[^}]*clip-path: inset\(50%\); \}/);
+    expect(html).toContain('<p class="passkey-status" id="passkeyStatus" role="status"></p>');
+  });
 });
