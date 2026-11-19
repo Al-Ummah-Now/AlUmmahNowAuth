@@ -1,7 +1,7 @@
 /**
  * E2E: passkeys (AUTH-PASSKEYS) with a Chromium virtual authenticator.
  *
- * - The after-sign-in card adds a passkey, then goes on to the app by itself (1.5 s).
+ * - The after-sign-in card adds a passkey, then goes on to the app by itself (1.5 s), once only.
  * - /passkeys/setup goes back to its return target by itself; without one it stays.
  * - "Sign in with a passkey" on the sign-in page signs the user in with no password.
  * - The account hub lists, renames and removes a passkey (in-app dialog, Undo).
@@ -146,6 +146,39 @@ test.describe('Passkeys', () => {
     await page.locator('[data-passkey-button]').click();
     await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
     await expect(page.locator('[data-page="passkey"]')).toHaveCount(0);
+  });
+
+  // 2026-11-19 prod (iOS Safari, sign-up in Arabic): the passkey was added, the card's
+  // 1.5 s timer opened the app's one-time callback, the callback was slow and the user
+  // tapped Continue; the second callback failed its state check and the app showed its
+  // sign-in error page. The card goes to the callback once only.
+  test('the after-sign-in card opens the app callback once, even with Continue tapped while it loads', async ({ page, context }) => {
+    const email = generateTestEmail('pk-once');
+    accounts.push(email);
+    await addVirtualAuthenticator(context, page);
+    await signUpToCard(page, email);
+
+    // Hold the app's callback so the card stays on screen while it loads, as on a slow phone
+    const callbacks: string[] = [];
+    await page.route(/\/callback\?/, async (route) => {
+      callbacks.push(route.request().url());
+      await new Promise((r) => setTimeout(r, 2500));
+      await route.continue();
+    });
+    await page.locator('[data-page="passkey"] [data-action="add"]').click();
+    await expect(page.locator('[data-page="passkey"] [data-slot="status"]')).toContainText('Passkey added', { timeout: 15000 });
+    const done = page.locator('[data-page="passkey"] [data-action="done"]');
+    await expect(done).toBeVisible();
+    // The timer has started the callback; then the user taps Continue
+    await expect.poll(() => callbacks.length, { timeout: 10000 }).toBe(1);
+    await expect(done).toBeDisabled();
+    await done.dispatchEvent('click');
+    await page.locator('[data-page="passkey"] [data-action="skip"]').dispatchEvent('click');
+
+    await expect(page.locator('#loggedInView')).toBeVisible({ timeout: 20000 });
+    expect(callbacks).toHaveLength(1);
+    await expect(page.locator('#passkeyList [data-passkey-id]')).toHaveCount(1, { timeout: 15000 });
+    await expectCardHealthy(page);
   });
 
   test('the account hub adds, renames and removes a passkey with Undo', async ({ page, context }) => {

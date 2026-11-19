@@ -148,7 +148,16 @@ const STYLE = `
  */
 export const AUTO_CONTINUE_MS = 1500;
 
-/** The page's script: the code step, the registration ceremony, Not now. */
+/**
+ * The page's script: the code step, the registration ceremony, Not now.
+ *
+ * continueUrl is often the app's one-time OAuth callback (code + state), so
+ * the page goes there once only: the auto-continue timer, Continue, Not now
+ * and Back all share go(), which runs once and disables the buttons. Going
+ * twice (2026-11-19, iOS Safari: the timer fired, then Continue was tapped
+ * while the slow callback loaded) made the second callback fail its state
+ * check and show the app's sign-in error page after the passkey was added.
+ */
 function pageScript(p: AddPasskeyPage, t: ReturnType<typeof copyFor>): string {
 	const cfg = {
 		mode: p.mode,
@@ -187,7 +196,8 @@ var status=root.querySelector('[data-slot="status"]'),addBtn=root.querySelector(
 var codeBox=root.querySelector('[data-slot="code"]'),sendBtn=root.querySelector('[data-action="send-code"]'),codeInput=root.querySelector('input[name="code"]');
 var done=root.querySelector('[data-action="done"]');
 function say(msg,tone){status.textContent=msg||'';if(tone)status.setAttribute('data-tone',tone);else status.removeAttribute('data-tone');}
-function go(){window.location.assign(C.continueUrl);}
+var leaving=false,timer=null;
+function go(){if(leaving)return;leaving=true;if(timer)clearTimeout(timer);[addBtn,skip,done].forEach(function(b){if(b)b.disabled=true;});window.location.assign(C.continueUrl);}
 function post(path,body){return fetch(path+C.q,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){j.__status=r.status;return j;});});}
 if(!pk||!pk.supported()){ if(C.mode==='card'&&!C.staff){go();return;} say(C.t.unsupported,'error'); if(addBtn)addBtn.hidden=true; if(codeBox)codeBox.hidden=true; }
 if(skip)skip.addEventListener('click',function(){skip.disabled=true;if(C.mode==='card'&&!C.staff){post('/passkeys/prompt/dismiss').then(go,go);}else{go();}});
@@ -198,7 +208,7 @@ if(addBtn)addBtn.addEventListener('click',function(){
  post('/passkeys/register/options',body).then(function(j){
   if(!j.options){addBtn.disabled=false;say(C.t[j.error]||C.t.failed,'error');return;}
   return pk.create(j.options).then(function(cred){return post('/passkeys/register/verify',{credential:cred,token:j.token});}).then(function(v){
-   if(v&&v.ok){say(C.autoContinue?C.t.added+' '+C.t.goingBack:C.t.added);addBtn.hidden=true;if(skip)skip.hidden=true;if(codeBox)codeBox.hidden=true;done.hidden=false;done.focus();root.setAttribute('data-state','added');if(C.autoContinue)setTimeout(go,C.delay);}
+   if(v&&v.ok){say(C.autoContinue?C.t.added+' '+C.t.goingBack:C.t.added);addBtn.hidden=true;if(skip)skip.hidden=true;if(codeBox)codeBox.hidden=true;done.hidden=false;done.focus();root.setAttribute('data-state','added');if(C.autoContinue)timer=setTimeout(go,C.delay);}
    else{addBtn.disabled=false;say(C.t[v&&v.error]||C.t.failed,'error');}
   },function(e){addBtn.disabled=false;
    if(e&&e.name==='InvalidStateError')say(C.t.exists,'error');else if(e&&(e.name==='NotAllowedError'||e.name==='AbortError'))say(C.t.cancelled);else say(C.t.failed,'error');});
