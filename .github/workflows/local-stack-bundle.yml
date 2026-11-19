@@ -55,7 +55,7 @@ jobs:
       - name: On main?
         run: git merge-base --is-ancestor "$SHA" origin/main || { echo "::error::$SHA is not on main"; exit 1; }
 
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       # No dependency cache: this job writes a release, keep it independent of cache contents
       - uses: actions/setup-node@v6
