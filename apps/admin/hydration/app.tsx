@@ -41,10 +41,11 @@ export const FIXTURES: Record<PageName, unknown> = {
   },
   users: {
     users: [
-      { id: "u-10", email: "first@example.com", name: "First", created_at: new Date(NOW - 40 * DAY).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
-      { id: "u-11", name: "", email: "second@example.com", created_at: new Date(NOW - 2 * DAY).toISOString(), roles: [] },
+      { id: "u-10", email: "yusuf.rahman@example.com", name: "Yusuf Rahman", created_at: new Date(NOW - 40 * DAY).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
+      { id: "u-12", email: "maryam.alhassan@example.com", name: "مريم الحسن", created_at: new Date(NOW - 12 * DAY).toISOString(), roles: [{ id: "r-2", name: "Moderator" }] },
+      { id: "u-11", name: "", email: "khadija.noor@example.com", created_at: new Date(NOW - 2 * DAY).toISOString(), roles: [] },
     ],
-    allRoles: [{ id: "r-1", name: "Admin", is_system: true }],
+    allRoles: [{ id: "r-1", name: "Admin", is_system: true }, { id: "r-2", name: "Moderator", is_system: false }],
     user: ADMIN,
     authServerUrl: "",
     systemAccounts: [{ id: "system-1", email: "system@example.com", name: null, status: "active", deleted_at: null, roles: [] }],
@@ -54,7 +55,7 @@ export const FIXTURES: Record<PageName, unknown> = {
     authServerUrl: "",
     self: false,
     targetId: "u-10",
-    targetEmail: "first@example.com",
+    targetEmail: "yusuf.rahman@example.com",
     passkeys: [{ id: "pk-1", name: "Laptop", createdAt: NOW - 10 * DAY, lastUsedAt: NOW - DAY, synced: true, removedAt: null }],
     staff: true,
   },
@@ -71,11 +72,11 @@ export const FIXTURES: Record<PageName, unknown> = {
   },
   sessions: {
     sessions: [
-      { id: "s-1", userId: "u-10", email: "first@example.com", authenticatedAt: (NOW - DAY) / 1000, lastUsed: (NOW - 600_000) / 1000, isActive: true, device: { ipAddress: "203.0.113.7", userAgent: "Mozilla/5.0 (Macintosh)" }, lastActivity: (NOW - 600_000) / 1000 },
-      { id: "s-2", userId: "u-11", email: "second@example.com", authenticatedAt: (NOW - 3 * DAY) / 1000, lastUsed: (NOW - 2 * DAY) / 1000, isActive: false, device: { ipAddress: "198.51.100.4", userAgent: "Mozilla/5.0 (iPhone)" }, lastActivity: (NOW - 2 * DAY) / 1000 },
+      { id: "s-1", userId: "u-10", email: "yusuf.rahman@example.com", authenticatedAt: (NOW - DAY) / 1000, lastUsed: (NOW - 600_000) / 1000, isActive: true, device: { ipAddress: "203.0.113.7", userAgent: "Mozilla/5.0 (Macintosh)" }, lastActivity: (NOW - 600_000) / 1000 },
+      { id: "s-2", userId: "u-11", email: "khadija.noor@example.com", authenticatedAt: (NOW - 3 * DAY) / 1000, lastUsed: (NOW - 2 * DAY) / 1000, isActive: false, device: { ipAddress: "198.51.100.4", userAgent: "Mozilla/5.0 (iPhone)" }, lastActivity: (NOW - 2 * DAY) / 1000 },
     ],
     stats: { totalSessions: 1250, activeSessions: 37, loginsLast24h: 412, uniqueUsers: 900 },
-    suspicious: { multipleIPsInShortTime: [{ userId: "u-11", email: "second@example.com", ipCount: 4, ipAddresses: ["198.51.100.4", "198.51.100.9"] }], failedThenSuccessfulLogins: [] },
+    suspicious: { multipleIPsInShortTime: [{ userId: "u-11", email: "khadija.noor@example.com", ipCount: 4, ipAddresses: ["198.51.100.4", "198.51.100.9"] }], failedThenSuccessfulLogins: [] },
     total: 1250,
     user: ADMIN,
     authServerUrl: "",

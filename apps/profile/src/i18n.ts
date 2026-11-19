@@ -1,4 +1,5 @@
 import type { Locale } from "./apps";
+import { ROLE_NAMES_AR } from "../../../packages/ui/src/role-names.ts";
 
 export const LOCALES: readonly Locale[] = ["en", "ar"];
 const en = {
@@ -115,16 +116,7 @@ const ar: Messages = {
   email: "البريد الإلكتروني",
   role: "الدور",
   noRoles: "لا توجد أدوار",
-  roleNames: {
-    admin: "مشرف",
-    "super admin": "مشرف عام",
-    member: "عضو",
-    moderator: "مراقب",
-    scholar: "عالم",
-    writer: "كاتب",
-    "content reviewer": "مراجع محتوى",
-    "senior reviewer": "مراجع أول",
-  },
+  roleNames: ROLE_NAMES_AR,
   loading: "جارٍ التحميل...",
   accountMenu: "قائمة الحساب",
   signedInAccounts: "حساباتك",

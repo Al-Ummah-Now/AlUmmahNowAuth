@@ -134,7 +134,7 @@ export function UserRoleManager({
                     key={role.id}
                     className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)]"
                   >
-                    <UserRoleBadge role={role.name} />
+                    <UserRoleBadge role={role.name} lang={lang} />
                     <Button
                       variant="ghost"
                       size="icon"

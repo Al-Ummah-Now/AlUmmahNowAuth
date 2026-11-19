@@ -601,7 +601,7 @@ export default function Users() {
     u.roles.length === 0 ? (
       <span className="text-sm text-[var(--color-muted-foreground)]">{t.noRoles}</span>
     ) : (
-      u.roles.map((role) => <UserRoleBadge key={role.id} role={role.name} />)
+      u.roles.map((role) => <UserRoleBadge key={role.id} role={role.name} lang={lang} />)
     );
   const actionsOf = (u: Row) => (
     <>
