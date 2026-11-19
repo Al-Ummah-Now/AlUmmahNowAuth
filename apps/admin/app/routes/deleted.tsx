@@ -148,7 +148,7 @@ export default function RecentlyDeleted() {
   );
 
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl}>
+    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
       <div dir={dirOf(lang)} lang={lang} className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t.pageTitle}</h1>
