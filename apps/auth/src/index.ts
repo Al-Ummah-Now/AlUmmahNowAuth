@@ -12,7 +12,7 @@ import { D1TenantAdapter } from "./adapters/tenant-adapter";
 import { hexToSecret } from "./utils/crypto";
 import { isAllowedOrigin } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
-import { renderErrorPage } from "./ui/error-page";
+import { renderErrorPage, renderNotFoundPage } from "./ui/error-page";
 import { reportAuthError } from "./errors/report";
 import { flagSystemAccountAttempt } from './security/system-accounts';
 import { systemAccountGuard } from './custom/system-account-guard';
@@ -584,6 +584,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
     // and the shared site header on top (AlUmmahNow docs/design/NAV.md "Header")
     if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin, signInHeaderFor(url, getLocaleFromRequest(request), env)));
+    // An unknown page opened in a browser: the error-page family's 404, not openauth's bare text
+    if (isPage && issuerResponse.status === 404 && !(issuerResponse.headers.get('Content-Type') ?? '').includes('text/html')) {
+      issuerResponse = await renderNotFoundPage(request, env);
+    }
     // No email: the sign-in page leaves out "Create account" and "Forgot password?"
     if (isPage && !emailAvailable && (issuerResponse.headers.get('Content-Type') ?? '').includes('text/html')) {
       issuerResponse = withoutEmailLinks(issuerResponse);
@@ -716,7 +720,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
       // To the admin Errors page; the page shows the reference to quote (AlUmmahNowAuth#341)
       const ref = reportAuthError(env, ctx, error, { route: url.pathname, method: request.method, requestId, request });
-      const page = addSecurityHeaders(renderErrorPage(error, ref, request.url, request), isProduction);
+      const page = addSecurityHeaders(await renderErrorPage(error, ref, request.url, request, env), isProduction);
       page.headers.set('X-Error-Ref', ref);
       return page;
     }
