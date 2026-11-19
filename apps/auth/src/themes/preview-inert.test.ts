@@ -12,4 +12,10 @@ describe('theme preview: inert', () => {
 		expect(out).not.toContain('rules.length');
 		expect(out).toContain('<input type="password" name="password">');
 	});
+
+	it('nested and split tags leave no script behind', () => {
+		const out = inert('<scr<script>x</script>ipt>alert(1)</script ><script\n>y</script foo><p>ok</p>');
+		expect(out).not.toMatch(/<script/i);
+		expect(out).toContain('<p>ok</p>');
+	});
 });
