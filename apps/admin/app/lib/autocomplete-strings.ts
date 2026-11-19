@@ -1,5 +1,7 @@
-/** This admin's interface strings (it is English-only; the videos admin has the Arabic). */
-export const AUTOCOMPLETE_STRINGS = {
+/** The user picker's words (components/autocomplete.tsx), in English and Arabic. Numbers in ٠–٩ in Arabic. */
+import { formatNumber } from "../../../../packages/ui/src/format.ts";
+
+const en = {
   searchPlaceholder: "Type a name or email",
   pickPlaceholder: "Name, email or user ID",
   searching: "Searching…",
@@ -21,3 +23,35 @@ export const AUTOCOMPLETE_STRINGS = {
   changeLabel: (name: string) => `Change the user (${name})`,
   clearLabel: (name: string) => `Remove the chosen user (${name})`,
 };
+
+export type AutocompleteStrings = typeof en;
+
+const N = (n: number) => formatNumber(n, "ar");
+
+const ar: AutocompleteStrings = {
+  searchPlaceholder: "اكتب اسمًا أو بريدًا إلكترونيًا",
+  pickPlaceholder: "الاسم أو البريد الإلكتروني أو معرّف المستخدم",
+  searching: "جارٍ البحث…",
+  loadingList: "جارٍ تحميل أحدث المستخدمين…",
+  emptyList: "لا يوجد مستخدمون بعد.",
+  listFailed: "تعذّر تحميل القائمة.",
+  retry: "حاول مرة أخرى",
+  loadingMore: "جارٍ تحميل المزيد…",
+  current: "الحالي",
+  recent: (n: number) => `أحدث المستخدمين (${N(n)}). اكتب للبحث، أو مرّر لرؤية المزيد.`,
+  noMatches: "لا نتائج. اضغط Enter للبحث على أي حال.",
+  failed: "الاقتراحات غير متاحة الآن. اضغط Enter للبحث.",
+  count: (n: number) => `الاقتراحات: ${N(n)}. استخدم السهمين لأعلى ولأسفل للاختيار، وEnter للفتح.`,
+  searchAll: "البحث في كل شيء عن",
+  useId: "استخدام معرّف المستخدم هذا:",
+  lookingUp: "جارٍ البحث…",
+  notFound: "لا يوجد مستخدم بهذا المعرّف",
+  change: "تغيير",
+  changeLabel: (name: string) => `تغيير المستخدم (${name})`,
+  clearLabel: (name: string) => `إزالة المستخدم المختار (${name})`,
+};
+
+export const autocompleteStrings = (lang: "en" | "ar"): AutocompleteStrings => (lang === "ar" ? ar : en);
+
+/** English (the default for pages written only in English). */
+export const AUTOCOMPLETE_STRINGS = en;

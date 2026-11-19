@@ -29,6 +29,9 @@ import { Badge } from "../components/ui/badge";
 import { AdminLayout } from "../components/admin-layout";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { confirmCopy, dirOf, langOf } from "../lib/confirm-copy";
+import { pagesCopy } from "../lib/pages-copy";
+import { formatNumber } from "../../../../packages/ui/src/format.ts";
+import type { AdminLang } from "../lib/deletion-copy";
 import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
@@ -258,10 +261,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
   return { success: false, error: "Unknown action" };
 }
 
-function formatDate(dateValue: string | number) {
-  if (!dateValue) return 'N/A';
+function formatDate(dateValue: string | number, lang: AdminLang, missing: string) {
+  if (!dateValue) return missing;
   try {
-    return formatDateTime(dateValue);
+    return formatDateTime(dateValue, lang);
   } catch {
     return String(dateValue);
   }
@@ -273,6 +276,10 @@ export default function SessionsPage() {
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
   const copy = confirmCopy(lang);
+  const t = pagesCopy(lang).sessions;
+  const c = pagesCopy(lang).common;
+  const num = (value: number) => formatNumber(value, lang);
+  const when = (value: string | number) => formatDate(value, lang, t.notAvailable);
   const [terminating, setTerminating] = useState<{ id: string; userId: string; email: string } | null>(null);
   const currentUserId = searchParams.get('user_id') ?? '';
 
@@ -280,18 +287,31 @@ export default function SessionsPage() {
     (suspicious?.multipleIPsInShortTime?.length || 0) +
     (suspicious?.failedThenSuccessfulLogins?.length || 0);
 
+  const endButton = (session: (typeof sessions)[number]) => (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="text-[var(--color-destructive-text)] hover:bg-[var(--color-accent)]"
+      disabled={fetcher.state !== 'idle'}
+      title={copy.endSessionButton}
+      aria-label={copy.endSessionAria(session.email)}
+      onClick={() => setTerminating({ id: session.id, userId: session.userId, email: session.email })}
+    >
+      <Trash2 className="h-4 w-4" aria-hidden="true" />
+    </Button>
+  );
+
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl}>
+    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Session Management</h2>
-        <p className="text-[var(--color-muted-foreground)]">
-          Monitor and manage active user sessions across all devices
-        </p>
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
+        <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>
       </div>
 
         {error && (
           <div className="mb-6 p-4 ui-alert-error rounded-lg">
-            Error loading sessions: {error}
+            {t.loadError(error)}
           </div>
         )}
 
@@ -299,54 +319,54 @@ export default function SessionsPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Sessions</CardTitle>
+              <CardTitle className="text-sm font-medium">{t.total}</CardTitle>
               <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalSessions}</div>
+              <div className="text-2xl font-bold">{num(stats.totalSessions)}</div>
               <p className="text-xs text-[var(--color-muted-foreground)]">
-                Active sessions across all users
+                {t.totalHint}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Now</CardTitle>
+              <CardTitle className="text-sm font-medium">{t.activeNow}</CardTitle>
               <Activity className="h-4 w-4 text-[var(--color-success-text)]" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-[var(--color-success-text)]">{stats.activeSessions}</div>
+              <div className="text-2xl font-bold text-[var(--color-success-text)]">{num(stats.activeSessions)}</div>
               <p className="text-xs text-[var(--color-muted-foreground)]">
-                Used in the last hour
+                {t.activeHint}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Logins (24h)</CardTitle>
+              <CardTitle className="text-sm font-medium">{t.logins(24)}</CardTitle>
               <Clock className="h-4 w-4 text-[var(--color-muted-foreground)]" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.loginsLast24h}</div>
+              <div className="text-2xl font-bold">{num(stats.loginsLast24h)}</div>
               <p className="text-xs text-[var(--color-muted-foreground)]">
-                New logins in the last 24 hours
+                {t.loginsHint(24)}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Suspicious</CardTitle>
+              <CardTitle className="text-sm font-medium">{t.suspicious}</CardTitle>
               <AlertTriangle className={`h-4 w-4 ${suspiciousCount > 0 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-muted-foreground)]'}`} />
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${suspiciousCount > 0 ? 'text-[var(--color-warning-text)]' : ''}`}>
-                {suspiciousCount}
+                {num(suspiciousCount)}
               </div>
               <p className="text-xs text-[var(--color-muted-foreground)]">
-                Flagged for review
+                {t.suspiciousHint}
               </p>
             </CardContent>
           </Card>
@@ -359,19 +379,19 @@ export default function SessionsPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2 text-[var(--color-warning-text)]">
                 <AlertTriangle className="h-5 w-5" />
-                Suspicious Activity Detected
+                {t.suspiciousTitle}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {suspicious.multipleIPsInShortTime.length > 0 && (
                 <div>
-                  <h4 className="font-medium mb-2">Multiple IPs in Short Time</h4>
+                  <h4 className="font-medium mb-2">{t.manyIps}</h4>
                   <div className="space-y-2">
                     {suspicious.multipleIPsInShortTime.map((item, i) => (
                       <div key={i} className="text-sm p-2 rounded bg-[var(--color-card)] text-[var(--color-foreground)]">
-                        <span className="font-medium">{item.email}</span> - {item.ipCount} different IPs
+                        <span className="font-medium"><bdi>{item.email}</bdi></span> — {t.manyIpsLine(item.ipCount)}
                         <div className="text-xs text-[var(--color-muted-foreground)]">
-                          IPs: {Array.isArray(item.ipAddresses) ? item.ipAddresses.join(', ') : item.ipAddresses}
+                          {t.ips} <bdi>{Array.isArray(item.ipAddresses) ? item.ipAddresses.join(', ') : item.ipAddresses}</bdi>
                         </div>
                       </div>
                     ))}
@@ -380,11 +400,11 @@ export default function SessionsPage() {
               )}
               {suspicious.failedThenSuccessfulLogins.length > 0 && (
                 <div>
-                  <h4 className="font-medium mb-2">Failed Then Successful Logins</h4>
+                  <h4 className="font-medium mb-2">{t.failedThenOk}</h4>
                   <div className="space-y-2">
                     {suspicious.failedThenSuccessfulLogins.map((item, i) => (
                       <div key={i} className="text-sm p-2 rounded bg-[var(--color-card)] text-[var(--color-foreground)]">
-                        <span className="font-medium">{item.email}</span> - {item.failedAttempts} failed attempts before success
+                        <span className="font-medium"><bdi>{item.email}</bdi></span> — {t.failedLine(item.failedAttempts)}
                       </div>
                     ))}
                   </div>
@@ -397,30 +417,29 @@ export default function SessionsPage() {
         {/* Sessions Table */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>Active Sessions</CardTitle>
-                <CardDescription>
-                  {total} total sessions
-                </CardDescription>
+                <CardTitle>{t.tableTitle}</CardTitle>
+                <CardDescription>{t.count(total)}</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <form method="get" className="flex items-end gap-2">
                   <UserAutocomplete
                     key={currentUserId}
                     mode="pick"
                     name="user_id"
-                    label="User"
+                    label={t.user}
+                    lang={lang}
                     defaultValue={currentUserId}
                     submitOnChange
-                    className="w-72"
+                    className="w-full sm:w-72"
                     testId="sessions-user"
                   />
-                  <Button type="submit" variant="outline" size="icon" aria-label="Show this user's sessions" title="Show this user's sessions">
+                  <Button type="submit" variant="outline" size="icon" aria-label={t.showUser} title={t.showUser}>
                     <Search className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </form>
-                <Button variant="outline" size="icon" onClick={() => window.location.reload()} aria-label="Refresh" title="Refresh">
+                <Button variant="outline" size="icon" onClick={() => window.location.reload()} aria-label={c.refresh} title={c.refresh}>
                   <RefreshCw className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
@@ -430,77 +449,84 @@ export default function SessionsPage() {
             {sessions.length === 0 ? (
               <div className="text-center py-8 text-[var(--color-muted-foreground)]">
                 <HelpCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No active sessions found</p>
+                <p>{t.empty}</p>
               </div>
             ) : (
+              <>
+                {/* Phone: a card per session; a table from md up */}
+                <ul className="space-y-3 md:hidden" data-testid="session-cards">
+                  {sessions.map((session) => (
+                    <li key={session.id} className="rounded-lg border border-[var(--color-border)] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-medium min-w-0 break-words"><bdi>{session.email}</bdi></div>
+                        {endButton(session)}
+                      </div>
+                      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                        <dt className="text-[var(--color-muted-foreground)]">{t.ip}</dt>
+                        <dd><bdi>{session.device?.ipAddress || t.notAvailable}</bdi></dd>
+                        <dt className="text-[var(--color-muted-foreground)]">{t.lastUsed}</dt>
+                        <dd>{when(session.lastUsed)}</dd>
+                        <dt className="text-[var(--color-muted-foreground)]">{t.status}</dt>
+                        <dd>
+                          <Badge variant={session.isActive ? "default" : "secondary"}>{session.isActive ? t.active : t.inactive}</Badge>
+                        </dd>
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+                <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Device</TableHead>
-                    <TableHead>IP Address</TableHead>
-                    <TableHead>Last Used</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t.user}</TableHead>
+                    <TableHead>{t.device}</TableHead>
+                    <TableHead>{t.ip}</TableHead>
+                    <TableHead>{t.lastUsed}</TableHead>
+                    <TableHead>{t.status}</TableHead>
+                    <TableHead className="text-end">{c.actions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {sessions.map((session) => (
                     <TableRow key={session.id}>
                       <TableCell>
-                        <div>
-                          <div className="font-medium">{session.email}</div>
-                          <div className="text-xs text-[var(--color-muted-foreground)]">
-                            {session.userId}
-                          </div>
-                        </div>
+                        <div className="font-medium"><bdi>{session.email}</bdi></div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Monitor className="h-4 w-4" />
-                          <span>Device</span>
+                          <Monitor className="h-4 w-4" aria-hidden="true" />
+                          <span>{t.device}</span>
                         </div>
                         {session.device?.userAgent && (
-                          <div className="text-xs text-[var(--color-muted-foreground)] max-w-[200px] truncate" title={session.device.userAgent}>
+                          <div className="text-xs text-[var(--color-muted-foreground)] max-w-[200px] truncate" dir="ltr" title={session.device.userAgent}>
                             {session.device.userAgent}
                           </div>
                         )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Globe className="h-3 w-3" />
-                          {session.device?.ipAddress || 'N/A'}
+                          <Globe className="h-3 w-3" aria-hidden="true" />
+                          <bdi>{session.device?.ipAddress || t.notAvailable}</bdi>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div>{formatDate(session.lastUsed)}</div>
+                        <div>{when(session.lastUsed)}</div>
                         <div className="text-xs text-[var(--color-muted-foreground)]">
-                          Auth: {formatDate(session.authenticatedAt)}
+                          {t.signedIn(when(session.authenticatedAt))}
                         </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant={session.isActive ? "default" : "secondary"}>
-                          {session.isActive ? 'Active' : 'Inactive'}
+                          {session.isActive ? t.active : t.inactive}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-[var(--color-destructive-text)] hover:bg-[var(--color-accent)]"
-                          disabled={fetcher.state !== 'idle'}
-                          title={copy.endSessionButton}
-                          aria-label={copy.endSessionAria(session.email)}
-                          onClick={() => setTerminating({ id: session.id, userId: session.userId, email: session.email })}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+                      <TableCell className="text-end">{endButton(session)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

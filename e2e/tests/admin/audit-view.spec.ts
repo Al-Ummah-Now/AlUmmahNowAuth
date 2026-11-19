@@ -82,7 +82,7 @@ test.describe('Admin Audit View', () => {
     await expect(page.locator('th:has-text("Timestamp")')).toBeVisible();
     await expect(page.locator('th:has-text("Event Type")')).toBeVisible();
     await expect(page.locator('th:has-text("Severity")')).toBeVisible();
-    await expect(page.locator('th:has-text("User ID")')).toBeVisible();
+    await expect(page.locator('th:has-text("User")')).toBeVisible();
     await expect(page.locator('th:has-text("IP Address")')).toBeVisible();
     await expect(page.locator('th:has-text("Status")')).toBeVisible();
   });
@@ -195,11 +195,12 @@ test.describe('Admin Audit View', () => {
 
     // Get a user ID from the first row to search for
     const firstRow = page.locator('tbody tr').first();
-    const userIdCell = firstRow.locator('td').nth(3); // User ID column
-    const userId = await userIdCell.textContent();
+    // The User column shows a name; the id is on the cell (people are never shown by id)
+    const userIdCell = firstRow.locator('td').nth(3);
+    const userId = await userIdCell.getAttribute('data-user-id');
 
     // Skip test if no user ID (some events may not have user_id)
-    if (!userId || userId.trim() === '-') {
+    if (!userId || userId.trim() === '') {
       test.skip();
       return;
     }
@@ -234,7 +235,7 @@ test.describe('Admin Audit View', () => {
 
     if (rowCount > 0) {
       // All visible rows should have the searched user ID
-      const firstRowUserId = await tableRows.first().locator('td').nth(3).textContent();
+      const firstRowUserId = await tableRows.first().locator('td').nth(3).getAttribute('data-user-id');
       expect(firstRowUserId?.trim()).toBe(trimmedUserId);
     }
   });

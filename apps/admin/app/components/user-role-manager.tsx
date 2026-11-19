@@ -19,6 +19,7 @@ import { Button } from "./ui/button";
 import { UserRoleBadge } from "./user-role-badge";
 import { ConfirmDialog } from "./confirm-dialog";
 import { confirmCopy, dirOf, langOf } from "../lib/confirm-copy";
+import { pagesCopy } from "../lib/pages-copy";
 
 interface UserRoleManagerProps {
   userId: string;
@@ -50,6 +51,7 @@ export function UserRoleManager({
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
   const copy = confirmCopy(lang);
+  const t = pagesCopy(lang).roleManager;
   const [roleToRemove, setRoleToRemove] = useState<{ id: string; name: string } | null>(null);
 
   const assignFetcher = useFetcher();
@@ -113,22 +115,18 @@ export function UserRoleManager({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px]" dir={dirOf(lang)} lang={lang}>
         <DialogHeader>
-          <DialogTitle>Manage Roles for {userEmail}</DialogTitle>
-          <DialogDescription>
-            Add or remove roles to control user permissions
-          </DialogDescription>
+          <DialogTitle>{t.title(userEmail)}</DialogTitle>
+          <DialogDescription>{t.intro}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Current Roles Section */}
           <div>
-            <h3 className="text-sm font-semibold mb-3">Current Roles</h3>
+            <h3 className="text-sm font-semibold mb-3">{t.current}</h3>
             {currentRoles.length === 0 ? (
-              <p className="text-sm text-[var(--color-muted-foreground)]">
-                No roles assigned yet
-              </p>
+              <p className="text-sm text-[var(--color-muted-foreground)]">{t.none}</p>
             ) : (
               <div className="space-y-2">
                 {currentRoles.map((role) => (
@@ -149,7 +147,7 @@ export function UserRoleManager({
                       ) : (
                         <X className="h-4 w-4" />
                       )}
-                      <span className="sr-only">Remove {role.name}</span>
+                      <span className="sr-only">{t.remove(role.name)}</span>
                     </Button>
                   </div>
                 ))}
@@ -159,11 +157,9 @@ export function UserRoleManager({
 
           {/* Add Role Section */}
           <div>
-            <h3 className="text-sm font-semibold mb-3">Add Role</h3>
+            <h3 className="text-sm font-semibold mb-3">{t.add}</h3>
             {availableRoles.length === 0 ? (
-              <p className="text-sm text-[var(--color-muted-foreground)]">
-                All roles have been assigned
-              </p>
+              <p className="text-sm text-[var(--color-muted-foreground)]">{t.allAssigned}</p>
             ) : (
               <div className="flex gap-2">
                 <Select
@@ -172,7 +168,7 @@ export function UserRoleManager({
                   disabled={isLoading}
                 >
                   <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select a role" />
+                    <SelectValue placeholder={t.select} />
                   </SelectTrigger>
                   <SelectContent>
                     {availableRoles.map((role) => (
@@ -181,7 +177,7 @@ export function UserRoleManager({
                           {role.name}
                           {role.is_system && (
                             <span className="text-xs text-[var(--color-muted-foreground)]">
-                              (System)
+                              {t.system}
                             </span>
                           )}
                         </span>
@@ -199,7 +195,7 @@ export function UserRoleManager({
                   ) : (
                     <Plus className="h-4 w-4" />
                   )}
-                  Add
+                  {t.addButton}
                 </Button>
               </div>
             )}

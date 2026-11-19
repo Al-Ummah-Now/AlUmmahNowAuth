@@ -55,9 +55,9 @@ test.describe('Admin User Creation', () => {
       const userRow = page.locator(`tr:has-text("${newAdmin.email}")`);
       await expect(userRow).toBeVisible({ timeout: 3000 });
 
-      // Look for Admin role badge in the roles column (3rd column)
+      // Look for Admin role badge in the roles column (2nd column: User, Roles, Created, Actions)
       // The role name is displayed as-is from the database ("Admin" with Title Case)
-      const roleCell = userRow.locator('td:nth-child(3)');
+      const roleCell = userRow.locator('td:nth-child(2)');
       const hasAdminRole = await roleCell.locator('text=Admin').isVisible();
 
       if (!hasAdminRole) {

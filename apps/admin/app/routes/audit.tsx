@@ -16,7 +16,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { requireAuth } from "../lib/auth.server";
 import { logger } from "../lib/logger.server";
 import { actorLabel, isSystemUserId } from "../lib/system-accounts";
-import { langOf } from "../lib/deletion-copy";
+import { dirOf, langOf } from "../lib/deletion-copy";
+import { pagesCopy } from "../lib/pages-copy";
+import { userNames } from "../lib/user-names.server";
 import {
   getAuditLogs,
   isErrorResponse,
@@ -60,10 +62,13 @@ interface LoaderData {
   };
   user: { id: string; email: string } | null;
   authServerUrl: string;
+  /** user id → name (display name, else email) for the events on this page and the user filter */
+  names?: Record<string, string>;
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context?.cloudflare?.env as {
+    AUTH_DB?: D1Database;
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
@@ -149,6 +154,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       filters: { event_type, severity, search, start_date, end_date },
       user,
       authServerUrl,
+      names: await userNames(env.AUTH_DB, [...events.map((e) => e.user_id), search]),
     };
   } catch (error) {
     logger.error("Error loading audit logs", {
@@ -194,10 +200,12 @@ const INVITE_EVENTS = [
 ];
 
 export default function AuditLogs() {
-  const { events, pagination, filters, user, authServerUrl } = useLoaderData<LoaderData>();
+  const { events, pagination, filters, user, authServerUrl, names = {} } = useLoaderData<LoaderData>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [showFilters, setShowFilters] = useState(false);
+  const lang = langOf(searchParams);
+  const t = pagesCopy(lang).audit;
 
   // Local state for filter form
   const [eventTypeFilter, setEventTypeFilter] = useState(filters.event_type || "");
@@ -233,7 +241,7 @@ export default function AuditLogs() {
   };
 
   const formatTimestamp = (timestamp: string) => {
-    return formatDateTimeMs(timestamp);
+    return formatDateTimeMs(timestamp, lang);
   };
 
   const getSeverityColor = (severity: string) => {
@@ -256,28 +264,24 @@ export default function AuditLogs() {
   const hasActiveFilters = eventTypeFilter || (severityFilter && severityFilter !== "all") || searchQuery || startDate || endDate;
 
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl}>
+    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
       <div className="mb-6">
-        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Audit Logs</h2>
-        <p className="text-[var(--color-muted-foreground)]">
-          View system audit logs and security events
-        </p>
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
+        <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>
       </div>
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>Audit Events</CardTitle>
-                <CardDescription>
-                  View and filter system audit logs and security events
-                </CardDescription>
+                <CardTitle>{t.tableTitle}</CardTitle>
+                <CardDescription>{t.tableIntro}</CardDescription>
               </div>
               <Button
                 variant={showFilters ? "default" : "outline"}
                 onClick={() => setShowFilters(!showFilters)}
               >
-                <Filter className="h-4 w-4 mr-2" />
-                {showFilters ? "Hide Filters" : "Show Filters"}
+                <Filter className="h-4 w-4 me-2" aria-hidden="true" />
+                {showFilters ? t.hideFilters : t.showFilters}
               </Button>
             </div>
           </CardHeader>
@@ -287,10 +291,11 @@ export default function AuditLogs() {
               <div className="mb-6 p-4 border border-[var(--color-border)] rounded-lg bg-[var(--color-muted)]/20">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   <div className="grid gap-2">
-                    <Label htmlFor="event_type">Event Type</Label>
+                    <Label htmlFor="event_type">{t.eventType}</Label>
                     <Input
                       id="event_type"
-                      placeholder="e.g., auth.login.success"
+                      dir="ltr"
+                      placeholder={t.eventPlaceholder}
                       list="event-type-suggestions"
                       value={eventTypeFilter}
                       onChange={(e) => setEventTypeFilter(e.target.value)}
@@ -303,18 +308,16 @@ export default function AuditLogs() {
                   </div>
 
                   <div className="grid gap-2">
-                    <Label htmlFor="severity">Severity</Label>
+                    <Label htmlFor="severity">{t.severity}</Label>
                     <Select value={severityFilter} onValueChange={setSeverityFilter}>
                       <SelectTrigger id="severity">
-                        <SelectValue placeholder="All severities" />
+                        <SelectValue placeholder={t.allSeverities} />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All severities</SelectItem>
-                        <SelectItem value="debug">Debug</SelectItem>
-                        <SelectItem value="info">Info</SelectItem>
-                        <SelectItem value="warning">Warning</SelectItem>
-                        <SelectItem value="error">Error</SelectItem>
-                        <SelectItem value="critical">Critical</SelectItem>
+                      <SelectContent dir={dirOf(lang)}>
+                        <SelectItem value="all">{t.allSeverities}</SelectItem>
+                        {["debug", "info", "warning", "error", "critical"].map((level) => (
+                          <SelectItem key={level} value={level}>{t.severities[level]}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -323,14 +326,15 @@ export default function AuditLogs() {
                   <UserAutocomplete
                     key={filters.search ?? ""}
                     mode="pick"
-                    label="User"
+                    label={t.user}
+                    lang={lang}
                     defaultValue={filters.search ?? ""}
                     onChange={(id) => setSearchQuery(id)}
                     testId="audit-user"
                   />
 
                   <div className="grid gap-2">
-                    <Label htmlFor="start_date">Start Date</Label>
+                    <Label htmlFor="start_date">{t.from}</Label>
                     <Input
                       id="start_date"
                       type="datetime-local"
@@ -340,7 +344,7 @@ export default function AuditLogs() {
                   </div>
 
                   <div className="grid gap-2">
-                    <Label htmlFor="end_date">End Date</Label>
+                    <Label htmlFor="end_date">{t.to}</Label>
                     <Input
                       id="end_date"
                       type="datetime-local"
@@ -352,13 +356,13 @@ export default function AuditLogs() {
 
                 <div className="flex gap-2 mt-4">
                   <Button onClick={applyFilters}>
-                    <Search className="h-4 w-4 mr-2" />
-                    Apply Filters
+                    <Search className="h-4 w-4 me-2" aria-hidden="true" />
+                    {t.apply}
                   </Button>
                   {hasActiveFilters && (
                     <Button variant="outline" onClick={clearFilters}>
-                      <X className="h-4 w-4 mr-2" />
-                      Clear Filters
+                      <X className="h-4 w-4 me-2" aria-hidden="true" />
+                      {t.clear}
                     </Button>
                   )}
                 </div>
@@ -368,34 +372,34 @@ export default function AuditLogs() {
             {/* Active Filters Display */}
             {hasActiveFilters && !showFilters && (
               <div className="mb-4 flex flex-wrap gap-2 items-center">
-                <span className="text-sm text-[var(--color-muted-foreground)]">Active filters:</span>
+                <span className="text-sm text-[var(--color-muted-foreground)]">{t.active}</span>
                 {eventTypeFilter && (
                   <Badge variant="outline">
-                    Event: {eventTypeFilter}
+                    {t.eventChip("")}<bdi>{eventTypeFilter}</bdi>
                   </Badge>
                 )}
                 {severityFilter && severityFilter !== "all" && (
                   <Badge variant="outline">
-                    Severity: {severityFilter}
+                    {t.severityChip(t.severities[severityFilter] ?? severityFilter)}
                   </Badge>
                 )}
                 {searchQuery && (
                   <Badge variant="outline">
-                    User: {searchQuery}
+                    {t.userChip("")}<bdi>{names[searchQuery] ?? searchQuery}</bdi>
                   </Badge>
                 )}
                 {startDate && (
                   <Badge variant="outline">
-                    From: {formatDateMs(startDate)}
+                    {t.fromChip(formatDateMs(startDate, lang))}
                   </Badge>
                 )}
                 {endDate && (
                   <Badge variant="outline">
-                    To: {formatDateMs(endDate)}
+                    {t.toChip(formatDateMs(endDate, lang))}
                   </Badge>
                 )}
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  <X className="h-3 w-3" />
+                <Button variant="ghost" size="sm" onClick={clearFilters} aria-label={t.clear} title={t.clear}>
+                  <X className="h-3 w-3" aria-hidden="true" />
                 </Button>
               </div>
             )}
@@ -404,66 +408,65 @@ export default function AuditLogs() {
             {events.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <FileText className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No audit events found</h3>
-                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
-                  {hasActiveFilters
-                    ? "Try adjusting your filters to see more results."
-                    : "Audit events will appear here as they occur."}
-                </p>
+                <h3 className="text-lg font-semibold mb-2">{t.emptyTitle}</h3>
+                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">{hasActiveFilters ? t.emptyFiltered : t.emptyAll}</p>
                 {hasActiveFilters && (
                   <Button variant="outline" onClick={clearFilters}>
-                    Clear Filters
+                    {t.clear}
                   </Button>
                 )}
               </div>
             ) : (
               <>
                 <div className="overflow-x-auto">
-                  <Table aria-label="Audit events">
+                  <Table aria-label={t.tableTitle}>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Timestamp</TableHead>
-                        <TableHead>Event Type</TableHead>
-                        <TableHead>Severity</TableHead>
-                        <TableHead>User ID</TableHead>
-                        <TableHead>IP Address</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>{t.time}</TableHead>
+                        <TableHead>{t.eventCol}</TableHead>
+                        <TableHead>{t.severityCol}</TableHead>
+                        <TableHead>{t.userCol}</TableHead>
+                        <TableHead>{t.ip}</TableHead>
+                        <TableHead>{t.status}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {events.map((event) => (
                         <TableRow key={event.id}>
-                          <TableCell className="font-mono text-xs">
+                          <TableCell className="text-xs whitespace-nowrap">
                             <div className="flex items-center gap-2">
-                              <Calendar className="h-4 w-4 text-[var(--color-muted-foreground)]" />
+                              <Calendar className="h-4 w-4 text-[var(--color-muted-foreground)]" aria-hidden="true" />
                               {formatTimestamp(event.timestamp)}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <code className="text-xs bg-[var(--color-muted)] px-2 py-1 rounded">
+                            <code className="text-xs bg-[var(--color-muted)] px-2 py-1 rounded" dir="ltr">
                               {event.event_type}
                             </code>
                           </TableCell>
                           <TableCell>
                             <Badge variant={getSeverityColor(event.severity)}>
-                              {event.severity}
+                              {t.severities[event.severity.toLowerCase()] ?? event.severity}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-mono text-xs">
+                          <TableCell className="text-xs" data-user-id={event.user_id ?? undefined}>
                             {event.user_id && isSystemUserId(event.user_id) ? (
-                              <span title={event.user_id}>{actorLabel(event.user_id, langOf(searchParams))}</span>
+                              <span>{actorLabel(event.user_id, lang)}</span>
+                            ) : event.user_id ? (
+                              // A person by name; an id only when the account no longer exists
+                              <bdi className={names[event.user_id] ? undefined : "font-mono"}>{names[event.user_id] ?? event.user_id}</bdi>
                             ) : (
-                              event.user_id || <span className="text-[var(--color-muted-foreground)]">-</span>
+                              <span className="text-[var(--color-muted-foreground)]">—</span>
                             )}
                           </TableCell>
                           <TableCell className="font-mono text-xs">
-                            {event.ip_address || (
-                              <span className="text-[var(--color-muted-foreground)]">-</span>
+                            {event.ip_address ? <bdi>{event.ip_address}</bdi> : (
+                              <span className="text-[var(--color-muted-foreground)]">—</span>
                             )}
                           </TableCell>
                           <TableCell>
                             <Badge variant={event.success ? "secondary" : "destructive"}>
-                              {event.success ? "Success" : "Failed"}
+                              {event.success ? t.success : t.failed}
                             </Badge>
                           </TableCell>
                         </TableRow>
@@ -474,9 +477,9 @@ export default function AuditLogs() {
 
                 {/* Pagination */}
                 {pagination.pages > 1 && (
-                  <div className="flex items-center justify-between mt-6 pt-6 border-t border-[var(--color-border)]">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mt-6 pt-6 border-t border-[var(--color-border)]">
                     <div className="text-sm text-[var(--color-muted-foreground)]">
-                      Page {pagination.page} of {pagination.pages}{pagination.capped ? "+" : ""} ({pagination.total}{pagination.capped ? "+" : ""} total events)
+                      {t.page(pagination.page, pagination.pages, !!pagination.capped)} {t.totalEvents(pagination.total, !!pagination.capped)}
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -485,7 +488,7 @@ export default function AuditLogs() {
                         onClick={() => goToPage(pagination.page - 1)}
                         disabled={pagination.page === 1}
                       >
-                        Previous
+                        {pagesCopy(lang).common.previous}
                       </Button>
                       <Button
                         variant="outline"
@@ -493,7 +496,7 @@ export default function AuditLogs() {
                         onClick={() => goToPage(pagination.page + 1)}
                         disabled={pagination.page === pagination.pages}
                       >
-                        Next
+                        {pagesCopy(lang).common.next}
                       </Button>
                     </div>
                   </div>

@@ -84,7 +84,7 @@ const server = createHttpServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "text/javascript" });
       return res.end(clientJs);
     }
-    const admin = /^\/admin\/(deleted|users|passkeys)$/.exec(url.pathname);
+    const admin = /^\/admin\/(deleted|users|passkeys|audit|sessions|clients)$/.exec(url.pathname);
     if (admin) {
       const page = admin[1];
       const lang = url.searchParams.get("lang") === "ar" ? "ar" : "en";
