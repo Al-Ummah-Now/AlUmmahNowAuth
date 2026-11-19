@@ -84,7 +84,7 @@ const COPY = {
 		busy: 'انتظر دقيقة ثم افتح الرابط مرة أخرى.',
 		passkeyTitle: 'سجّل الدخول أسرع في المرة القادمة',
 		passkeyText: 'أضف مفتاح مرور لتسجيل الدخول ببصمة الوجه أو بصمة الإصبع أو قفل شاشة جهازك. لا كلمة مرور تحفظها.',
-		skip: 'تخطٍّ',
+		skip: 'تجاوز',
 	},
 } as const;
 
@@ -103,6 +103,8 @@ const STYLE = `
 [data-page^="invite"] { display:flex; flex-direction:column; gap:1rem; }
 [data-page^="invite"] [data-slot="actions"] { display:flex; flex-direction:column; gap:.75rem; }
 [data-page^="invite"] [data-component="button"] { width:100%; text-decoration:none; text-align:center; }
+/* Secondary actions: an outline that stays visible on the dark card, never a second filled button */
+[data-page^="invite"] [data-component="button"][data-color="ghost"] { background:transparent; color:inherit; border:1px solid color-mix(in srgb, currentColor 55%, transparent); box-shadow:none; }
 [data-page^="invite"] [data-slot="addr"] { display:inline-block; max-width:100%; overflow-wrap:anywhere; }
 `;
 
