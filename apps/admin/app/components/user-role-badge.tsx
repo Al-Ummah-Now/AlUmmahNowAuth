@@ -1,8 +1,11 @@
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
+import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
 
 interface UserRoleBadgeProps {
   role: string;
+  /** Page language: Arabic shows the role's Arabic name. */
+  lang?: string;
   className?: string;
 }
 
@@ -10,7 +13,7 @@ interface UserRoleBadgeProps {
  * Display a role name with appropriate styling based on role type
  * Maps role names to badge variants for visual hierarchy
  */
-export function UserRoleBadge({ role, className }: UserRoleBadgeProps) {
+export function UserRoleBadge({ role, lang = "en", className }: UserRoleBadgeProps) {
   const roleLower = role.toLowerCase();
 
   // Map roles to badge variants
@@ -25,9 +28,9 @@ export function UserRoleBadge({ role, className }: UserRoleBadgeProps) {
   return (
     <Badge
       variant={variant}
-      className={cn("uppercase", className)}
+      className={cn(lang === "ar" ? undefined : "uppercase", className)}
     >
-      {role}
+      {roleLabel(role, lang)}
     </Badge>
   );
 }
