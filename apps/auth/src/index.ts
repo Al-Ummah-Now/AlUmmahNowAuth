@@ -584,6 +584,15 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
     // and the shared site header on top (AlUmmahNow docs/design/NAV.md "Header")
     if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin, signInHeaderFor(url, getLocaleFromRequest(request), env), request.headers.get('Cookie')));
+    // A browser page the issuer answered with a non-HTML 5xx (its JSON server_error): the family's
+    // 500 page with the reference to quote, never raw JSON (wiki guides/error-pages.md)
+    if (isPage && issuerResponse.status >= 500 && !(issuerResponse.headers.get('Content-Type') ?? '').includes('text/html')) {
+      const ref = issuerResponse.headers.get('X-Error-Ref')
+        ?? reportAuthError(env, ctx, null, { kind: 'http', status: issuerResponse.status, route: url.pathname, method: request.method, requestId, request });
+      const status = issuerResponse.status;
+      issuerResponse = await renderErrorPage(new Error(`issuer answered ${status}`), ref, request.url, request, env);
+      issuerResponse.headers.set('X-Error-Ref', ref);
+    }
     // An unknown page opened in a browser: the error-page family's 404, not openauth's bare text
     if (isPage && issuerResponse.status === 404 && !(issuerResponse.headers.get('Content-Type') ?? '').includes('text/html')) {
       issuerResponse = await renderNotFoundPage(request, env);
