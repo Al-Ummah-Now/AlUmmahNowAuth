@@ -91,8 +91,12 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
 	return inert(decorateHtml(await response.text(), compiled, { page: kind, forceScheme: scheme, header }));
 }
 
-/** No scripts, no form posts: the frame shows the page only. */
-function inert(html: string): string {
-	// every script element becomes an inert <template>: its contents are never run or shown
-	return html.replace(/<(\/?)script\b/gi, '<$1template');
+/**
+ * No scripts, no form posts: the frame shows the page only. Script elements are removed with their
+ * contents. They used to become <template>s, but a template's contents are parsed as HTML: the
+ * shared header's PAGE_MODE_SCRIPT (`i<rules.length`…) then swallowed the rest of the document,
+ * and since 2026-11-14 the builder preview showed no sign-in form (Auth QA themes.spec.ts:72).
+ */
+export function inert(html: string): string {
+	return html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '').replace(/<script\b[^>]*\/?>/gi, '');
 }
