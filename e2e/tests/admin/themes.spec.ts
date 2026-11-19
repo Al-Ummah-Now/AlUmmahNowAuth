@@ -104,7 +104,21 @@ test.describe('Admin sign-in themes', () => {
 
       // ---- the live preview shows the real sign-in page
       const frame = page.frameLocator('[data-testid="theme-preview"]');
-      await expect(frame.locator('input[type="password"]')).toBeVisible({ timeout: 30000 });
+      // Name where the page is and what the preview said when it fails (QA 2026-11-15..18: the
+      // page was back on /themes with no preview; traces are off for this spec)
+      const previewPosts: string[] = [];
+      page.on('response', (r) => {
+        if (r.url().includes('/preview')) previewPosts.push(`${r.request().method()} ${new URL(r.url()).pathname} → ${r.status()}`);
+      });
+      page.on('framenavigated', (f) => {
+        if (f === page.mainFrame()) previewPosts.push(`navigated to ${new URL(f.url()).pathname}${new URL(f.url()).search}`);
+      });
+      await expect(frame.locator('input[type="password"]'), {
+        message: `builder preview: url=${page.url()}`,
+      }).toBeVisible({ timeout: 30000 }).catch(async (error) => {
+        const status = await page.locator('[role="status"]').allTextContents().catch(() => []);
+        throw new Error(`${(error as Error).message}\nnow at ${new URL(page.url()).pathname}; preview status ${JSON.stringify(status)}; events ${JSON.stringify(previewPosts)}`);
+      });
       await shot(page, 'builder-colours');
 
       // ---- an image: new card header art, uploaded straight into its slot

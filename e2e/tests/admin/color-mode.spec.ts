@@ -136,7 +136,11 @@ test.describe('Accounts admin: light and dark', () => {
 				await page.waitForLoadState('networkidle').catch(() => {});
 				if ((await htmlMode(page)) !== mode) problems.push(`${route} ${mode}: html is ${await htmlMode(page)}`);
 				const bg = await bodyBg(page);
-				if (bg !== PAGE[mode]) problems.push(`${route} ${mode}: page colour ${bg}`);
+				if (bg !== PAGE[mode]) {
+					// Which theme rendered, and where the page ended up (QA 2026-11-18: /security light was unthemed)
+					const theme = await page.evaluate(() => document.documentElement.getAttribute('data-theme') ?? document.documentElement.className);
+					problems.push(`${route} ${mode}: page colour ${bg} (theme "${theme}", at ${new URL(page.url()).pathname}${new URL(page.url()).search}, HTTP ${res?.status() ?? '?'})`);
+				}
 				await expect(page.getByTestId('theme-toggle'), `${route} ${mode}`).toBeAttached();
 				const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
 				for (const v of result.violations) {
