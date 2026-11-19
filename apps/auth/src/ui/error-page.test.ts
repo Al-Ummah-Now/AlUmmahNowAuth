@@ -41,7 +41,10 @@ describe('the error-page family on Auth (wiki guides/error-pages.md)', () => {
 		expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
 		expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
 		expect(html).not.toContain('secret SQL text');
-		expect(html).not.toMatch(/@keyframes|animation:/);
+		// The card's own parts never animate (the sign-in theme's lanterns follow prefers-reduced-motion)
+		const card = /<style>([^<]*\[data-page=error\][^<]*)<\/style>/.exec(html)?.[1] ?? '';
+		expect(card).toContain('.ep-badge');
+		expect(card).not.toMatch(/@keyframes|animation|transition/);
 	});
 
 	it('Try again never leaves this origin', async () => {
