@@ -222,7 +222,7 @@ export default noIndexWorker(worker);
  */
 function reportUnreported5xx(res: Response, request: Request, env: Env, ctx: ExecutionContext, requestId: string): Response {
   if (res.status < 500 || res.headers.has('X-Error-Ref')) return res;
-  const ref = reportAuthError(env, ctx, null, { kind: 'http', status: res.status, route: new URL(request.url).pathname, method: request.method, requestId });
+  const ref = reportAuthError(env, ctx, null, { kind: 'http', status: res.status, route: new URL(request.url).pathname, method: request.method, requestId, request });
   try {
     res.headers.set('X-Error-Ref', ref);
     return res;
@@ -496,7 +496,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // with their stack; the browser gets the en/ar "Something went wrong / Try again" page with the
       // reference (AlUmmahNowAuth#341), never raw JSON
       onServerError: (error, req) =>
-        reportAuthError(env, ctx, error, { route: new URL(req.url).pathname, method: req.method, requestId }),
+        reportAuthError(env, ctx, error, { route: new URL(req.url).pathname, method: req.method, requestId, request: req }),
       // Unknown/disabled clients and unregistered redirect_uris (exact match)
       // get a clear error page (enforce) or are only logged (report)
       clientRegistry: clientRegistryMode(env),
@@ -715,7 +715,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       ctx.waitUntil(logger.finalizeRequest());
 
       // To the admin Errors page; the page shows the reference to quote (AlUmmahNowAuth#341)
-      const ref = reportAuthError(env, ctx, error, { route: url.pathname, method: request.method, requestId });
+      const ref = reportAuthError(env, ctx, error, { route: url.pathname, method: request.method, requestId, request });
       const page = addSecurityHeaders(renderErrorPage(error, ref, request.url, request), isProduction);
       page.headers.set('X-Error-Ref', ref);
       return page;
