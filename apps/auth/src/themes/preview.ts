@@ -98,5 +98,13 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
  * and since 2026-11-14 the builder preview showed no sign-in form (Auth QA themes.spec.ts:72).
  */
 export function inert(html: string): string {
-	return html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '').replace(/<script\b[^>]*\/?>/gi, '');
+	// Until nothing changes (a removal can't join the halves of another tag), then any "<script"
+	// left is escaped. The frame is also sandbox="" with a CSP that allows no script at all.
+	let out = html;
+	let previous: string;
+	do {
+		previous = out;
+		out = out.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '').replace(/<\/?script\b[^>]*>/gi, '');
+	} while (out !== previous);
+	return out.replace(/<(\/?)script/gi, '&lt;$1script');
 }
