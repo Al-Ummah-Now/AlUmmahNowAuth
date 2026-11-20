@@ -608,6 +608,9 @@ describe('a refused link says the true reason', () => {
 		const done = await res!.text();
 		expect(stateOf(done)).toBe('sent');
 		expect(done).not.toContain(body.email);
+		// Nothing ties the link to a device: people often open invite mail on another one
+		expect(done).toContain('Open it to finish setting up your account.');
+		expect(done).not.toMatch(/this device/i);
 		expect(sent).toHaveLength(3);
 		expect(sent[2].to).toBe(body.email);
 		expect(audit.mock.calls.map((c) => c[0])).toEqual(
