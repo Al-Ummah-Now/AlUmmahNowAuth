@@ -95,7 +95,7 @@
     "playwright": "^1.57.0",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.73.0",
-    "vitest": "^4.1.12",
+    "vitest": "^5.1.1",
     "wrangler": "~4.150.0"
   },
   "dependencies": {
