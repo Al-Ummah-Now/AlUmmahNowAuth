@@ -7,12 +7,13 @@ import { hasAdminRole } from "../lib/auth.server";
 import { clearLoginCookie, clearPkceCookie, loginPath, readCookie, savedPkceVerifier, savedReturnPath, stateMatches } from "../lib/sign-in";
 import { createSession, revokeSession } from "../lib/session-tokens.server";
 import { sessionStores } from "../lib/auth.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const requestId = crypto.randomUUID();
 
   // Initialize logger
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE?: KVNamespace;
     AUTH_DB?: D1Database;
     AUTH_SERVER_URL?: string;
@@ -22,8 +23,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   logger.setDatabase(null, false);
 
   // Set execution context if available
-  if (context?.cloudflare?.ctx) {
-    logger.setContext(context.cloudflare.ctx);
+  const { ctx } = getCloudflare(context);
+  if (ctx) {
+    logger.setContext(ctx);
   }
 
   // Initialize request context to prevent stale timer usage

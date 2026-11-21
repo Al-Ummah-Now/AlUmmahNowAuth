@@ -22,6 +22,7 @@ import {
   type DeletionKind,
 } from "../lib/admin-api.server";
 import { daysUntil, deletionCopy, dirOf, langOf, type AdminLang } from "../lib/deletion-copy";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => [{ title: "Recently deleted - Al Ummah Now Admin" }];
 
@@ -51,7 +52,7 @@ interface LoaderData {
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs): Promise<LoaderData> {
-  const env = context?.cloudflare?.env as Env;
+  const env = getCloudflare(context).env as Env;
   const actingUser = await actingUserOf(request, env);
   const kind = kindOf(new URL(request.url).searchParams.get("kind"));
   const base = { kind, user: { id: actingUser.id, email: actingUser.email }, authServerUrl: getAuthServerUrl(request, env) };
@@ -64,7 +65,7 @@ export async function loader({ request, context }: LoaderFunctionArgs): Promise<
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const env = context?.cloudflare?.env as Env;
+  const env = getCloudflare(context).env as Env;
   const actingUser = await actingUserOf(request, env);
   const form = await request.formData();
   const intent = form.get("intent");

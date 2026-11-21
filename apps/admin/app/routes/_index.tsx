@@ -7,6 +7,7 @@ import { getRoleCounts, getUserStats, getRoleStats, getUsersByRole, isErrorRespo
 import { redirectToLogin, requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl, getAppUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => {
   return [
@@ -16,14 +17,14 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     APP_URL?: string;
     ADMIN_CLIENT_ID?: string;
     ADMIN_CLIENT_SECRET?: string;
   };
-  const ctx = context?.cloudflare?.ctx as ExecutionContext;
+  const ctx = getCloudflare(context).ctx as ExecutionContext;
 
   // Initialize logger
   logger.setDatabase(null, false);

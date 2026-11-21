@@ -19,6 +19,7 @@ import {
   formatWhen,
   label,
 } from "../lib/moderation";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => [
   { title: "Moderation requests - Al Ummah Now Admin" },
@@ -39,7 +40,7 @@ type LoaderData = {
 const PAGE_SIZE = 25;
 
 export async function loader({ request, context }: LoaderFunctionArgs): Promise<LoaderData> {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;

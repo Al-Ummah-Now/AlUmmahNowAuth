@@ -27,6 +27,7 @@ import {
   label,
   userPageHref,
 } from "../lib/moderation";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => [{ title: "Moderation request - Al Ummah Now Admin" }];
 
@@ -47,7 +48,7 @@ async function actingUserFrom(request: Request, env: Env) {
 }
 
 export async function loader({ request, context, params }: LoaderFunctionArgs): Promise<LoaderData> {
-  const env = context?.cloudflare?.env as Env;
+  const env = getCloudflare(context).env as Env;
   const user = await actingUserFrom(request, env);
   const result = await getModerationRequest(env, { id: user.id, email: user.email, roles: user.roles || [] }, params.id!);
   const base = { user: { id: user.id, email: user.email }, authServerUrl: getAuthServerUrl(request, env) };
@@ -58,7 +59,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs): 
 const DECISIONS: ModerationDecision[] = ["approve", "reject", "request-info", "execute", "mark-actioned"];
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const env = context?.cloudflare?.env as Env;
+  const env = getCloudflare(context).env as Env;
   const user = await actingUserFrom(request, env);
   const form = await request.formData();
   const decision = String(form.get("_action") || "") as ModerationDecision;

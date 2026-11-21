@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeKV, NOW_MS, NOW_S, fakeD1, jwt, storedSession } from "../lib/test-helpers";
 import { getSession } from "../lib/session-tokens.server";
 import { LOGIN_COOKIE, PKCE_COOKIE } from "../lib/sign-in";
+import { cloudflareLoadContext } from "../lib/cloudflare-context";
 
 const client = {
   authorize: vi.fn(async (redirectUri: string, _type: string, opts?: { pkce?: boolean }) => ({
@@ -35,7 +36,7 @@ function args(path: string, cookie = "") {
   return {
     request,
     params: {},
-    context: { cloudflare: { env: { AUTH_STORAGE: kv.asKV(), AUTH_DB: db, AUTH_SERVER_URL: "https://auth.example", APP_URL: APP }, ctx: undefined } },
+    context: cloudflareLoadContext({ AUTH_STORAGE: kv.asKV(), AUTH_DB: db, AUTH_SERVER_URL: "https://auth.example", APP_URL: APP }, undefined),
   } as never;
 }
 

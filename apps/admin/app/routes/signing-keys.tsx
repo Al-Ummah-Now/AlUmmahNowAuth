@@ -15,6 +15,7 @@ import { logger } from "../lib/logger.server";
 import { getSigningKeys, isErrorResponse, queueSigningKeyStep, type SigningKeysView } from "../lib/admin-api.server";
 import { actingOf, adminUserOf, type AdminEnv } from "../lib/passkeys.server";
 import { signingKeysCopy, type SigningKeysCopy } from "../lib/signing-keys-copy";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => [{ title: "Signing keys - Al Ummah Now Admin" }];
 
@@ -24,7 +25,7 @@ export const meta: MetaFunction = () => [{ title: "Signing keys - Al Ummah Now A
  * sign-in) "Rotate now" and "Run again" after a flagged failure.
  */
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as AdminEnv;
+  const env = getCloudflare(context).env as AdminEnv;
   const user = await adminUserOf(request, env);
   const base = { user: { id: user.id, email: user.email }, authServerUrl: getAuthServerUrl(request, env), passkeyGraceUntil: user.passkeyGraceUntil };
   const view = await getSigningKeys(env, actingOf(user), request);
@@ -36,7 +37,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const env = context?.cloudflare?.env as AdminEnv;
+  const env = getCloudflare(context).env as AdminEnv;
   const user = await adminUserOf(request, env);
   // High-risk: a fresh sign-in first (AD5)
   requireStepUp(user, request, "/signing-keys");

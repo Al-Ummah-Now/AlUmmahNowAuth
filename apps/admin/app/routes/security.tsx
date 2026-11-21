@@ -12,6 +12,7 @@ import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import { getStaffPasskeySettings, isErrorResponse, setStaffPasskeyEnforcement, type StaffPasskeySettings } from "../lib/admin-api.server";
 import { actingOf, adminUserOf, isSuperAdmin, type AdminEnv } from "../lib/passkeys.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => [{ title: "Security - Al Ummah Now Admin" }];
 
@@ -21,7 +22,7 @@ export const meta: MetaFunction = () => [{ title: "Security - Al Ummah Now Admin
  * themselves out) and a sign-in within 15 minutes. Existing staff get 7 days.
  */
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as AdminEnv;
+  const env = getCloudflare(context).env as AdminEnv;
   const user = await adminUserOf(request, env);
   const base = {
     user: { id: user.id, email: user.email },
@@ -38,7 +39,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const env = context?.cloudflare?.env as AdminEnv;
+  const env = getCloudflare(context).env as AdminEnv;
   const user = await adminUserOf(request, env);
   // High-risk: a fresh sign-in first (AD5)
   requireStepUp(user, request, "/security");

@@ -37,6 +37,7 @@ import {
   type ActingUser,
   type Role,
 } from "../lib/admin-api.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => {
   return [
@@ -58,13 +59,13 @@ interface LoaderData {
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
     ADMIN_CLIENT_SECRET?: string;
   };
-  const ctx = context?.cloudflare?.ctx as ExecutionContext;
+  const ctx = getCloudflare(context).ctx as ExecutionContext;
 
   // Initialize logger
   logger.setDatabase(null, false);
@@ -129,7 +130,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
   };
