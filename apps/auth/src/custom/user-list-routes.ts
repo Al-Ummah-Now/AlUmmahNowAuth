@@ -65,7 +65,7 @@ async function listSystemAccounts(c: Context<{ Variables: AdminVariables }>, db:
   const rows = users.results ?? [];
   return c.json({
     users: rows.map((row) => {
-      let metadata: unknown = null;
+      let metadata: unknown;
       try {
         metadata = row.metadata ? JSON.parse(row.metadata) : null;
       } catch {

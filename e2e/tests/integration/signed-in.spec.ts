@@ -147,7 +147,7 @@ test.describe('Signed in once, signed in everywhere (profile + auth admin)', () 
     await switchTo(page, items.filter({ hasText: bob }), new URL('/auth/callback', admin()));
     await expect(page.locator('a:has-text("Users")')).toBeVisible({ timeout: 20000 });
     expect(new URL(page.url()).origin).toBe(admin());
-    items = await adminMenu(page, 1);
+    await adminMenu(page, 1);
     await expect(page.getByTestId('account-who')).toContainText(bob);
     expect(forms.length, 'switching shows no form').toBe(formsBefore);
 

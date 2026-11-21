@@ -29,7 +29,7 @@ function apply(db: DatabaseSync, file: string) {
 	try {
 		db.exec(readFileSync(file, 'utf8'));
 	} catch (error) {
-		throw new Error(`${basename(file)} failed to apply: ${(error as Error).message}`);
+		throw new Error(`${basename(file)} failed to apply: ${(error as Error).message}`, { cause: error });
 	}
 }
 

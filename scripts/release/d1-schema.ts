@@ -45,7 +45,7 @@ export function buildSchema(sources: MigrationSource[]): string {
 				try {
 					db.exec(readFileSync(file, 'utf8'));
 				} catch (error) {
-					throw new Error(`${source.label}/${basename(file)} failed to apply: ${(error as Error).message}`);
+					throw new Error(`${source.label}/${basename(file)} failed to apply: ${(error as Error).message}`, { cause: error });
 				}
 				applied.push(`${source.label}/${basename(file)}`);
 			}

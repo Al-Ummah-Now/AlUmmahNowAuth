@@ -58,7 +58,8 @@ async function getMasterKey(masterKeyBase64: string): Promise<CryptoKey> {
 	} catch (error) {
 		logger.error('Failed to import master encryption key', { error });
 		throw new Error(
-			'Could not import master encryption key. Check if it is a valid Base64-encoded 256-bit key.'
+			'Could not import master encryption key. Check if it is a valid Base64-encoded 256-bit key.',
+			{ cause: error }
 		);
 	}
 }

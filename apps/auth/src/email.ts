@@ -86,7 +86,7 @@ export default async function SendEmail(
     v.parse(EmailSchema, toEmail);
   } catch (validationError) {
     logger.error("Invalid email address", { error: validationError });
-    throw new Error(`Invalid email address: ${validationError instanceof Error ? validationError.message : String(validationError)}`);
+    throw new Error(`Invalid email address: ${validationError instanceof Error ? validationError.message : String(validationError)}`, { cause: validationError });
   }
 
   const resend = new Resend(options.apiKey);
