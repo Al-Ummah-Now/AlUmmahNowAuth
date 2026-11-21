@@ -48,7 +48,7 @@ importers:
         version: 4.14.0(playwright-core@1.57.0)
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@24.10.1)(vitest@5.1.1)
+        version: 1.9.0(@types/node@24.10.1)(vitest@5.1.1(@types/node@24.10.1)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@7.3.8(@types/node@24.10.1)(jiti@2.7.0)(lightningcss@1.33.0)))
       '@cloudflare/workers-types':
         specifier: ^4.20251128.0
         version: 4.20251128.0
@@ -62,8 +62,8 @@ importers:
         specifier: ^24.10.1
         version: 24.10.1
       dotenv:
-        specifier: ^17.2.3
-        version: 17.2.3
+        specifier: ^18.0.10
+        version: 18.0.10
       eslint:
         specifier: ^9.39.1
         version: 9.39.1(jiti@2.7.0)
@@ -227,7 +227,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@24.10.1)(vitest@5.1.1)
+        version: 1.9.0(@types/node@24.10.1)(vitest@5.1.1(@types/node@24.10.1)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@7.3.8(@types/node@24.10.1)(jiti@2.7.0)(lightningcss@1.33.0)))
       '@cloudflare/workers-types':
         specifier: ^4.20251011.0
         version: 4.20251128.0
@@ -264,7 +264,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@24.10.1)(vitest@5.1.1)
+        version: 1.9.0(@types/node@24.10.1)(vitest@5.1.1(@types/node@24.10.1)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@7.3.8(@types/node@24.10.1)(jiti@2.7.0)(lightningcss@1.33.0)))
       '@cloudflare/workers-types':
         specifier: ^4.20251128.0
         version: 4.20251128.0
@@ -338,7 +338,7 @@ packages:
       hono: '>=4.12.25'
 
   '@al-ummah-now/openauth@1.0.59':
-    resolution: {integrity: sha1-sRwuB5PN0hULcfpnVWuZUirNvUI=, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.59/b11c2e0793cdd2150b71fa67556b99522acdbd42}
+    resolution: {integrity: sha512-C2BYLD7TXtyVOQ/XFWwig4mq4/0BhfmbzVmQXQps66mf8ttxXthMJnyXlSJM7RBfva+wV7xntpQp5eOMwtoLpA==, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.59/b11c2e0793cdd2150b71fa67556b99522acdbd42}
     hasBin: true
     peerDependencies:
       arctic: ^2.2.2
@@ -2326,9 +2326,10 @@ packages:
   dom-accessibility-api@0.5.16:
     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
 
-  dotenv@17.2.3:
-    resolution: {integrity: sha512-JVUnt+DUIzu87TABbhPmNfVdBDt18BLOWjMUFJMSi/Qqg7NTYtabbvSNJGOJ7afbRuv9D/lngizHtP7QyLQ+9w==}
+  dotenv@18.0.10:
+    resolution: {integrity: sha512-89FAA1xchzK2mxVWdr5F/0rldwiueXs6zJM86rO66EzekR1iBdiXRthyG+m5GvkJaFH3C2LESzamTkgndmLT2A==}
     engines: {node: '>=12'}
+    hasBin: true
 
   electron-to-chromium@1.5.486:
     resolution: {integrity: sha512-rpybw4Ac4ak/An6G1Me2+61xzwobowDGyuJe71QHHOVpkZv4fPVobsLl7WH6zHSKusAMpaHxGKTpOvpy7+r3dQ==}
@@ -3625,7 +3626,7 @@ snapshots:
       - utf-8-validate
       - workerd
 
-  '@cloudflare/vitest-plugin@1.9.0(@types/node@24.10.1)(vitest@5.1.1)':
+  '@cloudflare/vitest-plugin@1.9.0(@types/node@24.10.1)(vitest@5.1.1(@types/node@24.10.1)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@7.3.8(@types/node@24.10.1)(jiti@2.7.0)(lightningcss@1.33.0)))':
     dependencies:
       cjs-module-lexer: 1.2.3
       esbuild: 0.28.2
@@ -5162,7 +5163,7 @@ snapshots:
 
   dom-accessibility-api@0.5.16: {}
 
-  dotenv@17.2.3: {}
+  dotenv@18.0.10: {}
 
   electron-to-chromium@1.5.486: {}
 
