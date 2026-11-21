@@ -31,9 +31,12 @@ const PAGE = { light: 'rgb(243, 238, 229)', dark: 'rgb(9, 21, 30)' } as const;
 const htmlMode = (page: Page) => page.evaluate(() => (document.documentElement.classList.contains('dark') ? 'dark' : document.documentElement.classList.contains('light') ? 'light' : 'none'));
 const bodyBg = (page: Page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
+/** Network quiet, but bounded: a page that keeps polling must not eat the test's budget. */
+const settle = (page: Page) => page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+
 async function shell(page: Page) {
 	await expect(page.locator('[data-shell="sidebar"]')).toBeAttached();
-	await page.waitForLoadState('networkidle').catch(() => {});
+	await settle(page);
 }
 
 /** Every admin route with the admin shell; detail pages from the first link on their list. */
@@ -113,39 +116,39 @@ test.describe('Accounts admin: light and dark', () => {
 		expect(await headerAxe(page, 'en light')).toEqual([]);
 	});
 
-	test('every admin route renders in light and dark with no axe violations', async ({ page }) => {
+	// One test per mode: both modes in one test took 3 to 4+ minutes on QA (15 routes, axe on each)
+	// and timed out at the 4-minute budget on some main runs
+	for (const mode of ['light', 'dark'] as const) test(`every admin route renders in ${mode} with no axe violations`, async ({ page }) => {
 		await loginAdmin(page, TEST_USERS.admin().email);
 		const routes = await adminRoutes(page);
 		const problems: string[] = [];
-		for (const mode of ['light', 'dark'] as const) {
-			// the device says the other mode: the saved choice must win
-			await page.emulateMedia({ colorScheme: mode === 'light' ? 'dark' : 'light' });
-			await page.evaluate((m) => localStorage.setItem('theme', m), mode);
-			for (const route of routes) {
-				const res = await page.goto(url(route));
-				// Every route, not just the first without the shell: name where it landed and why
-				const hasShell = await page.locator('[data-shell="sidebar"]').waitFor({ state: 'attached', timeout: 5000 }).then(() => true, () => false);
-				if (!hasShell) {
-					const heading = (await page.locator('h1, h2').first().textContent({ timeout: 1000 }).catch(() => null))?.trim().slice(0, 80);
-					const problem = `${route} ${mode}: no admin shell; landed on ${new URL(page.url()).pathname} (HTTP ${res?.status() ?? '?'}) "${heading ?? ''}"`;
-					problems.push(problem);
-					// Printed at once: a timeout later must not hide it
-					console.log(`[color-mode] ${problem}`);
-					continue;
-				}
-				await page.waitForLoadState('networkidle').catch(() => {});
-				if ((await htmlMode(page)) !== mode) problems.push(`${route} ${mode}: html is ${await htmlMode(page)}`);
-				const bg = await bodyBg(page);
-				if (bg !== PAGE[mode]) {
-					// Which theme rendered, and where the page ended up (QA 2026-11-18: /security light was unthemed)
-					const theme = await page.evaluate(() => document.documentElement.getAttribute('data-theme') ?? document.documentElement.className);
-					problems.push(`${route} ${mode}: page colour ${bg} (theme "${theme}", at ${new URL(page.url()).pathname}${new URL(page.url()).search}, HTTP ${res?.status() ?? '?'})`);
-				}
-				await expect(page.getByTestId('theme-toggle'), `${route} ${mode}`).toBeAttached();
-				const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
-				for (const v of result.violations) {
-					problems.push(`${route} ${mode}: ${v.id} ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
-				}
+		// the device says the other mode: the saved choice must win
+		await page.emulateMedia({ colorScheme: mode === 'light' ? 'dark' : 'light' });
+		await page.evaluate((m) => localStorage.setItem('theme', m), mode);
+		for (const route of routes) {
+			const res = await page.goto(url(route));
+			// Every route, not just the first without the shell: name where it landed and why
+			const hasShell = await page.locator('[data-shell="sidebar"]').waitFor({ state: 'attached', timeout: 5000 }).then(() => true, () => false);
+			if (!hasShell) {
+				const heading = (await page.locator('h1, h2').first().textContent({ timeout: 1000 }).catch(() => null))?.trim().slice(0, 80);
+				const problem = `${route} ${mode}: no admin shell; landed on ${new URL(page.url()).pathname} (HTTP ${res?.status() ?? '?'}) "${heading ?? ''}"`;
+				problems.push(problem);
+				// Printed at once: a timeout later must not hide it
+				console.log(`[color-mode] ${problem}`);
+				continue;
+			}
+			await settle(page);
+			if ((await htmlMode(page)) !== mode) problems.push(`${route} ${mode}: html is ${await htmlMode(page)}`);
+			const bg = await bodyBg(page);
+			if (bg !== PAGE[mode]) {
+				// Which theme rendered, and where the page ended up (QA 2026-11-18: /security light was unthemed)
+				const theme = await page.evaluate(() => document.documentElement.getAttribute('data-theme') ?? document.documentElement.className);
+				problems.push(`${route} ${mode}: page colour ${bg} (theme "${theme}", at ${new URL(page.url()).pathname}${new URL(page.url()).search}, HTTP ${res?.status() ?? '?'})`);
+			}
+			await expect(page.getByTestId('theme-toggle'), `${route} ${mode}`).toBeAttached();
+			const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+			for (const v of result.violations) {
+				problems.push(`${route} ${mode}: ${v.id} ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
 			}
 		}
 		expect(problems, problems.join('\n')).toEqual([]);
