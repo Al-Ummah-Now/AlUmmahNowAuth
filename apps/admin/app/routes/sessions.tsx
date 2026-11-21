@@ -1,6 +1,6 @@
 import { formatDateTime } from "../lib/date-utils";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { useLoaderData, useFetcher, useSearchParams } from "react-router";
+import { useLoaderData, useFetcher, useNavigate, useSearchParams } from "react-router";
 import { UserAutocomplete } from "../components/autocomplete";
 import * as v from "valibot";
 import {
@@ -92,6 +92,9 @@ type LoaderData = {
   stats: SessionStats;
   suspicious: SuspiciousActivity;
   total: number;
+  /** The page this is: sessions per page and how many came before it */
+  limit: number;
+  offset: number;
   error?: string;
   user: { id: string; email: string } | null;
   authServerUrl: string;
@@ -162,6 +165,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           failedThenSuccessfulLogins: [],
         },
         total: 0,
+        limit: 50,
+        offset: 0,
         error: `Invalid query parameters: ${errorDetails.map(e => `${e.field}: ${e.message}`).join(', ')}`,
         user: { id: user.id, email: user.email },
         authServerUrl,
@@ -200,6 +205,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       stats: isErrorResponse(statsResult) ? defaultStats : statsResult,
       suspicious: isErrorResponse(suspiciousResult) ? defaultSuspicious : suspiciousResult,
       total: 0,
+      limit,
+      offset,
       error: sessionsResult.error,
       user: { id: user.id, email: user.email },
       authServerUrl,
@@ -211,6 +218,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     stats: isErrorResponse(statsResult) ? defaultStats : statsResult,
     suspicious: isErrorResponse(suspiciousResult) ? defaultSuspicious : suspiciousResult,
     total: sessionsResult.total,
+    limit,
+    offset,
     user: { id: user.id, email: user.email },
     authServerUrl,
   };
@@ -272,9 +281,15 @@ function formatDate(dateValue: string | number, lang: AdminLang, missing: string
 }
 
 export default function SessionsPage() {
-  const { sessions, stats, suspicious, total, error, user, authServerUrl } = useLoaderData<LoaderData>();
+  const { sessions, stats, suspicious, total, limit, offset, error, user, authServerUrl } = useLoaderData<LoaderData>();
+  const navigate = useNavigate();
   const fetcher = useFetcher();
   const [searchParams] = useSearchParams();
+  const goToOffset = (next: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("offset", String(Math.max(0, next)));
+    navigate(`/sessions?${params.toString()}`);
+  };
   const lang = langOf(searchParams);
   const copy = confirmCopy(lang);
   const t = pagesCopy(lang).sessions;
@@ -528,6 +543,22 @@ export default function SessionsPage() {
                 </TableBody>
               </Table>
                 </div>
+                {/* Pages: the loader takes limit/offset; without this everything after the first page was unreachable */}
+                {total > limit && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 mt-6 pt-6 border-t border-[var(--color-border)]">
+                    <div className="text-sm text-[var(--color-muted-foreground)]">
+                      {t.page(Math.floor(offset / limit) + 1, Math.ceil(total / limit))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => goToOffset(offset - limit)} disabled={offset === 0}>
+                        {pagesCopy(lang).common.previous}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => goToOffset(offset + limit)} disabled={offset + limit >= total}>
+                        {pagesCopy(lang).common.next}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </CardContent>

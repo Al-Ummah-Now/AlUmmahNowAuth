@@ -26,6 +26,38 @@ const PAGES = {
 // Fixed instants, so the server render and the browser agree on every date
 const NOW = Date.UTC(2026, 10, 15, 9, 30);
 const DAY = 86_400_000;
+/** An instant before NOW, at irregular times like real data: ago(3, 2, 17, 43) is 3 days 2h 17m 43s ago */
+const ago = (days: number, hours = 0, minutes = 0, seconds = 0) => NOW - (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000;
+
+// Sessions page 1 of 25 (1,250 sessions, 50 a page): rows made by a fixed generator, so the
+// server render and the browser agree, newest activity first, the active ones used in the last hour.
+const PEOPLE = [
+  ["u-10", "yusuf.rahman"], ["u-11", "khadija.noor"], ["u-12", "maryam.alhassan"], ["u-13", "ibrahim.saeed"],
+  ["u-14", "fatima.zahra"], ["u-15", "bilal.hamdan"], ["u-16", "aisha.karim"], ["u-17", "zaid.mansour"],
+  ["u-18", "huda.qasim"], ["u-19", "tariq.aziz"], ["u-20", "safiya.omar"], ["u-21", "idris.farouk"],
+] as const;
+const DEVICES = [
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.1 Safari/605.1.15",
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 19_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.1 Mobile/15E148 Safari/604.1",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Linux; Android 16; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64; rv:145.0) Gecko/20100101 Firefox/145.0",
+];
+let seed = 20261115;
+// The high bits: an LCG's low bits repeat in short cycles
+const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2147483648), Math.floor(seed / 65536) % n);
+const SESSION_ROWS = Array.from({ length: 50 }, (_, i) => {
+  const [userId, handle] = PEOPLE[rand(PEOPLE.length)];
+  // i 0–9 within the last hour, then further back
+  const lastUsed = i < 10 ? ago(0, 0, i * 5 + rand(5), rand(60)) : ago(Math.floor(i / 8), rand(24), rand(60), rand(60));
+  const signedIn = lastUsed - (rand(3) * DAY + rand(86_400) * 1000);
+  return {
+    id: `s-${100 + i}`, userId, email: `${handle}@mail.alummahnow.net`,
+    authenticatedAt: Math.floor(signedIn / 1000), lastUsed: Math.floor(lastUsed / 1000), lastActivity: Math.floor(lastUsed / 1000),
+    isActive: lastUsed >= NOW - 3_600_000,
+    device: { ipAddress: i % 2 ? `198.51.100.${10 + rand(200)}` : `203.0.113.${10 + rand(200)}`, userAgent: DEVICES[rand(DEVICES.length)] },
+  };
+}).sort((x, y) => y.lastUsed - x.lastUsed);
 const ADMIN = { id: "admin-1", email: "omar.saleh@mail.alummahnow.net" };
 
 export const FIXTURES: Record<PageName, unknown> = {
@@ -35,15 +67,24 @@ export const FIXTURES: Record<PageName, unknown> = {
     user: ADMIN,
     authServerUrl: "",
     items: [
-      { kind: "user", id: "u-1", label: "amina.yusuf@mail.alummahnow.net", name: "Amina Yusuf", deletedAt: NOW - 3 * DAY, deletedBy: "self", deletedByEmail: null, reason: null, purgeAt: NOW + 27 * DAY, purgeRequestedAt: null, lastError: null },
-      { kind: "user", id: "u-2", label: "hamza.idris@mail.alummahnow.net", name: "Hamza Idris", deletedAt: NOW - 28 * DAY, deletedBy: "admin-1", deletedByEmail: "omar.saleh@mail.alummahnow.net", deletedByName: "Omar Saleh", reason: "رسائل مزعجة متكررة", purgeAt: NOW + 2 * DAY, purgeRequestedAt: null, lastError: null },
+      { kind: "user", id: "u-1", label: "amina.yusuf@mail.alummahnow.net", name: "Amina Yusuf", deletedAt: ago(3, 4, 12, 37), deletedBy: "self", deletedByEmail: null, reason: null, purgeAt: ago(3, 4, 12, 37) + 30 * DAY, purgeRequestedAt: null, lastError: null },
+      { kind: "user", id: "u-2", label: "hamza.idris@mail.alummahnow.net", name: "Hamza Idris", deletedAt: ago(27, 19, 48, 5), deletedBy: "admin-1", deletedByEmail: "omar.saleh@mail.alummahnow.net", deletedByName: "Omar Saleh", reason: "رسائل مزعجة متكررة", purgeAt: ago(27, 19, 48, 5) + 30 * DAY, purgeRequestedAt: null, lastError: null },
     ],
   },
   users: {
     users: [
-      { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", name: "Yusuf Rahman", created_at: new Date(NOW - 40 * DAY).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
-      { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "مريم الحسن", created_at: new Date(NOW - 12 * DAY).toISOString(), roles: [{ id: "r-2", name: "Moderator" }] },
-      { id: "u-11", name: "Khadija Noor", email: "khadija.noor@mail.alummahnow.net", created_at: new Date(NOW - 2 * DAY).toISOString(), roles: [] },
+      { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", name: "Yusuf Rahman", created_at: new Date(ago(40, 6, 3, 51)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
+      { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "مريم الحسن", created_at: new Date(ago(12, 2, 44, 18)).toISOString(), roles: [{ id: "r-2", name: "Moderator" }] },
+      { id: "u-11", name: "Khadija Noor", email: "khadija.noor@mail.alummahnow.net", created_at: new Date(ago(19, 11, 26, 9)).toISOString(), roles: [] },
+      { id: "u-13", name: "Ibrahim Saeed", email: "ibrahim.saeed@mail.alummahnow.net", created_at: new Date(ago(22, 8, 14, 3)).toISOString(), roles: [] },
+      { id: "u-14", name: "Fatima Zahra", email: "fatima.zahra@mail.alummahnow.net", created_at: new Date(ago(25, 1, 37, 55)).toISOString(), roles: [] },
+      { id: "u-15", name: "Bilal Hamdan", email: "bilal.hamdan@mail.alummahnow.net", created_at: new Date(ago(31, 14, 2, 41)).toISOString(), roles: [] },
+      { id: "u-16", name: "Aisha Karim", email: "aisha.karim@mail.alummahnow.net", created_at: new Date(ago(33, 9, 51, 17)).toISOString(), roles: [] },
+      { id: "u-17", name: "Zaid Mansour", email: "zaid.mansour@mail.alummahnow.net", created_at: new Date(ago(36, 20, 8, 29)).toISOString(), roles: [] },
+      { id: "u-18", name: "Huda Qasim", email: "huda.qasim@mail.alummahnow.net", created_at: new Date(ago(44, 3, 45, 12)).toISOString(), roles: [] },
+      { id: "u-19", name: "Tariq Aziz", email: "tariq.aziz@mail.alummahnow.net", created_at: new Date(ago(51, 17, 19, 48)).toISOString(), roles: [] },
+      { id: "u-20", name: "Safiya Omar", email: "safiya.omar@mail.alummahnow.net", created_at: new Date(ago(58, 6, 33, 6)).toISOString(), roles: [] },
+      { id: "u-21", name: "Idris Farouk", email: "idris.farouk@mail.alummahnow.net", created_at: new Date(ago(63, 12, 57, 34)).toISOString(), roles: [] },
     ],
     allRoles: [{ id: "r-1", name: "Admin", is_system: true }, { id: "r-2", name: "Moderator", is_system: false }],
     user: ADMIN,
@@ -56,34 +97,33 @@ export const FIXTURES: Record<PageName, unknown> = {
     self: false,
     targetId: "u-10",
     targetEmail: "yusuf.rahman@mail.alummahnow.net",
-    passkeys: [{ id: "pk-1", name: "Laptop", createdAt: NOW - 10 * DAY, lastUsedAt: NOW - DAY, synced: true, removedAt: null }],
+    passkeys: [{ id: "pk-1", name: "Laptop", createdAt: ago(10, 3, 51, 22), lastUsedAt: ago(1, 1, 7, 46), synced: true, removedAt: null }],
     staff: true,
   },
   audit: {
     events: [
-      { id: 1, timestamp: new Date(NOW - 3_600_000).toISOString(), event_type: "auth.login.success", severity: "info", user_id: "u-10", ip_address: "203.0.113.7", user_agent: null, success: true, error_message: null, metadata: {} },
-      { id: 2, timestamp: new Date(NOW - 7_200_000).toISOString(), event_type: "auth.login.failure", severity: "warning", user_id: "u-11", ip_address: "198.51.100.4", user_agent: null, success: false, error_message: null, metadata: {} },
+      { id: 1, timestamp: new Date(ago(0, 0, 47, 12)).toISOString(), event_type: "auth.login.success", severity: "info", user_id: "u-10", ip_address: "203.0.113.7", user_agent: null, success: true, error_message: null, metadata: {} },
+      { id: 2, timestamp: new Date(ago(0, 2, 13, 38)).toISOString(), event_type: "auth.login.failure", severity: "warning", user_id: "u-11", ip_address: "198.51.100.4", user_agent: null, success: false, error_message: null, metadata: {} },
     ],
-    pagination: { page: 1, limit: 50, total: 120, pages: 3 },
+    pagination: { page: 1, limit: 50, total: 2, pages: 1 },
     filters: {},
     user: ADMIN,
     authServerUrl: "",
     names: { "u-10": "Yusuf Rahman", "u-11": "Khadija Noor" },
   },
   sessions: {
-    sessions: [
-      { id: "s-1", userId: "u-10", email: "yusuf.rahman@mail.alummahnow.net", authenticatedAt: (NOW - DAY) / 1000, lastUsed: (NOW - 600_000) / 1000, isActive: true, device: { ipAddress: "203.0.113.7", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.1 Safari/605.1.15" }, lastActivity: (NOW - 600_000) / 1000 },
-      { id: "s-2", userId: "u-11", email: "khadija.noor@mail.alummahnow.net", authenticatedAt: (NOW - 3 * DAY) / 1000, lastUsed: (NOW - 2 * DAY) / 1000, isActive: false, device: { ipAddress: "198.51.100.4", userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 19_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.1 Mobile/15E148 Safari/604.1" }, lastActivity: (NOW - 2 * DAY) / 1000 },
-    ],
-    stats: { totalSessions: 1250, activeSessions: 37, loginsLast24h: 412, uniqueUsers: 900 },
-    suspicious: { multipleIPsInShortTime: [{ userId: "u-11", email: "khadija.noor@mail.alummahnow.net", ipCount: 4, ipAddresses: ["198.51.100.4", "198.51.100.9"] }], failedThenSuccessfulLogins: [] },
+    sessions: SESSION_ROWS,
+    stats: { totalSessions: 1250, activeSessions: 10, loginsLast24h: 412, uniqueUsers: 900 },
+    suspicious: { multipleIPsInShortTime: [{ userId: "u-11", email: "khadija.noor@mail.alummahnow.net", ipCount: 4, ipAddresses: ["198.51.100.4", "198.51.100.9", "203.0.113.58", "203.0.113.121"] }], failedThenSuccessfulLogins: [] },
     total: 1250,
+    limit: 50,
+    offset: 0,
     user: ADMIN,
     authServerUrl: "",
   },
   clients: {
     clients: [
-      { id: "c-1", client_id: "1448ed27-39a6-417d-b4c8-07f881e81269", name: "Accounts admin", client_type: "confidential", allowed_grants: ["authorization_code", "refresh_token"], redirect_uris: ["https://admin.auth.alummahnow.net/auth/callback", "https://admin.auth.stage.alummahnow.net/auth/callback", "https://admin.auth.qa.alummahnow.net/auth/callback"], scopes: ["openid", "profile", "email", "offline_access"], metadata: {}, enabled: true, created_at: (NOW - 30 * DAY) / 1000 },
+      { id: "c-1", client_id: "1448ed27-39a6-417d-b4c8-07f881e81269", name: "Accounts admin", client_type: "confidential", allowed_grants: ["authorization_code", "refresh_token"], redirect_uris: ["https://admin.auth.alummahnow.net/auth/callback", "https://admin.auth.stage.alummahnow.net/auth/callback", "https://admin.auth.qa.alummahnow.net/auth/callback"], scopes: ["openid", "profile", "email", "offline_access"], metadata: {}, enabled: true, created_at: Math.floor(ago(30, 5, 9, 14) / 1000) },
     ],
     user: ADMIN,
     authServerUrl: "",
