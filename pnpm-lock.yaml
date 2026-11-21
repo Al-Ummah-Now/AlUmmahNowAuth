@@ -47,7 +47,7 @@ importers:
         version: 4.14.0(playwright-core@1.65.1)
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1)
+        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)))
       '@cloudflare/workers-types':
         specifier: ^5.20261118.1
         version: 5.20261121.1
@@ -142,8 +142,8 @@ importers:
         specifier: ^5.2.3
         version: 5.2.3
       lucide-react:
-        specifier: ^0.555.0
-        version: 0.555.0(react@19.3.1)
+        specifier: ^1.75.0
+        version: 1.75.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -223,7 +223,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1)
+        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)))
       '@cloudflare/workers-types':
         specifier: ^5.20261118.1
         version: 5.20261121.1
@@ -260,7 +260,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1)
+        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)))
       '@cloudflare/workers-types':
         specifier: ^5.20261118.1
         version: 5.20261121.1
@@ -334,7 +334,7 @@ packages:
       hono: '>=4.12.25'
 
   '@al-ummah-now/openauth@1.0.59':
-    resolution: {integrity: sha1-sRwuB5PN0hULcfpnVWuZUirNvUI=, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.59/b11c2e0793cdd2150b71fa67556b99522acdbd42}
+    resolution: {integrity: sha512-C2BYLD7TXtyVOQ/XFWwig4mq4/0BhfmbzVmQXQps66mf8ttxXthMJnyXlSJM7RBfva+wV7xntpQp5eOMwtoLpA==, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.59/b11c2e0793cdd2150b71fa67556b99522acdbd42}
     hasBin: true
     peerDependencies:
       arctic: ^2.2.2
@@ -2371,6 +2371,15 @@ packages:
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
+  lucide-react@1.75.0:
+    resolution: {integrity: sha512-piesXAZIXru9d5lHBoM6cPHOBs5+QkMx+3EXwG3xWJ7qdViuz92JtYN0u9jMB6jt+2WbQrwhvJGdMwGnL3EOfA==}
+    peerDependencies:
+      '@types/react': '*'
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
     hasBin: true
@@ -3114,7 +3123,7 @@ snapshots:
       - utf-8-validate
       - workerd
 
-  '@cloudflare/vitest-plugin@1.9.0(@types/node@26.6.6)(vitest@5.1.1)':
+  '@cloudflare/vitest-plugin@1.9.0(@types/node@26.6.6)(vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)))':
     dependencies:
       cjs-module-lexer: 1.2.3
       esbuild: 0.28.2
@@ -4875,6 +4884,12 @@ snapshots:
   lucide-react@0.555.0(react@19.3.1):
     dependencies:
       react: 19.3.1
+
+  lucide-react@1.75.0(@types/react@19.3.0)(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+    optionalDependencies:
+      '@types/react': 19.3.0
 
   lz-string@1.5.0: {}
 
