@@ -127,6 +127,21 @@ describe('POST /test/run-users/delete/:email', () => {
 		expect(await ENV.AUTH_STORAGE.get(`test:invite:${RUN_EMAIL}`)).toBeNull();
 	});
 
+	it('a failure answers delete_failed without the error text (it stays in the log)', async () => {
+		const leaky = 'D1_ERROR: no such column: secret_col at offset 72: SQLITE_ERROR';
+		const storage = {
+			...ENV.AUTH_STORAGE,
+			delete: async () => {
+				throw new Error(leaky);
+			},
+		};
+		const res = await del(RUN_EMAIL, { env: qaEnv({ AUTH_STORAGE: storage }) });
+		expect(res?.status).toBe(500);
+		const body = await res!.text();
+		expect(JSON.parse(body)).toEqual({ error: 'delete_failed' });
+		expect(body).not.toContain('secret_col');
+	});
+
 	it('is idempotent: an unknown or already removed run account is a 200 with nothing found', async () => {
 		const res = await del(RUN_EMAIL);
 		expect(res?.status).toBe(200);
