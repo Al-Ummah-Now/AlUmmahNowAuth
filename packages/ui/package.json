@@ -24,7 +24,7 @@
   "devDependencies": {
     "@types/react": "^19.3.0",
     "react": "^19.3.1",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "@al-ummah-now/openauth": "1.0.18"
