@@ -205,7 +205,9 @@ export function issuerKeySet(env: JWKSEnv): JWTVerifyGetKey {
 			lastUnknownKidRefetch = now;
 			cachedJWKS = null;
 			logger.info('Reloading JWKS for an unknown kid', { kid: header.kid });
-			return createLocalJWKSet(await getJWKS(env))(header, token);
+			// Awaited so a second miss rejects here, not as a promise handed back
+			// unhandled for a tick
+			return await createLocalJWKSet(await getJWKS(env))(header, token);
 		}
 	};
 }

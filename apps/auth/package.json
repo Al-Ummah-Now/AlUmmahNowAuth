@@ -48,19 +48,19 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.58",
+    "@al-ummah-now/openauth": "1.0.59",
     "@types/node": "^24.10.1",
-    "jose": "^6.1.0",
-    "resend": "^6.5.2",
+    "jose": "^6.2.18",
+    "resend": "^6.39.0",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "~0.12.21",
+    "@cloudflare/vitest-plugin": "^1.9.0",
     "@cloudflare/workers-types": "^4.20251128.0",
-    "@vitest/coverage-v8": "^3.2.0",
+    "@vitest/coverage-v8": "^4.1.12",
     "hono": "^4.13.16",
     "typescript": "5.9.3",
-    "vitest": "^3.2.6",
+    "vitest": "^4.1.12",
     "wrangler": "~4.150.0"
   }
 }
