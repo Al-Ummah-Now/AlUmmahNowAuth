@@ -38,7 +38,7 @@ runs:
         echo "browsers-key=$(echo '${{ inputs.browsers }}' | tr ' ' '\n' | sort | tr '\n' '-')" >> "$GITHUB_OUTPUT"
 
     - name: Cache browsers
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
         key: ms-playwright-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ steps.version.outputs.browsers-key }}
