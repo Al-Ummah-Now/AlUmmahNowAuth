@@ -105,19 +105,19 @@ const server = createHttpServer(async (req, res) => {
       const origin = `http://localhost:${port}`;
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return res.end(
-        renderHomePage({ locale, apps: [], user: { id: "u-10", email: "first@example.com", roles: [] }, authServerUrl: origin, appUrl: origin, clientId: "profile", path: locale === "ar" ? "/profile?lang=ar" : "/profile" }),
+        renderHomePage({ locale, apps: [], user: { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", roles: [] }, authServerUrl: origin, appUrl: origin, clientId: "profile", path: locale === "ar" ? "/profile?lang=ar" : "/profile" }),
       );
     }
     if (url.pathname === "/api/passkeys") return json(res, { passkeys: [{ id: "pk-1", name: "Laptop", synced: true, deviceType: "multiDevice", createdAt: NOW - 10 * DAY, lastUsedAt: NOW - DAY }], max: 10, staff: false, signedInWithPasskey: false });
     if (url.pathname === "/session/accounts") {
       const ago = (m) => new Date(Date.now() - m * 60_000).toISOString();
       return json(res, { accounts: [
-        { userId: "u-10", email: "first@example.com", isActive: true, lastUsed: ago(0) },
-        { userId: "u-11", email: "second@example.com", isActive: false, lastUsed: ago(25) },
-        { userId: "u-12", email: "third@example.com", isActive: false, lastUsed: ago(60 * 30) },
+        { userId: "u-10", email: "yusuf.rahman@mail.alummahnow.net", isActive: true, lastUsed: ago(0) },
+        { userId: "u-11", email: "khadija.noor@mail.alummahnow.net", isActive: false, lastUsed: ago(25) },
+        { userId: "u-12", email: "maryam.alhassan@mail.alummahnow.net", isActive: false, lastUsed: ago(60 * 30) },
       ] });
     }
-    if (url.pathname === "/api/me") return json(res, { id: "u-10", email: "first@example.com", roles: [] });
+    if (url.pathname === "/api/me") return json(res, { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", roles: [] });
     const asset = resolve(adminRoot, "public", "." + url.pathname);
     if (asset.startsWith(resolve(adminRoot, "public") + "/")) {
       const bytes = await readFile(asset).catch(() => null);

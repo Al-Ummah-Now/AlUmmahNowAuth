@@ -283,7 +283,7 @@ const sessions = {
 const clients = {
   en: {
     title: "OAuth Clients",
-    intro: "Manage OAuth client applications",
+    intro: "The apps that sign people in through Al Ummah Now.",
     add: "Add Client",
     tableTitle: "Registered Clients",
     count: (count: number) => `${n(count, "en")} OAuth client${count !== 1 ? "s" : ""} registered`,

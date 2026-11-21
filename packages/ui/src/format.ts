@@ -20,8 +20,12 @@ export type EnglishTag = 'en-GB' | 'en-US' | 'en';
 
 const isAr = (lang: Lang | string) => lang === 'ar';
 
+/**
+ * Arabic is never grouped (owner, 2026-11-21, wiki O38): «١٢٥٠», «١٢٣٤٫٥», and «٫» is the only mark.
+ * «٬» and «٫» look the same in most Arabic UI fonts, so «١٬٢٥٠٫٥» reads as three numbers. English keeps "1,250".
+ */
 export function formatNumber(n: number, lang: Lang | string, opts: Intl.NumberFormatOptions = {}, en?: EnglishTag): string {
-	return new Intl.NumberFormat(intlLocale(lang, en), opts).format(n);
+	return new Intl.NumberFormat(intlLocale(lang, en), isAr(lang) ? { ...opts, useGrouping: false } : opts).format(n);
 }
 
 /** A number for a {placeholder}: numbers are formatted for the language, anything else passes through. */
@@ -35,7 +39,58 @@ export function fill(template: string, values: readonly unknown[] | Record<strin
 	});
 }
 
-export const formatCompact = (n: number, lang: Lang | string) => formatNumber(n, lang, { notation: 'compact', maximumFractionDigits: 1 });
+/** `value` cut (never rounded) to one decimal: 1.29 → 1.2, 2.999 → 2.9. */
+const cut = (value: number): number => Math.floor(value * 10 + 1e-9) / 10;
+
+interface ArabicScale { size: number; one: string; dual: string; construct: string; few: string; accusative: string }
+
+/** Thousands and billions agree with the number; millions are always «{n} م» (owner, 2026-11-21). */
+const AR_SCALES: readonly ArabicScale[] = [
+	{ size: 1e9, one: 'مليار', dual: 'ملياران', construct: 'مليارا', few: 'مليارات', accusative: 'مليارًا' },
+	{ size: 1e6, one: 'م', dual: 'م', construct: 'م', few: 'م', accusative: 'م' },
+	{ size: 1e3, one: 'ألف', dual: 'ألفان', construct: 'ألفا', few: 'آلاف', accusative: 'ألفًا' },
+];
+
+export interface CompactOptions {
+	/** A noun follows («ألفا جلسة», «١٢ ألف جلسة»); alone it is «ألفان», «١٢ ألفًا». */
+	beforeNoun?: boolean;
+}
+
+function compactArabic(n: number, beforeNoun: boolean): string {
+	const abs = Math.abs(n);
+	const sign = n < 0 ? '-' : '';
+	const scale = AR_SCALES.find((s) => abs >= s.size);
+	if (!scale) return formatNumber(n, 'ar');
+	const shown = cut(abs / scale.size);
+	const digits = formatNumber(shown, 'ar', { maximumFractionDigits: 1 });
+	// U+00A0 keeps the number and its scale word together, as Intl writes it.
+	if (scale.size === 1e6) return `${sign}${digits}\u00a0م`;
+	if (!sign && shown === 1) return scale.one;
+	if (!sign && shown === 2) return beforeNoun ? scale.construct : scale.dual;
+	if (!Number.isInteger(shown)) return `${sign}${digits}\u00a0${scale.one}`;
+	if (shown >= 3 && shown <= 10) return `${sign}${digits}\u00a0${scale.few}`;
+	// 11–99 (and 111–199 …) alone take the accusative: «١٢ ألفًا»; before a noun «١٢ ألف جلسة».
+	if (!beforeNoun && shown % 100 >= 11) return `${sign}${digits}\u00a0${scale.accusative}`;
+	return `${sign}${digits}\u00a0${scale.one}`;
+}
+
+/**
+ * Counts on stat tiles and cards: full under 1,000, compact from 1,000, cut to one decimal and
+ * never rounded up (owner, 2026-11-21): 1,250 → "1.2K" / «١٫٢ ألف», 2,999 → "2.9K", 1,500,000 →
+ * "1.5M" / «١٫٥ م». Tables, money and sizes stay exact with `formatNumber`.
+ */
+export function formatCompact(n: number, lang: Lang | string, options: CompactOptions = {}): string {
+	const safe = Number.isFinite(n) ? n : 0;
+	if (isAr(lang)) return compactArabic(safe, options.beforeNoun === true);
+	// Not Intl's compact notation: ICU builds disagree on the suffix (Node "1.2K", Chromium "1.2k"
+	// for en-GB), which breaks hydration. K/M/B/T by hand, like the Arabic scale words.
+	const abs = Math.abs(safe);
+	const scale = EN_SCALES.find(([size]) => abs >= size);
+	if (!scale) return formatNumber(safe, lang);
+	return `${formatNumber(Math.sign(safe) * cut(abs / scale[0]), lang, { maximumFractionDigits: 1 })}${scale[1]}`;
+}
+
+const EN_SCALES: readonly (readonly [number, string])[] = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
 
 /** 0.25 → '25%' / '٢٥٪'. */
 export const formatPercent = (ratio: number, lang: Lang | string, opts: Intl.NumberFormatOptions = {}) => formatNumber(ratio, lang, { style: 'percent', maximumFractionDigits: 1, ...opts });
@@ -139,7 +194,7 @@ export function clientFormatScript(lang: Lang | string, en: EnglishTag = 'en-GB'
 	const tag = JSON.stringify(intlLocale(lang, en));
 	return (
 		`var AUN_LOCALE=${tag};` +
-		`function aunNum(n){return new Intl.NumberFormat(AUN_LOCALE).format(n);}` +
+		`function aunNum(n){return new Intl.NumberFormat(AUN_LOCALE,${isAr(lang) ? '{useGrouping:false}' : '{}'}).format(n);}` +
 		`function aunDate(v,o){var d=new Date(v);return isNaN(d.getTime())?'':new Intl.DateTimeFormat(AUN_LOCALE,o||{dateStyle:'medium'}).format(d).replace(/[\\u00A0\\u202F\\u2009]/g,' ');}`
 	);
 }

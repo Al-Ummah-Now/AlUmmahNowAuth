@@ -75,5 +75,17 @@ for (const name of ["users", "passkeys", "audit", "sessions", "clients", "delete
     });
     expect(text).toMatch(/[\u0600-\u06FF]/);
     expect(text, text).not.toMatch(ASCII_DIGIT);
+    // Arabic numbers are never grouped (owner, 2026-11-21): «٬» reads like «٫»
+    expect(await main.innerText()).not.toContain("٬");
   });
 }
+
+test("Sessions in Arabic: stat tiles are compact and cut, «١٫٢ ألف» for 1,250", async ({ page }) => {
+  expect(await hydrate(page, "/admin/sessions?lang=ar")).toEqual([]);
+  await expect(page.locator("main")).toContainText("١٫٢\u00a0ألف");
+});
+
+test("Sessions in English: stat tiles are compact and cut, 1.2K for 1,250", async ({ page }) => {
+  expect(await hydrate(page, "/admin/sessions?lang=en")).toEqual([]);
+  await expect(page.locator("main")).toContainText("1.2K");
+});

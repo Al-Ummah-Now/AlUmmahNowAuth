@@ -1,4 +1,5 @@
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
+import { formatCompact } from "../../../../packages/ui/src/format.ts";
 import { Link, useLoaderData } from "react-router";
 import { Users, ShieldCheck, Activity, Database, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -176,7 +177,7 @@ export default function Index() {
             <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalUsers}</div>
+            <div className="text-2xl font-bold">{formatCompact(data.totalUsers, "en")}</div>
             <p className="text-xs text-[var(--color-muted-foreground)]">
               Registered users
             </p>
@@ -189,7 +190,7 @@ export default function Index() {
             <ShieldCheck className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.adminUsers}</div>
+            <div className="text-2xl font-bold">{formatCompact(data.adminUsers, "en")}</div>
             <p className="text-xs text-[var(--color-muted-foreground)]">
               Users with admin role
             </p>
@@ -202,7 +203,7 @@ export default function Index() {
             <Shield className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalRoles}</div>
+            <div className="text-2xl font-bold">{formatCompact(data.totalRoles, "en")}</div>
             <p className="text-xs text-[var(--color-muted-foreground)]">
               {data.systemRoles} system / {data.customRoles} custom
             </p>
