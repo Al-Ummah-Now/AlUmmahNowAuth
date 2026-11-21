@@ -13,7 +13,6 @@
  * @module services/tenant.service
  */
 
-import type { D1Database } from '@cloudflare/workers-types';
 import type { Tenant, TenantSettings, TenantBranding, TenantAdmin } from '../types/tenant';
 import { DEFAULT_TENANT_ID } from '../types/tenant';
 import { clearTenantCache } from './tenant-cache';

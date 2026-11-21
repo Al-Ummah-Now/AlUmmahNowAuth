@@ -9,7 +9,6 @@
  * - Timestamps stored as INTEGER (Unix epoch ms)
  */
 
-import type { D1Database } from '@cloudflare/workers-types';
 import { TenantService as D1TenantService } from '../services/tenant.service';
 import { cachedTenant } from '../services/tenant-cache';
 import type { Tenant as D1Tenant } from '../types/tenant';

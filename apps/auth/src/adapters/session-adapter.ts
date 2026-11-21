@@ -8,7 +8,6 @@
  * Note: Uses direct D1 queries - no dependency on BrowserSessionService/AccountSessionService
  */
 
-import type { D1Database } from '@cloudflare/workers-types';
 import type {
 	BrowserSession,
 	AccountSession,

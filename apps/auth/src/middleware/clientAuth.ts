@@ -15,8 +15,6 @@
  * - Returns proper OAuth 2.0 error responses (invalid_client)
  */
 
-/// <reference types="@cloudflare/workers-types" />
-
 import { ClientD1Adapter, verifyClientSecret } from '@al-ummah-now/openauth';
 import { logger } from '../logger';
 

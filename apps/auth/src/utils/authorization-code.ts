@@ -9,7 +9,6 @@
 
 import { generateId } from './id';
 import { hashToken } from './crypto';
-import type { D1Database } from '@cloudflare/workers-types';
 
 /**
  * Parameters for generating an authorization code

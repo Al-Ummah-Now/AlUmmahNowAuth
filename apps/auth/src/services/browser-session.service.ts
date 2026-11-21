@@ -12,7 +12,6 @@
 
 import { parseUserAgent } from '../utils/user-agent';
 import { resolveUserDisplayName } from '../../../../packages/ui/src/display-name.ts';
-import type { D1Database } from '@cloudflare/workers-types';
 import type { BrowserSession, BrowserSessionWithAccounts, AccountSessionWithUser } from '../types/sessions';
 
 export class BrowserSessionService {

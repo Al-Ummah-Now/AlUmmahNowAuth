@@ -16,7 +16,6 @@ import type {
 } from '../types/oidc';
 import { OIDC_ERRORS } from '../types/oidc';
 import type { BrowserSession, AccountSession } from '../types/sessions';
-import type { D1Database } from '@cloudflare/workers-types';
 
 export class OIDCAuthorizeService {
 	constructor(private db: D1Database) {}

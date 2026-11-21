@@ -49,14 +49,14 @@
   },
   "dependencies": {
     "@al-ummah-now/openauth": "1.0.59",
-    "@types/node": "^24.10.1",
+    "@types/node": "^26.6.6",
     "jose": "^6.2.18",
     "resend": "^6.39.0",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.9.0",
-    "@cloudflare/workers-types": "^4.20251128.0",
+    "@cloudflare/workers-types": "^5.20261118.1",
     "@vitest/coverage-v8": "^5.1.1",
     "hono": "^4.13.19",
     "typescript": "5.9.3",
