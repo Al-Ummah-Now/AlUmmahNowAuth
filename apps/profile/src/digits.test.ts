@@ -57,7 +57,7 @@ describe("format.ts in Arabic: Eastern Arabic (Hindi) numerals ٠–٩ only", ()
   }
 
   it("money is the Arabic currency name, never «US$»", () => {
-    expect(formatMoney(1234.5, "USD", "ar")).toBe("١٬٢٣٤٫٥٠ دولار أمريكي");
+    expect(formatMoney(1234.5, "USD", "ar")).toBe("١٢٣٤٫٥٠ دولار أمريكي");
     expect(formatMoney(1234.5, "USD", "ar")).not.toContain("$");
   });
 
@@ -69,6 +69,46 @@ describe("format.ts in Arabic: Eastern Arabic (Hindi) numerals ٠–٩ only", ()
   it("one plain space in dates and times (ICU builds differ: no-break spaces broke hydration)", () => {
     expect(formatDateTime(AT, "ar", { timeZone: "UTC" })).not.toMatch(/[\u00A0\u202F\u2009]/);
     expect(formatDate(AT, "en", { ...NUMERIC_DATE_TIME, timeZone: "UTC" }, "en-US")).toBe("11/15/2026, 9:30:05 AM");
+  });
+});
+
+describe("numbers rule (owner 2026-11-21, wiki O38): Arabic never grouped, counts compact and cut", () => {
+  const NBSP = "\u00a0";
+  it("Arabic is never grouped; «٫» is the only mark", () => {
+    expect(formatNumber(1250, "ar")).toBe("١٢٥٠");
+    expect(formatNumber(1234567.5, "ar")).toBe("١٢٣٤٥٦٧٫٥");
+    expect(formatNumber(1234567.5, "ar", { useGrouping: true })).toBe("١٢٣٤٥٦٧٫٥");
+    expect(fill("عدد الجلسات: {n}", { n: 1250 }, "ar")).toBe("عدد الجلسات: ١٢٥٠");
+    expect(clientFormatScript("ar")).toContain("useGrouping:false");
+    expect(formatNumber(1250, "en")).toBe("1,250");
+  });
+  it("counts under 1,000 stay whole", () => {
+    expect(formatCompact(999, "ar")).toBe("٩٩٩");
+    expect(formatCompact(999, "en")).toBe("999");
+  });
+  it("from 1,000 compact, cut to one decimal, never rounded up", () => {
+    expect(formatCompact(1250, "en")).toBe("1.2K");
+    expect(formatCompact(4887, "en")).toBe("4.8K");
+    expect(formatCompact(2999, "en")).toBe("2.9K");
+    expect(formatCompact(1_500_000, "en")).toBe("1.5M");
+    expect(formatCompact(1250, "ar")).toBe(`١٫٢${NBSP}ألف`);
+    expect(formatCompact(4887, "ar")).toBe(`٤٫٨${NBSP}ألف`);
+    expect(formatCompact(2999, "ar")).toBe(`٢٫٩${NBSP}ألف`);
+  });
+  it("Arabic thousands and billions agree with the number", () => {
+    expect(formatCompact(1000, "ar")).toBe("ألف");
+    expect(formatCompact(2000, "ar")).toBe("ألفان");
+    expect(formatCompact(2000, "ar", { beforeNoun: true })).toBe("ألفا");
+    expect(formatCompact(3000, "ar")).toBe(`٣${NBSP}آلاف`);
+    expect(formatCompact(12_000, "ar")).toBe(`١٢${NBSP}ألفًا`);
+    expect(formatCompact(12_000, "ar", { beforeNoun: true })).toBe(`١٢${NBSP}ألف`);
+    expect(formatCompact(100_000, "ar")).toBe(`١٠٠${NBSP}ألف`);
+    expect(formatCompact(3_000_000_000, "ar")).toBe(`٣${NBSP}مليارات`);
+  });
+  it("Arabic millions are always «{n} م»", () => {
+    expect(formatCompact(1_000_000, "ar")).toBe(`١${NBSP}م`);
+    expect(formatCompact(2_000_000, "ar")).toBe(`٢${NBSP}م`);
+    expect(formatCompact(1_290_000, "ar")).toBe(`١٫٢${NBSP}م`);
   });
 });
 

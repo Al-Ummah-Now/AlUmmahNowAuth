@@ -30,7 +30,7 @@ import { AdminLayout } from "../components/admin-layout";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { confirmCopy, dirOf, langOf } from "../lib/confirm-copy";
 import { pagesCopy } from "../lib/pages-copy";
-import { formatNumber } from "../../../../packages/ui/src/format.ts";
+import { formatCompact } from "../../../../packages/ui/src/format.ts";
 import type { AdminLang } from "../lib/deletion-copy";
 import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
@@ -279,7 +279,8 @@ export default function SessionsPage() {
   const copy = confirmCopy(lang);
   const t = pagesCopy(lang).sessions;
   const c = pagesCopy(lang).common;
-  const num = (value: number) => formatNumber(value, lang);
+  // Stat tiles are counts: compact from 1,000, cut not rounded (owner, 2026-11-21).
+  const num = (value: number) => formatCompact(value, lang);
   const when = (value: string | number) => formatDate(value, lang, t.notAvailable);
   const [terminating, setTerminating] = useState<{ id: string; userId: string; email: string } | null>(null);
   const currentUserId = searchParams.get('user_id') ?? '';
