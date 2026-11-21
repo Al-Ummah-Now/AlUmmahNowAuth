@@ -3,6 +3,7 @@ import { useLoaderData } from "react-router";
 import { getAppUrl, getAuthServerUrl } from "../lib/config";
 import { forbiddenLocale } from "../lib/forbidden";
 import { loginPath, safeReturnPath } from "../lib/sign-in";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => [{ title: "Passkey needed - Al Ummah Now Admin" }];
 
@@ -38,7 +39,7 @@ const COPY = {
 } as const;
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { APP_URL?: string; AUTH_SERVER_URL?: string };
+  const env = getCloudflare(context).env as { APP_URL?: string; AUTH_SERVER_URL?: string };
   const url = new URL(request.url);
   const locale = forbiddenLocale(request);
   const returnTo = safeReturnPath(url.searchParams.get("redirect"));

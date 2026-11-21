@@ -17,6 +17,7 @@ import { getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { errorMessage, themeActor, themesApi, type ThemeEnv, type ThemeSummary } from "../lib/themes.server";
 import { swatchesOf, type Swatches } from "../lib/theme-builder";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => [
   { title: "Sign-in themes - Al Ummah Now Admin" },
@@ -34,7 +35,7 @@ type LoaderData = {
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs): Promise<LoaderData> {
-  const env = context?.cloudflare?.env as ThemeEnv;
+  const env = getCloudflare(context).env as ThemeEnv;
   const actor = await themeActor(request, env);
   const session = await getAuthenticatedUser(request, env);
   const user = { id: actor.id, email: session?.user.email ?? actor.email };
@@ -59,7 +60,7 @@ export async function loader({ request, context }: LoaderFunctionArgs): Promise<
 type ActionData = { ok?: string; error?: string; intent?: string };
 
 export async function action({ request, context }: ActionFunctionArgs): Promise<ActionData | Response> {
-  const env = context?.cloudflare?.env as ThemeEnv;
+  const env = getCloudflare(context).env as ThemeEnv;
   const actor = await themeActor(request, env);
   const api = themesApi(env, actor, request);
   const form = await request.formData();

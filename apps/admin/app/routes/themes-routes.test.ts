@@ -9,6 +9,7 @@ import { createStaticHandler, createStaticRouter, StaticRouterProvider } from "r
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { builtinPackage } from "../../../../packages/ui/src/auth-theme/builtin.ts";
 import type { ThemeDetail, ThemeSummary } from "../lib/themes.server";
+import { cloudflareLoadContext } from "../lib/cloudflare-context";
 
 const api = {
   list: vi.fn(),
@@ -49,7 +50,7 @@ const APP = "https://admin.auth.example";
 const env = { AUTH_STORAGE: {}, AUTH_SERVER_URL: "https://auth.example" };
 
 function args(path: string, init?: RequestInit, params: Record<string, string> = {}) {
-  return { request: new Request(new URL(path, APP), init), params, context: { cloudflare: { env, ctx: undefined } } } as never;
+  return { request: new Request(new URL(path, APP), init), params, context: cloudflareLoadContext(env, undefined) } as never;
 }
 
 function form(fields: Record<string, string | Blob>) {
@@ -191,7 +192,7 @@ describe("pages render", () => {
       clientDefaults: { c1: "eid" },
     });
     api.get.mockImplementation(async (id: string) => detail({ id }));
-    const html = await render("/themes", [{ path: "/themes", loader: (a) => list.loader({ ...a, context: { cloudflare: { env } } } as never), Component: list.default }]);
+    const html = await render("/themes", [{ path: "/themes", loader: (a) => list.loader({ ...a, context: cloudflareLoadContext(env, undefined) } as never), Component: list.default }]);
     expect(html).toContain('data-testid="theme-fawanees"');
     expect(html).toContain('data-testid="theme-eid"');
     expect(html).toContain('data-testid="client-default-c1"');
@@ -200,7 +201,7 @@ describe("pages render", () => {
 
   it("a built-in opens read-only, with the live preview", async () => {
     api.get.mockResolvedValue(detail());
-    const html = await render("/themes/nahas", [{ path: "/themes/:id", loader: (a) => builder.loader({ ...a, context: { cloudflare: { env } } } as never), Component: builder.default }]);
+    const html = await render("/themes/nahas", [{ path: "/themes/:id", loader: (a) => builder.loader({ ...a, context: cloudflareLoadContext(env, undefined) } as never), Component: builder.default }]);
     expect(html).toContain("Built-in themes can&#x27;t be changed");
     expect(html).toContain('data-testid="theme-preview"');
     expect(html).not.toContain(">Save draft<");
@@ -208,7 +209,7 @@ describe("pages render", () => {
 
   it("a custom theme opens editable", async () => {
     api.get.mockResolvedValue(detail({ id: "eid", kind: "custom", status: "draft" }));
-    const html = await render("/themes/eid", [{ path: "/themes/:id", loader: (a) => builder.loader({ ...a, context: { cloudflare: { env } } } as never), Component: builder.default }]);
+    const html = await render("/themes/eid", [{ path: "/themes/:id", loader: (a) => builder.loader({ ...a, context: cloudflareLoadContext(env, undefined) } as never), Component: builder.default }]);
     expect(html).toContain("Save draft");
     expect(html).toContain("Not published yet");
     expect(html).toContain('aria-label="primary value (light)"');

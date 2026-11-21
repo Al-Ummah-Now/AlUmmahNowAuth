@@ -1,9 +1,10 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { errorMessage, themeActor, themesApi, type ThemeEnv } from "../lib/themes.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 /** Downloads the theme package zip (theme.json + assets/). */
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as ThemeEnv;
+  const env = getCloudflare(context).env as ThemeEnv;
   const actor = await themeActor(request, env);
   const source = new URL(request.url).searchParams.get("source") === "draft" ? "draft" : "published";
   try {

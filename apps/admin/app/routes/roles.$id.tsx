@@ -52,9 +52,10 @@ import {
   type RoleWithPermissions,
   type Permission,
 } from "../lib/rbac-api.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const role = data?.role;
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  const role = loaderData?.role;
   return [
     { title: `${role?.name || 'Role'} - Al Ummah Now Admin` },
     { name: "description", content: "Manage role details and permissions" },
@@ -77,11 +78,11 @@ interface LoaderData {
 }
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
   };
-  const ctx = context?.cloudflare?.ctx as ExecutionContext;
+  const ctx = getCloudflare(context).ctx as ExecutionContext;
 
   // Initialize logger
   logger.setDatabase(null, false);
@@ -143,7 +144,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
   };

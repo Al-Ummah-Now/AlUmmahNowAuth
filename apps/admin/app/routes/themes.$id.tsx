@@ -39,8 +39,9 @@ import { validateTheme } from "../../../../packages/ui/src/auth-theme/validate.t
 import { BASE } from "../../../../packages/ui/src/theme-packages/base.generated.ts";
 import { COMPONENT_PARTS } from "../../../../packages/ui/src/theme-packages/components.ts";
 import type { Issue } from "../../../../packages/ui/src/theme-packages/validate.ts";
+import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => [{ title: `${data?.detail?.theme.name.en ?? "Theme"} - Sign-in themes - Al Ummah Now Admin` }];
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => [{ title: `${loaderData?.detail?.theme.name.en ?? "Theme"} - Sign-in themes - Al Ummah Now Admin` }];
 
 type LoaderData = {
   detail: ThemeDetail;
@@ -49,7 +50,7 @@ type LoaderData = {
 };
 
 export async function loader({ request, context, params }: LoaderFunctionArgs): Promise<LoaderData> {
-  const env = context?.cloudflare?.env as ThemeEnv;
+  const env = getCloudflare(context).env as ThemeEnv;
   const actor = await themeActor(request, env);
   const session = await getAuthenticatedUser(request, env);
   try {
@@ -63,7 +64,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs): 
 type ActionData = { ok?: string; error?: string; details?: Issue[]; contrast?: Issue[]; uploaded?: { path: string; target?: string } };
 
 export async function action({ request, context, params }: ActionFunctionArgs): Promise<ActionData> {
-  const env = context?.cloudflare?.env as ThemeEnv;
+  const env = getCloudflare(context).env as ThemeEnv;
   const actor = await themeActor(request, env);
   const api = themesApi(env, actor, request);
   const id = params.id!;

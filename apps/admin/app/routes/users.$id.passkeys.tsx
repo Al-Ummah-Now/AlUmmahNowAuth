@@ -15,6 +15,7 @@ import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import { getUser, isErrorResponse, listUserPasskeys, removeUserPasskey, sendPasskeySetupLink, type PasskeySummary } from "../lib/admin-api.server";
 import { actingOf, adminUserOf, type AdminEnv } from "../lib/passkeys.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = () => [{ title: "Passkeys - Al Ummah Now Admin" }];
 
@@ -24,7 +25,7 @@ export const meta: MetaFunction = () => [{ title: "Passkeys - Al Ummah Now Admin
  * never for your own account). Both changes need a sign-in within 15 minutes.
  */
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as AdminEnv;
+  const env = getCloudflare(context).env as AdminEnv;
   const user = await adminUserOf(request, env);
   const userId = String(params.id ?? "");
   const acting = actingOf(user);
@@ -43,7 +44,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const env = context?.cloudflare?.env as AdminEnv;
+  const env = getCloudflare(context).env as AdminEnv;
   const user = await adminUserOf(request, env);
   const userId = String(params.id ?? "");
   requireStepUp(user, request, `/users/${encodeURIComponent(userId)}/passkeys`);

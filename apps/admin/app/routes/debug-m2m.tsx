@@ -9,6 +9,7 @@
 
 import type { LoaderFunctionArgs } from "react-router";
 import { listRoles } from "../lib/admin-api.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 /** Hosts where this unauthenticated probe may answer. Production is never listed. */
 export function isDebugHost(appUrl: string | undefined, requestUrl: string): boolean {
@@ -36,7 +37,7 @@ interface DebugResponse {
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context.cloudflare.env as {
+  const env = getCloudflare(context).env as {
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
     ADMIN_CLIENT_SECRET?: string;

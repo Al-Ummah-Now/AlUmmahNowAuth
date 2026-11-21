@@ -1,16 +1,8 @@
 import { createRequestHandler } from "react-router";
+import { cloudflareLoadContext } from "../app/lib/cloudflare-context";
 import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
 import { noIndexWorker } from '../../../packages/ui/src/crawlers.ts';
 import { streetResponse } from "../../../packages/ui/src/fanous-street/index.ts";
-
-declare module "react-router" {
-  export interface AppLoadContext {
-    cloudflare: {
-      env: Env;
-      ctx: ExecutionContext;
-    };
-  }
-}
 
 const requestHandler = createRequestHandler(
   // @ts-expect-error - virtual module
@@ -26,9 +18,8 @@ const worker = {
       const street = streetResponse(new URL(request.url).pathname);
       if (street) return street;
     }
-    return requestHandler(request, {
-      cloudflare: { env, ctx },
-    });
+    // React Router 8: loaders get a RouterContextProvider; env and ctx live under cloudflareContext
+    return requestHandler(request, cloudflareLoadContext(env, ctx));
   },
 } satisfies ExportedHandler<Env>;
 

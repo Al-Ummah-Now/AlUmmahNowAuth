@@ -4,6 +4,7 @@ import { getAppUrl } from "../lib/config";
 import { getOpenAuthClient } from "../lib/openauth.client.server";
 import { logger } from "../lib/logger.server";
 import { loginCookie, loginPath, parseMaxAge, parsePrompt, safeReturnPath, withPrompt, pkceCookie } from "../lib/sign-in";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 /**
  * Straight to the auth server, no page of our own. No prompt by default: a
@@ -16,8 +17,8 @@ import { loginCookie, loginPath, parseMaxAge, parsePrompt, safeReturnPath, withP
  * link instead of redirecting again, so a persistent error cannot loop.
  */
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { APP_URL?: string; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string };
-  const ctx = context?.cloudflare?.ctx as ExecutionContext;
+  const env = getCloudflare(context).env as { APP_URL?: string; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string };
+  const ctx = getCloudflare(context).ctx as ExecutionContext;
 
   // Initialize logger
   logger.setDatabase(null, false);

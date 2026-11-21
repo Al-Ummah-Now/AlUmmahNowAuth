@@ -3,6 +3,7 @@ import { useLoaderData } from "react-router";
 import { getAppUrl, getAuthServerUrl } from "../lib/config";
 import { getOpenAuthClient } from "../lib/openauth.client.server";
 import { FORBIDDEN_COPY, forbiddenLocale, profileAppUrl } from "../lib/forbidden";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 /**
  * A signed-in user without an admin role. Stays put (no automatic redirect,
@@ -11,7 +12,7 @@ import { FORBIDDEN_COPY, forbiddenLocale, profileAppUrl } from "../lib/forbidden
  * from the query string except the email, which is only displayed.
  */
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as { APP_URL?: string; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string };
+  const env = getCloudflare(context).env as { APP_URL?: string; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string };
   const url = new URL(request.url);
   const locale = forbiddenLocale(request);
 

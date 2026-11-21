@@ -1,9 +1,10 @@
 import type { ActionFunctionArgs } from "react-router";
 import { errorMessage, themeActor, themesApi, type ThemeEnv } from "../lib/themes.server";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 /** The builder's live preview: Auth renders the real page for the edited theme (scripts removed). */
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const env = context?.cloudflare?.env as ThemeEnv;
+  const env = getCloudflare(context).env as ThemeEnv;
   const actor = await themeActor(request, env);
   const body = (await request.json()) as { theme?: unknown; page?: string; lang?: string; scheme?: string };
   try {

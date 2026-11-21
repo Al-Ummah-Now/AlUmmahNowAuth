@@ -47,6 +47,7 @@ import {
   type SuspiciousActivity,
 } from "../lib/admin-api.server";
 import { useState } from "react";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 // ============================================================================
 // Validation Schemas
@@ -97,13 +98,13 @@ type LoaderData = {
 };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
     ADMIN_CLIENT_SECRET?: string;
   };
-  const ctx = context?.cloudflare?.ctx as ExecutionContext;
+  const ctx = getCloudflare(context).ctx as ExecutionContext;
 
   logger.setDatabase(null, false);
   if (ctx) logger.setContext(ctx);
@@ -216,7 +217,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;

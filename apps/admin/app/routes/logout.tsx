@@ -5,17 +5,18 @@ import { getAuthServerUrl, getOAuthClientId } from "../lib/config";
 import { revokeSession } from "../lib/session-tokens.server";
 import { sessionStores } from "../lib/auth.server";
 import { singleSignOutNext } from "../lib/single-sign-out";
+import { getCloudflare } from "../lib/cloudflare-context";
 
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context?.cloudflare?.env as {
+  const env = getCloudflare(context).env as {
     AUTH_STORAGE?: KVNamespace;
     AUTH_DB?: D1Database;
     AUTH_SERVER_URL?: string;
     ADMIN_CLIENT_ID?: string;
     OAUTH_CLIENT_ID?: string;
   };
-  const ctx = context?.cloudflare?.ctx as ExecutionContext;
+  const ctx = getCloudflare(context).ctx as ExecutionContext;
 
   // Initialize logger
   logger.setDatabase(null, false);

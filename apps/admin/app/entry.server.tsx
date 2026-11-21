@@ -1,4 +1,4 @@
-import type { AppLoadContext, EntryContext, HandleErrorFunction } from "react-router";
+import type { EntryContext, HandleErrorFunction, RouterContextProvider } from "react-router";
 import { ServerRouter, isRouteErrorResponse } from "react-router";
 import { logger } from "./lib/logger.server";
 import { isbot } from "isbot";
@@ -34,7 +34,7 @@ export default async function handleRequest(
   responseStatusCode: number,
   responseHeaders: Headers,
   routerContext: EntryContext,
-  _loadContext: AppLoadContext,
+  _loadContext: RouterContextProvider,
 ) {
   let shellRendered = false;
   const userAgent = request.headers.get("user-agent");
