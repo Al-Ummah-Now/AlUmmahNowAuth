@@ -225,8 +225,12 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
   // triggers a fresh fetch of the user list including their roles
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-  // Verify user appears in list (wait for table to update)
-  await expect(page.locator(`text=${user.email}`)).toBeVisible({ timeout: 10000 });
+  // Verify user appears in list (wait for table to update). The page renders
+  // the users twice, phone cards (md:hidden) and the desktop table, so match
+  // only the copy that's visible at this viewport.
+  await expect(
+    page.getByText(user.email, { exact: true }).filter({ visible: true })
+  ).toBeVisible({ timeout: 10000 });
 }
 
 /**
@@ -361,8 +365,11 @@ export async function deleteUser(page: Page, email: string): Promise<void> {
   await page.reload();
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-  // Verify user is removed from list
-  await expect(page.locator(`text=${email}`)).toBeHidden({ timeout: 10000 });
+  // Verify user is removed from list (phone cards and table both render it,
+  // so check the visible copy is gone rather than a strict two-element match)
+  await expect(
+    page.getByText(email, { exact: true }).filter({ visible: true })
+  ).toHaveCount(0, { timeout: 10000 });
 }
 
 /**
