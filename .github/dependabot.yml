@@ -1,10 +1,13 @@
 version: 2
 updates:
-  # npm: the whole pnpm workspace (root + apps), minor/patch updates grouped
+  # npm: the whole pnpm workspace from its root. pnpm-workspace.yaml brings in
+  # apps/* and packages/*, and the one pnpm-lock.yaml lives here. Pointing
+  # Dependabot at "/apps/*" instead made it edit package.json without the
+  # lockfile, so every such PR failed the frozen install in CI.
+  # Minor and patch updates arrive as one production PR and one development PR.
+  # Majors stay one PR per dependency (all workspace packages together).
   - package-ecosystem: "npm"
-    directories:
-      - "/"
-      - "/apps/*"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -36,9 +39,12 @@ updates:
         patterns:
           - "*"
 
-  # GitHub Actions
+  # GitHub Actions: workflows and the composite actions in .github/actions.
+  # Minor and patch updates arrive as one PR; majors stay separate.
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -53,3 +59,10 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
