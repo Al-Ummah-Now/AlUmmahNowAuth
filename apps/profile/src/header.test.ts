@@ -12,6 +12,7 @@ import {
   PAGE_MODE_SCRIPT,
   pageHeaderHtml,
   sameSitePath,
+  scriptJson,
 } from "../../../packages/ui/src/nav/page-header.ts";
 
 const base = {
@@ -115,5 +116,20 @@ describe("shared page header (packages/ui/src/nav/page-header.ts)", () => {
   it("the mode script is valid ES5-era JavaScript", () => {
     expect(() => new Function(PAGE_MODE_SCRIPT)).not.toThrow();
     expect(PAGE_MODE_SCRIPT).not.toMatch(/=>|\blet\b|\bconst\b|`/);
+  });
+});
+
+describe("scriptJson (JSON inlined in a <script>)", () => {
+  it("can't close the script element or open a comment, and still parses to the same value", () => {
+    const value = { a: "</script><script>alert(1)</script>", b: "<!-- x -->", c: "a & b", d: "line\u2028sep\u2029end" };
+    const out = scriptJson(value);
+    expect(out).not.toMatch(/[<>&\u2028\u2029]/);
+    expect(out).toContain("\\u003c/script\\u003e");
+    expect(JSON.parse(out)).toEqual(value);
+  });
+
+  it("leaves the mode labels as they were (Arabic included)", () => {
+    expect(PAGE_MODE_SCRIPT).toContain('"ar":{"toLight":"التبديل إلى الوضع الفاتح"');
+    expect(PAGE_MODE_SCRIPT).not.toContain("</script");
   });
 });

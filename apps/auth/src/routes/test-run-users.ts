@@ -114,7 +114,11 @@ async function remove(email: string, request: Request, ip: string, env: RunUserR
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		logger.error('E2E run account delete failed', { email, error: message });
-		return json({ error: 'delete_failed', message }, error instanceof DeletionError ? error.status : 500);
+		// The reason stays in the log: the response names only a known deletion
+		// code, never the error's own text (it can carry SQL or stack details)
+		return error instanceof DeletionError
+			? json({ error: 'delete_failed', code: error.code }, error.status)
+			: json({ error: 'delete_failed' }, 500);
 	}
 	logger.info('E2E run account deleted', { email, accounts: rows.length, purged });
 	return json({ success: true, found: rows.length, purged }, 200);
