@@ -68,8 +68,10 @@ test.describe('Admin User Editing', () => {
     // Verify role updated in list
     // Already on /users page from previous action
     const userRow = page.locator(`tr:has-text("${adminEmail}")`);
-    // Look for the role badge specifically (has uppercase class) to avoid matching email text
-    await expect(userRow.locator('.uppercase:text-is("Member")')).toBeVisible();
+    // The role badge in the Roles column (User, Roles, Created, Actions); the
+    // badge has no `uppercase` class since the light/dark restyle, and an exact
+    // match in that cell can't hit the email text
+    await expect(userRow.locator('td:nth-child(2)').getByText('Member', { exact: true })).toBeVisible();
   });
 
   test('should edit both email and role simultaneously', async ({ page }) => {
