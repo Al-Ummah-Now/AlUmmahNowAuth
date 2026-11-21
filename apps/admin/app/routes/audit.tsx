@@ -241,6 +241,16 @@ export default function AuditLogs() {
     navigate(`/audit?${params.toString()}`);
   };
 
+  // Who did it: a system actor by role, a person by name, an id only when the account no longer exists
+  const who = (event: LoaderData["events"][number]) =>
+    event.user_id && isSystemUserId(event.user_id) ? (
+      <span>{actorLabel(event.user_id, lang)}</span>
+    ) : event.user_id ? (
+      <bdi className={names[event.user_id] ? undefined : "font-mono"}>{names[event.user_id] ?? event.user_id}</bdi>
+    ) : (
+      <span className="text-[var(--color-muted-foreground)]">—</span>
+    );
+
   const formatTimestamp = (timestamp: string) => {
     return formatDateTimeMs(timestamp, lang);
   };
@@ -419,7 +429,31 @@ export default function AuditLogs() {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                {/* Phone: a card per event, like Users and Sessions; the table from md up */}
+                <ul className="space-y-3 md:hidden" data-testid="audit-cards">
+                  {events.map((event) => (
+                    <li key={event.id} className="rounded-lg border border-[var(--color-border)] p-3" data-user-id={event.user_id ?? undefined}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <code className="text-xs bg-[var(--color-muted)] px-2 py-1 rounded break-all" dir="ltr">{event.event_type}</code>
+                        <div className="flex gap-2">
+                          <Badge variant={getSeverityColor(event.severity)}>{t.severities[event.severity.toLowerCase()] ?? event.severity}</Badge>
+                          <Badge variant={event.success ? "secondary" : "destructive"}>{event.success ? t.success : t.failed}</Badge>
+                        </div>
+                      </div>
+                      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                        <dt className="text-[var(--color-muted-foreground)]">{t.time}</dt>
+                        <dd>{formatTimestamp(event.timestamp)}</dd>
+                        <dt className="text-[var(--color-muted-foreground)]">{t.userCol}</dt>
+                        <dd className="min-w-0 break-words">{who(event)}</dd>
+                        <dt className="text-[var(--color-muted-foreground)]">{t.ip}</dt>
+                        <dd className="font-mono text-xs self-center">
+                          {event.ip_address ? <bdi>{event.ip_address}</bdi> : <span className="text-[var(--color-muted-foreground)]">—</span>}
+                        </dd>
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+                <div className="hidden md:block overflow-x-auto">
                   <Table aria-label={t.tableTitle}>
                     <TableHeader>
                       <TableRow>
@@ -451,14 +485,7 @@ export default function AuditLogs() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs" data-user-id={event.user_id ?? undefined}>
-                            {event.user_id && isSystemUserId(event.user_id) ? (
-                              <span>{actorLabel(event.user_id, lang)}</span>
-                            ) : event.user_id ? (
-                              // A person by name; an id only when the account no longer exists
-                              <bdi className={names[event.user_id] ? undefined : "font-mono"}>{names[event.user_id] ?? event.user_id}</bdi>
-                            ) : (
-                              <span className="text-[var(--color-muted-foreground)]">—</span>
-                            )}
+                            {who(event)}
                           </TableCell>
                           <TableCell className="font-mono text-xs">
                             {event.ip_address ? <bdi>{event.ip_address}</bdi> : (
