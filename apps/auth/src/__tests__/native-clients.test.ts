@@ -15,6 +15,9 @@ import adminWindowsQaMigration from '../../migrations-qa/0039_admin_windows_clie
 import adminWindowsProdMigration from '../../migrations/0039_admin_windows_client.sql?raw';
 import adminAndroidQaMigration from '../../migrations-qa/0040_admin_android_client.sql?raw';
 import adminAndroidProdMigration from '../../migrations/0040_admin_android_client.sql?raw';
+import adminToolsQaMigration from '../../migrations-qa/0045_admin_tools_desktop_client.sql?raw';
+import adminToolsProdMigration from '../../migrations/0044_admin_tools_desktop_client.sql?raw';
+import { ADMIN_NATIVE_CLIENT_IDS } from '../admin-native-clients';
 
 const VIEWER_MOBILE = '31389afb-d4f8-4c26-9492-4c77f4d07e65';
 const VIEWER_DESKTOP = 'ce7de8a4-59dd-4682-ab4d-105399105294';
@@ -23,6 +26,7 @@ const ADMIN_IOS = '77330b47-5747-4058-ba00-921e159f1ced';
 const ADMIN_MAC = '1c230211-7b90-4d0a-be9d-3068ebd79d5b';
 const ADMIN_WINDOWS = '306b6f10-d9f0-4609-84a1-23c92da978e9';
 const ADMIN_ANDROID = '5b44a4f7-d369-4d12-bc69-028d0276604a';
+const ADMIN_TOOLS = '75f36653-4dfd-44af-8f67-588a5b7e9613';
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
 
 const statements = (sql: string) =>
@@ -49,7 +53,7 @@ async function authorize(clientId: string, redirect: string, pkce = true) {
 describe('native app clients (worker)', () => {
 	beforeAll(async () => {
 		await setupDatabase();
-		for (const s of [...statements(qaMigration), ...statements(adminQaMigration), ...statements(adminWindowsQaMigration), ...statements(adminAndroidQaMigration)]) await (env as unknown as Env).AUTH_DB.prepare(s).run();
+		for (const s of [...statements(qaMigration), ...statements(adminQaMigration), ...statements(adminWindowsQaMigration), ...statements(adminAndroidQaMigration), ...statements(adminToolsQaMigration)]) await (env as unknown as Env).AUTH_DB.prepare(s).run();
 	});
 
 	it('a custom-scheme redirect with PKCE gets the sign-in form', async () => {
@@ -89,6 +93,17 @@ describe('native app clients (worker)', () => {
 			expect(noPkce.searchParams.get('error')).toBe('invalid_request');
 		}
 		expect((await authorize(STUDIO_MOBILE, 'alummahnow-admin://auth/callback')).status).toBe(400);
+	});
+
+	it('Admin Tools (desktop) signs in on any loopback port with PKCE, and nowhere else', async () => {
+		const res = await authorize(ADMIN_TOOLS, 'http://127.0.0.1:53111/auth/callback');
+		expect(res.status).toBe(302);
+		expect(res.headers.get('location')).toContain('/password/authorize');
+		expect((await authorize(ADMIN_TOOLS, 'http://127.0.0.1:53111/elsewhere')).status).toBe(400);
+		expect((await authorize(ADMIN_TOOLS, 'alummahnow-admin://auth/callback')).status).toBe(400);
+		expect((await authorize(ADMIN_TOOLS, 'http://localhost:53111/auth/callback')).status).toBe(400);
+		const noPkce = new URL((await authorize(ADMIN_TOOLS, 'http://127.0.0.1:53111/auth/callback', false)).headers.get('location')!);
+		expect(noPkce.searchParams.get('error')).toBe('invalid_request');
 	});
 
 	it("rejects another app's scheme and unregistered URIs (exact match)", async () => {
@@ -168,9 +183,24 @@ describe('native client migrations', () => {
 		});
 	}
 
+	for (const [env, sql] of [
+		['qa', adminToolsQaMigration],
+		['prod', adminToolsProdMigration],
+	] as const) {
+		it(`${env}: Admin Tools (desktop) is a public native PKCE client on loopback only, and staff-only on refresh`, () => {
+			const r = rows(sql);
+			expect(r).toHaveLength(1);
+			expect(r[0].secret).toBe('NULL');
+			expect(r[0].metadata).toEqual({ type: 'native', pkce: 'required', platforms: ['windows', 'macos', 'linux'] });
+			expect(r[0].grants).toEqual(['authorization_code', 'refresh_token']);
+			expect(r[0].redirects).toEqual(['http://127.0.0.1/auth/callback']);
+			expect(ADMIN_NATIVE_CLIENT_IDS.has(r[0].id)).toBe(true);
+		});
+	}
+
 	it('admin client ids differ between QA and prod', () => {
-		const qa = [...rows(adminQaMigration), ...rows(adminWindowsQaMigration), ...rows(adminAndroidQaMigration)].map((c) => c.id);
-		const prod = [...rows(adminProdMigration), ...rows(adminWindowsProdMigration), ...rows(adminAndroidProdMigration)].map((c) => c.id);
+		const qa = [...rows(adminQaMigration), ...rows(adminWindowsQaMigration), ...rows(adminAndroidQaMigration), ...rows(adminToolsQaMigration)].map((c) => c.id);
+		const prod = [...rows(adminProdMigration), ...rows(adminWindowsProdMigration), ...rows(adminAndroidProdMigration), ...rows(adminToolsProdMigration)].map((c) => c.id);
 		expect(prod.some((id) => qa.includes(id))).toBe(false);
 		expect(new Set([...qa, ...prod]).size).toBe(qa.length + prod.length);
 	});
