@@ -135,22 +135,17 @@ test.describe('Admin Audit View', () => {
     const url = new URL(page.url());
     expect(url.searchParams.get('event_type')).toBe('auth.token');
 
-    // Verify filtered results
-    // Either we have matching results or "No audit events found" message
+    // Either every row is an auth.token event or "No audit events found".
+    // React Router renders a navigation in a React transition: the URL changes first and the
+    // filtered list replaces the old rows a moment later, so wait for the outcome, not the URL.
     const noEventsMessage = page.locator('h3:has-text("No audit events found")');
-    const tableRows = page.locator('tbody tr');
-
-    const hasResults = await tableRows.count() > 0;
-    const showsEmptyState = await noEventsMessage.isVisible();
-
-    // One of these should be true
-    expect(hasResults || showsEmptyState).toBe(true);
-
-    // If we have results, verify they match the filter
-    if (hasResults) {
-      const firstEventType = await tableRows.first().locator('td').nth(1).textContent();
-      expect(firstEventType).toContain('auth.token');
-    }
+    const eventTypeCells = page.locator('tbody tr td:nth-child(2)');
+    await expect(async () => {
+      if (await noEventsMessage.isVisible()) return;
+      const types = await eventTypeCells.allTextContents();
+      expect(types.length).toBeGreaterThan(0);
+      for (const type of types) expect(type).toContain('auth.token');
+    }).toPass({ timeout: 15_000 });
   });
 
   test('should filter audit logs by severity', async ({ page }) => {
@@ -229,15 +224,14 @@ test.describe('Admin Audit View', () => {
     const url = new URL(page.url());
     expect(url.searchParams.get('search')).toBe(trimmedUserId);
 
-    // Verify results contain the searched user ID
-    const tableRows = page.locator('tbody tr');
-    const rowCount = await tableRows.count();
-
-    if (rowCount > 0) {
-      // All visible rows should have the searched user ID
-      const firstRowUserId = await tableRows.first().locator('td').nth(3).getAttribute('data-user-id');
-      expect(firstRowUserId?.trim()).toBe(trimmedUserId);
-    }
+    // Every row shown is the searched user's. The filtered list replaces the old rows after the
+    // URL changes (React Router renders navigations in a transition), so retry until it has.
+    await expect(async () => {
+      const ids = await page
+        .locator('tbody tr td:nth-child(4)')
+        .evaluateAll((cells) => cells.map((cell) => cell.getAttribute('data-user-id')?.trim() ?? ''));
+      for (const id of ids) expect(id).toBe(trimmedUserId);
+    }).toPass({ timeout: 15_000 });
   });
 
   // Owner rule 2026-11-11: pickers open with content before anything is typed
