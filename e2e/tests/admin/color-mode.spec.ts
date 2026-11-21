@@ -146,7 +146,14 @@ test.describe('Accounts admin: light and dark', () => {
 				problems.push(`${route} ${mode}: page colour ${bg} (theme "${theme}", at ${new URL(page.url()).pathname}${new URL(page.url()).search}, HTTP ${res?.status() ?? '?'})`);
 			}
 			await expect(page.getByTestId('theme-toggle'), `${route} ${mode}`).toBeAttached();
-			const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+			// The theme builder's live preview (sandbox="" srcdoc iframe) is a scaled picture of Auth's
+			// own sign-in page, not admin UI. Playwright 1.65 + @axe-core/playwright 4.14 hang in axe's
+			// cross-frame finishRun (its context.newPage() fails) whenever such a frame is on the page,
+			// so the sweep checks the admin page around it and leaves the preview out.
+			const result = await new AxeBuilder({ page })
+				.exclude('[data-testid="theme-preview"]')
+				.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+				.analyze();
 			for (const v of result.violations) {
 				problems.push(`${route} ${mode}: ${v.id} ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
 			}
