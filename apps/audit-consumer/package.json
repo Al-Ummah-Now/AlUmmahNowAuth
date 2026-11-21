@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@al-ummah-now/openauth": "1.0.59",
-    "@types/node": "^24.8.1"
+    "@types/node": "^26.6.6"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.9.0",
