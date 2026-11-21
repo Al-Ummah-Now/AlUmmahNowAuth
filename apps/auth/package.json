@@ -58,9 +58,9 @@
     "@cloudflare/vitest-plugin": "^1.9.0",
     "@cloudflare/workers-types": "^4.20251128.0",
     "@vitest/coverage-v8": "^4.1.12",
-    "hono": "^4.13.16",
+    "hono": "^4.13.19",
     "typescript": "5.9.3",
     "vitest": "^4.1.12",
-    "wrangler": "~4.150.0"
+    "wrangler": "~4.164.0"
   }
 }
