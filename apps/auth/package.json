@@ -50,8 +50,8 @@
   "dependencies": {
     "@al-ummah-now/openauth": "1.0.58",
     "@types/node": "^24.10.1",
-    "jose": "^6.1.0",
-    "resend": "^6.5.2",
+    "jose": "^6.2.17",
+    "resend": "^6.38.1",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
