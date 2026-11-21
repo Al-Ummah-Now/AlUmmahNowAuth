@@ -344,7 +344,7 @@ export async function verifyAdminRequest(
         },
       };
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'M2M authentication failed');
+      throw new Error(error instanceof Error ? error.message : 'M2M authentication failed', { cause: error });
     }
   }
 

@@ -40,7 +40,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // No landing page: without a usable admin session requireAuth throws a
   // redirect into sign-in (silent when the browser is signed in to Al Ummah Now)
-  let user: { id: string; email: string; roles: string[] } | null = null;
+  let user: { id: string; email: string; roles: string[] } | null;
   try {
     user = await requireAuth(request, env, true);
     logger.logAuth('User authenticated', { userId: user.id, email: user.email });

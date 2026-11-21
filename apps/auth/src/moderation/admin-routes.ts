@@ -129,7 +129,7 @@ export function moderationAdminRoutes() {
 	const decisionRoute = (path: string, decision: Decision) =>
 		app.post(`/:id/${path}`, decide, async (c) => {
 			const admin = c.get('adminUser')!;
-			let body: unknown = {};
+			let body: unknown;
 			try {
 				body = await c.req.json();
 			} catch {
