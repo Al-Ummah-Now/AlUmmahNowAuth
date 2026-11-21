@@ -72,7 +72,7 @@ test.describe('Admin Audit View', () => {
     // Verify page title and header (h2 is used in the admin layout)
     await expect(page.locator('h2:has-text("Audit Logs")')).toBeVisible();
     // Look for the card description which is unique on the page
-    await expect(page.locator('text=/View and filter system audit logs/i')).toBeVisible();
+    await expect(page.locator('text=/Filter by event, severity, user and time/i')).toBeVisible();
 
     // Wait for audit events to be processed before checking table headers
     // The login creates audit events asynchronously, and the table only renders when events exist

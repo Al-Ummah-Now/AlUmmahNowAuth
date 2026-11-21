@@ -29,7 +29,7 @@ import { getCloudflare } from "../lib/cloudflare-context";
 export const meta: MetaFunction = () => {
   return [
     { title: "Audit Logs - Al Ummah Now Admin" },
-    { name: "description", content: "View system audit logs and security events" },
+    { name: "description", content: "Security events and admin actions." },
   ];
 };
 

@@ -58,6 +58,14 @@ const SESSION_ROWS = Array.from({ length: 50 }, (_, i) => {
     device: { ipAddress: i % 2 ? `198.51.100.${10 + rand(200)}` : `203.0.113.${10 + rand(200)}`, userAgent: DEVICES[rand(DEVICES.length)] },
   };
 }).sort((x, y) => y.lastUsed - x.lastUsed);
+const NAMES: Record<string, string> = {
+  "u-10": "Yusuf Rahman", "u-11": "Khadija Noor", "u-12": "مريم الحسن", "u-13": "Ibrahim Saeed", "u-14": "Fatima Zahra", "u-15": "Bilal Hamdan",
+  "u-16": "Aisha Karim", "u-17": "Zaid Mansour", "u-18": "Huda Qasim", "u-19": "Tariq Aziz", "u-20": "Safiya Omar", "u-21": "Idris Farouk",
+};
+// Everyone who signed in within 24h was active since, so all of them are on this newest-first page
+const LOGINS_24H = SESSION_ROWS.filter((r) => r.authenticatedAt * 1000 >= NOW - DAY).length;
+// The audit's sign-in is the newest session's sign-in: same person, time and IP
+const NEWEST_SIGN_IN = SESSION_ROWS.reduce((a, b) => (b.authenticatedAt > a.authenticatedAt ? b : a));
 const ADMIN = { id: "admin-1", email: "omar.saleh@mail.alummahnow.net" };
 
 export const FIXTURES: Record<PageName, unknown> = {
@@ -73,6 +81,7 @@ export const FIXTURES: Record<PageName, unknown> = {
   },
   users: {
     users: [
+      { id: "admin-1", email: "omar.saleh@mail.alummahnow.net", name: "Omar Saleh", created_at: new Date(ago(71, 4, 22, 9)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
       { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", name: "Yusuf Rahman", created_at: new Date(ago(40, 6, 3, 51)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
       { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "مريم الحسن", created_at: new Date(ago(12, 2, 44, 18)).toISOString(), roles: [{ id: "r-2", name: "Moderator" }] },
       { id: "u-11", name: "Khadija Noor", email: "khadija.noor@mail.alummahnow.net", created_at: new Date(ago(19, 11, 26, 9)).toISOString(), roles: [] },
@@ -102,18 +111,18 @@ export const FIXTURES: Record<PageName, unknown> = {
   },
   audit: {
     events: [
-      { id: 1, timestamp: new Date(ago(0, 0, 47, 12)).toISOString(), event_type: "auth.login.success", severity: "info", user_id: "u-10", ip_address: "203.0.113.7", user_agent: null, success: true, error_message: null, metadata: {} },
+      { id: 1, timestamp: new Date(NEWEST_SIGN_IN.authenticatedAt * 1000).toISOString(), event_type: "auth.login.success", severity: "info", user_id: NEWEST_SIGN_IN.userId, ip_address: NEWEST_SIGN_IN.device.ipAddress, user_agent: null, success: true, error_message: null, metadata: {} },
       { id: 2, timestamp: new Date(ago(0, 2, 13, 38)).toISOString(), event_type: "auth.login.failure", severity: "warning", user_id: "u-11", ip_address: "198.51.100.4", user_agent: null, success: false, error_message: null, metadata: {} },
-    ],
+    ].sort((x, y) => Date.parse(y.timestamp) - Date.parse(x.timestamp)),
     pagination: { page: 1, limit: 50, total: 2, pages: 1 },
     filters: {},
     user: ADMIN,
     authServerUrl: "",
-    names: { "u-10": "Yusuf Rahman", "u-11": "Khadija Noor" },
+    names: NAMES,
   },
   sessions: {
     sessions: SESSION_ROWS,
-    stats: { totalSessions: 1250, activeSessions: 10, loginsLast24h: 412, uniqueUsers: 900 },
+    stats: { totalSessions: 1250, activeSessions: 10, loginsLast24h: LOGINS_24H, uniqueUsers: 900 },
     suspicious: { multipleIPsInShortTime: [{ userId: "u-11", email: "khadija.noor@mail.alummahnow.net", ipCount: 4, ipAddresses: ["198.51.100.4", "198.51.100.9", "203.0.113.58", "203.0.113.121"] }], failedThenSuccessfulLogins: [] },
     total: 1250,
     limit: 50,
