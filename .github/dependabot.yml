@@ -38,6 +38,11 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+    ignore:
+      # Our own openauth fork: each version is pinned on purpose when the fork releases.
+      # GitHub Packages' "latest" tag lags the newest publish, so Dependabot proposed
+      # 1.0.59 -> 1.0.58 (a downgrade) and 1.0.18 -> 1.0.58 for packages/ui (#458).
+      - dependency-name: "@al-ummah-now/openauth"
 
   # GitHub Actions: workflows and the composite actions in .github/actions.
   # Minor and patch updates arrive as one PR; majors stay separate.

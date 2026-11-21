@@ -25,13 +25,13 @@ jobs:
     name: Deploy to QA
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -290,13 +290,13 @@ jobs:
         shard: [1, 2]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -342,7 +342,7 @@ jobs:
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET -- e2e-report test-results
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-results-admin-audit-${{ matrix.shard }}
@@ -361,13 +361,13 @@ jobs:
         shard: [1, 2]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -416,7 +416,7 @@ jobs:
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET --env E2E_MODERATION_CLIENT_SECRET -- e2e-report test-results
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-results-admin-users-${{ matrix.shard }}
@@ -435,13 +435,13 @@ jobs:
         shard: [1, 2]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -487,7 +487,7 @@ jobs:
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET -- e2e-report test-results
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-results-auth-${{ matrix.shard }}
@@ -502,13 +502,13 @@ jobs:
     needs: [deploy-qa]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -554,7 +554,7 @@ jobs:
         run: bash scripts/ci/scan-e2e-output.sh --env E2E_CODE_SINK_SECRET --env RESEND_API_KEY --env TEST_PROMOTE_SECRET -- e2e-report test-results
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-results-profile-integration
