@@ -10,7 +10,6 @@
  * Timestamps are stored as INTEGER (Unix epoch milliseconds).
  */
 
-import type { D1Database } from '@cloudflare/workers-types';
 import type { AccountSession } from '../types/sessions';
 import { parseUserAgent } from '../utils/user-agent';
 

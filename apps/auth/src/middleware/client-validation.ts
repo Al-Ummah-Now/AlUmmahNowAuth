@@ -5,8 +5,6 @@
  * open redirect vulnerabilities and unauthorized client access.
  */
 
-import type { D1Database } from '@cloudflare/workers-types';
-
 /**
  * Client validation result
  */

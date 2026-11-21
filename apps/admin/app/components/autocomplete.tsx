@@ -119,14 +119,15 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
         setInitial(list);
         setState((s) => showInitial(s, list));
       });
-  }, []);
+    // setInitial/setState are stable; listed because the React Compiler lint can't tell inside .then/.catch
+  }, [setInitial, setState]);
   useEffect(() => () => initialAbort.current?.abort(), []);
 
   const openInitial = useCallback(() => {
     if (!initialOn) return;
     setState((s) => (s.query.trim().length >= MIN_QUERY ? { ...s, open: s.options.length > 0 } : showInitial({ ...s, open: true }, initialRef.current)));
     if (!initialRef.current || (initialRef.current.status === "error" && initialRef.current.items.length === 0)) loadInitial(null);
-  }, [initialOn, loadInitial]);
+  }, [initialOn, loadInitial, setState]);
 
   const loadMore = useCallback(() => {
     const list = initialRef.current;
@@ -194,7 +195,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
       onChange?.(id, item);
       if (submitOnChange) hiddenRef.current?.form?.requestSubmit();
     },
-    [onChange, submitOnChange],
+    [onChange, submitOnChange, setEditing, setPicked, setState],
   );
 
   const choose = useCallback(
@@ -212,7 +213,7 @@ export function UserAutocomplete({ mode, label, name, defaultValue = "", hrefFor
       if (option.type === "suggestion") setValue(option.suggestion.id, option.suggestion);
       else setValue(option.id, null);
     },
-    [fullSearch, hrefFor, mode, setValue],
+    [fullSearch, hrefFor, mode, setValue, setState],
   );
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
