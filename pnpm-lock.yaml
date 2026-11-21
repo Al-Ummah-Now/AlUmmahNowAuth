@@ -40,14 +40,14 @@ importers:
     dependencies:
       '@al-ummah-now/openauth':
         specifier: 1.0.59
-        version: 1.0.59(arctic@3.7.0)(hono@4.13.16)
+        version: 1.0.59(arctic@3.7.0)(hono@4.13.19)
     devDependencies:
       '@axe-core/playwright':
         specifier: 4.14.0
         version: 4.14.0(playwright-core@1.65.1)
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1)
+        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)))
       '@cloudflare/workers-types':
         specifier: ^5.20261118.1
         version: 5.20261121.1
@@ -95,7 +95,7 @@ importers:
     dependencies:
       '@al-ummah-now/openauth':
         specifier: 1.0.59
-        version: 1.0.59(arctic@3.7.0)(hono@4.13.16)
+        version: 1.0.59(arctic@3.7.0)(hono@4.13.19)
       '@al-ummah-now/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -216,14 +216,14 @@ importers:
     dependencies:
       '@al-ummah-now/openauth':
         specifier: 1.0.59
-        version: 1.0.59(arctic@3.7.0)(hono@4.13.16)
+        version: 1.0.59(arctic@3.7.0)(hono@4.13.19)
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1)
+        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)))
       '@cloudflare/workers-types':
         specifier: ^5.20261118.1
         version: 5.20261121.1
@@ -244,7 +244,7 @@ importers:
     dependencies:
       '@al-ummah-now/openauth':
         specifier: 1.0.59
-        version: 1.0.59(arctic@3.7.0)(hono@4.13.16)
+        version: 1.0.59(arctic@3.7.0)(hono@4.13.19)
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
@@ -260,7 +260,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: ^1.9.0
-        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1)
+        version: 1.9.0(@types/node@26.6.6)(vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)))
       '@cloudflare/workers-types':
         specifier: ^5.20261118.1
         version: 5.20261121.1
@@ -269,7 +269,7 @@ importers:
         version: 5.1.1(vitest@5.1.1)
       hono:
         specifier: '>=4.12.25'
-        version: 4.13.16
+        version: 4.13.19
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -284,7 +284,7 @@ importers:
     dependencies:
       '@al-ummah-now/openauth':
         specifier: 1.0.59
-        version: 1.0.59(arctic@3.7.0)(hono@4.13.16)
+        version: 1.0.59(arctic@3.7.0)(hono@4.13.19)
       valibot:
         specifier: ^1.4.2
         version: 1.5.0(typescript@5.9.3)
@@ -309,7 +309,7 @@ importers:
     dependencies:
       '@al-ummah-now/openauth':
         specifier: 1.0.18
-        version: 1.0.18(arctic@3.7.0)(hono@4.13.16)
+        version: 1.0.18(arctic@3.7.0)(hono@4.13.19)
       lucide-react:
         specifier: '>=0.400.0'
         version: 0.555.0(react@19.3.1)
@@ -334,7 +334,7 @@ packages:
       hono: '>=4.12.25'
 
   '@al-ummah-now/openauth@1.0.59':
-    resolution: {integrity: sha1-sRwuB5PN0hULcfpnVWuZUirNvUI=, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.59/b11c2e0793cdd2150b71fa67556b99522acdbd42}
+    resolution: {integrity: sha512-C2BYLD7TXtyVOQ/XFWwig4mq4/0BhfmbzVmQXQps66mf8ttxXthMJnyXlSJM7RBfva+wV7xntpQp5eOMwtoLpA==, tarball: https://npm.pkg.github.com/download/@al-ummah-now/openauth/1.0.59/b11c2e0793cdd2150b71fa67556b99522acdbd42}
     hasBin: true
     peerDependencies:
       arctic: ^2.2.2
@@ -2198,8 +2198,8 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
-  hono@4.13.16:
-    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
+  hono@4.13.19:
+    resolution: {integrity: sha512-KmXvQAXwcAHV+muzbIwoJ23niEB5nMoDVr9WcRkU8mvjUECm/1+7v4Jgp7P7a+H6MLFrh+vXrGonGrGS+RQfkA==}
     engines: {node: '>=16.9.0'}
 
   ignore@5.3.2:
@@ -2957,21 +2957,21 @@ packages:
 
 snapshots:
 
-  '@al-ummah-now/openauth@1.0.18(arctic@3.7.0)(hono@4.13.16)':
+  '@al-ummah-now/openauth@1.0.18(arctic@3.7.0)(hono@4.13.19)':
     dependencies:
       '@standard-schema/spec': 1.0.0-beta.3
       arctic: 3.7.0
       aws4fetch: 1.0.20
-      hono: 4.13.16
+      hono: 4.13.19
       jose: 5.9.6
 
-  '@al-ummah-now/openauth@1.0.59(arctic@3.7.0)(hono@4.13.16)':
+  '@al-ummah-now/openauth@1.0.59(arctic@3.7.0)(hono@4.13.19)':
     dependencies:
       '@simplewebauthn/server': 13.3.3
       '@standard-schema/spec': 1.0.0-beta.3
       arctic: 3.7.0
       aws4fetch: 1.0.20
-      hono: 4.13.16
+      hono: 4.13.19
       jose: 5.9.6
 
   '@axe-core/playwright@4.14.0(playwright-core@1.65.1)':
@@ -3114,7 +3114,7 @@ snapshots:
       - utf-8-validate
       - workerd
 
-  '@cloudflare/vitest-plugin@1.9.0(@types/node@26.6.6)(vitest@5.1.1)':
+  '@cloudflare/vitest-plugin@1.9.0(@types/node@26.6.6)(vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)))':
     dependencies:
       cjs-module-lexer: 1.2.3
       esbuild: 0.28.2
@@ -4753,7 +4753,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  hono@4.13.16: {}
+  hono@4.13.19: {}
 
   ignore@5.3.2: {}
 
