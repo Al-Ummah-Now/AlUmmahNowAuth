@@ -38,7 +38,11 @@ describe('RequestTimer', () => {
 
 	it('records a stage that throws', async () => {
 		const timer = new RequestTimer();
-		await expect(timer.stage('issuer', async () => Promise.reject(new Error('x')))).rejects.toThrow('x');
+		await expect(
+			timer.stage('issuer', async () => {
+				throw new Error('x');
+			}),
+		).rejects.toThrow('x');
 		expect(timer.serverTiming()).toContain('issuer;dur=');
 	});
 

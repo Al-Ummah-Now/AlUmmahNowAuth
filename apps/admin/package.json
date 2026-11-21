@@ -21,7 +21,7 @@
     "types": "wrangler types --env-file .dev.vars.example --strict-vars=false"
   },
   "dependencies": {
-    "@al-ummah-now/openauth": "1.0.58",
+    "@al-ummah-now/openauth": "1.0.59",
     "@al-ummah-now/ui": "workspace:*",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.11",
@@ -47,7 +47,6 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "~1.63.2",
-    "@cloudflare/vitest-pool-workers": "~0.12.21",
     "@cloudflare/workers-types": "^4.20251128.0",
     "@react-router/dev": "^7.18.5",
     "@tailwindcss/vite": "^4.1.16",
@@ -56,13 +55,13 @@
     "@types/node": "^24",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@vitest/coverage-v8": "^3.2.0",
+    "@vitest/coverage-v8": "^4.1.12",
     "happy-dom": "^21.0.4",
     "tailwindcss": "^4.1.17",
     "typescript": "^5.9.3",
     "vite": "^7.3.7",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^3.2.6",
+    "vitest": "^4.1.12",
     "wrangler": "~4.150.0"
   }
 }

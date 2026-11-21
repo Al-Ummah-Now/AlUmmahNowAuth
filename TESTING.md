@@ -4,16 +4,16 @@ This document provides comprehensive information about the testing infrastructur
 
 ## Overview
 
-The project uses [Vitest](https://vitest.dev/) with [@cloudflare/vitest-pool-workers](https://github.com/cloudflare/workers-sdk/tree/main/fixtures/vitest-pool-workers-examples) for testing Cloudflare Workers applications. This setup allows tests to run in an environment that closely mimics the production Cloudflare Workers runtime.
+The project uses [Vitest](https://vitest.dev/) with [@cloudflare/vitest-plugin](https://developers.cloudflare.com/workers/testing/vitest-integration/) for testing Cloudflare Workers applications. This setup allows tests to run in an environment that closely mimics the production Cloudflare Workers runtime.
 
 ## Test Infrastructure
 
 ### Dependencies
 
-- **vitest**: ^2.1.8 - Fast unit test framework
-- **@cloudflare/vitest-pool-workers**: ^0.5.29 - Cloudflare Workers test environment
+- **vitest**: ^4.1 - Fast unit test framework
+- **@cloudflare/vitest-plugin**: ^1.9 - Cloudflare Workers test environment
 - **@cloudflare/workers-types**: ^4.20250110.0 - TypeScript types for Workers API
-- **@vitest/coverage-v8**: ^2.1.8 - Code coverage reporting
+- **@vitest/coverage-v8**: ^4.1 - Code coverage reporting
 
 ### Configuration
 
@@ -21,30 +21,21 @@ Each app has a `vitest.config.ts` file that configures:
 
 **Example (`apps/auth/vitest.config.ts`):**
 ```typescript
-import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkersConfig({
+export default defineConfig({
+  plugins: [
+    cloudflareTest({
+      wrangler: { configPath: "./wrangler.json" },
+      miniflare: { d1Persist: false },
+    }),
+  ],
   test: {
-    poolOptions: {
-      workers: {
-        miniflare: {
-          d1Databases: ["AUTH_DB"],
-          kvNamespaces: ["AUTH_STORAGE"],
-          compatibilityFlags: ["nodejs_compat"],
-          compatibilityDate: "2024-12-30",
-        },
-      },
-    },
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "json", "html"],
-      include: ["src/**/*.ts"],
-      exclude: [
-        "src/**/*.test.ts",
-        "src/**/*.spec.ts",
-        "src/index.ts",
-      ],
-    },
+    // One worker, files in sequence. Storage and modules are isolated per
+    // test file (each file sets up its own tables via test-setup.ts).
+    maxWorkers: 1,
+    fileParallelism: false,
   },
 });
 ```

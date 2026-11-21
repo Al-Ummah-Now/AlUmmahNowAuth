@@ -349,7 +349,7 @@ This project has comprehensive test coverage with both **unit tests** (Vitest) a
 
 ### Unit Tests
 
-Uses [Vitest](https://vitest.dev/) with the [@cloudflare/vitest-pool-workers](https://github.com/cloudflare/workers-sdk/tree/main/fixtures/vitest-pool-workers-examples) plugin for testing Cloudflare Workers applications.
+Uses [Vitest](https://vitest.dev/) with the [@cloudflare/vitest-plugin](https://developers.cloudflare.com/workers/testing/vitest-integration/) plugin for testing Cloudflare Workers applications.
 
 ```bash
 # Run all unit tests across all apps
@@ -440,21 +440,21 @@ Each app has a `vitest.config.ts` file that configures:
 
 Example configuration:
 ```typescript
-import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkersConfig({
+export default defineConfig({
+  plugins: [
+    cloudflareTest({
+      wrangler: { configPath: "./wrangler.json" },
+      miniflare: { d1Persist: false },
+    }),
+  ],
   test: {
-    poolOptions: {
-      workers: {
-        wrangler: {
-          configPath: "./wrangler.json",
-        },
-        miniflare: {
-          d1Databases: ["AUTH_DB"],
-          kvNamespaces: ["AUTH_STORAGE"],
-        },
-      },
-    },
+    // One worker, files in sequence. Storage and modules are isolated per
+    // test file (each file sets up its own tables via test-setup.ts).
+    maxWorkers: 1,
+    fileParallelism: false,
   },
 });
 ```
