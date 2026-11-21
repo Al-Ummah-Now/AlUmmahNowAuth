@@ -406,9 +406,9 @@ const clients = {
 const audit = {
   en: {
     title: "Audit Logs",
-    intro: "View system audit logs and security events",
+    intro: "Security events and admin actions.",
     tableTitle: "Audit Events",
-    tableIntro: "View and filter system audit logs and security events",
+    tableIntro: "Filter by event, severity, user and time.",
     showFilters: "Show Filters",
     hideFilters: "Hide Filters",
     eventType: "Event Type",
