@@ -4,15 +4,15 @@ import { PageApp, type PageName } from "./app";
 
 declare global {
   interface Window {
-    __page: { page: PageName; url: string };
+    __page: { page: PageName; url: string; authServerUrl?: string };
     __hydrationErrors: string[];
     __hydrated: boolean;
   }
 }
 
 window.__hydrationErrors = [];
-const { page, url } = window.__page;
-hydrateRoot(document.getElementById("root")!, <PageApp page={page} url={url} />, {
+const { page, url, authServerUrl } = window.__page;
+hydrateRoot(document.getElementById("root")!, <PageApp page={page} url={url} authServerUrl={authServerUrl} />, {
   onRecoverableError: (error) => {
     window.__hydrationErrors.push(String((error as Error)?.message ?? error));
   },

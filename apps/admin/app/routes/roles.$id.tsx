@@ -37,6 +37,9 @@ import {
 import { requireAuth } from "../lib/auth.server";
 import { actorLabel, isSystemUserId } from "../lib/system-accounts";
 import { langOf } from "../lib/deletion-copy";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
+import { withLang } from "../lib/shell-copy";
+import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
 import { getAuthServerUrl } from "../lib/config";
 import { AdminLayout } from "../components/admin-layout";
 import { logger } from "../lib/logger.server";
@@ -54,11 +57,12 @@ import {
 } from "../lib/rbac-api.server";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+export const meta: MetaFunction<typeof loader> = ({ loaderData, location }) => {
   const role = loaderData?.role;
+  const lang = langOf(location.search);
   return [
-    { title: `${role?.name || 'Role'} - Al Ummah Now Admin` },
-    { name: "description", content: "Manage role details and permissions" },
+    { title: pageTitle("roles", lang, role?.name ? roleLabel(role.name, lang) : adminCopy(lang).role.fallbackName) },
+    { name: "description", content: adminCopy(lang).role.permissionsIntro },
   ];
 };
 
@@ -164,9 +168,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     });
   }
 
+  const copy = adminCopy(langOf(new URL(request.url).search));
   const roleId = params.id;
   if (!roleId) {
-    return { error: "Role ID is required" };
+    return { error: copy.role.idRequired };
   }
 
   const formData = await request.formData();
@@ -178,7 +183,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const description = formData.get("description") as string;
 
       if (!name) {
-        return { error: "Role name is required" };
+        return { error: copy.role.nameRequired };
       }
 
       const result = await updateRole(request, env, roleId, {
@@ -197,7 +202,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const permissionId = formData.get("permissionId") as string;
 
       if (!permissionId) {
-        return { error: "Permission ID is required" };
+        return { error: copy.role.permissionRequired };
       }
 
       const result = await grantPermissionToRole(request, env, roleId, permissionId);
@@ -213,7 +218,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const permissionId = formData.get("permissionId") as string;
 
       if (!permissionId) {
-        return { error: "Permission ID is required" };
+        return { error: copy.role.permissionRequired };
       }
 
       const result = await revokePermissionFromRole(request, env, roleId, permissionId);
@@ -229,7 +234,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const userId = formData.get("userId") as string;
 
       if (!userId) {
-        return { error: "User ID is required" };
+        return { error: copy.role.userRequired };
       }
 
       const result = await removeUserFromRole(request, env, roleId, userId);
@@ -241,10 +246,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       return { success: true, message: "Role removed from user successfully" };
     }
 
-    return { error: "Unknown intent" };
+    return { error: copy.common.unknownAction };
   } catch (error) {
     console.error("Action error:", error);
-    return { error: error instanceof Error ? error.message : "Action failed" };
+    return { error: error instanceof Error ? error.message : copy.common.actionFailed };
   }
 }
 
@@ -253,6 +258,8 @@ export default function RoleDetail() {
   const fetcher = useFetcher();
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
+  const t = adminCopy(lang).role;
+  const c = adminCopy(lang).common;
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [addPermissionOpen, setAddPermissionOpen] = useState(false);
   const [roleName, setRoleName] = useState(role.name);
@@ -353,10 +360,13 @@ export default function RoleDetail() {
 
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
-      <Link to="/roles" className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-link)] hover:underline">
+      <Link to={withLang("/roles", lang)} className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-link)] hover:underline">
         <ArrowLeft className="h-4 w-4 rtl:-scale-x-100" aria-hidden="true" />
-        Roles
+        {t.back}
       </Link>
+      {fetcher.data?.error && (
+        <div role="alert" className="mb-4 p-3 ui-alert-error rounded-lg">{fetcher.data.error}</div>
+      )}
       <div>
         <div className="space-y-6">
           {/* Role Header */}
@@ -366,27 +376,27 @@ export default function RoleDetail() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
                     <Shield className="h-6 w-6 text-[var(--color-link)]" />
-                    <CardTitle className="text-2xl">{role.name}</CardTitle>
+                    <CardTitle className="text-2xl"><h2><bdi>{roleLabel(role.name, lang)}</bdi></h2></CardTitle>
                     {isSystemRole && (
                       <Badge variant="outline" className="bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30">
-                        System Role
+                        {t.systemRole}
                       </Badge>
                     )}
                   </div>
                   <CardDescription>
-                    {role.description || "No description provided"}
+                    {role.description ? <bdi>{role.description}</bdi> : t.noDescription}
                   </CardDescription>
                   <div className="flex items-center gap-4 text-sm text-[var(--color-muted-foreground)]">
-                    <span>Created: {formatDate(role.created_at)}</span>
+                    <span>{t.created(formatDate(role.created_at, lang))}</span>
                     {role.updated_at !== role.created_at && (
-                      <span>Updated: {formatDate(role.updated_at)}</span>
+                      <span>{t.updated(formatDate(role.updated_at, lang))}</span>
                     )}
                   </div>
                 </div>
                 {!isSystemRole && (
                   <Button onClick={() => setEditDialogOpen(true)}>
-                    <Settings className="h-4 w-4 mr-2" />
-                    Edit Role
+                    <Settings className="h-4 w-4 me-2" />
+                    {t.edit}
                   </Button>
                 )}
               </div>
@@ -400,16 +410,14 @@ export default function RoleDetail() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Key className="h-5 w-5" />
-                    Permissions ({role.permissions.length})
+                    {t.permissions(role.permissions.length)}
                   </CardTitle>
-                  <CardDescription>
-                    Permissions granted to users with this role
-                  </CardDescription>
+                  <CardDescription>{t.permissionsIntro}</CardDescription>
                 </div>
                 {!isSystemRole && (
                   <Button onClick={() => setAddPermissionOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Permission
+                    <Plus className="h-4 w-4 me-2" />
+                    {t.addPermission}
                   </Button>
                 )}
               </div>
@@ -417,23 +425,19 @@ export default function RoleDetail() {
             <CardContent>
               {isSystemRole && (
                 <div className="mb-4 p-4 rounded-md ui-alert-warning">
-                  <p className="text-sm">
-                    This is a system role. Permissions cannot be modified.
-                  </p>
+                  <p className="text-sm">{t.systemNote}</p>
                 </div>
               )}
 
               {role.permissions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <Key className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No permissions assigned</h3>
-                  <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
-                    Add permissions to define what users with this role can do.
-                  </p>
+                  <h3 className="text-lg font-semibold mb-2">{t.noPermissions}</h3>
+                  <p className="text-sm text-[var(--color-muted-foreground)] mb-4">{t.noPermissionsText}</p>
                   {!isSystemRole && (
                     <Button onClick={() => setAddPermissionOpen(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Permission
+                      <Plus className="h-4 w-4 me-2" />
+                      {t.addPermission}
                     </Button>
                   )}
                 </div>
@@ -441,7 +445,7 @@ export default function RoleDetail() {
                 <div className="space-y-6">
                   {Object.entries(permissionsByResource).map(([resource, permissions]) => (
                     <div key={resource} className="space-y-3">
-                      <h3 className="text-sm font-semibold text-[var(--color-foreground)] uppercase">
+                      <h3 className="text-sm font-semibold text-[var(--color-foreground)] uppercase" dir="ltr" lang="en">
                         {resource}
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -451,12 +455,12 @@ export default function RoleDetail() {
                             className={`flex items-center justify-between p-3 rounded-md border ${getResourceColor(permission.resource)}`}
                           >
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">
+                              <p className="text-sm font-medium truncate" dir="ltr" lang="en">
                                 {permission.name}
                               </p>
                               {permission.description && (
                                 <p className="text-xs opacity-80 truncate">
-                                  {permission.description}
+                                  <bdi>{permission.description}</bdi>
                                 </p>
                               )}
                             </div>
@@ -464,9 +468,10 @@ export default function RoleDetail() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 ml-2 shrink-0"
+                                className="h-8 w-8 ms-2 shrink-0"
                                 onClick={() => setPermissionToRemove(permission)}
-                                title="Remove permission"
+                                title={t.removePermissionOf(permission.name)}
+                                aria-label={t.removePermissionOf(permission.name)}
                               >
                                 <X className="h-4 w-4" />
                               </Button>
@@ -487,53 +492,48 @@ export default function RoleDetail() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5" />
-                  Users with this Role ({usersWithRole.length})
+                  {t.users(usersWithRole.length)}
                 </CardTitle>
-                <CardDescription>
-                  Users who have been assigned this role
-                </CardDescription>
+                <CardDescription>{t.usersIntro}</CardDescription>
               </div>
             </CardHeader>
             <CardContent>
               {usersWithRole.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <Users className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No users assigned</h3>
-                  <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
-                    No users currently have this role assigned.
-                  </p>
+                  <h3 className="text-lg font-semibold mb-2">{t.noUsers}</h3>
+                  <p className="text-sm text-[var(--color-muted-foreground)] mb-4">{t.noUsersText}</p>
                   <Button asChild>
-                    <Link to="/users">
-                      Go to User Management
-                    </Link>
+                    <Link to={withLang("/users", lang)}>{t.goToUsers}</Link>
                   </Button>
                 </div>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Assigned Date</TableHead>
-                      <TableHead>Assigned By</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{c.email}</TableHead>
+                      <TableHead>{t.colAssigned}</TableHead>
+                      <TableHead>{t.colAssignedBy}</TableHead>
+                      <TableHead className="text-end">{c.actions}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {usersWithRole.map((user) => (
                       <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.email}</TableCell>
+                        <TableCell className="font-medium"><bdi>{user.email}</bdi></TableCell>
                         <TableCell>
-                          {formatDate(user.assigned_at)}
+                          {formatDate(user.assigned_at, lang)}
                         </TableCell>
                         <TableCell>
-                          {actorLabel(user.assigned_by, lang)}
+                          <bdi>{actorLabel(user.assigned_by, lang)}</bdi>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-end">
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => setUserToRemove(user)}
-                            title="Remove role from user"
+                            title={t.removeFromUser(user.email)}
+                            aria-label={t.removeFromUser(user.email)}
                           >
                             <Trash2 className="h-4 w-4 text-[var(--color-destructive-text)]" />
                           </Button>
@@ -552,14 +552,12 @@ export default function RoleDetail() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Role</DialogTitle>
-            <DialogDescription>
-              Update the role name and description.
-            </DialogDescription>
+            <DialogTitle>{t.editTitle}</DialogTitle>
+            <DialogDescription>{t.editIntro}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{c.name}</Label>
               <Input
                 id="name"
                 value={roleName}
@@ -567,7 +565,7 @@ export default function RoleDetail() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{c.description}</Label>
               <Input
                 id="description"
                 value={roleDescription}
@@ -577,11 +575,11 @@ export default function RoleDetail() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
+              {c.cancel}
             </Button>
             <Button onClick={handleUpdateRole}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
+              <Save className="h-4 w-4 me-2" />
+              {t.saveChanges}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -591,31 +589,29 @@ export default function RoleDetail() {
       <Dialog open={addPermissionOpen} onOpenChange={setAddPermissionOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add Permission</DialogTitle>
-            <DialogDescription>
-              Grant a new permission to this role.
-            </DialogDescription>
+            <DialogTitle>{t.addTitle}</DialogTitle>
+            <DialogDescription>{t.addIntro}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="permission">Permission</Label>
-              <Select value={selectedPermission} onValueChange={setSelectedPermission}>
+              <Label htmlFor="permission">{t.permission}</Label>
+              <Select value={selectedPermission} onValueChange={setSelectedPermission} dir={lang === "ar" ? "rtl" : "ltr"}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a permission" />
+                  <SelectValue placeholder={t.selectPermission} />
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(unassignedPermissions).map(([resource, permissions]) => (
                     <div key={resource}>
-                      <div className="px-2 py-1.5 text-sm font-semibold text-[var(--color-muted-foreground)] uppercase">
+                      <div className="px-2 py-1.5 text-sm font-semibold text-[var(--color-muted-foreground)] uppercase" dir="ltr" lang="en">
                         {resource}
                       </div>
                       {permissions.map((permission) => (
                         <SelectItem key={permission.id} value={permission.id}>
                           <div>
-                            <div className="font-medium">{permission.name}</div>
+                            <div className="font-medium" dir="ltr" lang="en">{permission.name}</div>
                             {permission.description && (
                               <div className="text-xs text-[var(--color-muted-foreground)]">
-                                {permission.description}
+                                <bdi>{permission.description}</bdi>
                               </div>
                             )}
                           </div>
@@ -629,11 +625,11 @@ export default function RoleDetail() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddPermissionOpen(false)}>
-              Cancel
+              {c.cancel}
             </Button>
             <Button onClick={handleAddPermission} disabled={!selectedPermission}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Permission
+              <Plus className="h-4 w-4 me-2" />
+              {t.addPermission}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -643,17 +639,12 @@ export default function RoleDetail() {
       <AlertDialog open={!!permissionToRemove} onOpenChange={() => setPermissionToRemove(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Permission</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove the permission "{permissionToRemove?.name}" from this role?
-              Users with this role will lose access to this permission.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t.removePermissionTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.removePermissionBody(permissionToRemove?.name ?? "")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemovePermission}>
-              Remove
-            </AlertDialogAction>
+            <AlertDialogCancel>{c.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemovePermission}>{c.remove}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -662,17 +653,12 @@ export default function RoleDetail() {
       <AlertDialog open={!!userToRemove} onOpenChange={() => setUserToRemove(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Role from User</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove the role "{role.name}" from user "{userToRemove?.email}"?
-              This will revoke all permissions granted by this role.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t.removeUserTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.removeUserBody(roleLabel(role.name, lang), userToRemove?.email ?? "")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveUserRole}>
-              Remove
-            </AlertDialogAction>
+            <AlertDialogCancel>{c.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveUserRole}>{c.remove}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

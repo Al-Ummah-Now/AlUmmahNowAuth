@@ -107,6 +107,13 @@ export function formatMoney(amount: number, currency: string, lang: Lang | strin
  */
 export const sameSpaces = (s: string): string => s.replace(/[\u00A0\u202F\u2009]/g, ' ');
 
+/**
+ * Arabic long dates: macOS WebKit writes «١٢ نوفمبر، ٢٠٢٦» where Node and Chromium write
+ * «١٢ نوفمبر ٢٠٢٦», so a server render failed to hydrate in Safari (React #418). Node's form
+ * everywhere: no comma between the month name and the year.
+ */
+export const sameMonthYear = (s: string): string => s.replace(/([\u0600-\u06FF])، (?=[٠-٩]{4}(?![٠-٩]))/g, '$1 ');
+
 export function toDate(v: unknown): Date | null {
 	if (v === null || v === undefined || v === '') return null;
 	const d = v instanceof Date ? v : typeof v === 'number' ? new Date(v) : new Date(String(v));
@@ -116,7 +123,7 @@ export function toDate(v: unknown): Date | null {
 export function formatDate(v: unknown, lang: Lang | string, opts: Intl.DateTimeFormatOptions = { dateStyle: 'medium' }, en?: EnglishTag): string {
 	const d = toDate(v);
 	if (!d) return '';
-	const one = (o: Intl.DateTimeFormatOptions) => sameSpaces(new Intl.DateTimeFormat(intlLocale(lang, en), o).format(d));
+	const one = (o: Intl.DateTimeFormatOptions) => sameMonthYear(sameSpaces(new Intl.DateTimeFormat(intlLocale(lang, en), o).format(d)));
 	// A date with a time: each half on its own, joined the same way everywhere. ICU builds join them
 	// differently (WebKit on macOS: "12 Nov 2026 at 09:30", Node: "12 Nov 2026, 09:30"), which broke
 	// hydration; the joins below are Node's.

@@ -1,4 +1,5 @@
 import { formatDateMs, formatDateTimeMs } from "../lib/date-utils";
+import { pageTitle } from "../lib/admin-copy";
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useSearchParams, useNavigate } from "react-router";
@@ -26,12 +27,7 @@ import {
 } from "../lib/admin-api.server";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => {
-  return [
-    { title: "Audit Logs - Al Ummah Now Admin" },
-    { name: "description", content: "Security events and admin actions." },
-  ];
-};
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("audit", langOf(location.search)) }];
 
 interface LoaderData {
   events: Array<{
@@ -278,7 +274,7 @@ export default function AuditLogs() {
   const hasActiveFilters = eventTypeFilter || (severityFilter && severityFilter !== "all") || searchQuery || startDate || endDate;
 
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-6">
         <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
         <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>
@@ -324,7 +320,7 @@ export default function AuditLogs() {
 
                   <div className="grid gap-2">
                     <Label htmlFor="severity">{t.severity}</Label>
-                    <Select value={severityFilter} onValueChange={setSeverityFilter}>
+                    <Select value={severityFilter} onValueChange={setSeverityFilter} dir={dirOf(lang)}>
                       <SelectTrigger id="severity">
                         <SelectValue placeholder={t.allSeverities} />
                       </SelectTrigger>

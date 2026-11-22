@@ -17,6 +17,7 @@ import { AccountSwitcher } from "@al-ummah-now/ui";
 import { otherApps } from "../lib/app-links";
 import { langOf } from "../lib/deletion-copy";
 import { langSwitchHref, shellCopy, withLang, type NavKey } from "../lib/shell-copy";
+import { adminCopy } from "../lib/admin-copy";
 import { Brand, EnvBadge, LangButton, MenuButton } from "./site-header";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "../lib/utils";
@@ -48,15 +49,15 @@ interface AdminLayoutProps {
   authServerUrl?: string;
   /** epoch s: staff grace end while this admin has no passkey sign-in (AUTH-PASSKEYS) */
   passkeyGraceUntil?: number;
-  /** The page is written in both languages: its content follows ?lang= (others stay English). */
-  localized?: boolean;
 }
 
-export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil, localized }: AdminLayoutProps) {
+export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }: AdminLayoutProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
   const t = shellCopy(lang);
+  const sec = adminCopy(lang).security;
+  const menu = adminCopy(lang).accountMenu;
   const environment = useRouteLoaderData<{ environment?: string }>("root")?.environment;
   // Use lazy initializer to load from localStorage - avoids effect-based setState
   const [collapsed, setCollapsed] = useState(() => {
@@ -114,8 +115,9 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil, 
             <AccountSwitcher
               authServerUrl={authServerUrl}
               currentUser={user}
-              apps={otherApps(authServerUrl)}
+              apps={otherApps(authServerUrl, lang)}
               clientId="1448ed27-39a6-417d-b4c8-07f881e81269"
+              labels={menu}
             />
           )}
         </div>
@@ -176,21 +178,12 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil, 
           "ps-0"
         )}
       >
-        {/* Page content follows ?lang= on pages written in both languages (localized); the rest stay English */}
-        <div className="p-4 md:p-6" lang={lang === "ar" && !localized ? "en" : undefined} dir={lang === "ar" && !localized ? "ltr" : undefined}>
+        {/* Every page is written in both languages: its content follows ?lang= (the shell sets lang/dir on <html>) */}
+        <div className="p-4 md:p-6">
           {passkeyGraceUntil ? (
             <div role="status" data-testid="passkey-grace-banner" className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-muted)] p-3 text-sm text-[var(--color-foreground)]">
-              {localized && lang === "ar" ? (
-                <>
-                  أضف مفتاح مرور قبل {formatDate(passkeyGraceUntil * 1000, "ar", { dateStyle: "long", timeZone: "UTC" })}: بعد ذلك تحتاج أدوات الإدارة إلى تسجيل الدخول بمفتاح مرور.{" "}
-                  <Link className="font-semibold underline" to="/passkey-needed?mode=grace&lang=ar">إضافة مفتاح مرور</Link>
-                </>
-              ) : (
-                <>
-                  Add a passkey by {formatDate(passkeyGraceUntil * 1000, "en", { dateStyle: "long", timeZone: "UTC" })}: after that, the admin tools need a passkey sign-in.{" "}
-                  <Link className="font-semibold underline" to="/passkey-needed?mode=grace">Add a passkey</Link>
-                </>
-              )}
+              {sec.graceBanner(formatDate(passkeyGraceUntil * 1000, lang, { dateStyle: "long", timeZone: "UTC" }))}{" "}
+              <Link className="font-semibold underline" to={withLang("/passkey-needed?mode=grace", lang)}>{sec.addPasskey}</Link>
             </div>
           ) : null}
           {children}

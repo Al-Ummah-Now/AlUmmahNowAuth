@@ -1,4 +1,5 @@
 import { formatNumber } from "../../../../packages/ui/src/format.ts";
+import { pageTitle } from "../lib/admin-copy";
 import { formatDateMs } from "../lib/date-utils";
 import { pagesCopy } from "../lib/pages-copy";
 import { useState, useEffect, useRef } from "react";
@@ -48,12 +49,7 @@ import {
 } from "../lib/admin-api.server";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => {
-  return [
-    { title: "Users - Al Ummah Now Admin" },
-    { name: "description", content: "Manage user accounts" },
-  ];
-};
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("users", langOf(location.search)) }];
 
 interface LoaderData {
   users: Array<{
@@ -627,7 +623,7 @@ export default function Users() {
   );
 
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-6">
         <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
         <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>

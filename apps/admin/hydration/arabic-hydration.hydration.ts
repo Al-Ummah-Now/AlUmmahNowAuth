@@ -9,6 +9,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const ASCII_DIGIT = /[0-9]/;
+/** Words that stay in Latin letters on Arabic pages: protocol, format and product names. */
+const LATIN_NAMES = new Set(["OAuth", "OpenID", "RBAC", "WCAG", "AA", "CSS", "SVG", "PNG", "JPG", "WebP", "ICO", "zip", ".zip", "theme.json", "assets", "UTC", "IP", "English"]);
 const EASTERN_DIGIT = /[٠-٩]/;
 
 function watchErrors(page: Page): string[] {
@@ -28,8 +30,14 @@ async function hydrate(page: Page, path: string): Promise<string[]> {
   return [...errors, ...hydrationErrors];
 }
 
+/** Every admin page the harness renders (hydration/app.tsx PAGE_PATHS). */
+const PAGES = [
+  "dashboard", "users", "passkeys", "roles", "role", "sessions", "clients", "audit", "moderation", "moderation-request",
+  "themes", "theme", "deleted", "security", "signing-keys",
+] as const;
+
 for (const lang of ["ar", "en"] as const) {
-  for (const name of ["deleted", "users", "passkeys", "audit", "sessions", "clients"] as const) {
+  for (const name of PAGES) {
     test(`admin ${name} (${lang}) hydrates without errors`, async ({ page }) => {
       expect(await hydrate(page, `/admin/${name}?lang=${lang}`)).toEqual([]);
     });
@@ -61,8 +69,8 @@ test("Profile in Arabic: passkey dates and account times in ٠–٩", async ({ p
   expect(errors).toEqual([]);
 });
 
-// Every localized page in Arabic: no Arabic numerals 0–9 outside ids, emails, IPs, URLs and code
-for (const name of ["users", "passkeys", "audit", "sessions", "clients", "deleted"] as const) {
+// Every page in Arabic: no Arabic numerals 0–9 outside ids, emails, IPs, URLs and code
+for (const name of PAGES) {
   test(`admin ${name} in Arabic: right-to-left, Arabic words, ٠–٩`, async ({ page }) => {
     expect(await hydrate(page, `/admin/${name}?lang=ar`)).toEqual([]);
     const main = page.locator("main");
@@ -70,11 +78,14 @@ for (const name of ["users", "passkeys", "audit", "sessions", "clients", "delete
     // The visible text, without the values that stay as typed (bdi, code, dir=ltr, mono)
     const text = await main.evaluate((el) => {
       const copy = el.cloneNode(true) as HTMLElement;
-      copy.querySelectorAll("bdi, code, [dir=ltr], .font-mono, .sr-only, [hidden]").forEach((n) => n.remove());
+      copy.querySelectorAll("bdi, code, [dir=ltr], [dir=auto], .font-mono, .sr-only, [hidden]").forEach((n) => n.remove());
       return copy.innerText;
     });
     expect(text).toMatch(/[\u0600-\u06FF]/);
     expect(text, text).not.toMatch(ASCII_DIGIT);
+    // No English left: Latin letters only in names that stay as they are (protocols, formats, product names)
+    const english = (text.match(/[A-Za-z][A-Za-z.]+/g) ?? []).filter((word) => !LATIN_NAMES.has(word));
+    expect(english, text).toEqual([]);
     // Arabic numbers are never grouped (owner, 2026-11-21): «٬» reads like «٫»
     expect(await main.innerText()).not.toContain("٬");
   });

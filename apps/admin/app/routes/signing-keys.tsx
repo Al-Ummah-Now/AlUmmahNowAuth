@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { pageTitle } from "../lib/admin-copy";
 import { formatDate } from "../../../../packages/ui/src/format.ts";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { useFetcher, useLoaderData, useSearchParams } from "react-router";
@@ -17,7 +18,7 @@ import { actingOf, adminUserOf, type AdminEnv } from "../lib/passkeys.server";
 import { signingKeysCopy, type SigningKeysCopy } from "../lib/signing-keys-copy";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => [{ title: "Signing keys - Al Ummah Now Admin" }];
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("signingKeys", langOf(location.search)) }];
 
 /**
  * Admin > Signing keys (AlUmmahNowAuth#13): the issuer's keys and their state,

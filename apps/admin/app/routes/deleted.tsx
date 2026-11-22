@@ -1,4 +1,5 @@
 import { formatDateTime } from "../../../../packages/ui/src/format.ts";
+import { pageTitle } from "../lib/admin-copy";
 import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
@@ -24,7 +25,7 @@ import {
 import { daysUntil, deletionCopy, dirOf, langOf, type AdminLang } from "../lib/deletion-copy";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => [{ title: "Recently deleted - Al Ummah Now Admin" }];
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("deleted", langOf(location.search)) }];
 
 const KINDS: DeletionKind[] = ["user", "client", "role", "theme"];
 const kindOf = (value: string | null): DeletionKind => (KINDS.includes(value as DeletionKind) ? (value as DeletionKind) : "user");
@@ -149,7 +150,7 @@ export default function RecentlyDeleted() {
   );
 
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div dir={dirOf(lang)} lang={lang} className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t.pageTitle}</h1>
