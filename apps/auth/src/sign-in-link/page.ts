@@ -43,16 +43,20 @@ if(!f||!box)return;
 var em=f.querySelector('input[name="email"]'),pw=f.querySelector('input[name="password"]'),go=f.querySelector(':scope > button[data-component="button"]');
 var lf=box.querySelector('form'),hid=lf.querySelector('input[name="email"]'),add=box.querySelector('[data-aun-add-password]');
 if(!em||!pw)return;
-var checked=f.getAttribute('data-aun-mode')==='no-password'?em.value.trim().toLowerCase():'',seq=0;
+var checked=f.getAttribute('data-aun-mode')==='no-password'?em.value.trim().toLowerCase():'',seq=0,asking='',waiters=[];
 if(checked)pw.required=false;
 function mode(on){if(on){f.setAttribute('data-aun-mode','no-password');pw.required=false;box.hidden=false;hid.value=em.value.trim();}else{f.removeAttribute('data-aun-mode');pw.required=true;box.hidden=true;}}
 function check(then){var v=em.value.trim().toLowerCase();
  if(!v||!em.checkValidity()){mode(false);if(then)then(null);return;}
  if(v===checked){if(then)then(f.getAttribute('data-aun-mode')==='no-password');return;}
- var n=++seq;
+ // One lookup per email: change and blur fire together, and a click may come while it runs
+ if(then)waiters.push(then);
+ if(v===asking)return;
+ asking=v;var n=++seq,ws=waiters;
+ function done(r){if(n!==seq)return;asking='';waiters=[];ws.forEach(function(w){w(r);});}
  fetch(C.method,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({email:v})})
  .then(function(r){return r.ok?r.json():null;})
- .then(function(j){if(n!==seq)return;if(!j||typeof j.password!=='boolean'){if(then)then(null);return;}checked=v;mode(!j.password);if(then)then(!j.password);},function(){if(n===seq&&then)then(null);});}
+ .then(function(j){if(n!==seq)return;if(!j||typeof j.password!=='boolean'){done(null);return;}checked=v;mode(!j.password);done(!j.password);},function(){done(null);});}
 em.addEventListener('change',function(){check();});
 em.addEventListener('blur',function(){check();});
 em.addEventListener('input',function(){if(em.value.trim().toLowerCase()!==checked&&f.getAttribute('data-aun-mode'))mode(false);});
