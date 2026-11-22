@@ -168,8 +168,10 @@ passkey. The normal sign-in page never asks it for a password
   a POST names a GET address in `Content-Location`, and the header's language
   switch goes there: "Check your inbox" →
   `GET /sign-in/link?state=sent&back=…&lang=…` (the same page, display only,
-  "this email" in place of the address); the passkey card →
-  `/passkeys/setup?return_to=…&lang=…`.
+  "this email" in place of the address); the invite's passkey card →
+  `/passkeys/setup?return_to=<the app's page>&lang=…`. The card after a normal
+  sign-in names none: it continues to the OAuth redirect (code, state), which
+  never goes in a URL.
 
 **The passkey card** (after any sign-in, and the invite's):
 
