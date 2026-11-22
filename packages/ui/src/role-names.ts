@@ -6,6 +6,8 @@ export const ROLE_NAMES_AR: Record<string, string> = {
   admin: "مشرف",
   "super admin": "مشرف عام",
   member: "عضو",
+  // the default role every account gets
+  user: "مستخدم",
   moderator: "مراقب",
   scholar: "عالم",
   writer: "كاتب",

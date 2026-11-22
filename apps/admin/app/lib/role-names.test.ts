@@ -6,6 +6,8 @@ describe("roleLabel", () => {
     expect(roleLabel("Admin", "ar")).toBe("مشرف");
     expect(roleLabel("super_admin", "ar")).toBe("مشرف عام");
     expect(roleLabel("Content-Reviewer", "ar")).toBe("مراجع محتوى");
+    // the default role, shown on every account's Profile (AUDIT-2 #483)
+    expect(roleLabel("user", "ar")).toBe("مستخدم");
   });
   it("writes English roles in sentence case, as Profile does", () => {
     expect(roleLabel("Admin", "en")).toBe("Admin");
