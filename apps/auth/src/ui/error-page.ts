@@ -123,11 +123,16 @@ interface RenderOptions {
 	env?: { ENVIRONMENT?: string; PROFILE_APP_URL?: string };
 }
 
+/** A path on this origin for an href: one leading slash, so "//host" or "/\\host" can never leave the origin. */
+function localPath(pathname: string, search: string): string {
+	return `/${pathname.replace(/^[/\\]+/, '')}${search}`;
+}
+
 function sameOriginPath(raw: string | undefined, origin: string): string | null {
 	if (!raw) return null;
 	try {
 		const u = new URL(raw, origin);
-		return u.origin === origin ? `${u.pathname}${u.search}` : null;
+		return u.origin === origin ? localPath(u.pathname, u.search) : null;
 	} catch {
 		return null;
 	}
@@ -143,7 +148,7 @@ async function renderFamilyPage(o: RenderOptions): Promise<Response> {
 	const header = signInHeaderFor(url, locale, o.env ?? {});
 	const compiled = compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!;
 	// 500/503: Home page + Try again (the page that failed, else this page); 404: Go back + Home page
-	const retry = lost ? null : (sameOriginPath(o.retryUrl, url.origin) ?? `${url.pathname}${url.search}`);
+	const retry = lost ? null : (sameOriginPath(o.retryUrl, url.origin) ?? localPath(url.pathname, url.search));
 	// hono/html escapes every interpolated value; raw() only for our own constants
 	const body = html`<style>${raw(ERROR_PAGE_CSS)}${raw(FRAME_STYLE)}</style>
 		<div class="ep" lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}" data-page="error" data-error-status="${status}" data-testid="error-screen" ${lost ? '' : raw('role="alert"')}>

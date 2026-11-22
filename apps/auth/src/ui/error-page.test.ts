@@ -54,6 +54,18 @@ describe('the error-page family on Auth (wiki guides/error-pages.md)', () => {
 		expect(html).toContain('data-action="home"');
 	});
 
+	it('Try again is always a path on this origin, never protocol-relative', async () => {
+		for (const path of ['//evil.example/x', '/%2F%2Fevil.example', '/\\evil.example/x']) {
+			const html = await (await renderErrorPage(new Error('x'), 'ERR-AAAA-0007', undefined, new Request(`https://auth.alummahnow.net${path}`))).text();
+			const href = /href="([^"]*)" data-action="retry"/.exec(html)?.[1] ?? '';
+			expect(href.startsWith('/')).toBe(true);
+			expect(href.startsWith('//')).toBe(false);
+			expect(href.startsWith('/\\')).toBe(false);
+		}
+		const own = await (await renderErrorPage(new Error('x'), 'ERR-AAAA-0008', 'https://auth.alummahnow.net//evil.example/', req())).text();
+		expect(/href="([^"]*)" data-action="retry"/.exec(own)?.[1]).toBe('/evil.example/');
+	});
+
 	it('404: the card, no reference, status 404', async () => {
 		const res = await renderNotFoundPage(new Request('https://auth.alummahnow.net/nope?lang=ar'));
 		const html = await res.text();
