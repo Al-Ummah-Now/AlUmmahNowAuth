@@ -1,4 +1,4 @@
-import { formatDate, NUMERIC_DATE_TIME } from "../../../../packages/ui/src/format.ts";
+import { formatDate } from "../../../../packages/ui/src/format.ts";
 import { useState, useSyncExternalStore } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
@@ -94,19 +94,25 @@ interface PasskeyFailure {
 /**
  * An admin time: the viewer's local time with its zone, UTC on hover (one formatter for every
  * admin time). The server render has no viewer zone, so it shows UTC until the browser takes over.
- * Numeric, as on the audit page (lib/date-utils.ts), which lists the same events: ICU builds spell
- * month names differently (WebKit writes «٥ نوفمبر، ٢٠٢٦», Node «٥ نوفمبر ٢٠٢٦»), which broke hydration.
+ * The date as in the Passkeys table above («٥ نوفمبر ٢٠٢٦» is spelled differently by WebKit's ICU and
+ * broke hydration; dateStyle "medium" is the same everywhere), then the time on its own, as
+ * "12:27 AM EST" (en-US: US zones get their names, not "GMT-5").
  */
-const TIME_FIELDS = NUMERIC_DATE_TIME;
 const noSubscribe = () => () => {};
 
+function adminStamp(value: string, lang: "en" | "ar", zone: Intl.DateTimeFormatOptions): string {
+  const date = formatDate(value, lang, { dateStyle: "medium", timeZone: zone.timeZone });
+  const time = formatDate(value, lang, { hour: "numeric", minute: "2-digit", ...zone }, "en-US");
+  return date + (lang === "ar" ? "، " : ", ") + time;
+}
+
 function AdminTime({ value, lang, utcLabel }: { value: string; lang: "en" | "ar"; utcLabel: (s: string) => string }) {
-  const utc = utcLabel(formatDate(value, lang, { ...TIME_FIELDS, timeZone: "UTC" }, "en-US"));
+  const utc = utcLabel(adminStamp(value, lang, { timeZone: "UTC" }));
   // false in the server render and while hydrating, true after: no hydration mismatch
   const inBrowser = useSyncExternalStore(noSubscribe, () => true, () => false);
   return (
     <time dateTime={value} title={utc}>
-      {inBrowser ? formatDate(value, lang, { ...TIME_FIELDS, timeZoneName: "short" }, "en-US") : utc}
+      {inBrowser ? adminStamp(value, lang, { timeZoneName: "short" }) : utc}
     </time>
   );
 }
@@ -137,7 +143,19 @@ export default function UserPasskeys() {
           {t.back}
         </Link>
       </p>
-      <h1 className="text-2xl font-semibold mb-6">{t.title("")}<bdi>{who}</bdi></h1>
+      <h1 className="text-2xl font-semibold mb-6 [overflow-wrap:anywhere]">{t.title("")}<bdi>
+          {/* A long email breaks after its "@" first (overflow-wrap: anywhere only when even that is too wide) */}
+          {who.includes("@") ? (
+            <>
+              {who.slice(0, who.indexOf("@") + 1)}
+              <wbr />
+              {who.slice(who.indexOf("@") + 1)}
+            </>
+          ) : (
+            who
+          )}
+        </bdi>
+      </h1>
       <LoadErrorBanner title={c.couldNotLoad(t.what)} error={data.loadError} />
       {fetcher.data?.error && (
         <p className="text-sm text-[var(--color-destructive-text)] mb-4" role="alert">
