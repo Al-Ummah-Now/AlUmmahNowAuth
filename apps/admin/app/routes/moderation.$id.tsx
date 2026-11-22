@@ -83,6 +83,7 @@ export default function ModerationRequestPage() {
   const copy = confirmCopy(lang);
   const t = adminCopy(lang).moderation;
   const L = adminCopy(lang).moderationLabels;
+  const c = adminCopy(lang).common;
   const when = (v: string | number | null | undefined) => formatWhen(v, lang);
   const running = detail?.request.status === "approved" && (detail.request.execution?.status === "queued" || detail.request.execution?.status === "retrying");
   // While the action is queued, refresh every 5 s until it is done or flagged
@@ -161,7 +162,7 @@ export default function ModerationRequestPage() {
             <CardHeader>
               <CardTitle className="text-base">{t.request}</CardTitle>
               <CardDescription>
-                {t.fromLabel} <bdi>{r.client_name ?? r.client_id}</bdi> · {t.byLabel} <bdi>{r.requested_by.display_name}</bdi> (<bdi dir="ltr">{r.requested_by.id}</bdi>) · {when(r.created_at)}
+                {t.fromLabel} <bdi>{r.client_name ?? r.client_id}</bdi>{c.sep}{t.byLabel} <bdi>{r.requested_by.display_name}</bdi> (<bdi dir="ltr">{r.requested_by.id}</bdi>){c.sep}{when(r.created_at)}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -269,7 +270,7 @@ export default function ModerationRequestPage() {
                   <li key={h.id} className="border-s-2 border-[var(--color-border)] ps-3">
                     <div className="text-sm font-medium">{t.historyType[h.type] ?? h.type.replace(/_/g, " ")}</div>
                     <div className="text-xs text-[var(--color-muted-foreground)]">
-                      {h.actor_type === "admin" ? <>{t.historyAdmin("")}<bdi>{h.actor_name ?? h.actor_id}</bdi></> : h.actor_type === "client" ? <><bdi>{h.actor_name ?? t.historyClient}</bdi> (<bdi>{r.client_name ?? r.client_id}</bdi>)</> : t.historySystem} · {when(h.at)}
+                      {h.actor_type === "admin" ? <>{t.historyAdmin("")}<bdi>{h.actor_name ?? h.actor_id}</bdi></> : h.actor_type === "client" ? <><bdi>{h.actor_name ?? t.historyClient}</bdi> (<bdi>{r.client_name ?? r.client_id}</bdi>)</> : t.historySystem}{c.sep}{when(h.at)}
                     </div>
                     {h.note && <p className="text-sm whitespace-pre-wrap mt-1"><bdi>{h.note}</bdi></p>}
                   </li>
@@ -287,9 +288,8 @@ export default function ModerationRequestPage() {
             <CardContent className="space-y-1 text-sm">
               {subject ? (
                 <>
-                  <div className="font-medium" data-testid="moderation-subject-email"><bdi>{subject.email}</bdi></div>
-                  {subject.name && <div><bdi>{subject.name}</bdi></div>}
-                  <div className="text-[var(--color-muted-foreground)]" dir="ltr">{subject.id}</div>
+                  {subject.name && <div className="font-medium"><bdi>{subject.name}</bdi></div>}
+                  <div className={subject.name ? "" : "font-medium"} data-testid="moderation-subject-email"><bdi>{subject.email}</bdi></div>
                   <div>{t.userStatus} <span className="font-medium">{t.userStatusValue[subject.status] ?? subject.status}</span></div>
                   {subject.password_reset_required && <div>{t.passwordResetRequired}</div>}
                   <div>{t.joined(when(subject.created_at))}</div>

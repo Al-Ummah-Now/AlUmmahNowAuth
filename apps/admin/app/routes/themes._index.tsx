@@ -180,8 +180,8 @@ export default function ThemesPage() {
                       <Link to={withLang(`/themes/${th.id}`, lang)} className="hover:underline">{nameOf(th)}</Link>
                     </CardTitle>
                     <CardDescription>
-                      {lang === "ar" ? <span dir="ltr" lang="en">{th.name.en}</span> : <span dir="rtl" lang="ar">{th.name.ar}</span>} · <code className="text-xs" dir="ltr">{th.id}</code>
-                      {th.version && <> · <span dir="ltr">v{th.version}</span></>}
+                      {lang === "ar" ? <span dir="ltr" lang="en">{th.name.en}</span> : <span dir="rtl" lang="ar">{th.name.ar}</span>}{words.sep}<code className="text-xs" dir="ltr">{th.id}</code>
+                      {th.version && <>{words.sep}<span dir="ltr">v{th.version}</span></>}
                     </CardDescription>
                   </div>
                   {th.isAuthDefault && (

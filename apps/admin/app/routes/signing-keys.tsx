@@ -103,7 +103,7 @@ export default function SigningKeys() {
               <div role="alert" data-testid="signing-keys-failed" className="rounded-lg border border-[var(--color-destructive)] bg-[var(--color-muted)] p-4">
                 <p className="font-semibold text-[var(--color-destructive-text)]">{t.failedTitle}</p>
                 <p className="mt-1 text-sm">{t.failedBody(formatTime(view.status.errorAt, lang, t), view.status.attempts)}</p>
-                <p className="mt-1 text-xs text-[var(--color-muted-foreground)]" dir="ltr">
+                <p className="mt-1 text-xs text-[var(--color-muted-foreground)] rtl:text-right" dir="ltr">
                   {view.status.error}
                 </p>
                 {view.canRotate && (
@@ -147,7 +147,7 @@ export default function SigningKeys() {
                         <span className="text-xs text-[var(--color-muted-foreground)]" dir="ltr">{k.alg}</span>
                       </div>
                       <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">{t.stateHelp[k.state]}</p>
-                      <code className="mt-2 block break-all text-xs" dir="ltr">{k.id}</code>
+                      <code className="mt-2 block break-all text-xs rtl:text-right" dir="ltr">{k.id}</code>
                       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                         <dt className="text-[var(--color-muted-foreground)]">{t.colCreated}</dt>
                         <dd>{formatTime(k.created, lang, t)}</dd>
@@ -179,7 +179,7 @@ export default function SigningKeys() {
                         <TableRow key={k.id} data-state={k.state}>
                           <TableCell>
                             <code className="text-xs" dir="ltr">{k.id}</code>
-                            <div className="text-xs text-[var(--color-muted-foreground)]" dir="ltr">{k.alg}</div>
+                            <div className="text-xs text-[var(--color-muted-foreground)] rtl:text-right" dir="ltr">{k.alg}</div>
                           </TableCell>
                           <TableCell>
                             <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${STATE_STYLE[k.state]}`}>{t.state[k.state]}</span>

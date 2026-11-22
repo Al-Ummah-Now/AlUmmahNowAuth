@@ -5,7 +5,6 @@ import { ConfirmDialog } from "../components/confirm-dialog";
 import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { withLang } from "../lib/shell-copy";
-import { formatCompact } from "../../../../packages/ui/src/format.ts";
 import { roleDescription, roleLabel } from "../../../../packages/ui/src/role-names.ts";
 import { LoadErrorBanner } from "../components/load-error-banner";
 import { Plus, Pencil, Trash2, Shield, Users } from "lucide-react";
@@ -392,7 +391,7 @@ export default function Roles() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-                          <span className="text-sm">{formatCompact(role.user_count, lang)}</span>
+                          <span className="text-sm">{adminCopy(lang).dashboard.users(role.user_count)}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-end">

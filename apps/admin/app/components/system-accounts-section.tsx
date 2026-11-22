@@ -47,8 +47,8 @@ export function SystemAccountsSection({ accounts, lang }: { accounts: SystemAcco
               {accounts.map((a) => (
                 <TableRow key={a.id} data-testid={`system-account-${a.id}`}>
                   <TableCell>
-                    <div className="font-medium" dir="ltr">{a.email}</div>
-                    <div className="font-mono text-xs text-[var(--color-muted-foreground)]" dir="ltr">{a.id}</div>
+                    <div className="font-medium rtl:text-right" dir="ltr">{a.email}</div>
+                    <div className="font-mono text-xs text-[var(--color-muted-foreground)] rtl:text-right" dir="ltr">{a.id}</div>
                   </TableCell>
                   <TableCell>{a.name ?? "—"}</TableCell>
                   <TableCell>

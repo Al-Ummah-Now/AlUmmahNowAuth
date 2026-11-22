@@ -43,6 +43,7 @@ import { roleDescription as describeRole, roleLabel } from "../../../../packages
 import { getAuthServerUrl } from "../lib/config";
 import { AdminLayout } from "../components/admin-layout";
 import { logger } from "../lib/logger.server";
+import { userNames } from "../lib/user-names.server";
 import {
   getRoleById,
   updateRole,
@@ -79,12 +80,14 @@ interface LoaderData {
   role: RoleWithPermissions;
   allPermissions: Record<string, Permission[]>;
   usersWithRole: UserWithRole[];
+  names?: Record<string, string>;
 }
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = getCloudflare(context).env as {
     AUTH_STORAGE: KVNamespace;
     AUTH_SERVER_URL?: string;
+    AUTH_DB?: D1Database;
   };
   const ctx = getCloudflare(context).ctx as ExecutionContext;
 
@@ -137,6 +140,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       role: roleResponse,
       allPermissions,
       usersWithRole,
+      // Who assigned the role, by name (never a raw id)
+      names: await userNames(env.AUTH_DB, usersWithRole.map((u) => u.assigned_by)),
     };
   } catch (error) {
     console.error("Error loading role:", error);
@@ -254,7 +259,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 }
 
 export default function RoleDetail() {
-  const { user, authServerUrl, role, allPermissions, usersWithRole } = useLoaderData<LoaderData>();
+  const { user, authServerUrl, role, allPermissions, usersWithRole, names = {} } = useLoaderData<LoaderData>();
   const fetcher = useFetcher();
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
@@ -445,8 +450,8 @@ export default function RoleDetail() {
                 <div className="space-y-6">
                   {Object.entries(permissionsByResource).map(([resource, permissions]) => (
                     <div key={resource} className="space-y-3">
-                      <h3 className="text-sm font-semibold text-[var(--color-foreground)] uppercase" dir="ltr" lang="en">
-                        {resource}
+                      <h3 className="text-sm font-semibold text-[var(--color-foreground)]">
+                        {t.resources[resource] ?? <bdi dir="ltr">{resource}</bdi>}
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {permissions.map((permission) => (
@@ -455,7 +460,7 @@ export default function RoleDetail() {
                             className={`flex items-center justify-between p-3 rounded-md border ${getResourceColor(permission.resource)}`}
                           >
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate" dir="ltr" lang="en">
+                              <p className="text-sm font-medium truncate rtl:text-right" dir="ltr" lang="en">
                                 {permission.name}
                               </p>
                               {permission.description && (
@@ -508,6 +513,24 @@ export default function RoleDetail() {
                   </Button>
                 </div>
               ) : (
+                <>
+                {/* Phones: one card per person */}
+                <ul className="space-y-3 md:hidden" data-testid="role-user-cards">
+                  {usersWithRole.map((user) => (
+                    <li key={user.id} className="flex items-start justify-between gap-3 rounded-lg border border-[var(--color-border)] p-3 text-sm">
+                      <div className="min-w-0 space-y-1">
+                        <div className="font-medium break-all"><bdi>{user.email}</bdi></div>
+                        <div className="text-xs text-[var(--color-muted-foreground)]">
+                          {t.colAssigned}: {formatDate(user.assigned_at, lang)}{c.sep}{t.colAssignedBy}: <bdi>{(user.assigned_by && names[user.assigned_by]) || actorLabel(user.assigned_by, lang)}</bdi>
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => setUserToRemove(user)} title={t.removeFromUser(user.email)} aria-label={t.removeFromUser(user.email)}>
+                        <Trash2 className="h-4 w-4 text-[var(--color-destructive-text)]" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="hidden md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -525,7 +548,7 @@ export default function RoleDetail() {
                           {formatDate(user.assigned_at, lang)}
                         </TableCell>
                         <TableCell>
-                          <bdi>{actorLabel(user.assigned_by, lang)}</bdi>
+                          <bdi>{(user.assigned_by && names[user.assigned_by]) || actorLabel(user.assigned_by, lang)}</bdi>
                         </TableCell>
                         <TableCell className="text-end">
                           <Button
@@ -542,6 +565,8 @@ export default function RoleDetail() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -602,13 +627,13 @@ export default function RoleDetail() {
                 <SelectContent>
                   {Object.entries(unassignedPermissions).map(([resource, permissions]) => (
                     <div key={resource}>
-                      <div className="px-2 py-1.5 text-sm font-semibold text-[var(--color-muted-foreground)] uppercase" dir="ltr" lang="en">
-                        {resource}
+                      <div className="px-2 py-1.5 text-sm font-semibold text-[var(--color-muted-foreground)]">
+                        {t.resources[resource] ?? <bdi dir="ltr">{resource}</bdi>}
                       </div>
                       {permissions.map((permission) => (
                         <SelectItem key={permission.id} value={permission.id}>
                           <div>
-                            <div className="font-medium" dir="ltr" lang="en">{permission.name}</div>
+                            <div className="font-medium rtl:text-right" dir="ltr" lang="en">{permission.name}</div>
                             {permission.description && (
                               <div className="text-xs text-[var(--color-muted-foreground)]">
                                 <bdi>{permission.description}</bdi>

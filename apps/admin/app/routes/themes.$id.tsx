@@ -653,7 +653,7 @@ export default function ThemeBuilderPage() {
 
               {tab === "pages" && (
                 <div>
-                  <p className={`mb-3 text-sm ${muted}`}>{t.pagesIntro} <code dir="ltr">{"{color.surface}"}</code> · <code dir="ltr">{"{component.form.inputBg}"}</code></p>
+                  <p className={`mb-3 text-sm ${muted}`}>{t.pagesIntro} <code dir="ltr">{"{color.surface}"}</code>{c.sep}<code dir="ltr">{"{component.form.inputBg}"}</code></p>
                   <select
                     className={`${selectClass} mb-2`}
                     value={section}
@@ -695,7 +695,7 @@ export default function ThemeBuilderPage() {
                         </select>
                       </div>
                     </div>
-                    <p className={`mt-2 text-sm ${muted}`} style={{ fontFamily: bodyFont.stack.join(",") }}><span dir="ltr" lang="en">{t.sample}</span> · <span dir="rtl" lang="ar" style={{ fontFamily: arabicFont.stack.join(",") }}>مرحبا بكم في الأمة الآن</span></p>
+                    <p className={`mt-2 text-sm ${muted}`} style={{ fontFamily: bodyFont.stack.join(",") }}><span dir="ltr" lang="en">{t.sample}</span>{c.sep}<span dir="rtl" lang="ar" style={{ fontFamily: arabicFont.stack.join(",") }}>مرحبا بكم في الأمة الآن</span></p>
                     <p className={`mt-1 text-xs ${muted}`}>{t.fontsNote}</p>
                   </section>
                   <section>
@@ -802,7 +802,7 @@ export default function ThemeBuilderPage() {
                         <div key={p} className="flex items-center gap-3 rounded border border-[var(--color-border)] p-2">
                           {p.endsWith(".woff2") ? <span className="w-12 text-center text-xs">{t.font}</span> : <img src={assetUrls[p]} alt="" className="h-10 w-12 object-contain" />}
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm" dir="ltr">{p.replace(/^assets\//, "")}</div>
+                            <div className="truncate text-sm rtl:text-right" dir="ltr">{p.replace(/^assets\//, "")}</div>
                             <div className={`text-xs ${muted}`}>{t.size(Math.floor((a.size / 1024) * 10) / 10)}</div>
                           </div>
                           {!readOnly && (
@@ -842,7 +842,7 @@ export default function ThemeBuilderPage() {
                     <div className="space-y-1"><Label>{t.version}</Label><TextField label={t.version} dir="ltr" disabled={readOnly} value={theme.version} onChange={(v) => v && update(setPath(theme, "version", v))} /></div>
                   </div>
                   <p className={`text-xs ${muted}`}>
-                    {t.id} <code dir="ltr">{theme.id}</code>{theme.basedOn && <> · {t.basedOn} <code dir="ltr">{theme.basedOn}</code></>} · <span dir="ltr">{t.format(theme.formatVersion)}</span>. {t.versionNote}
+                    {t.id} <code dir="ltr">{theme.id}</code>{theme.basedOn && <>{c.sep}{t.basedOn} <code dir="ltr">{theme.basedOn}</code></>}{c.sep}<span dir="ltr">{t.format(theme.formatVersion)}</span>. {t.versionNote}
                   </p>
                   <details>
                     <summary className="cursor-pointer text-sm font-medium">theme.json</summary>
