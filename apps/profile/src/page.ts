@@ -216,8 +216,9 @@ export function renderHomePage(o: HomePageOptions): string {
                         <span class="aun-avatar" id="activeAvatar" aria-hidden="true">?</span>
                         <span class="aun-acct-name" id="activeEmail" dir="auto">${e(t.loading)}</span>
                         <span class="visually-hidden">${e(t.accountMenu)}</span>
-                        <svg class="aun-caret" id="chevronIcon" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                            <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <!-- the shared caret: the same chevron (lucide chevron-down) as every other app's account pill -->
+                        <svg class="aun-caret" id="chevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="m6 9 6 6 6-6"/>
                         </svg>
                     </button>
                     <div class="account-dropdown aun-menu" id="accountDropdown" role="menu" hidden>
