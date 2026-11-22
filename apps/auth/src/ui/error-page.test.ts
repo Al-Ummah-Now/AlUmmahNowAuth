@@ -66,6 +66,16 @@ describe('the error-page family on Auth (wiki guides/error-pages.md)', () => {
 		expect(/href="([^"]*)" data-action="retry"/.exec(own)?.[1]).toBe('/evil.example/');
 	});
 
+	it('the lantern street gets the whole window as its region (body has no height of its own here)', async () => {
+		for (const res of [await renderErrorPage(new Error('x'), 'ERR-AAAA-0009', undefined, req()), await renderNotFoundPage(new Request('https://auth.alummahnow.net/nope'))]) {
+			const html = await res.text();
+			expect(html).toMatch(/<div[^>]*\sdata-component="root" data-fanous-street-region>/);
+			// Only the element: the theme's [data-component="root"] CSS selectors are left alone
+			expect(html.match(/data-fanous-street-region/g)).toHaveLength(1);
+			expect(html).toContain('[data-component=root]:has(.ep){min-height:100dvh}');
+		}
+	});
+
 	it('404: the card, no reference, status 404', async () => {
 		const res = await renderNotFoundPage(new Request('https://auth.alummahnow.net/nope?lang=ar'));
 		const html = await res.text();
