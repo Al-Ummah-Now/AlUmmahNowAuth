@@ -191,9 +191,6 @@ async function renderFamilyPage(o: RenderOptions): Promise<Response> {
 	// the family card has its own heading and the header already carries the brand.
 	const doc = `<!DOCTYPE html>${(await page.toString())
 		.replace(/<div data-component="branding">[\s\S]*?<\/div>/, '')
-		// The lantern street draws in the page's free space: the sign-in frame's root fills the window,
-		// while <body> has no height of its own here (its content is positioned), so the street found no gaps
-		.replace(/<div(\s[^>]*)?\sdata-component="root"/, (m) => `${m} data-fanous-street-region`)
 		.replace(/<title>[^<]*<\/title>/, `<title>${escapeText(errorPageTitle(locale, copy.title))}</title>`)
 		.replace('</head>', '<meta name="robots" content="noindex, nofollow"></head>')}`;
 	const raw500 = new Response(doc, {
@@ -206,7 +203,8 @@ async function renderFamilyPage(o: RenderOptions): Promise<Response> {
 			...(o.kind === 'unavailable' ? { 'Retry-After': '30' } : {}),
 		},
 	});
-	return finishThemedResponse(raw500, compiled, url, url.origin, header);
+	// The lantern street as on the sign-in pages: the theme's tile behind the whole page, the card covering it
+	return finishThemedResponse(raw500, compiled, url, url.origin, header, o.request?.headers.get('Cookie'));
 }
 
 /**

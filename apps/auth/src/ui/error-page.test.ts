@@ -66,14 +66,19 @@ describe('the error-page family on Auth (wiki guides/error-pages.md)', () => {
 		expect(/href="([^"]*)" data-action="retry"/.exec(own)?.[1]).toBe('/evil.example/');
 	});
 
-	it('the lantern street gets the whole window as its region (body has no height of its own here)', async () => {
+	it('the lantern street is the sign-in pages\' tile street: the variant on <html>, a cookie pins it, the header is the family header', async () => {
 		for (const res of [await renderErrorPage(new Error('x'), 'ERR-AAAA-0009', undefined, req()), await renderNotFoundPage(new Request('https://auth.alummahnow.net/nope'))]) {
 			const html = await res.text();
-			expect(html).toMatch(/<div[^>]*\sdata-component="root" data-fanous-street-region>/);
-			// Only the element: the theme's [data-component="root"] CSS selectors are left alone
-			expect(html.match(/data-fanous-street-region/g)).toHaveLength(1);
+			expect(html).toMatch(/<html[^>]*\sdata-fanous-street-variant="[1-4]"/);
+			expect(html).toContain('/fanous-street/');
+			// no region of its own: the tile covers the whole page and the card covers the tile
+			expect(html).not.toContain('data-fanous-street-region');
 			expect(html).toContain('[data-component=root]:has(.ep){min-height:100dvh}');
+			// Fawanees' header: the gradient and the gold underline, as on the videos site
+			expect(html).toContain('html[data-theme="fawanees"] .aun-header{--aun-header-bg:linear-gradient(90deg');
 		}
+		const pinned = await renderNotFoundPage(new Request('https://auth.alummahnow.net/nope', { headers: { Cookie: 'aun_street_variant=3' } }));
+		expect(await pinned.text()).toMatch(/<html[^>]*\sdata-fanous-street-variant="3"/);
 	});
 
 	it('404: the card, no reference, status 404', async () => {
