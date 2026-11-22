@@ -18,18 +18,12 @@ import {
   type ModerationDecision,
   type ModerationRequestDetail,
 } from "../lib/admin-api.server";
-import {
-  MODERATION_ACTION_LABELS,
-  MODERATION_STATUS_CLASSES,
-  MODERATION_STATUS_LABELS,
-  REASON_CATEGORY_LABELS,
-  formatWhen,
-  label,
-  userPageHref,
-} from "../lib/moderation";
+import { MODERATION_STATUS_CLASSES, formatWhen, label, userPageHref } from "../lib/moderation";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
+import { withLang } from "../lib/shell-copy";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => [{ title: "Moderation request - Al Ummah Now Admin" }];
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("moderationRequest", langOf(location.search)) }];
 
 type Env = { AUTH_STORAGE: KVNamespace; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; ADMIN_CLIENT_SECRET?: string };
 
@@ -63,10 +57,11 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   const user = await actingUserFrom(request, env);
   const form = await request.formData();
   const decision = String(form.get("_action") || "") as ModerationDecision;
-  if (!DECISIONS.includes(decision)) return { ok: false, error: "Unknown action" };
+  const words = adminCopy(langOf(new URL(request.url).search));
+  if (!DECISIONS.includes(decision)) return { ok: false, error: words.common.unknownAction };
   const note = String(form.get("note") || "").trim();
   if ((decision === "reject" || decision === "request-info") && !note) {
-    return { ok: false, error: "Write a note for the requesting app." };
+    return { ok: false, error: words.moderation.writeNote };
   }
   const result = await decideModerationRequest(env, { id: user.id, email: user.email, roles: user.roles || [] }, params.id!, decision, note || undefined);
   if (isErrorResponse(result)) return { ok: false, error: result.error };
@@ -86,6 +81,9 @@ export default function ModerationRequestPage() {
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
   const copy = confirmCopy(lang);
+  const t = adminCopy(lang).moderation;
+  const L = adminCopy(lang).moderationLabels;
+  const when = (v: string | number | null | undefined) => formatWhen(v, lang);
   const running = detail?.request.status === "approved" && (detail.request.execution?.status === "queued" || detail.request.execution?.status === "retrying");
   // While the action is queued, refresh every 5 s until it is done or flagged
   useEffect(() => {
@@ -99,8 +97,8 @@ export default function ModerationRequestPage() {
   if (!detail) {
     return (
       <AdminLayout user={user} authServerUrl={authServerUrl}>
-        <Link to="/moderation" className="inline-flex items-center gap-1 text-sm underline mb-4"><ArrowLeft className="h-4 w-4" /> Moderation requests</Link>
-        <div role="alert" className="p-4 ui-alert-error rounded-lg">Could not load this request: {error}</div>
+        <Link to={withLang("/moderation", lang)} className="inline-flex items-center gap-1 text-sm underline mb-4"><ArrowLeft className="h-4 w-4 rtl:-scale-x-100" /> {t.back}</Link>
+        <div role="alert" className="p-4 ui-alert-error rounded-lg">{t.loadOneError(error ?? "")}</div>
       </AdminLayout>
     );
   }
@@ -131,13 +129,13 @@ export default function ModerationRequestPage() {
 
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
-      <Link to="/moderation" className="inline-flex items-center gap-1 text-sm underline mb-4"><ArrowLeft className="h-4 w-4" /> Moderation requests</Link>
+      <Link to={withLang("/moderation", lang)} className="inline-flex items-center gap-1 text-sm underline mb-4"><ArrowLeft className="h-4 w-4 rtl:-scale-x-100" /> {t.back}</Link>
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{label(MODERATION_ACTION_LABELS, r.action)}</h2>
+        <h2 className="text-2xl font-bold text-[var(--color-foreground)]">{label(L.action, r.action)}</h2>
         <Badge variant="outline" data-testid="moderation-status" className={MODERATION_STATUS_CLASSES[r.status]}>
-          {label(MODERATION_STATUS_LABELS, r.status)}
+          {label(L.status, r.status)}
         </Badge>
-        <span className="text-sm text-[var(--color-muted-foreground)]">{r.id}</span>
+        <span className="text-sm text-[var(--color-muted-foreground)]" dir="ltr">{r.id}</span>
       </div>
 
       {fetcher.data?.error && (
@@ -145,15 +143,15 @@ export default function ModerationRequestPage() {
       )}
       {failed && (
         <div role="alert" data-testid="moderation-action-failed" className="mb-4 p-3 ui-alert-error rounded-lg">
-          <div className="font-medium">Needs attention: the action failed after {r.execution.attempts} attempt{r.execution.attempts === 1 ? "" : "s"}.</div>
-          {r.action_error && <div className="text-sm mt-1">{r.action_error}</div>}
-          <div className="text-sm mt-1">Run it again, close it as done by hand, or reject the request.</div>
+          <div className="font-medium">{t.failedTitle(r.execution.attempts)}</div>
+          {r.action_error && <div className="text-sm mt-1"><bdi>{r.action_error}</bdi></div>}
+          <div className="text-sm mt-1">{t.failedHelp}</div>
         </div>
       )}
       {running && (
         <div role="status" data-testid="moderation-action-running" className="mb-4 p-3 ui-alert-info rounded-lg">
-          The action is {r.execution.status === "retrying" ? `being retried (attempt ${r.execution.attempts + 1})` : "queued"} and will run shortly.
-          {r.execution.status === "retrying" && r.action_error && <div className="text-sm mt-1">Last error: {r.action_error}</div>}
+          {t.running(r.execution.status === "retrying", r.execution.attempts + 1)}
+          {r.execution.status === "retrying" && r.action_error && <div className="text-sm mt-1">{t.lastError("")}<bdi>{r.action_error}</bdi></div>}
         </div>
       )}
 
@@ -161,27 +159,27 @@ export default function ModerationRequestPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Request</CardTitle>
+              <CardTitle className="text-base">{t.request}</CardTitle>
               <CardDescription>
-                From {r.client_name ?? r.client_id} · by {r.requested_by.display_name} ({r.requested_by.id}) · {formatWhen(r.created_at)}
+                {t.fromLabel} <bdi>{r.client_name ?? r.client_id}</bdi> · {t.byLabel} <bdi>{r.requested_by.display_name}</bdi> (<bdi dir="ltr">{r.requested_by.id}</bdi>) · {when(r.created_at)}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Reason</div>
-                <div className="font-medium">{label(REASON_CATEGORY_LABELS, r.reason_category)}</div>
-                <p className="whitespace-pre-wrap mt-1" data-testid="moderation-reason">{r.reason}</p>
+                <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">{t.reason}</div>
+                <div className="font-medium">{label(L.reason, r.reason_category)}</div>
+                <p className="whitespace-pre-wrap mt-1" data-testid="moderation-reason"><bdi>{r.reason}</bdi></p>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Evidence</div>
+                <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">{t.evidence}</div>
                 {r.evidence.length === 0 ? (
-                  <p className="text-sm text-[var(--color-muted-foreground)]">None attached.</p>
+                  <p className="text-sm text-[var(--color-muted-foreground)]">{t.noEvidence}</p>
                 ) : (
                   <ul className="mt-1 space-y-1">
                     {r.evidence.map((e, i) => (
                       <li key={`${e.url}-${i}`}>
                         <a href={e.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 underline break-all">
-                          {e.label || e.url} <ExternalLink className="h-3 w-3" />
+                          <bdi>{e.label || e.url}</bdi> <ExternalLink className="h-3 w-3" />
                         </a>
                       </li>
                     ))}
@@ -190,8 +188,8 @@ export default function ModerationRequestPage() {
               </div>
               {r.decision_note && (
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Decision note (shown to the app)</div>
-                  <p className="whitespace-pre-wrap">{r.decision_note}</p>
+                  <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">{t.decisionNote}</div>
+                  <p className="whitespace-pre-wrap"><bdi>{r.decision_note}</bdi></p>
                 </div>
               )}
             </CardContent>
@@ -200,17 +198,13 @@ export default function ModerationRequestPage() {
           {(open || r.status === "approved") && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Decide</CardTitle>
-                <CardDescription>
-                  {automatic
-                    ? "Approve queues the action; it runs with the same account code as the Users and Sessions pages and is retried on failure."
-                    : "\"Other\" has no automatic action: approve, handle it, then mark it actioned."}
-                </CardDescription>
+                <CardTitle className="text-base">{t.decide}</CardTitle>
+                <CardDescription>{automatic ? t.decideAuto : t.decideOther}</CardDescription>
               </CardHeader>
               <CardContent>
                 <fetcher.Form ref={formRef} method="post" className="space-y-3" data-testid="moderation-decide">
                   <div className="space-y-1">
-                    <Label htmlFor="note">Note for the requesting app (required to reject or ask for more information)</Label>
+                    <Label htmlFor="note">{t.noteLabel}</Label>
                     <textarea
                       id="note"
                       name="note"
@@ -223,22 +217,22 @@ export default function ModerationRequestPage() {
                     {open && (
                       <>
                         <Button type="submit" name="_action" value="approve" disabled={busy} onClick={submit("approve")}>
-                          {automatic ? "Approve and run" : "Approve"}
+                          {automatic ? t.approveAndRun : t.approve}
                         </Button>
-                        <Button type="submit" name="_action" value="reject" variant="destructive" disabled={busy}>Reject</Button>
+                        <Button type="submit" name="_action" value="reject" variant="destructive" disabled={busy}>{t.reject}</Button>
                         {r.status === "pending" && (
-                          <Button type="submit" name="_action" value="request-info" variant="outline" disabled={busy}>Request more info</Button>
+                          <Button type="submit" name="_action" value="request-info" variant="outline" disabled={busy}>{t.requestInfo}</Button>
                         )}
                       </>
                     )}
                     {canExecute && (
-                      <Button type="submit" name="_action" value="execute" disabled={busy} onClick={submit("execute")} data-testid="moderation-run-again">Run action again</Button>
+                      <Button type="submit" name="_action" value="execute" disabled={busy} onClick={submit("execute")} data-testid="moderation-run-again">{t.runAgain}</Button>
                     )}
                     {canMarkActioned && (
-                      <Button type="submit" name="_action" value="mark-actioned" variant="outline" disabled={busy}>Mark actioned</Button>
+                      <Button type="submit" name="_action" value="mark-actioned" variant="outline" disabled={busy}>{t.markActioned}</Button>
                     )}
                     {r.status === "approved" && (
-                      <Button type="submit" name="_action" value="reject" variant="destructive" disabled={busy}>Reject</Button>
+                      <Button type="submit" name="_action" value="reject" variant="destructive" disabled={busy}>{t.reject}</Button>
                     )}
                   </div>
                 </fetcher.Form>
@@ -267,17 +261,17 @@ export default function ModerationRequestPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">History</CardTitle>
+              <CardTitle className="text-base">{t.history}</CardTitle>
             </CardHeader>
             <CardContent>
               <ol className="space-y-3" data-testid="moderation-history">
                 {r.history.map((h) => (
-                  <li key={h.id} className="border-l-2 border-[var(--color-border)] pl-3">
-                    <div className="text-sm font-medium">{h.type.replace(/_/g, " ")}</div>
+                  <li key={h.id} className="border-s-2 border-[var(--color-border)] ps-3">
+                    <div className="text-sm font-medium">{t.historyType[h.type] ?? h.type.replace(/_/g, " ")}</div>
                     <div className="text-xs text-[var(--color-muted-foreground)]">
-                      {h.actor_type === "admin" ? `Auth admin ${h.actor_name ?? h.actor_id}` : h.actor_type === "client" ? `${h.actor_name ?? "Client"} (${r.client_name ?? r.client_id})` : "System"} · {formatWhen(h.at)}
+                      {h.actor_type === "admin" ? <>{t.historyAdmin("")}<bdi>{h.actor_name ?? h.actor_id}</bdi></> : h.actor_type === "client" ? <><bdi>{h.actor_name ?? t.historyClient}</bdi> (<bdi>{r.client_name ?? r.client_id}</bdi>)</> : t.historySystem} · {when(h.at)}
                     </div>
-                    {h.note && <p className="text-sm whitespace-pre-wrap mt-1">{h.note}</p>}
+                    {h.note && <p className="text-sm whitespace-pre-wrap mt-1"><bdi>{h.note}</bdi></p>}
                   </li>
                 ))}
               </ol>
@@ -288,39 +282,39 @@ export default function ModerationRequestPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">User</CardTitle>
+              <CardTitle className="text-base">{t.user}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
               {subject ? (
                 <>
-                  <div className="font-medium" data-testid="moderation-subject-email">{subject.email}</div>
-                  {subject.name && <div>{subject.name}</div>}
-                  <div className="text-[var(--color-muted-foreground)]">{subject.id}</div>
-                  <div>Status: <span className="font-medium">{subject.status}</span></div>
-                  {subject.password_reset_required && <div>Password reset required</div>}
-                  <div>Joined {formatWhen(subject.created_at)}</div>
-                  <Link to={userPageHref(subject)} className="inline-block mt-2 underline">Open in Users</Link>
+                  <div className="font-medium" data-testid="moderation-subject-email"><bdi>{subject.email}</bdi></div>
+                  {subject.name && <div><bdi>{subject.name}</bdi></div>}
+                  <div className="text-[var(--color-muted-foreground)]" dir="ltr">{subject.id}</div>
+                  <div>{t.userStatus} <span className="font-medium">{t.userStatusValue[subject.status] ?? subject.status}</span></div>
+                  {subject.password_reset_required && <div>{t.passwordResetRequired}</div>}
+                  <div>{t.joined(when(subject.created_at))}</div>
+                  <Link to={userPageHref(subject, lang)} className="inline-block mt-2 underline">{t.openInUsers}</Link>
                 </>
               ) : (
-                <p>No auth user with id {r.subject_user_id} (deleted?).</p>
+                <p>{t.noSubject} <bdi dir="ltr">{r.subject_user_id}</bdi></p>
               )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Earlier requests for this user</CardTitle>
+              <CardTitle className="text-base">{t.earlier}</CardTitle>
             </CardHeader>
             <CardContent>
               {prior_requests.length === 0 ? (
-                <p className="text-sm text-[var(--color-muted-foreground)]">None.</p>
+                <p className="text-sm text-[var(--color-muted-foreground)]">{t.noneEarlier}</p>
               ) : (
                 <ul className="space-y-2 text-sm">
                   {prior_requests.map((p) => (
                     <li key={p.id} className="flex items-center justify-between gap-2">
-                      <Link to={`/moderation/${p.id}`} className="underline">{label(MODERATION_ACTION_LABELS, p.action)}</Link>
-                      <span className="text-xs text-[var(--color-muted-foreground)]">{formatWhen(p.created_at)}</span>
-                      <Badge variant="outline" className={MODERATION_STATUS_CLASSES[p.status]}>{label(MODERATION_STATUS_LABELS, p.status)}</Badge>
+                      <Link to={withLang(`/moderation/${p.id}`, lang)} className="underline">{label(L.action, p.action)}</Link>
+                      <span className="text-xs text-[var(--color-muted-foreground)]">{when(p.created_at)}</span>
+                      <Badge variant="outline" className={MODERATION_STATUS_CLASSES[p.status]}>{label(L.status, p.status)}</Badge>
                     </li>
                   ))}
                 </ul>

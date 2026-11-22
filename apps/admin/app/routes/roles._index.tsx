@@ -3,6 +3,10 @@ import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData, useFetcher, useSearchParams } from "react-router";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
+import { withLang } from "../lib/shell-copy";
+import { formatCompact } from "../../../../packages/ui/src/format.ts";
+import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
 import { LoadErrorBanner } from "../components/load-error-banner";
 import { Plus, Pencil, Trash2, Shield, Users } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -39,10 +43,11 @@ import {
 } from "../lib/admin-api.server";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => {
+export const meta: MetaFunction = ({ location }) => {
+  const lang = langOf(location.search);
   return [
-    { title: "Roles - Al Ummah Now Admin" },
-    { name: "description", content: "Manage RBAC roles and permissions" },
+    { title: pageTitle("roles", lang) },
+    { name: "description", content: adminCopy(lang).roles.intro },
   ];
 };
 
@@ -125,7 +130,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return { roles: rolesWithCounts, user, authServerUrl };
   } catch (error) {
     console.error("Error loading roles:", error);
-    return { roles: [], user, authServerUrl, loadError: error instanceof Error ? error.message : "Request failed" };
+    return { roles: [], user, authServerUrl, loadError: error instanceof Error ? error.message : adminCopy(langOf(new URL(request.url).search)).common.actionFailed };
   }
 }
 
@@ -152,6 +157,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
+  const copy = adminCopy(langOf(new URL(request.url).search));
 
   try {
     if (intent === "createRole") {
@@ -159,7 +165,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       const description = formData.get("description") as string;
 
       if (!name) {
-        return { error: "Role name is required" };
+        return { error: copy.roles.nameRequired };
       }
 
       const roleData: RoleData = {
@@ -180,7 +186,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       const roleId = formData.get("roleId") as string;
 
       if (!roleId) {
-        return { error: "Missing roleId" };
+        return { error: copy.roles.missingRole };
       }
 
       // The API endpoint will check if it's a system role
@@ -195,10 +201,10 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       return { success: true };
     }
 
-    return { error: "Unknown intent" };
+    return { error: copy.common.unknownAction };
   } catch (error) {
     console.error("Action error:", error);
-    return { error: error instanceof Error ? error.message : "Action failed" };
+    return { error: error instanceof Error ? error.message : copy.common.actionFailed };
   }
 }
 
@@ -213,6 +219,9 @@ export default function Roles() {
   const [searchParams] = useSearchParams();
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
+  const lang = deleteLang;
+  const t = adminCopy(lang).roles;
+  const c = adminCopy(lang).common;
   const [roleToDelete, setRoleToDelete] = useState<RoleWithUserCount | null>(null);
 
   const handleCreateRole = () => {
@@ -262,40 +271,39 @@ export default function Roles() {
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-6">
-        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Role Management</h2>
-        <p className="text-[var(--color-muted-foreground)]">
-          Manage RBAC roles and permission assignments
-        </p>
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
+        <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>
       </div>
 
-      <LoadErrorBanner what="roles" error={loadError} />
+      {fetcher.data?.error && (
+        <div role="alert" className="mb-4 p-3 ui-alert-error rounded-lg">{fetcher.data.error}</div>
+      )}
+      <LoadErrorBanner what={t.what} error={loadError} />
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Roles</CardTitle>
-                <CardDescription>Manage RBAC roles and permission assignments</CardDescription>
+                <CardTitle>{t.cardTitle}</CardTitle>
+                <CardDescription>{t.intro}</CardDescription>
               </div>
               <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                 <DialogTrigger asChild>
                   <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Role
+                    <Plus className="h-4 w-4 me-2" />
+                    {t.create}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Create New Role</DialogTitle>
-                    <DialogDescription>
-                      Add a new role to the RBAC system. You can assign permissions to this role later.
-                    </DialogDescription>
+                    <DialogTitle>{t.createTitle}</DialogTitle>
+                    <DialogDescription>{t.createIntro}</DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="name">Name</Label>
+                      <Label htmlFor="name">{c.name}</Label>
                       <Input
                         id="name"
-                        placeholder="e.g., Content Manager"
+                        placeholder={t.namePlaceholder}
                         value={newRoleName}
                         onChange={(e) => setNewRoleName(e.target.value)}
                         onKeyDown={(e) => {
@@ -306,10 +314,10 @@ export default function Roles() {
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="description">Description</Label>
+                      <Label htmlFor="description">{c.description}</Label>
                       <Input
                         id="description"
-                        placeholder="Optional description of role responsibilities"
+                        placeholder={t.descriptionPlaceholder}
                         value={newRoleDescription}
                         onChange={(e) => setNewRoleDescription(e.target.value)}
                       />
@@ -317,10 +325,10 @@ export default function Roles() {
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                      Cancel
+                      {c.cancel}
                     </Button>
                     <Button onClick={handleCreateRole} disabled={!newRoleName.trim()}>
-                      Create Role
+                      {t.create}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -330,7 +338,8 @@ export default function Roles() {
           <CardContent>
             <div className="mb-4">
               <Input
-                placeholder="Search roles by name or description..."
+                placeholder={t.searchPlaceholder}
+                aria-label={t.searchLabel}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="max-w-sm"
@@ -340,24 +349,22 @@ export default function Roles() {
             {loadError && roles.length === 0 ? null : roles.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Shield className="h-12 w-12 text-[var(--color-muted-foreground)] mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No roles found</h3>
-                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">
-                  Get started by creating your first role.
-                </p>
+                <h3 className="text-lg font-semibold mb-2">{t.emptyTitle}</h3>
+                <p className="text-sm text-[var(--color-muted-foreground)] mb-4">{t.emptyText}</p>
                 <Button onClick={() => setCreateDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Role
+                  <Plus className="h-4 w-4 me-2" />
+                  {t.create}
                 </Button>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Users</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{c.name}</TableHead>
+                    <TableHead>{c.description}</TableHead>
+                    <TableHead>{t.colType}</TableHead>
+                    <TableHead>{t.colUsers}</TableHead>
+                    <TableHead className="text-end">{c.actions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -365,38 +372,38 @@ export default function Roles() {
                     <TableRow key={role.id}>
                       <TableCell className="font-medium">
                         <Link
-                          to={`/roles/${role.id}`}
+                          to={withLang(`/roles/${role.id}`, lang)}
                           className="flex items-center gap-2 hover:underline"
                         >
                           <Shield className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-                          {role.name}
+                          <bdi>{roleLabel(role.name, lang)}</bdi>
                         </Link>
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-[var(--color-muted-foreground)]">
-                          {role.description || "No description"}
+                          {role.description ? <bdi>{role.description}</bdi> : t.noDescription}
                         </span>
                       </TableCell>
                       <TableCell>
                         <Badge variant={role.is_system_role ? "default" : "secondary"}>
-                          {role.is_system_role ? "System" : "Custom"}
+                          {role.is_system_role ? t.system : t.custom}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-                          <span className="text-sm">{role.user_count}</span>
+                          <span className="text-sm">{formatCompact(role.user_count, lang)}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="ghost"
                             size="icon"
                             asChild
-                            title="Edit Role"
+                            title={t.edit}
                           >
-                            <Link to={`/roles/${role.id}`}>
+                            <Link to={withLang(`/roles/${role.id}`, lang)} aria-label={t.editOf(roleLabel(role.name, lang))}>
                               <Pencil className="h-4 w-4" />
                             </Link>
                           </Button>
@@ -405,7 +412,8 @@ export default function Roles() {
                             size="icon"
                             onClick={() => openDeleteDialog(role)}
                             disabled={role.is_system_role}
-                            title={role.is_system_role ? "Cannot delete system roles" : "Delete Role"}
+                            title={role.is_system_role ? t.cannotDelete : t.delete}
+                            aria-label={t.deleteOf(roleLabel(role.name, lang))}
                           >
                             <Trash2
                               className={`h-4 w-4 ${
@@ -430,7 +438,7 @@ export default function Roles() {
         open={deleteDialogOpen}
         title={deleteCopy.deleteTitle("role")}
         description={
-          deleteCopy.deleteBody("role", roleToDelete?.name ?? "") +
+          deleteCopy.deleteBody("role", roleToDelete ? roleLabel(roleToDelete.name, lang) : "") +
           (roleToDelete && roleToDelete.user_count > 0 ? deleteCopy.roleHolders(roleToDelete.user_count) : "")
         }
         confirmLabel={deleteCopy.deleteConfirm}

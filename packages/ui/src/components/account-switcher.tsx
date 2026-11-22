@@ -30,7 +30,32 @@ export interface AccountSwitcherProps {
   loginPath?: string;
   /** The other Al Ummah Now apps, in the shared order and labels (this app left out). */
   apps?: AccountMenuApp[];
+  /** The menu's words in the page language (English when left out). */
+  labels?: AccountMenuLabels;
 }
+
+/** The account menu's words; an Arabic page passes its own (Auth admin lib/admin-copy.ts). */
+export interface AccountMenuLabels {
+  accountMenu: string;
+  moreAccounts: string;
+  switchTo(name: string): string;
+  signOutOf(name: string): string;
+  addAccount: string;
+  apps: string;
+  signOut: string;
+  signOutAll: string;
+}
+
+export const ACCOUNT_MENU_EN: AccountMenuLabels = {
+  accountMenu: "Account menu",
+  moreAccounts: "More accounts",
+  switchTo: (name) => `Switch to ${name}`,
+  signOutOf: (name) => `Sign out of ${name}`,
+  addAccount: "Sign in to another account",
+  apps: "Al Ummah Now apps",
+  signOut: "Sign out",
+  signOutAll: "Sign out of all accounts",
+};
 
 /** The app's login URL that returns to the current page. */
 export function appLoginUrl(loginPath: string, prompt?: "none" | "login"): string {
@@ -45,7 +70,7 @@ export function appLoginUrl(loginPath: string, prompt?: "none" | "login"): strin
  * and signs in to this app silently as it; signing out of the last account
  * is single sign-out (the app's /logout).
  */
-export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/login", apps = [] }: AccountSwitcherProps) {
+export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/login", apps = [], labels: t = ACCOUNT_MENU_EN }: AccountSwitcherProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   // The menu never leaves the screen (AlUmmahNow docs/design/NAV.md)
@@ -202,7 +227,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
       >
         {/* No aria-label: the visible name is the button's name (axe label-content-name-mismatch) */}
         <span className="aun-avatar" aria-hidden="true">{getInitial(name)}</span>
-        <span className="sr-only">Account menu: </span>
+        <span className="sr-only">{t.accountMenu}: </span>
         <span className="aun-acct-name" dir="auto">{name}</span>
         <ChevronDown className="aun-caret" aria-hidden="true" />
       </button>
@@ -222,7 +247,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
             <div className="aun-menu-sep" role="separator" />
             {others.length > 0 && (
               <>
-                <span className="aun-menu-label">More accounts</span>
+                <span className="aun-menu-label">{t.moreAccounts}</span>
                 {others.map((account) => {
                   const label = nameOf(account);
                   return (
@@ -231,7 +256,7 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
                         type="button"
                         role="menuitem"
                         className="aun-menu-item"
-                        aria-label={`Switch to ${label}`}
+                        aria-label={t.switchTo(label)}
                         onClick={() => handleSwitchAccount(account.id)}
                       >
                         <span className="aun-avatar" aria-hidden="true">{getInitial(label)}</span>
@@ -248,8 +273,8 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
                           e.stopPropagation();
                           handleSignOutAccount(account.id);
                         }}
-                        aria-label={`Sign out of ${label}`}
-                        title={`Sign out of ${label}`}
+                        aria-label={t.signOutOf(label)}
+                        title={t.signOutOf(label)}
                       >
                         <LogOut className="aun-flip" aria-hidden="true" />
                       </button>
@@ -261,14 +286,14 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
             {accounts.length < 5 && (
               <button type="button" role="menuitem" data-testid="account-add" className="aun-menu-item" onClick={handleAddAccount}>
                 <LogIn className="aun-menu-icon aun-flip" aria-hidden="true" />
-                <span className="aun-menu-text">Sign in to another account</span>
+                <span className="aun-menu-text">{t.addAccount}</span>
               </button>
             )}
             {apps.length > 0 && (
               <>
                 <div className="aun-menu-sep" role="separator" />
                 <div role="group" aria-labelledby="account-apps-label" data-testid="account-apps">
-                  <span className="aun-menu-label" id="account-apps-label">Al Ummah Now apps</span>
+                  <span className="aun-menu-label" id="account-apps-label">{t.apps}</span>
                   {apps.map((app) => (
                     <a key={app.id} role="menuitem" className="aun-menu-item" href={app.href} data-app={app.id}>
                       {/* The app's own favicon: a separate file (never inlined in the CSS), loaded when the menu shows it */}
@@ -282,12 +307,12 @@ export function AccountSwitcher({ authServerUrl, currentUser, loginPath = "/logi
             <div className="aun-menu-sep" role="separator" />
             <button type="button" role="menuitem" data-testid="account-sign-out-current" className="aun-menu-item" onClick={() => handleSignOutAccount(currentUser.id)}>
               <LogOut className="aun-menu-icon aun-flip" aria-hidden="true" />
-              <span className="aun-menu-text">Sign out</span>
+              <span className="aun-menu-text">{t.signOut}</span>
             </button>
             {several && (
               <button type="button" role="menuitem" className="aun-menu-item aun-menu-item--danger" onClick={handleSignOutAll}>
                 <LogOut className="aun-menu-icon aun-flip" aria-hidden="true" />
-                <span className="aun-menu-text">Sign out of all accounts</span>
+                <span className="aun-menu-text">{t.signOutAll}</span>
               </button>
             )}
           </div>

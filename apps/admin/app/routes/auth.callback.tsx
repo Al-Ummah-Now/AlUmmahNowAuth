@@ -1,4 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
+import { useSearchParams } from "react-router";
+import { adminCopy } from "../lib/admin-copy";
+import { langOf } from "../lib/deletion-copy";
 import { redirect } from "react-router";
 import { getAppUrl, getAuthServerUrl, getOAuthClientId } from "../lib/config";
 import { getOpenAuthClient, subjects } from "../lib/openauth.client.server";
@@ -220,7 +223,7 @@ export default function AuthCallback() {
     <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)] mx-auto mb-4"></div>
-        <p className="text-[var(--color-foreground)]">Completing sign in...</p>
+        <p className="text-[var(--color-foreground)]">{adminCopy(langOf(useSearchParams()[0])).signIn.completing}</p>
       </div>
     </div>
   );

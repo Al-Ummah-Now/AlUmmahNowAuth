@@ -1,11 +1,13 @@
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
+import { langOf } from "../lib/deletion-copy";
+import { pageTitle } from "../lib/admin-copy";
 import { useLoaderData } from "react-router";
 import { getAppUrl, getAuthServerUrl } from "../lib/config";
 import { forbiddenLocale } from "../lib/forbidden";
 import { loginPath, safeReturnPath } from "../lib/sign-in";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => [{ title: "Passkey needed - Al Ummah Now Admin" }];
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("passkeyNeeded", langOf(location.search)) }];
 
 /**
  * Staff passkeys (AUTH-PASSKEYS): an admin whose token has no passkey sign-in

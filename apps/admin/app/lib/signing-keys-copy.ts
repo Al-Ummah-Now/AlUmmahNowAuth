@@ -3,6 +3,7 @@
  * English and in Arabic for ?lang=ar (lib/deletion-copy.ts langOf).
  */
 import type { AdminLang } from "./deletion-copy";
+import { formatNumber } from "../../../../packages/ui/src/format.ts";
 
 export type SigningKeyState = "pending" | "active" | "previous" | "retired";
 
@@ -42,7 +43,7 @@ export interface SigningKeysCopy {
 }
 
 const hours = (h: number, lang: AdminLang) =>
-  lang === "ar" ? (h === 1 ? "ساعة واحدة" : h === 2 ? "ساعتين" : h <= 10 ? `${h} ساعات` : `${h} ساعة`) : `${h} hour${h === 1 ? "" : "s"}`;
+  lang === "ar" ? (h === 1 ? "ساعة واحدة" : h === 2 ? "ساعتين" : h <= 10 ? `${formatNumber(h, "ar")} ساعات` : `${formatNumber(h, "ar")} ساعة`) : `${h} hour${h === 1 ? "" : "s"}`;
 
 const en: SigningKeysCopy = {
   pageTitle: "Signing keys",
@@ -117,7 +118,7 @@ const ar: SigningKeysCopy = {
     `يُنشَر المفتاح الجديد قبل ${hours(leadHours, "ar")} من بدء التوقيع، ليصل إلى كل التطبيقات في الوقت المناسب.`,
     `يُسحَب المفتاح السابق بعد ${hours(retireHours, "ar")} من بدء توقيع المفتاح الجديد، بعد انتهاء كل الرموز التي وقّعها.`,
     scheduled
-      ? `يُدوَّر المفتاح تلقائيًا بعد ${rotateDays} يومًا، ويمكنك التدوير الآن أيضًا.`
+      ? `يُدوَّر المفتاح تلقائيًا بعد ${formatNumber(rotateDays, "ar")} يومًا، ويمكنك التدوير الآن أيضًا.`
       : "التدوير التلقائي متوقف في هذه البيئة: يبدأ التدوير من هنا. أما سحب المفتاح السابق فيتم تلقائيًا.",
   ],
   statusTitle: "مهمة التدوير",

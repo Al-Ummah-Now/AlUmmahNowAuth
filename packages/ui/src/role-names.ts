@@ -9,6 +9,7 @@ export const ROLE_NAMES_AR: Record<string, string> = {
   moderator: "مراقب",
   scholar: "عالم",
   writer: "كاتب",
+  creator: "صانع محتوى",
   "content reviewer": "مراجع محتوى",
   "senior reviewer": "مراجع أول",
 };
