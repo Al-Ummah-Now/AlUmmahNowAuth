@@ -215,3 +215,49 @@ export function renderInviteEmail(data: InviteEmailData, copy?: InviteCopy): Ren
 export const inviteEmailSubject = (locale: InviteLocale): string => BUILT_IN_COPY[locale === 'ar' ? 'ar' : 'en'].subject;
 export const inviteEmailHtml = (data: InviteEmailData): string => renderInviteEmail(data).html;
 export const inviteEmailText = (data: InviteEmailData): string => renderInviteEmail(data).text;
+
+/**
+ * "Email me a sign-in link" on the sign-in page (docs/USER_INVITES.md "No sign-in method yet"): an
+ * account with no password and no passkey gets the same single-use invite link, in its own short
+ * email (not the admin's invite wording: the person asked to sign in, nobody invited them again).
+ */
+export const SIGN_IN_LINK_COPY: Record<InviteLocale, { subject: string; preheader: string; greeting: string; text: string; button: string; expires: string; reason: string }> = {
+	en: {
+		subject: 'Your sign-in link for Al Ummah Now',
+		preheader: 'Open it to sign in. It works once.',
+		greeting: 'Assalamu alaikum,',
+		text: 'You asked to sign in to Al Ummah Now as {email}. Your account has no password or passkey yet, so this link signs you in.',
+		button: 'Sign in',
+		expires: 'This link works once, until {expires}. After you sign in, you can add a passkey or a password.',
+		reason: "You got this email because someone asked for a sign-in link for this address on the Al Ummah Now sign-in page. If it wasn't you, you can ignore it: nothing changes without the link.",
+	},
+	ar: {
+		subject: 'رابط تسجيل الدخول إلى الأمة الآن',
+		preheader: 'افتحه لتسجيل الدخول. يعمل مرة واحدة.',
+		greeting: 'السلام عليكم،',
+		text: 'طلبت تسجيل الدخول إلى الأمة الآن باسم {email}. ليس لحسابك كلمة مرور ولا مفتاح مرور بعد، لذا يسجّل هذا الرابط دخولك.',
+		button: 'تسجيل الدخول',
+		expires: 'يعمل هذا الرابط مرة واحدة حتى {expires}. بعد تسجيل الدخول يمكنك إضافة مفتاح مرور أو كلمة مرور.',
+		reason: 'وصلتك هذه الرسالة لأن أحدهم طلب رابط تسجيل دخول لهذا العنوان من صفحة تسجيل الدخول في الأمة الآن. إن لم تكن أنت، فيمكنك تجاهلها: لا يتغيّر شيء دون الرابط.',
+	},
+};
+
+export function signInLinkEmailDoc(data: Pick<InviteEmailData, 'email' | 'link' | 'expiresAt' | 'locale'>): EmailDoc {
+	const locale: InviteLocale = data.locale === 'ar' ? 'ar' : 'en';
+	const c = SIGN_IN_LINK_COPY[locale];
+	const values = { email: data.email, expires: formatEmailDate(data.expiresAt, locale) };
+	return {
+		locale,
+		subject: c.subject,
+		preheader: c.preheader,
+		greeting: c.greeting,
+		blocks: [{ kind: 'p', text: fillPlaceholders(c.text, values) }],
+		cta: { label: c.button, url: data.link },
+		after: [{ kind: 'small', text: fillPlaceholders(c.expires, values) }],
+		reason: c.reason,
+	};
+}
+
+export function renderSignInLinkEmail(data: Pick<InviteEmailData, 'email' | 'link' | 'expiresAt' | 'locale'>): RenderedEmailParts {
+	return renderEmail(signInLinkEmailDoc(data));
+}

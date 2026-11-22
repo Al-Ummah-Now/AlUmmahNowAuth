@@ -136,13 +136,21 @@ async function addVirtualAuthenticator(context: BrowserContext, page: Page): Pro
   });
 }
 
+/** Skip on the invite's passkey card: it says how to sign in next time, then Continue goes on. */
+async function skipPasskey(page: Page): Promise<void> {
+  const card = page.locator('[data-page="passkey"]');
+  await card.locator('[data-action="skip"]').click();
+  await expect(card.locator('[data-slot="note"]')).toBeVisible();
+  await card.locator('[data-action="done"]').click();
+}
+
 /** Open the link, Continue, Skip the passkey: signed in, on the app. */
 async function acceptAndSkip(page: Page, link: string): Promise<void> {
   await page.goto(link);
   await expect(page.locator('[data-page="invite"][data-state="ready"]')).toBeVisible();
   await page.locator('[data-action="accept-invite"]').click();
   await expect(page.locator('[data-page="passkey"]')).toBeVisible({ timeout: 15_000 });
-  await page.locator('[data-page="passkey"] [data-action="skip"]').click();
+  await skipPasskey(page);
   await page.waitForURL(`${AUTH}/session/accounts`, { timeout: 15_000 });
 }
 
@@ -162,6 +170,9 @@ test.describe('Invite link', () => {
     await expect(offer.locator('[data-action="skip"]')).toHaveText('Skip');
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await offer.locator('[data-action="skip"]').click();
+    // The account has no password: Skip says how to sign in next time before going on
+    await expect(offer.locator('[data-slot="note"]')).toContainText('No passkey yet.');
+    await offer.locator('[data-action="done"]').click();
     await page.waitForURL(`${AUTH}/session/accounts`, { timeout: 15_000 });
     expect((await browserAccounts(page)).active).toBe(s.userId);
   });
@@ -193,7 +204,7 @@ test.describe('Invite link', () => {
     await expect(page.locator('[data-page="invite"][data-state="ready"]')).toBeVisible();
     await expect(page.getByText(first.email)).toHaveCount(0);
     await page.locator('[data-action="accept-invite"]').click();
-    await page.locator('[data-page="passkey"] [data-action="skip"]').click();
+    await skipPasskey(page);
     await page.waitForURL(`${AUTH}/session/accounts`, { timeout: 15_000 });
     const now = await browserAccounts(page);
     expect(now.active).toBe(invited.userId);
@@ -223,15 +234,15 @@ test.describe('Invite link', () => {
     await expect(page.locator('[data-page="invite"][data-state="setup"]')).toBeVisible();
   });
 
-  test('revoked: withdrawn; unknown: doesn\'t work; neither says sign in', async ({ page }) => {
+  test('revoked: withdrawn, never sign in; unknown: can\'t use it', async ({ page }) => {
     const s = seedInvite();
     d1(`UPDATE user_invites SET deleted_at = ${Date.now()}, token_used_at = ${Date.now()} WHERE id = ${sql(s.inviteId)}`);
     await page.goto(s.link);
     await expect(page.locator('[data-page="invite"][data-state="withdrawn"]')).toContainText('This invite was withdrawn');
     await expect(page.getByText(/sign in/i)).toHaveCount(0);
     await page.goto(`${AUTH}/invite/${hex(32)}`);
-    await expect(page.locator('[data-page="invite"][data-state="unknown"]')).toContainText('This link doesn’t work');
-    await expect(page.getByText(/sign in/i)).toHaveCount(0);
+    await expect(page.locator('[data-page="invite"][data-state="unknown"]')).toContainText('We can’t use this link');
+    // Unknown links offer Sign in (a set-up account) and a new link by address (AlUmmahNowAuth#434)
   });
 
   test('Arabic from the invite\'s language, right to left', async ({ page }) => {

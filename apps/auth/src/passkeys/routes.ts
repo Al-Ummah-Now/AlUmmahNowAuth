@@ -6,7 +6,8 @@
  *   POST /passkeys/register/options                  { code?, ticket? } → { options, token }
  *   POST /passkeys/register/verify                   { credential, token } → { ok, passkey }
  *   POST /passkeys/email-code                        staff's first passkey: email a code
- *   POST /passkeys/prompt/dismiss                    "Not now" on the after-sign-in card
+ *   POST /passkeys/prompt/dismiss                    "Not now" on the after-sign-in card (never after a failure)
+ *   POST /passkeys/prompt/failed                     { reason } a failed add, audited with a coarse browser/OS
  * Account hub (the user's own bearer token):
  *   GET    /account/passkeys
  *   PATCH  /account/passkeys/:id        { name }
@@ -32,7 +33,8 @@ import { AuditEventSeverity, AuditEventType, createAuditEvent } from '../audit-e
 import { verifyAdminRequest } from '../auth-middleware';
 import { logger } from '../logger';
 import { flagSystemAccountAttempt, isSystemUserId, type SystemAccountEnv } from '../security/system-accounts';
-import { getClientIP } from '../rate-limit';
+import { getClientIP, withinRateLimit } from '../rate-limit';
+import { coarseAgent, failureReason } from './agent';
 import { verifyUserAccessToken } from '../routes/account-routes';
 import { checkCode, recordCode } from '../security/password-attempts';
 import { generateUnbiasedCode } from './util';
@@ -377,6 +379,24 @@ async function handleDismiss(rctx: PasskeyRouteContext): Promise<Response> {
 	return new Response(null, { status: 204 });
 }
 
+/**
+ * A failed add on the card or /passkeys/setup (failed, cancelled, network,
+ * expired). A failure is not a "no": it never snoozes the card. Audited with a
+ * coarse browser/OS so Auth admin shows it with the user's events; at most a
+ * few a minute per user (PASSWORD_IP_LIMITER), the rest are dropped quietly.
+ */
+async function handleFailed(rctx: PasskeyRouteContext): Promise<Response> {
+	const { request, env } = rctx;
+	const account = await signedInAccount(request, env);
+	if (!account) return json({ error: 'not_signed_in' }, 401);
+	const reason = failureReason((await readJson(request)).reason);
+	if (await withinRateLimit(env.PASSWORD_IP_LIMITER as RateLimit | undefined, `passkey:failed:${account.userId}`)) {
+		const { browser, os } = coarseAgent(request.headers.get('User-Agent'));
+		audit(rctx, AuditEventType.PASSKEY_ADD_FAILED, account.userId, { reason, browser, os });
+	}
+	return new Response(null, { status: 204 });
+}
+
 // ---------- account hub ----------
 
 async function handleAccountPasskeys(rctx: PasskeyRouteContext, path: string): Promise<Response> {
@@ -553,6 +573,8 @@ export async function routePasskeys(rctx: PasskeyRouteContext): Promise<Response
 				return handleEmailCode(rctx);
 			case '/passkeys/prompt/dismiss':
 				return handleDismiss(rctx);
+			case '/passkeys/prompt/failed':
+				return handleFailed(rctx);
 		}
 		return json({ error: 'not_found' }, 404);
 	}

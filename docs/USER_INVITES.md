@@ -85,7 +85,11 @@ as an emailed code. So Continue:
    accounts a session allows (3), gets a new session with only this account;
 5. shows "Sign in faster next time" (add a passkey: Face ID, fingerprint,
    screen lock) with **Skip**. Never a password. Browsers without WebAuthn go
-   straight on;
+   straight on. After a failure, or on Skip, the card says how to sign in next
+   time: "No passkey yet. Next time, sign in with the link we email you, or add
+   a password. You can add a passkey any time in Account → Passkeys." (Skip
+   then shows it with Continue instead of leaving at once). See "No sign-in
+   method yet" below for the card's failure rules;
 6. goes to the app's sign-in (`continueUrl`, minus any `prompt`). The app's
    `/authorize` completes by single sign-on; the issuer's onSuccess runs as for
    any sign-in (account state, current roles).
@@ -105,7 +109,7 @@ redirect). Deployed environments refuse the direct sign-in without
 | The account has no password and no passkey (never set up, or skipped the passkey) | **Finish setting up your account** + "Email me a new link" (POST `/invite/:token/send`) |
 | The account has a password or a passkey | **You're already set up** + Sign in |
 | Revoked invite, or the account suspended/deleted | **This invite was withdrawn**: contact the person who invited you or the team |
-| Unknown link (replaced by a newer email, or purged) | **This link doesn't work**: open the newest email, or contact the team |
+| Unknown link (replaced by a newer email, or purged) | **We can’t use this link**: Sign in if set up, or type the invited address for a new link |
 
 "Email me a new link" is the admin resend, asked by the invitee: same email,
 same audit event (`user.invite.resent`, `by: invitee`), expiry extended. It
@@ -125,6 +129,52 @@ still the only way in).
   hash (`POST …/link {tokenHash}`). That replaces the emailed link.
 - Signing in some other way with the invited email (password reset, passkey)
   still claims the account and spends the link.
+
+## No sign-in method yet
+
+An accepted account whose passkey was skipped or failed has no password and no
+passkey. The normal sign-in page never asks it for a password
+(`apps/auth/src/sign-in-link/`):
+
+- Once the email is typed (change, blur, or Continue with the password empty)
+  the page asks `POST /sign-in/method {email}` → `{ password: boolean }`. With
+  no password, the password field, Continue and the footer step aside for:
+  "This email has no password yet. Choose how to sign in:"
+  - **Email me a sign-in link** (`POST /sign-in/link`, CSRF: the
+    `signin_csrf` cookie, `SameSite=Strict`, `Path=/sign-in`). The same
+    single-use invite link and the same send rules as "Email me a new link"
+    (deliver first, then store the hash; one per invite every 5 minutes; audit
+    `user.invite.resent` with `by: sign_in_page`), in its own short email
+    ("Your sign-in link"), in the page's language. It signs in like any invite
+    link and offers the passkey card again.
+  - **Add a password**: `/password/register?…&setup=1`, titled "Add a
+    password", with the email filled in. Its emailed code proves the inbox;
+    then the password is set and the account signs in (an invited account is
+    claimed). That finishes setup: the account has a way in.
+- Without JavaScript, a sign-in POST for such an email comes back (still 401)
+  with the two options showing.
+- **What it reveals**: only whether the email has a password, which the
+  sign-in page already said (registering with it answers "email taken"). An
+  unknown email and an account with no method get the very same options and
+  pages; "Email me a sign-in link" answers the same "Check your inbox" page
+  whether or not anything was sent, and looks up and sends after the answer.
+  Only invited accounts with an open invite get a link.
+- **Limits**: the check, `PASSWORD_IP_LIMITER` per IP and
+  `PASSWORD_EMAIL_LIMITER` per email hash; the link, `SEND_CODE_LIMITER` per IP
+  and per email hash.
+
+**The passkey card** (after any sign-in, and the invite's):
+
+- After two failures, the second button becomes **Continue without a
+  passkey**.
+- A failure is not a "no": leaving after a failure never calls
+  `/passkeys/prompt/dismiss`, so the card comes back next sign-in. Only a plain
+  Not now (Skip) with no failure snoozes it.
+- Each failure is audited: `POST /passkeys/prompt/failed {reason}` →
+  `passkey.add_failed` with `reason` (failed, cancelled, network, expired) and a
+  coarse `browser` and `os` from the User-Agent (no versions, no device
+  models). Auth admin shows them on the user's Passkeys page ("Failed passkey
+  attempts", local time with zone, UTC on hover) and in Audit logs.
 
 ## Revoke, restore, purge (admin soft delete)
 

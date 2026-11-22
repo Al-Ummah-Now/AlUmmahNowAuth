@@ -30,7 +30,7 @@ import { isE2EAddress, markRunUser, shouldSinkCode, SINK_TTL_SECONDS, type RunUs
 import { requireSecret } from '../utils/secrets';
 import { signInFallbackUrl } from '../utils/sign-in-restart';
 import SendEmail from '../email';
-import { inviteChannels, inviteVideo, parseInviteCopy, renderInviteEmail } from './email';
+import { inviteChannels, inviteVideo, parseInviteCopy, renderInviteEmail, renderSignInLinkEmail } from './email';
 import { inviteCopy, pageLocale, renderInviteState, type InvitePageState } from './page';
 import { claimInvitedAccount, InviteError, InviteService, newInviteToken, normalizeInviteEmail, type Invite, type InviteActor, type InviteRow, type SupersededReason } from './service';
 import { hashToken } from '../utils/crypto';
@@ -125,13 +125,24 @@ export function safeContinueUrl(value: unknown, env: Env): string | null {
  * `opts.emailCopy` is the admin's wording from the request (videos admin › Settings › Emails); without
  * usable copy the built-in words are sent and that is logged, so a missing template is noticed.
  */
-export async function deliverInvite(env: Env, invite: Invite, link: string, opts: { video?: unknown; emailCopy?: unknown } = {}): Promise<{ sent: boolean; via: 'email' | 'e2e_sink' | 'none'; error?: string }> {
+export async function deliverInvite(
+	env: Env,
+	invite: Invite,
+	link: string,
+	opts: { video?: unknown; emailCopy?: unknown; purpose?: 'invite' | 'sign-in' } = {}
+): Promise<{ sent: boolean; via: 'email' | 'e2e_sink' | 'none'; error?: string }> {
 	if (isE2EAddress(invite.email) && (await shouldSinkCode(env, invite.email))) {
-		await env.AUTH_STORAGE.put(`test:invite:${invite.email}`, JSON.stringify({ link, at: Date.now() }), { expirationTtl: SINK_TTL_SECONDS });
+		await env.AUTH_STORAGE.put(`test:invite:${invite.email}`, JSON.stringify({ link, at: Date.now(), purpose: opts.purpose ?? 'invite' }), { expirationTtl: SINK_TTL_SECONDS });
 		return { sent: true, via: 'e2e_sink' };
 	}
 	try {
 		const apiKey = await requireSecret(env.RESEND_API_KEY as never, 'RESEND_API_KEY', env as unknown as Record<string, unknown>);
+		if (opts.purpose === 'sign-in') {
+			// The sign-in page's "Email me a sign-in link": its own short email, never the invite wording
+			const email = renderSignInLinkEmail({ email: invite.email, link, expiresAt: invite.expiresAt, locale: invite.locale });
+			const result = await SendEmail({ apiKey, from: INVITE_FROM, to: invite.email, subject: email.subject, html: email.html, text: email.text });
+			return result.success ? { sent: true, via: 'email' } : { sent: false, via: 'none', error: 'send_failed' };
+		}
 		const parsed = parseInviteCopy(opts.emailCopy, invite.locale);
 		if ('reason' in parsed) logger.warn('[invites] Built-in invite copy used', { inviteId: invite.id, locale: invite.locale, reason: parsed.reason });
 		const email = renderInviteEmail({
@@ -367,8 +378,59 @@ async function linkState(env: Env, service: InviteService, token: string, signed
 	return unspent ? { kind: 'usable', row, account } : stuck;
 }
 
+/**
+ * Emails a fresh single-use link to `email` when an invited account there is waiting for one: status
+ * invited, or active with no password and no passkey (the link is its only way in). Otherwise
+ * nothing happens. Never says which: callers answer the same page either way, and run this after
+ * the answer (ctx.waitUntil) so the response time doesn't tell either.
+ *
+ * Used by a link we can't match ("enter the invited address", by: invitee_request) and by the
+ * sign-in page's "Email me a sign-in link" (by: sign_in_page, its own email wording). A link was
+ * emailed in the last few minutes: no second one (SELF_SEND_COOLDOWN_MS). Deliver first, store
+ * after: a link that never reached the inbox is never valid. Audited like an admin's resend.
+ */
+export async function emailLinkIfWaiting(
+	env: Env,
+	request: Request,
+	requestId: string,
+	email: string,
+	lang: 'en' | 'ar',
+	by: 'invitee_request' | 'sign_in_page'
+): Promise<'sent' | 'not_waiting' | 'cooldown' | 'send_failed'> {
+	const service = new InviteService(env.AUTH_DB);
+	const row = await service.openByEmail(email);
+	const account = row ? await inviteAccount(env.AUTH_DB, row.tenant_id, row.user_id) : null;
+	const waiting =
+		row !== null &&
+		account !== null &&
+		account.deleted_at === null &&
+		(account.status === 'invited' || (account.status === 'active' && !(await hasSignInMethod(env.AUTH_DB, authStorage(env), account))));
+	if (!waiting) return 'not_waiting';
+	if (row!.last_sent_at !== null && Date.now() - row!.last_sent_at < SELF_SEND_COOLDOWN_MS) return 'cooldown';
+	const ttl = Number(env.INVITE_TTL_DAYS) || undefined;
+	const fresh = await newInviteToken();
+	const scoped = new InviteService(env.AUTH_DB, { tenantId: row!.tenant_id, defaultTtlDays: ttl });
+	const planned = InviteService.view({ ...row!, locale: lang, expires_at: scoped.extendedExpiry(row!.expires_at) });
+	const delivery = await deliverInvite(env, planned, inviteLink(issuerOf(env, request), fresh.token, lang), { purpose: by === 'sign_in_page' ? 'sign-in' : 'invite' });
+	await emitAuditEvent({
+		timestamp: new Date().toISOString(),
+		eventType: AuditEventType.USER_INVITE_RESENT,
+		severity: AuditEventSeverity.INFO,
+		userId: row!.user_id,
+		ipAddress: getClientIP(request),
+		userAgent: request.headers.get('User-Agent'),
+		requestId,
+		success: true,
+		errorMessage: null,
+		metadata: { inviteId: row!.id, clientId: row!.client_id, by, emailSent: delivery.sent, via: delivery.via, targetEmail: row!.email },
+	}).catch(() => undefined);
+	if (!delivery.sent) return 'send_failed';
+	await scoped.rotateToken(row!.id, { extend: true, locale: lang, allowAccepted: true, sent: true, preset: fresh });
+	return 'sent';
+}
+
 /** A plausible address (the check the browser's type=email does, without a backtracking regex). */
-function plausibleEmail(value: string): boolean {
+export function plausibleEmail(value: string): boolean {
 	if (value.length > 254 || /\s/.test(value)) return false;
 	const at = value.indexOf('@');
 	return at > 0 && at === value.lastIndexOf('@') && value.indexOf('.', at + 2) > at + 1 && !value.endsWith('.');
@@ -504,17 +566,7 @@ export async function routeInvitePage(request: Request, env: Env, ctx: Execution
 			return page({ kind: 'busy' }, 429);
 		}
 		// Look up and send after the answer, so the response time doesn't tell either
-		const lookUpAndSend = async (): Promise<void> => {
-			const row = await service.openByEmail(email);
-			const account = row ? await inviteAccount(env.AUTH_DB, row.tenant_id, row.user_id) : null;
-			const waiting =
-				row !== null &&
-				account !== null &&
-				account.deleted_at === null &&
-				(account.status === 'invited' || (account.status === 'active' && !(await hasSignInMethod(env.AUTH_DB, authStorage(env), account))));
-			if (waiting) await emailNewLink(row!, account!, undefined, 'invitee_request', '');
-		};
-		ctx.waitUntil(lookUpAndSend().catch((error) => logger.error('invite link request failed', { requestId, error: String(error) })));
+		ctx.waitUntil(emailLinkIfWaiting(env, request, requestId, email, lang, 'invitee_request').catch((error) => logger.error('invite link request failed', { requestId, error: String(error) })));
 		return page({ kind: 'requested', signInUrl: homeUrl });
 	}
 
@@ -563,6 +615,8 @@ export async function routeInvitePage(request: Request, env: Env, ctx: Execution
 		autoContinue: true,
 		lang,
 		wording: { title: t.passkeyTitle, text: t.passkeyText, skip: t.skip },
+		// The account may have no password: after a failure or Skip, say how to sign in next time
+		noPasskeyNote: true,
 	});
 	const headers = new Headers(offer.headers);
 	headers.set('Referrer-Policy', 'no-referrer');
