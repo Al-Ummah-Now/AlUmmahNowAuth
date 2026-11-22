@@ -71,6 +71,12 @@ export const ERROR_COPY: Record<ErrorLocale, { kinds: Record<AuthErrorKind, { ti
 };
 
 const escapeText = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+/**
+ * The body's sentences, each drawn as its own `.ep-s` (an inline block): two share a line only when
+ * both fit, so no line ends on the next sentence's first words («… الصفحة. ربما» / “… a problem. Try”).
+ * The same split as the videos app's errorBodySentences.
+ */
+export const bodySentences = (body: string): string[] => body.split(/(?<=[.!?؟])\s+(?=\S)/u).filter(Boolean);
 
 const STATUS: Record<AuthErrorKind, number> = { notFound: 404, server: 500, unavailable: 503 };
 
@@ -160,7 +166,7 @@ async function renderFamilyPage(o: RenderOptions): Promise<Response> {
 						<p class="ep-code">${errorCodeLabel(locale, status)}</p>
 						<h1 class="ep-title" id="ep-title">${copy.title}</h1>
 					</div>
-					<p class="ep-body">${copy.body}</p>
+					<p class="ep-body">${bodySentences(copy.body).map((s, i) => html`${i ? ' ' : ''}<span class="ep-s">${s}</span>`)}</p>
 				</div>
 				${o.reference
 					? html`<div class="ep-ref" data-testid="error-reference-box">

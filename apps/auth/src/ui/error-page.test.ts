@@ -88,6 +88,9 @@ describe('the error-page family on Auth (wiki guides/error-pages.md)', () => {
 		expect(html).toContain('الصفحة غير موجودة');
 		expect(html).toContain('خطأ ٤٠٤');
 		expect(html).not.toContain('error-reference');
+		// one inline-block span a sentence: no line ends on «ربما», the next sentence's first word
+		expect(html).toContain('<p class="ep-body"><span class="ep-s">لم نعثر على هذه الصفحة.</span> <span class="ep-s">ربما الرابط غير صحيح أو نُقلت الصفحة.</span></p>');
+		expect(ERROR_PAGE_CSS).toContain('.ep-s{display:inline-block}');
 	});
 
 	it('is the family card: the vendored sheet, family buttons, one h1, no sign-in branding', async () => {
