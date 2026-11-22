@@ -104,7 +104,7 @@ async function invitedAccount(opts: { active?: boolean; password?: boolean; loca
 
 const csrfOf = (html: string) => /name="csrf" value="([0-9a-f]{64})"/.exec(html)?.[1] ?? '';
 const loginMode = (html: string) => /<form data-component="form" method="post" data-aun-login( data-aun-mode="no-password")?>/.exec(html)?.[1] ? 'no-password' : 'password';
-const optionsBlock = (html: string) => /<div data-aun-no-password([^>]*)>/.exec(html)?.[1];
+const optionsBlock = (html: string) => /<div data-component="form" data-aun-no-password([^>]*)>/.exec(html)?.[1];
 const linkIn = (email: { html: string }) => /href="(http:\/\/localhost\/invite\/[0-9a-f]{64}[^"]*)"/.exec(email.html)?.[1]?.replace(/&amp;/g, '&');
 
 let emits: ReturnType<typeof vi.spyOn>;
