@@ -291,11 +291,10 @@ export async function renderAddPasskeyPage(p: AddPasskeyPage): Promise<Response>
 			${raw(pageScript(p, t))}
 		</script>`;
 	const page = Layout({ theme: p.theme, locale: p.locale, children: body });
-	const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8', 'Content-Language': p.locale, 'Cache-Control': 'no-store' };
-	// The card answers a sign-in POST and can't be loaded again: its GET twin, for the header's
-	// language switch, is the setup page with the same way on (themes/pages.ts, router.ts withSignInChrome)
-	if (p.mode === 'card') headers['Content-Location'] = `/passkeys/setup?${new URLSearchParams({ return_to: p.continueUrl, lang: p.locale }).toString()}`;
-	return new Response(`<!DOCTYPE html>${await page.toString()}`, { status: 200, headers });
+	return new Response(`<!DOCTYPE html>${await page.toString()}`, {
+		status: 200,
+		headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Language': p.locale, 'Cache-Control': 'no-store' },
+	});
 }
 
 /** /passkeys/setup when it can't run: signed out, stale sign-in, bad link. */
