@@ -1,5 +1,5 @@
 import { formatDate } from "../../../../packages/ui/src/format.ts";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { dirOf, langOf } from "../lib/deletion-copy";
@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { requireStepUp } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
-import { getUser, isErrorResponse, listUserPasskeys, removeUserPasskey, sendPasskeySetupLink, type PasskeySummary } from "../lib/admin-api.server";
+import { getAuditLogs, getUser, isErrorResponse, listUserPasskeys, removeUserPasskey, sendPasskeySetupLink, type PasskeySummary } from "../lib/admin-api.server";
 import { actingOf, adminUserOf, type AdminEnv } from "../lib/passkeys.server";
 import { getCloudflare } from "../lib/cloudflare-context";
 
@@ -29,7 +29,12 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
   const user = await adminUserOf(request, env);
   const userId = String(params.id ?? "");
   const acting = actingOf(user);
-  const [target, list] = await Promise.all([getUser(env, acting, userId), listUserPasskeys(env, acting, userId, request)]);
+  const [target, list, failed] = await Promise.all([
+    getUser(env, acting, userId),
+    listUserPasskeys(env, acting, userId, request),
+    // The user's failed adds (Auth passkeys/routes.ts /passkeys/prompt/failed): reason + coarse browser/OS
+    getAuditLogs(env as never, acting, { user_id: userId, event_type: "passkey.add_failed", limit: 10 }),
+  ]);
   return {
     user: { id: user.id, email: user.email },
     authServerUrl: getAuthServerUrl(request, env),
@@ -40,6 +45,12 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
     passkeys: isErrorResponse(list) ? ([] as PasskeySummary[]) : list.passkeys,
     staff: isErrorResponse(list) ? false : list.staff,
     loadError: isErrorResponse(list) ? list.error : undefined,
+    failures: isErrorResponse(failed)
+      ? ([] as PasskeyFailure[])
+      : failed.data.map((e): PasskeyFailure => {
+          const m = (typeof e.metadata === "string" ? JSON.parse(e.metadata || "{}") : e.metadata ?? {}) as Record<string, unknown>;
+          return { id: e.id, at: e.timestamp, reason: String(m.reason ?? "failed"), browser: String(m.browser ?? "Other"), os: String(m.os ?? "Other") };
+        }),
   };
 }
 
@@ -70,6 +81,32 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     };
   }
   return { ok: false, error: "Unknown action", notice: null };
+}
+
+interface PasskeyFailure {
+  id: number;
+  at: string;
+  reason: string;
+  browser: string;
+  os: string;
+}
+
+/**
+ * An admin time: the viewer's local time with its zone, UTC on hover (one formatter for every
+ * admin time). The server render has no viewer zone, so it shows UTC until the browser takes over.
+ */
+const TIME_FIELDS: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+const noSubscribe = () => () => {};
+
+function AdminTime({ value, lang, utcLabel }: { value: string; lang: "en" | "ar"; utcLabel: (s: string) => string }) {
+  const utc = utcLabel(formatDate(value, lang, { ...TIME_FIELDS, timeZone: "UTC" }));
+  // false in the server render and while hydrating, true after: no hydration mismatch
+  const inBrowser = useSyncExternalStore(noSubscribe, () => true, () => false);
+  return (
+    <time dateTime={value} title={utc}>
+      {inBrowser ? formatDate(value, lang, { ...TIME_FIELDS, timeZoneName: "short" }) : utc}
+    </time>
+  );
 }
 
 /** A setup link works this long (Auth: passkeys/routes.ts). */
@@ -175,6 +212,46 @@ export default function UserPasskeys() {
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+      <Card className="mb-6" data-testid="passkey-failures">
+        <CardHeader>
+          <CardTitle>{t.failuresTitle}</CardTitle>
+          <CardDescription>{t.failuresIntro}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {data.failures.length === 0 ? (
+            <p>{t.noFailures}</p>
+          ) : (
+            <ul className="divide-y divide-[var(--color-border)]">
+              {data.failures.map((f) => {
+                const [b, on, o] = t.on(f.browser === "Other" ? t.other : f.browser, f.os === "Other" ? t.other : f.os);
+                return (
+                  <li key={f.id} className="py-2 grid gap-1 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4 text-sm">
+                    <span className="text-[var(--color-muted-foreground)]">
+                      <span className="sr-only">{t.when}: </span>
+                      <AdminTime value={f.at} lang={lang} utcLabel={t.utc} />
+                    </span>
+                    <span>
+                      <span className="sr-only">{t.reason}: </span>
+                      {t.reasons[f.reason] ?? t.reasons.failed}
+                    </span>
+                    <span>
+                      <span className="sr-only">{t.device}: </span>
+                      <bdi>{b}</bdi>
+                      {on}
+                      <bdi>{o}</bdi>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="text-sm mt-3">
+            <Link className="underline" to={`/audit?search=${encodeURIComponent(data.targetId)}${lang === "ar" ? "&lang=ar" : ""}`}>
+              {t.allEvents}
+            </Link>
+          </p>
         </CardContent>
       </Card>
       <Card>

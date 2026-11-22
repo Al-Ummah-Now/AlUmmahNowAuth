@@ -62,6 +62,8 @@ import { isEmailAvailable, isEmailOnlyPasswordRoute, withoutEmailLinks } from ".
 import { ADMIN_NATIVE_CLIENT_IDS } from "./admin-native-clients";
 import { safePasswordChangeRequest } from "./security/password-change-redirect";
 import { injectTurnstile, widgetScriptUrl } from "./security/turnstile";
+import { addNoPasswordOptions, addSetupHeading } from "./sign-in-link/page";
+import { csrfFor as signInCsrfFor, hasPassword } from "./sign-in-link/routes";
 import { handleModerationBatch, type ModerationQueueMessage } from './moderation/queue';
 import { handleRotationMessages } from './signing-keys/rotation';
 import { createActionRunner } from './moderation/actions';
@@ -441,6 +443,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     if (!emailAvailable && isEmailOnlyPasswordRoute(routedPath(url.pathname))) {
       return addSecurityHeaders(new Response('Not found', { status: 404 }), isProduction);
     }
+    // The password sign-in POST's email, read before the guard and the issuer take the body:
+    // an email with no password gets the two options (sign-in-link/) instead of "wrong password"
+    const signInPath = routedPath(url.pathname) === '/password/authorize';
+    const postedEmail = signInPath && request.method === 'POST'
+      ? await request.clone().formData().then((f) => f.get('email'), () => null)
+      : null;
     const passwordGuard = await timer.stage('guard', () => guardPasswordRequest(request, env, url, passwordCopy, (promise) => ctx.waitUntil(promise)));
 
     // The page's theme, from Auth's own themes (Auth admin): the per-call ?theme=
@@ -600,6 +608,30 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       const headers = new Headers(issuerResponse.headers);
       headers.delete('Content-Length');
       issuerResponse = new Response(html, { status: issuerResponse.status, statusText: issuerResponse.statusText, headers });
+    }
+
+    // Accounts with no sign-in method yet (sign-in-link/): the sign-in page offers "Email me a
+    // sign-in link" and "Add a password" once the email has no password; register with setup=1
+    // is "Add a password"
+    if (isPage && emailAvailable && (issuerResponse.headers.get('Content-Type') ?? '').includes('text/html')) {
+      const lang = getLocaleFromRequest(request) === 'ar' ? 'ar' : 'en';
+      if (signInPath && (issuerResponse.status === 200 || issuerResponse.status === 401)) {
+        const email = typeof postedEmail === 'string' ? postedEmail.trim().toLowerCase() : '';
+        // A failed sign-in POST for an email without a password: show the options at once (works without JS)
+        const noPassword = issuerResponse.status === 401 && !!email && !(await hasPassword(storage, email));
+        const csrf = signInCsrfFor(request);
+        const html = addNoPasswordOptions(await issuerResponse.text(), { lang, csrf: csrf.token, back: url.pathname + url.search, noPassword, email: noPassword ? email : undefined });
+        const headers = new Headers(issuerResponse.headers);
+        headers.delete('Content-Length');
+        if (csrf.cookie) headers.append('Set-Cookie', csrf.cookie);
+        // The status stays the issuer's (401: this POST did not sign in), only the page changes
+        issuerResponse = new Response(html, { status: issuerResponse.status, statusText: issuerResponse.statusText, headers });
+      } else if (routedPath(url.pathname) === '/password/register' && url.searchParams.get('setup') === '1') {
+        const html = addSetupHeading(await issuerResponse.text(), lang);
+        const headers = new Headers(issuerResponse.headers);
+        headers.delete('Content-Length');
+        issuerResponse = new Response(html, { status: issuerResponse.status, statusText: issuerResponse.statusText, headers });
+      }
     }
 
     // Picker "Sign out" of the last account: single sign-out (#219)

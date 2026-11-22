@@ -127,6 +127,8 @@ export enum AuditEventType {
   PASSKEY_REMOVED = 'passkey.removed',
   PASSKEY_SETUP_LINK_SENT = 'passkey.setup_link_sent',
   PASSKEY_ENFORCEMENT_CHANGED = 'passkey.enforcement_changed',
+  /** Adding a passkey failed (reason failed|cancelled|network|expired, coarse browser/OS) */
+  PASSKEY_ADD_FAILED = 'passkey.add_failed',
   // Signing-key rotation (signing-keys/rotation.ts, #13)
   SIGNING_KEY_ROTATION_REQUESTED = 'signing_key.rotation_requested',
   SIGNING_KEY_ADDED = 'signing_key.added',

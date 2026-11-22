@@ -31,6 +31,8 @@ const COPY = {
 		add: 'Add a passkey',
 		notNow: 'Not now',
 		continue: 'Continue',
+		continueWithout: 'Continue without a passkey',
+		noPasskeyYet: 'No passkey yet. Next time, sign in with the link we email you, or add a password. You can add a passkey any time in Account → Passkeys.',
 		back: 'Back',
 		codeIntro: (email: string) => `First confirm it is you: we will email a code to ${email}.`,
 		sendCode: 'Email me a code',
@@ -67,6 +69,8 @@ const COPY = {
 		add: 'إضافة مفتاح مرور',
 		notNow: 'ليس الآن',
 		continue: 'متابعة',
+		continueWithout: 'المتابعة دون مفتاح مرور',
+		noPasskeyYet: 'لا مفتاح مرور بعد. في المرة القادمة، سجّل الدخول بالرابط الذي نرسله إلى بريدك، أو أضف كلمة مرور. يمكنك إضافة مفتاح مرور في أي وقت من «الحساب ← مفاتيح المرور».',
 		back: 'رجوع',
 		codeIntro: (email: string) => `أكّد هويتك أولًا: سنرسل رمزًا إلى ${email}.`,
 		sendCode: 'أرسل لي رمزًا',
@@ -125,6 +129,11 @@ export interface AddPasskeyPage {
 	lang: PageLocale;
 	/** Wording of another flow that offers the card (the invite's first sign-in): title, text, skip label */
 	wording?: { title: string; text: string; skip: string };
+	/**
+	 * After a failure or Skip, say how to sign in next time without a passkey (the invite's first
+	 * sign-in: the account may have no password). Skip then shows it with Continue instead of leaving.
+	 */
+	noPasskeyNote?: boolean;
 }
 
 function formatDate(epochSeconds: number, locale: PageLocale): string {
@@ -144,6 +153,7 @@ const STYLE = `
 [data-page="passkey"] [data-component="title"] { font-size:1.25rem; font-weight:600; line-height:1.4; }
 [data-page="passkey"] [data-slot="code"] { display:flex; flex-direction:column; gap:1rem; }
 [data-page="passkey"] bdi { overflow-wrap:anywhere; }
+[data-page="passkey"] [data-slot="note"][hidden] { display:none; }
 /* No message yet: no blank row (it stays a live region for screen readers) */
 [data-page="passkey"] [data-slot="status"]:empty { position:absolute; width:1px; height:1px; min-height:0; overflow:hidden; clip-path:inset(50%); }
 `;
@@ -173,6 +183,7 @@ function pageScript(p: AddPasskeyPage, t: ReturnType<typeof copyFor>): string {
 		autoContinue: p.autoContinue,
 		delay: AUTO_CONTINUE_MS,
 		ticket: p.ticket ?? null,
+		note: !!p.noPasskeyNote,
 		q: `?lang=${p.lang}`,
 		t: {
 			adding: t.adding,
@@ -193,6 +204,7 @@ function pageScript(p: AddPasskeyPage, t: ReturnType<typeof copyFor>): string {
 			ticket_invalid: t.ticketInvalid,
 			ticket_other_account: t.ticketOtherAccount,
 			codeSent: t.codeSent,
+			continueWithout: t.continueWithout,
 		},
 	};
 	// JSON in a script: escape "<" so a value can never close the tag
@@ -202,13 +214,24 @@ function pageScript(p: AddPasskeyPage, t: ReturnType<typeof copyFor>): string {
 var C=${json},pk=window.oaPasskey,root=document.querySelector('[data-page="passkey"]');
 var status=root.querySelector('[data-slot="status"]'),addBtn=root.querySelector('[data-action="add"]'),skip=root.querySelector('[data-action="skip"]');
 var codeBox=root.querySelector('[data-slot="code"]'),sendBtn=root.querySelector('[data-action="send-code"]'),codeInput=root.querySelector('input[name="code"]');
-var done=root.querySelector('[data-action="done"]');
+var done=root.querySelector('[data-action="done"]'),note=root.querySelector('[data-slot="note"]');
 function say(msg,tone){status.textContent=msg||'';if(tone)status.setAttribute('data-tone',tone);else status.removeAttribute('data-tone');}
 var leaving=false,timer=null;
 function go(){if(leaving)return;leaving=true;if(timer)clearTimeout(timer);[addBtn,skip,done].forEach(function(b){if(b)b.disabled=true;});window.location.assign(C.continueUrl);}
 function post(path,body){return fetch(path+C.q,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body||{})}).catch(function(){var n=new Error('network');n.__network=true;throw n;}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){j.__status=r.status;return j;});});}
 if(!pk||!pk.supported()){ if(C.mode==='card'&&!C.staff){go();return;} say(C.t.unsupported,'error'); if(addBtn)addBtn.hidden=true; if(codeBox)codeBox.hidden=true; }
-if(skip)skip.addEventListener('click',function(){skip.disabled=true;if(C.mode==='card'&&!C.staff){post('/passkeys/prompt/dismiss').then(go,go);}else{go();}});
+// A failure is not a "no": only Not now with no failure snoozes the card (dismiss).
+// Each failure is audited (reason only; the server adds a coarse browser/OS).
+var fails=0,noted=false;
+function showNote(){if(note&&!noted){noted=true;note.hidden=false;}}
+function failure(reason,msg,tone){fails++;say(msg,tone);post('/passkeys/prompt/failed',{reason:reason}).then(null,function(){});if(C.note)showNote();if(fails>=2&&skip)skip.textContent=C.t.continueWithout;}
+if(skip)skip.addEventListener('click',function(){
+ skip.disabled=true;
+ var dismiss=C.mode==='card'&&!C.staff&&fails===0;
+ // The invite's card: Skip first says how to sign in next time, then Continue goes on
+ if(C.note&&!noted){showNote();if(addBtn)addBtn.hidden=true;skip.hidden=true;say('');done.hidden=false;done.focus();if(dismiss)post('/passkeys/prompt/dismiss').then(null,function(){});return;}
+ if(dismiss){post('/passkeys/prompt/dismiss').then(go,go);}else{go();}
+});
 if(sendBtn)sendBtn.addEventListener('click',function(){sendBtn.disabled=true;post('/passkeys/email-code').then(function(j){sendBtn.disabled=false;if(j.sent){say(C.t.codeSent);codeInput.hidden=false;codeInput.parentNode.hidden=false;addBtn.hidden=false;codeInput.focus();}else{say(C.t[j.error]||C.t.code_failed,'error');}},function(){sendBtn.disabled=false;say(C.t.network,'error');});});
 if(addBtn)addBtn.addEventListener('click',function(){
  addBtn.disabled=true;say(C.t.adding);
@@ -216,11 +239,11 @@ if(addBtn)addBtn.addEventListener('click',function(){
  post('/passkeys/register/options',body).then(function(j){
   if(!j.options){addBtn.disabled=false;say(C.t[j.error]||C.t.failed,'error');return;}
   return pk.create(j.options).then(function(cred){return post('/passkeys/register/verify',{credential:cred,token:j.token});}).then(function(v){
-   if(v&&v.ok){say(C.autoContinue?C.t.added+' '+C.t.goingBack:C.t.added);addBtn.hidden=true;if(skip)skip.hidden=true;if(codeBox)codeBox.hidden=true;done.hidden=false;done.focus();root.setAttribute('data-state','added');if(C.autoContinue)timer=setTimeout(go,C.delay);}
-   else{addBtn.disabled=false;say(C.t[v&&v.error]||C.t.failed,'error');}
+   if(v&&v.ok){say(C.autoContinue?C.t.added+' '+C.t.goingBack:C.t.added);addBtn.hidden=true;if(skip)skip.hidden=true;if(codeBox)codeBox.hidden=true;if(note)note.hidden=true;done.hidden=false;done.focus();root.setAttribute('data-state','added');if(C.autoContinue)timer=setTimeout(go,C.delay);}
+   else{addBtn.disabled=false;var r=v&&v.error==='expired'?'expired':'failed';failure(r,C.t[v&&v.error]||C.t.failed,'error');}
   },function(e){addBtn.disabled=false;
-   if(e&&e.__network)say(C.t.network,'error');else if(e&&e.name==='InvalidStateError')say(C.t.exists,'error');else if(e&&(e.name==='NotAllowedError'||e.name==='AbortError'))say(C.t.cancelled);else say(C.t.failed,'error');});
- },function(){addBtn.disabled=false;say(C.t.network,'error');});
+   if(e&&e.__network)failure('network',C.t.network,'error');else if(e&&e.name==='InvalidStateError')say(C.t.exists,'error');else if(e&&(e.name==='NotAllowedError'||e.name==='AbortError'))failure('cancelled',C.t.cancelled);else failure('failed',C.t.failed,'error');});
+ },function(){addBtn.disabled=false;failure('network',C.t.network,'error');});
 });
 if(done)done.addEventListener('click',go);
 })();`;
@@ -257,6 +280,7 @@ export async function renderAddPasskeyPage(p: AddPasskeyPage): Promise<Response>
 					</div>`
 				: ''}
 			<p data-slot="status" role="status"></p>
+			${p.noPasskeyNote ? html`<p data-component="description" data-slot="note" hidden>${t.noPasskeyYet}</p>` : ''}
 			<div data-slot="actions">
 				<button type="button" data-component="button" data-action="add" ${p.needsCode ? raw('hidden') : ''}>${t.add}</button>
 				<button type="button" data-component="button" data-action="done" hidden>${t.continue}</button>

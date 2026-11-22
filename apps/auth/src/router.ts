@@ -42,6 +42,7 @@ import { handleSigningKeys, SIGNING_KEYS_PATH } from './signing-keys/routes';
 import { moderationAdminRoutes } from './moderation/admin-routes';
 import { deletionAdminRoutes } from './deletions/routes';
 import { routeInvitePage, routeInviteProvisioning } from './invites/routes';
+import { routeSignInLink, SIGN_IN_LINK_PATH, SIGN_IN_METHOD_PATH } from './sign-in-link/routes';
 import { openauthThemeFor } from '../../../packages/ui/src/auth-theme/compile.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
@@ -678,6 +679,12 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	// Invites: provisioning API for client apps (client credentials) and the public link page (docs/USER_INVITES.md)
 	if (pathname === '/provisioning/invites' || pathname.startsWith('/provisioning/invites/')) {
 		const response = await routeInviteProvisioning(request, rctx.env, rctx.ctx, rctx.requestId);
+		return response ? addSecurityHeaders(response, rctx.isProduction) : null;
+	}
+	// An account with no password or passkey: the sign-in page's check and "Email me a sign-in link"
+	if (pathname === SIGN_IN_METHOD_PATH || pathname === SIGN_IN_LINK_PATH) {
+		const theme = openauthThemeFor(compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!);
+		const response = await routeSignInLink(request, rctx.env, rctx.ctx, rctx.requestId, theme);
 		return response ? addSecurityHeaders(response, rctx.isProduction) : null;
 	}
 	if (pathname.startsWith('/invite/')) {

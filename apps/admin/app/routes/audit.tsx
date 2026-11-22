@@ -184,6 +184,9 @@ const THEME_EVENTS = [
   "theme.imported",
 ];
 
+/** Passkeys (AUTH-PASSKEYS), offered as event filters; add_failed carries reason + coarse browser/OS. */
+const PASSKEY_EVENTS = ["passkey.added", "passkey.removed", "passkey.add_failed", "passkey.setup_link_sent", "passkey.enforcement_changed"];
+
 /** Refused attempts on system accounts (auth security/system-accounts.ts), offered as event filters. */
 const SYSTEM_ACCOUNT_EVENTS = ["security.system_account.sign_in_refused", "security.system_account.role_grant_refused"];
 
@@ -314,6 +317,7 @@ export default function AuditLogs() {
                     <datalist id="event-type-suggestions">
                       {THEME_EVENTS.map((t) => <option key={t} value={t} />)}
                       {INVITE_EVENTS.map((t) => <option key={t} value={t} />)}
+                      {PASSKEY_EVENTS.map((t) => <option key={t} value={t} />)}
                       {SYSTEM_ACCOUNT_EVENTS.map((t) => <option key={t} value={t} />)}
                     </datalist>
                   </div>
