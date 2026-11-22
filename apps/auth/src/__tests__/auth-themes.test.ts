@@ -211,8 +211,9 @@ describe('the lantern street (Fawanees 1.3.0)', () => {
 
 	it('the body paints the flat page colour and the sign-in root wrapper lets the street through', () => {
 		const css = compileBuiltin('fawanees', BASE)!.openauth.css;
-		expect(css).toContain('html.fanous-street body { background: var(--fanous-color-background); }');
-		expect(css).toContain('html.fanous-street [data-component="root"] { background: transparent !important; }');
+		expect(css).toContain('html.fanous-street body { background: var(--fanous-color-background); margin: 0; }');
+		// In the flow (openauth's root is absolute, which left the body, and so the street, 0px tall)
+		expect(css).toContain('html.fanous-street [data-component="root"] { background: transparent !important; position: relative; min-height: 100dvh; }');
 		// Fawanees' page is flat in both modes
 		expect(builtinPackage('fawanees')!.theme.components.page).toEqual({ style: { background: '{color.background}' } });
 	});

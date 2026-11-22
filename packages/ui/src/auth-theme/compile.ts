@@ -141,13 +141,16 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 	// ---- photos behind the card, header graphic
 	const backgrounds = (x.photos?.light ?? []).map(imageUrl);
 	// The street draws between the body's background and the page: the body paints the page colour
-	// (the sign-in page background) and the root wrapper, which paints it otherwise, lets the street through
+	// (the sign-in page background) and the root wrapper, which paints it otherwise, lets the street through.
+	// The street is as tall as the body (fanous-street.css body::after), so the root stays in the flow
+	// (openauth positions it absolutely, which left the body 0px tall and the street unseen) and the body
+	// has no margin of its own (the street makes the body the root's containing block)
 	const pageRaw = get(t, SPEC_SLOTS['page.background']) as SchemeValue | undefined;
 	const pagePaint = pageRaw === undefined
 		? 'var(--fanous-color-background)'
 		: value(schemeOf(pageRaw, 'light')) !== value(schemeOf(pageRaw, 'dark')) ? 'var(--auth-base-page-background)' : value(schemeOf(pageRaw, 'light'));
 	const streetCss = t.street?.enabled
-		? `html.fanous-street body { background: ${pagePaint}; }\nhtml.fanous-street [data-component="root"] { background: transparent !important; }\n`
+		? `html.fanous-street body { background: ${pagePaint}; margin: 0; }\nhtml.fanous-street [data-component="root"] { background: transparent !important; position: relative; min-height: 100dvh; }\n`
 		: '';
 	const bgCss = backgrounds.length
 		? `[data-component="root"] { background-image: url('${BG_PLACEHOLDER}'); background-size: cover; background-position: center; background-repeat: no-repeat; }\n`
