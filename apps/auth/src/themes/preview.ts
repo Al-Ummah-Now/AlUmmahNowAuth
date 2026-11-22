@@ -11,7 +11,7 @@ import type { CompiledTheme, Scheme } from '../../../../packages/ui/src/auth-the
 import { renderHomePage } from '../../../profile/src/page';
 import { appsForUser } from '../../../profile/src/apps';
 import { renderAccountSelector } from '../ui/select-account';
-import { CODE_INPUT_LABEL } from '../ui/copy';
+import { PASSWORD_COPY } from '../ui/copy';
 
 export const PREVIEW_PAGES = ['sign-in', 'register', 'code', 'reset', 'consent', 'account-switcher', 'profile'] as const;
 export type PreviewPage = (typeof PREVIEW_PAGES)[number];
@@ -66,7 +66,7 @@ export async function renderPreview(compiled: CompiledTheme, opts: PreviewOption
 
 	let response: Response;
 	let kind: AuthPage;
-	const ui = PasswordUI({ sendCode: async () => {}, copy: { input_code: CODE_INPUT_LABEL[lang] } });
+	const ui = PasswordUI({ sendCode: async () => {}, copy: { ...PASSWORD_COPY[lang] } });
 	switch (page) {
 		case 'register':
 			response = await ui.register(req, { type: 'start' }, undefined, undefined, render);

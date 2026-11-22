@@ -25,6 +25,14 @@ describe('sign-in card contrast', () => {
 		const rule = css.split('\n').find((line) => line.includes('padding-inline') && line.includes('[data-component="form-footer"]'));
 		expect(rule).toContain('[data-passkey]');
 	});
+
+	it('the links under a form: flush inside the sign-in form, never split, stacked when they don\'t fit', () => {
+		const css = compileBuiltin('fawanees', BASE)!.openauth.css;
+		// after the slot rules, so the nested footer's own inset is really dropped
+		expect(css.indexOf('[data-component="form"] [data-component="form-footer"]{padding-inline:0}')).toBeGreaterThan(css.indexOf('[data-component="form-footer"], [data-passkey]'));
+		expect(OPENAUTH_FIXED_CSS).toContain('[data-component="form-footer"]{flex-wrap:wrap;row-gap:.5rem}');
+		expect(OPENAUTH_FIXED_CSS).toContain('[data-component="form-footer"] [data-component="link"]{white-space:nowrap}');
+	});
 });
 
 describe('staff passkey card: the code step', () => {

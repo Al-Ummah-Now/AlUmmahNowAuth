@@ -162,6 +162,14 @@ passkey. The normal sign-in page never asks it for a password
 - **Limits**: the check, `PASSWORD_IP_LIMITER` per IP and
   `PASSWORD_EMAIL_LIMITER` per email hash; the link, `SEND_CODE_LIMITER` per IP
   and per email hash.
+- **The shared header**: the invite page, the passkey card and "Check your
+  inbox" carry the same site header and backdrop as the issuer's sign-in pages
+  (`router.ts` `withSignInChrome`; one header in every app). A page that answers
+  a POST names a GET address in `Content-Location`, and the header's language
+  switch goes there: "Check your inbox" →
+  `GET /sign-in/link?state=sent&back=…&lang=…` (the same page, display only,
+  "this email" in place of the address); the passkey card →
+  `/passkeys/setup?return_to=…&lang=…`.
 
 **The passkey card** (after any sign-in, and the invite's):
 

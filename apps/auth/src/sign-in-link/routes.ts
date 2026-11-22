@@ -20,6 +20,9 @@
  * Routes:
  *   POST /sign-in/method  { email } → { password: boolean }   the sign-in page's check (same origin)
  *   POST /sign-in/link    form email, csrf, lang, back        "Email me a sign-in link"
+ *   GET  /sign-in/link?state=sent|busy|invalid&back&lang       that page again, display only: no
+ *        email (sent says "this email"), nothing sent. Each POST answer names it in
+ *        Content-Location, so the shared header's language switch (router.ts withSignInChrome) works.
  * Limits: the check, PASSWORD_IP_LIMITER per IP and PASSWORD_EMAIL_LIMITER per
  * email hash; the link, SEND_CODE_LIMITER per IP and per email hash (the
  * invite resend's limits).
@@ -53,6 +56,7 @@ const COPY = {
 		setupText: 'We’ll email you a code to confirm it’s your inbox. Then your password is saved and you’re signed in.',
 		sentTitle: 'Check your inbox',
 		sent: (email: string) => [`If `, email, ` can sign in with a link, we’ve sent one. It works once: open it to sign in. If nothing arrives in a few minutes, check your spam folder, or go back and add a password.`],
+		sentAny: 'If this email can sign in with a link, we’ve sent one. It works once: open it to sign in. If nothing arrives in a few minutes, check your spam folder, or go back and add a password.',
 		back: 'Back to sign in',
 		busyTitle: 'Too many tries',
 		busy: 'Wait a minute, then try again.',
@@ -68,6 +72,7 @@ const COPY = {
 		setupText: 'سنرسل إليك رمزًا لنتأكد أن البريد بريدك، ثم نحفظ كلمة المرور ونسجّل دخولك.',
 		sentTitle: 'تحقّق من بريدك',
 		sent: (email: string) => [`إن كان بإمكان `, email, ` تسجيل الدخول برابط، فقد أرسلناه. يعمل مرة واحدة: افتحه لتسجيل الدخول. إن لم يصلك شيء خلال دقائق، فتحقّق من مجلد الرسائل غير المرغوب فيها، أو ارجع وأضف كلمة مرور.`],
+		sentAny: 'إن كان بإمكان هذا البريد تسجيل الدخول برابط، فقد أرسلناه. يعمل مرة واحدة: افتحه لتسجيل الدخول. إن لم يصلك شيء خلال دقائق، فتحقّق من مجلد الرسائل غير المرغوب فيها، أو ارجع وأضف كلمة مرور.',
 		back: 'العودة إلى تسجيل الدخول',
 		busyTitle: 'محاولات كثيرة',
 		busy: 'انتظر دقيقة ثم حاول مرة أخرى.',
@@ -131,40 +136,81 @@ const PAGE_STYLE = `
 [data-page="sign-in-link"] [data-component="title"] { font-size:1.25rem; font-weight:600; line-height:1.4; margin:0; }
 `;
 
-async function respond(lang: Lang, theme: Theme | undefined, status: number, body: ReturnType<typeof html>): Promise<Response> {
+type View = 'sent' | 'busy' | 'invalid';
+
+/**
+ * The page's GET twin (`Content-Location`): the same view without the email, so the header's
+ * language switch (router.ts withSignInChrome) shows this page in the other language. The
+ * answer to the POST can't be loaded again; this address only ever displays it.
+ */
+const viewPath = (view: View, back: string, lang: Lang) =>
+	`${SIGN_IN_LINK_PATH}?${new URLSearchParams({ state: view, back, lang }).toString()}`;
+
+async function respond(lang: Lang, theme: Theme | undefined, status: number, body: ReturnType<typeof html>, self: string): Promise<Response> {
 	const page = Layout({ theme, locale: lang, children: html`<style>${raw(PAGE_STYLE)}</style>${body}` });
 	return new Response(`<!DOCTYPE html>${await page.toString()}`, {
 		status,
-		headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Language': lang, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' },
+		headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Language': lang, 'Content-Location': self, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' },
 	});
 }
 
-function sentPage(lang: Lang, theme: Theme | undefined, email: string, back: string) {
+/** "Check your inbox": with the typed email after the form, "this email" on the GET twin. */
+function sentPage(lang: Lang, theme: Theme | undefined, email: string | null, back: string) {
 	const t = COPY[lang];
-	const [before, addr, after] = t.sent(email);
+	const text = email === null ? html`${t.sentAny}` : (() => {
+		const [before, addr, after] = t.sent(email);
+		return html`${before}<bdi dir="ltr">${addr}</bdi>${after}`;
+	})();
 	return respond(
 		lang,
 		theme,
 		200,
 		html`<div data-component="form" data-page="sign-in-link" data-state="sent" role="status">
 			<h1 data-component="title">${t.sentTitle}</h1>
-			<p data-component="description">${before}<bdi dir="ltr">${addr}</bdi>${after}</p>
+			<p data-component="description">${text}</p>
 			<a data-component="button" data-color="ghost" href="${back}">${t.back}</a>
-		</div>`
+		</div>`,
+		viewPath('sent', back, lang)
 	);
 }
 
-function noticePage(lang: Lang, theme: Theme | undefined, status: number, title: string, text: string, back: string) {
+function noticePage(lang: Lang, theme: Theme | undefined, status: number, view: 'busy' | 'invalid', back: string) {
+	const t = COPY[lang];
 	return respond(
 		lang,
 		theme,
 		status,
-		html`<div data-component="form" data-page="sign-in-link" data-state="${status === 429 ? 'busy' : 'invalid'}" role="alert">
-			<h1 data-component="title">${title}</h1>
-			<p data-component="description">${text}</p>
-			<a data-component="button" data-color="ghost" href="${back}">${COPY[lang].back}</a>
-		</div>`
+		html`<div data-component="form" data-page="sign-in-link" data-state="${view}" role="alert">
+			<h1 data-component="title">${view === 'busy' ? t.busyTitle : t.invalidTitle}</h1>
+			<p data-component="description">${view === 'busy' ? t.busy : t.invalid}</p>
+			<a data-component="button" data-color="ghost" href="${back}">${t.back}</a>
+		</div>`,
+		viewPath(view, back, lang)
 	);
+}
+
+/** The sign-in page to go back to, in this language. */
+function backIn(back: string, lang: Lang): string {
+	const u = new URL(back, 'https://x.invalid');
+	if (lang === 'ar') u.searchParams.set('lang', 'ar');
+	else u.searchParams.delete('lang');
+	return safeBack(`${u.pathname}${u.search}`);
+}
+
+/** GET /sign-in/link?state=…: one of the form's answers again, for display only (no email, no sending). */
+function showView(url: URL, theme: Theme | undefined): Promise<Response> | Response {
+	const lang = langOf(url.searchParams.get('lang'));
+	const back = backIn(safeBack(url.searchParams.get('back')), lang);
+	switch (url.searchParams.get('state')) {
+		case 'sent':
+			return sentPage(lang, theme, null, back);
+		case 'busy':
+			return noticePage(lang, theme, 200, 'busy', back);
+		case 'invalid':
+			return noticePage(lang, theme, 200, 'invalid', back);
+		default:
+			return new Response(null, { status: 303, headers: { Location: back, 'Cache-Control': 'no-store' } });
+	}
 }
 
 const langOf = (value: unknown): Lang => (value === 'ar' ? 'ar' : 'en');
@@ -173,7 +219,8 @@ const langOf = (value: unknown): Lang => (value === 'ar' ? 'ar' : 'en');
 export async function routeSignInLink(request: Request, env: Env, ctx: ExecutionContext, requestId: string, theme?: Theme): Promise<Response | null> {
 	const url = new URL(request.url);
 	if (url.pathname !== SIGN_IN_METHOD_PATH && url.pathname !== SIGN_IN_LINK_PATH) return null;
-	if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { Allow: 'POST' });
+	if (url.pathname === SIGN_IN_LINK_PATH && request.method === 'GET') return showView(url, theme);
+	if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { Allow: url.pathname === SIGN_IN_LINK_PATH ? 'GET, POST' : 'POST' });
 	if (!sameOrigin(request)) return json({ error: 'forbidden' }, 403);
 	const ip = getClientIP(request);
 
@@ -204,13 +251,12 @@ export async function routeSignInLink(request: Request, env: Env, ctx: Execution
 	if (!cookie || typeof field !== 'string' || !sameBytes(field, cookie)) return json({ error: 'forbidden' }, 403);
 	const typed = form?.get('email');
 	const email = typeof typed === 'string' ? normalizeInviteEmail(typed) : '';
-	const t = COPY[lang];
-	if (!plausibleEmail(email)) return noticePage(lang, theme, 400, t.invalidTitle, t.invalid, back);
+	if (!plausibleEmail(email)) return noticePage(lang, theme, 400, 'invalid', back);
 	if (
 		!(await withinRateLimit(env.SEND_CODE_LIMITER, `signin:link:ip:${ip}`)) ||
 		!(await withinRateLimit(env.SEND_CODE_LIMITER, `signin:link:email:${await hashToken(email)}`))
 	) {
-		const busy = await noticePage(lang, theme, 429, t.busyTitle, t.busy, back);
+		const busy = await noticePage(lang, theme, 429, 'busy', back);
 		busy.headers.set('Retry-After', String(RATE_LIMIT_PERIOD_SECONDS));
 		return busy;
 	}
