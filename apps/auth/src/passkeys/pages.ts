@@ -149,6 +149,15 @@ export const CARD_LANGUAGE_FORM_ID = 'aun-card-language';
 /** The header's language link submits the card's form instead (a POST: no OAuth values in a URL) */
 const LANGUAGE_FORM_SCRIPT = `(function(){var f=document.getElementById('${CARD_LANGUAGE_FORM_ID}');if(!f)return;document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a.aun-lang'):null;if(!a)return;e.preventDefault();f.submit();});})();`;
 
+/**
+ * The lantern street (packages/ui/src/fanous-street, vendored, never edited) re-measures on node
+ * additions, body resizes and <html> class changes, but not when this card shows a hidden note,
+ * status or code field. The card then grows and re-centres over a garland drawn for its old size
+ * (AUDIT-2 #442 round 7: a garland on the card's top edge after a failure). When the card's size
+ * changes, flip a class on <html>: the street redraws for the new layout.
+ */
+export const STREET_RELAYOUT_SCRIPT = `(function(){var c=document.querySelector('[data-page="passkey"]');if(!c||!window.ResizeObserver)return;var h=0;new ResizeObserver(function(e){var n=Math.round(e[0].contentRect.height);if(h&&n!==h)document.documentElement.classList.toggle('aun-relayout');h=n;}).observe(c);})();`;
+
 function formatDate(epochSeconds: number, locale: PageLocale): string {
 	return formatShared(epochSeconds * 1000, locale, { dateStyle: 'long', timeZone: 'UTC' });
 }
@@ -308,6 +317,7 @@ export async function renderAddPasskeyPage(p: AddPasskeyPage): Promise<Response>
 			: ''}
 		<script>
 			${raw(pageScript(p, t))}
+			${raw(STREET_RELAYOUT_SCRIPT)}
 			${raw(p.languageToken ? LANGUAGE_FORM_SCRIPT : '')}
 		</script>`;
 	const page = Layout({ theme: p.theme, locale: p.locale, children: body });
