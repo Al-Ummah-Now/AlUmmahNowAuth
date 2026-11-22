@@ -18,11 +18,16 @@ import { getAuthServerUrl } from "../lib/config";
 import { errorMessage, themeActor, themesApi, type ThemeEnv, type ThemeSummary } from "../lib/themes.server";
 import { swatchesOf, type Swatches } from "../lib/theme-builder";
 import { getCloudflare } from "../lib/cloudflare-context";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
+import { withLang } from "../lib/shell-copy";
 
-export const meta: MetaFunction = () => [
-  { title: "Sign-in themes - Al Ummah Now Admin" },
-  { name: "description", content: "Auth's themes for the sign-in pages, profile and admin" },
-];
+export const meta: MetaFunction = ({ location }) => {
+  const lang = langOf(location.search);
+  return [
+    { title: pageTitle("themes", lang) },
+    { name: "description", content: adminCopy(lang).themes.intro },
+  ];
+};
 
 type LoaderData = {
   themes: (ThemeSummary & { swatches: Swatches | null })[];
@@ -65,47 +70,48 @@ export async function action({ request, context }: ActionFunctionArgs): Promise<
   const api = themesApi(env, actor, request);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
+  const lang = langOf(new URL(request.url).search);
+  const words = adminCopy(lang);
   try {
     switch (intent) {
       case "duplicate": {
         const id = String(form.get("id") ?? "").trim();
         await api.duplicate(String(form.get("from")), id, { en: String(form.get("name_en") ?? "").trim(), ar: String(form.get("name_ar") ?? "").trim() });
-        return redirect(`/themes/${encodeURIComponent(id)}`);
+        return redirect(withLang(`/themes/${encodeURIComponent(id)}`, lang));
       }
       case "set-default":
         await api.setAuthDefault(String(form.get("themeId")));
-        return { ok: "Auth default changed. Pages pick it up within a few seconds.", intent };
+        return { ok: words.themes.defaultChanged, intent };
       case "set-client-default": {
         const themeId = String(form.get("themeId") ?? "");
         await api.setClientDefault(String(form.get("clientId")), themeId || null);
-        return { ok: "App default saved.", intent };
+        return { ok: words.themes.appDefaultSaved, intent };
       }
       case "delete":
         // Soft delete: restorable from Recently deleted for 30 days
         await api.remove(String(form.get("themeId")), String(form.get("reason") ?? "").trim() || undefined);
-        return { ok: "Theme moved to Recently deleted.", intent };
+        return { ok: words.themes.deleted, intent };
       case "import": {
         const file = form.get("file");
-        if (!(file instanceof File) || file.size === 0) return { error: "Choose a theme .zip to import.", intent };
+        if (!(file instanceof File) || file.size === 0) return { error: words.themes.chooseZip, intent };
         const summary = await api.importZip(await file.arrayBuffer(), { id: String(form.get("id") ?? "").trim() || undefined, replace: form.get("replace") === "on" });
-        return redirect(`/themes/${encodeURIComponent(summary.id)}`);
+        return redirect(withLang(`/themes/${encodeURIComponent(summary.id)}`, lang));
       }
       default:
-        return { error: "Unknown action", intent };
+        return { error: words.common.unknownAction, intent };
     }
   } catch (error) {
     return { error: errorMessage(error), intent };
   }
 }
 
-const STATUS: Record<ThemeSummary["status"], string> = { published: "Published", draft: "Draft", changed: "Unpublished changes" };
 const selectClass =
   "flex h-9 w-full rounded-md border border-[var(--color-border)] bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)]";
 
-function ThemeSwatch({ swatches }: { swatches: Swatches | null }) {
+function ThemeSwatch({ swatches, label }: { swatches: Swatches | null; label: (side: "light" | "dark") => string }) {
   if (!swatches) return <div className="h-28 rounded-t-xl bg-[var(--color-muted)]" />;
   const half = (s: Swatches["light"], side: "light" | "dark") => (
-    <div className="relative flex-1 overflow-hidden" style={{ background: s.background }} aria-label={`${side} colours`}>
+    <div className="relative flex-1 overflow-hidden" style={{ background: s.background }} aria-label={label(side)}>
       <div className="absolute inset-x-4 top-4 bottom-0 rounded-t-lg shadow-lg" style={{ background: s.card, borderTop: `3px solid ${s.primary}` }}>
         <div className="mx-3 mt-3 h-2 w-2/3 rounded" style={{ background: s.text, opacity: 0.85 }} />
         <div className="mx-3 mt-2 h-4 rounded" style={{ background: s.input }} />
@@ -132,26 +138,27 @@ export default function ThemesPage() {
   const [searchParams] = useSearchParams();
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
+  const lang = deleteLang;
+  const t = adminCopy(lang).themes;
+  const words = adminCopy(lang).common;
+  const nameOf = (th: { name: { en: string; ar: string } }) => th.name[lang] || th.name.en;
   const published = themes.filter((t) => t.kind === "builtin" || t.status !== "draft");
 
   return (
     <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="mb-2 text-3xl font-bold text-[var(--color-foreground)]">Sign-in themes</h2>
-          <p className="max-w-2xl text-[var(--color-muted-foreground)]">
-            How Auth's pages look: sign-in, register, code entry, password reset, device approval, the account switcher, profile and this admin.
-            Apps can ask for any published theme; otherwise they get their own default, then the Auth default.
-          </p>
+          <h2 className="mb-2 text-3xl font-bold text-[var(--color-foreground)]">{t.title}</h2>
+          <p className="max-w-2xl text-[var(--color-muted-foreground)]">{t.intro}</p>
         </div>
         <Button variant="outline" onClick={() => setImportOpen(true)}>
-          <Upload /> Import theme
+          <Upload /> {t.importTheme}
         </Button>
       </div>
 
       {(error || result?.error) && (
         <div role="alert" className="mb-6 rounded-lg ui-alert-error p-4">
-          {error ? `Could not load themes: ${error}` : result?.error}
+          {error ? t.loadError(error) : result?.error}
         </div>
       )}
       {result?.ok && (
@@ -161,68 +168,68 @@ export default function ThemesPage() {
       )}
 
       <div className="mb-10 grid gap-6 sm:grid-cols-2 xl:grid-cols-3" data-testid="theme-list">
-        {themes.map((t) => {
-          const inUse = t.isAuthDefault || t.clientIds.length > 0;
+        {themes.map((th) => {
+          const inUse = th.isAuthDefault || th.clientIds.length > 0;
           return (
-            <Card key={t.id} className="overflow-hidden" data-testid={`theme-${t.id}`}>
-              <ThemeSwatch swatches={t.swatches} />
+            <Card key={th.id} className="overflow-hidden" data-testid={`theme-${th.id}`}>
+              <ThemeSwatch swatches={th.swatches} label={t.swatch} />
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <CardTitle className="text-lg">
-                      <Link to={`/themes/${t.id}`} className="hover:underline">{t.name.en}</Link>
+                      <Link to={withLang(`/themes/${th.id}`, lang)} className="hover:underline">{nameOf(th)}</Link>
                     </CardTitle>
                     <CardDescription>
-                      <span dir="rtl" lang="ar">{t.name.ar}</span> · <code className="text-xs">{t.id}</code>
-                      {t.version && <> · v{t.version}</>}
+                      {lang === "ar" ? <span dir="ltr" lang="en">{th.name.en}</span> : <span dir="rtl" lang="ar">{th.name.ar}</span>}{words.sep}<code className="text-xs" dir="ltr">{th.id}</code>
+                      {th.version && <>{words.sep}<span dir="ltr">v{th.version}</span></>}
                     </CardDescription>
                   </div>
-                  {t.isAuthDefault && (
-                    <Badge title="Every app without its own default gets this theme">
-                      <Star className="mr-1 h-3 w-3" /> Auth default
+                  {th.isAuthDefault && (
+                    <Badge title={t.authDefaultTitle}>
+                      <Star className="me-1 h-3 w-3" /> {t.authDefault}
                     </Badge>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  <Badge variant="outline">{t.kind === "builtin" ? "Built-in" : "Custom"}</Badge>
-                  <Badge variant={t.status === "published" ? "secondary" : "outline"}>{STATUS[t.status]}</Badge>
-                  {t.clientIds.length > 0 && <Badge variant="outline">Default for {t.clientIds.length} app{t.clientIds.length > 1 ? "s" : ""}</Badge>}
+                  <Badge variant="outline">{th.kind === "builtin" ? t.builtIn : t.custom}</Badge>
+                  <Badge variant={th.status === "published" ? "secondary" : "outline"}>{t.status[th.status]}</Badge>
+                  {th.clientIds.length > 0 && <Badge variant="outline">{t.defaultFor(th.clientIds.length)}</Badge>}
                 </div>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 <Button asChild size="sm">
-                  <Link to={`/themes/${t.id}`}>
-                    <Palette /> {t.kind === "builtin" ? "View" : "Edit"}
+                  <Link to={withLang(`/themes/${th.id}`, lang)}>
+                    <Palette /> {th.kind === "builtin" ? t.view : t.edit}
                   </Link>
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setDuplicateFrom(t)}>
-                  <Copy /> Duplicate
+                <Button size="sm" variant="outline" onClick={() => setDuplicateFrom(th)}>
+                  <Copy /> {t.duplicate}
                 </Button>
-                {!t.isAuthDefault && t.status !== "draft" && (
+                {!th.isAuthDefault && th.status !== "draft" && (
                   <Form method="post">
                     <input type="hidden" name="intent" value="set-default" />
-                    <input type="hidden" name="themeId" value={t.id} />
+                    <input type="hidden" name="themeId" value={th.id} />
                     <Button size="sm" variant="outline" type="submit" disabled={busy}>
-                      <Star /> Make Auth default
+                      <Star /> {t.makeDefault}
                     </Button>
                   </Form>
                 )}
                 <Button asChild size="sm" variant="ghost">
-                  <a href={`/themes/${t.id}/export?source=${t.status === "draft" ? "draft" : "published"}`} title="Download as a theme package (.zip)">
-                    <Download /> Export
+                  <a href={`/themes/${th.id}/export?source=${th.status === "draft" ? "draft" : "published"}`} title={t.exportTitle}>
+                    <Download /> {t.export}
                   </a>
                 </Button>
-                {t.kind === "custom" && (
+                {th.kind === "custom" && (
                   <Button
                     size="sm"
                     variant="ghost"
                     type="button"
                     disabled={busy || inUse}
-                    onClick={() => setDeleting(t)}
-                    title={inUse ? "In use: change the Auth default and app defaults first" : "Delete this theme"}
+                    onClick={() => setDeleting(th)}
+                    title={inUse ? t.inUse : t.deleteTitle}
                     className="text-[var(--color-destructive-text)]"
                   >
-                    <Trash2 /> Delete
+                    <Trash2 /> {t.delete}
                   </Button>
                 )}
               </CardContent>
@@ -233,18 +240,17 @@ export default function ThemesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>App defaults</CardTitle>
+          <CardTitle>{t.appDefaults}</CardTitle>
           <CardDescription>
-            The theme an app's sign-in pages use when the app doesn't ask for one. Apps without their own default use the Auth default (
-            {themes.find((t) => t.id === authDefault)?.name.en ?? authDefault}).
+            {t.appDefaultsIntro((() => { const d = themes.find((x) => x.id === authDefault); return d ? nameOf(d) : authDefault; })())}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>App</TableHead>
-                <TableHead className="w-[45%]">Theme</TableHead>
+                <TableHead>{t.colApp}</TableHead>
+                <TableHead className="w-[45%]">{t.colTheme}</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
@@ -252,20 +258,20 @@ export default function ThemesPage() {
               {clients.map((c) => (
                 <TableRow key={c.id} data-testid={`client-default-${c.id}`}>
                   <TableCell>
-                    <div className="font-medium">{c.name}</div>
-                    <code className="text-xs text-[var(--color-muted-foreground)]">{c.id}</code>
+                    <div className="font-medium"><bdi>{c.name}</bdi></div>
+                    <code className="text-xs text-[var(--color-muted-foreground)]" dir="ltr">{c.id}</code>
                   </TableCell>
                   <TableCell colSpan={2}>
                     <Form method="post" className="flex gap-2">
                       <input type="hidden" name="intent" value="set-client-default" />
                       <input type="hidden" name="clientId" value={c.id} />
-                      <select name="themeId" defaultValue={clientDefaults[c.id] ?? ""} className={selectClass} aria-label={`Theme for ${c.name}`}>
-                        <option value="">Auth default</option>
-                        {published.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name.en}</option>
+                      <select name="themeId" defaultValue={clientDefaults[c.id] ?? ""} className={selectClass} aria-label={t.themeFor(c.name)}>
+                        <option value="">{t.authDefault}</option>
+                        {published.map((x) => (
+                          <option key={x.id} value={x.id}>{nameOf(x)}</option>
                         ))}
                       </select>
-                      <Button type="submit" size="sm" variant="outline" disabled={busy}>Save</Button>
+                      <Button type="submit" size="sm" variant="outline" disabled={busy}>{words.save}</Button>
                     </Form>
                   </TableCell>
                 </TableRow>
@@ -278,31 +284,31 @@ export default function ThemesPage() {
       <Dialog open={!!duplicateFrom} onOpenChange={(open) => !open && setDuplicateFrom(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Duplicate {duplicateFrom?.name.en}</DialogTitle>
-            <DialogDescription>The copy is a draft you can edit; nothing changes on the live pages until you publish it.</DialogDescription>
+            <DialogTitle>{t.duplicateTitle(duplicateFrom ? nameOf(duplicateFrom) : "")}</DialogTitle>
+            <DialogDescription>{t.duplicateIntro}</DialogDescription>
           </DialogHeader>
           <Form method="post" className="space-y-4" id="duplicate-form">
             <input type="hidden" name="intent" value="duplicate" />
             <input type="hidden" name="from" value={duplicateFrom?.id ?? ""} />
             <div className="space-y-1">
-              <Label htmlFor="dup-id">Theme id</Label>
-              <Input id="dup-id" name="id" required pattern="[a-z][a-z0-9\-]{1,39}" placeholder="eid-2027" defaultValue={duplicateFrom ? `${duplicateFrom.id}-copy` : ""} />
-              <p className="text-xs text-[var(--color-muted-foreground)]">Lowercase letters, digits and dashes. Apps use it in links (?theme=…).</p>
+              <Label htmlFor="dup-id">{t.themeId}</Label>
+              <Input id="dup-id" name="id" required pattern="[a-z][a-z0-9\-]{1,39}" placeholder="eid-2027" dir="ltr" defaultValue={duplicateFrom ? `${duplicateFrom.id}-copy` : ""} />
+              <p className="text-xs text-[var(--color-muted-foreground)]">{t.themeIdHelp}</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label htmlFor="dup-en">Name (English)</Label>
-                <Input id="dup-en" name="name_en" required defaultValue={duplicateFrom ? `${duplicateFrom.name.en} copy` : ""} />
+                <Label htmlFor="dup-en">{t.nameEn}</Label>
+                <Input id="dup-en" name="name_en" required dir="ltr" lang="en" defaultValue={duplicateFrom ? `${duplicateFrom.name.en} copy` : ""} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="dup-ar">Name (Arabic)</Label>
+                <Label htmlFor="dup-ar">{t.nameAr}</Label>
                 <Input id="dup-ar" name="name_ar" required dir="rtl" lang="ar" defaultValue={duplicateFrom ? `${duplicateFrom.name.ar} (نسخة)` : ""} />
               </div>
             </div>
           </Form>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDuplicateFrom(null)}>Cancel</Button>
-            <Button type="submit" form="duplicate-form" disabled={busy}>Duplicate</Button>
+            <Button variant="outline" onClick={() => setDuplicateFrom(null)}>{words.cancel}</Button>
+            <Button type="submit" form="duplicate-form" disabled={busy}>{t.duplicate}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -311,7 +317,7 @@ export default function ThemesPage() {
       <ConfirmDialog
         open={deleting !== null}
         title={deleteCopy.deleteTitle("theme")}
-        description={deleteCopy.deleteBody("theme", deleting ? deleting.name[deleteLang] || deleting.name.en : "")}
+        description={deleteCopy.deleteBody("theme", deleting ? nameOf(deleting) : "")}
         confirmLabel={deleteCopy.deleteConfirm}
         cancelLabel={deleteCopy.cancel}
         reason={{ label: deleteCopy.reasonLabel, placeholder: deleteCopy.reasonPlaceholder }}
@@ -329,26 +335,26 @@ export default function ThemesPage() {
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Import a theme package</DialogTitle>
-            <DialogDescription>A .zip with theme.json and an assets/ folder (theme package format v1). It arrives as a draft.</DialogDescription>
+            <DialogTitle>{t.importTitle}</DialogTitle>
+            <DialogDescription>{t.importIntro}</DialogDescription>
           </DialogHeader>
           <Form method="post" encType="multipart/form-data" className="space-y-4" id="import-form">
             <input type="hidden" name="intent" value="import" />
             <div className="space-y-1">
-              <Label htmlFor="import-file">Package</Label>
+              <Label htmlFor="import-file">{t.package}</Label>
               <Input id="import-file" name="file" type="file" accept=".zip,application/zip" required />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="import-id">Import as id (optional)</Label>
-              <Input id="import-id" name="id" pattern="[a-z][a-z0-9\-]{1,39}" placeholder="The id in theme.json" />
+              <Label htmlFor="import-id">{t.importAs}</Label>
+              <Input id="import-id" name="id" pattern="[a-z][a-z0-9\-]{1,39}" placeholder={t.importAsPlaceholder} dir="ltr" />
             </div>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="replace" /> Replace the draft of an existing custom theme with this id
+              <input type="checkbox" name="replace" /> {t.replaceDraft}
             </label>
           </Form>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
-            <Button type="submit" form="import-form" disabled={busy}>Import</Button>
+            <Button variant="outline" onClick={() => setImportOpen(false)}>{words.cancel}</Button>
+            <Button type="submit" form="import-form" disabled={busy}>{t.import}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

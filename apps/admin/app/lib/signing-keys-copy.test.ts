@@ -26,7 +26,13 @@ describe('signing keys copy (AlUmmahNowAuth#13)', () => {
     expect(off[2]).toContain('Automatic rotation is off');
     const ar = signingKeysCopy('ar').policy({ leadHours: 1, rotateDays: 90, retireHours: 24, scheduled: false });
     expect(ar[0]).toContain('ساعة واحدة');
-    expect(ar[1]).toContain('24 ساعة');
+    expect(ar[1]).toContain('٢٤ ساعة');
+    // Arabic numbers in ٠–٩, never 0–9
+    const arOn = signingKeysCopy('ar').policy({ leadHours: 48, rotateDays: 30, retireHours: 336, scheduled: true });
+    expect(arOn.join(' ')).toContain('٤٨ ساعة');
+    expect(arOn.join(' ')).toContain('٣٣٦ ساعة');
+    expect(arOn.join(' ')).toContain('٣٠ يومًا');
+    for (const text of arOn) expect(text).not.toMatch(/[0-9]/);
     expect(signingKeysCopy('ar').failedBody('x', 2)).toContain('محاولتين');
   });
 });

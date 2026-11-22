@@ -1,34 +1,13 @@
 import { formatDateTimeMs } from "./date-utils";
+import { ADMIN_COPY } from "./admin-copy";
+import type { AdminLang } from "./deletion-copy";
+import { withLang } from "./shell-copy";
 /** Labels shared by the moderation request pages (docs/MODERATION_REQUESTS.md). */
 
-export const MODERATION_STATUS_LABELS: Record<string, string> = {
-  pending: "Pending",
-  info_requested: "Info requested",
-  approved: "Approved",
-  rejected: "Rejected",
-  actioned: "Actioned",
-};
-
-export const MODERATION_ACTION_LABELS: Record<string, string> = {
-  suspend_account: "Suspend account",
-  delete_account: "Delete account",
-  revoke_sessions: "Sign out everywhere",
-  require_password_reset: "Require password reset",
-  other: "Other",
-};
-
-export const REASON_CATEGORY_LABELS: Record<string, string> = {
-  spam: "Spam",
-  harassment: "Harassment",
-  hate_speech: "Hate speech",
-  violent_content: "Violent content",
-  sexual_content: "Sexual content",
-  impersonation: "Impersonation",
-  copyright: "Copyright",
-  fraud: "Fraud",
-  compromised_account: "Compromised account",
-  other: "Other",
-};
+// The English labels; Arabic ones are in lib/admin-copy.ts (adminCopy(lang).moderationLabels)
+export const MODERATION_STATUS_LABELS: Record<string, string> = ADMIN_COPY.en.moderationLabels.status;
+export const MODERATION_ACTION_LABELS: Record<string, string> = ADMIN_COPY.en.moderationLabels.action;
+export const REASON_CATEGORY_LABELS: Record<string, string> = ADMIN_COPY.en.moderationLabels.reason;
 
 /** Badge colours per status (tailwind classes on the shared Badge). */
 export const MODERATION_STATUS_CLASSES: Record<string, string> = {
@@ -41,12 +20,12 @@ export const MODERATION_STATUS_CLASSES: Record<string, string> = {
 
 export const label = (map: Record<string, string>, key: string) => map[key] ?? key;
 
-export function formatWhen(value: string | number | null | undefined): string {
+export function formatWhen(value: string | number | null | undefined, lang: AdminLang = "en"): string {
   if (!value) return "—";
-  return formatDateTimeMs(value) || String(value);
+  return formatDateTimeMs(value, lang) || String(value);
 }
 
 /** The Users page, searching for this user. */
-export function userPageHref(subject: { email?: string | null; id: string }): string {
-  return `/users?q=${encodeURIComponent(subject.email || subject.id)}`;
+export function userPageHref(subject: { email?: string | null; id: string }, lang: AdminLang = "en"): string {
+  return withLang(`/users?q=${encodeURIComponent(subject.email || subject.id)}`, lang);
 }

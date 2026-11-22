@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
+import { roleDescription, roleLabel } from "../../../../packages/ui/src/role-names.ts";
 
 describe("roleLabel", () => {
   it("names a role in Arabic on an Arabic page, whatever its spelling", () => {
     expect(roleLabel("Admin", "ar")).toBe("مشرف");
     expect(roleLabel("super_admin", "ar")).toBe("مشرف عام");
     expect(roleLabel("Content-Reviewer", "ar")).toBe("مراجع محتوى");
+    // the default role, shown on every account's Profile (AUDIT-2 #483)
+    expect(roleLabel("user", "ar")).toBe("مستخدم");
   });
   it("writes English roles in sentence case, as Profile does", () => {
     expect(roleLabel("Admin", "en")).toBe("Admin");
@@ -15,5 +17,14 @@ describe("roleLabel", () => {
   });
   it("keeps an unknown role's own name in Arabic", () => {
     expect(roleLabel("Translator", "ar")).toBe("Translator");
+  });
+});
+
+describe("roleDescription", () => {
+  it("shows a built-in role's seeded description in Arabic, anything else as written", () => {
+    expect(roleDescription("Administrative access", "ar")).toBe("صلاحيات الإدارة");
+    expect(roleDescription("Administrative access", "en")).toBe("Administrative access");
+    expect(roleDescription("مراجعة الترجمات", "ar")).toBe("مراجعة الترجمات");
+    expect(roleDescription(null, "ar")).toBe("");
   });
 });

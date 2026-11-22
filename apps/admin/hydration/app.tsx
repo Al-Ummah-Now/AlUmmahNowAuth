@@ -11,8 +11,29 @@ import Users from "../app/routes/users._index";
 import AuditLogs from "../app/routes/audit";
 import SessionsPage from "../app/routes/sessions";
 import ClientsPage from "../app/routes/clients";
+import Dashboard from "../app/routes/_index";
+import Roles from "../app/routes/roles._index";
+import RoleDetail from "../app/routes/roles.$id";
+import ModerationRequests from "../app/routes/moderation._index";
+import ModerationRequest from "../app/routes/moderation.$id";
+import Themes from "../app/routes/themes._index";
+import ThemeBuilder from "../app/routes/themes.$id";
+import Security from "../app/routes/security";
+import SigningKeys from "../app/routes/signing-keys";
+import { BUILTIN_IDS, builtinPackage } from "../../../packages/ui/src/auth-theme/builtin.ts";
+import type { AuthThemeJson } from "../../../packages/ui/src/auth-theme/types.ts";
+import { swatchesOf } from "../app/lib/theme-builder";
 
-export type PageName = "deleted" | "users" | "passkeys" | "audit" | "sessions" | "clients";
+export type PageName =
+  | "deleted" | "users" | "passkeys" | "audit" | "sessions" | "clients"
+  | "dashboard" | "roles" | "role" | "moderation" | "moderation-request" | "themes" | "theme" | "security" | "signing-keys";
+
+/** Every page's path in the admin (with ?lang= added by the server). */
+export const PAGE_PATHS: Record<PageName, string> = {
+  deleted: "/deleted", users: "/users", passkeys: "/users/u-10/passkeys", audit: "/audit", sessions: "/sessions", clients: "/clients",
+  dashboard: "/", roles: "/roles", role: "/roles/r-2", moderation: "/moderation", "moderation-request": "/moderation/mr-1",
+  themes: "/themes", theme: "/themes/fawanees", security: "/security", "signing-keys": "/signing-keys",
+};
 
 const PAGES = {
   deleted: { path: "deleted", Component: RecentlyDeleted },
@@ -21,6 +42,15 @@ const PAGES = {
   audit: { path: "audit", Component: AuditLogs },
   sessions: { path: "sessions", Component: SessionsPage },
   clients: { path: "clients", Component: ClientsPage },
+  dashboard: { path: "", Component: Dashboard },
+  roles: { path: "roles", Component: Roles },
+  role: { path: "roles/:id", Component: RoleDetail },
+  moderation: { path: "moderation", Component: ModerationRequests },
+  "moderation-request": { path: "moderation/:id", Component: ModerationRequest },
+  themes: { path: "themes", Component: Themes },
+  theme: { path: "themes/:id", Component: ThemeBuilder },
+  security: { path: "security", Component: Security },
+  "signing-keys": { path: "signing-keys", Component: SigningKeys },
 } as const;
 
 // Fixed instants, so the server render and the browser agree on every date
@@ -68,7 +98,7 @@ const LOGINS_24H = SESSION_ROWS.filter((r) => r.authenticatedAt * 1000 >= NOW - 
 const NEWEST_SIGN_IN = SESSION_ROWS.reduce((a, b) => (b.authenticatedAt > a.authenticatedAt ? b : a));
 const ADMIN = { id: "admin-1", email: "omar.saleh@mail.alummahnow.net" };
 
-export const FIXTURES: Record<PageName, unknown> = {
+export const FIXTURES: Record<string, unknown> = {
   deleted: {
     kind: "user",
     now: NOW,
@@ -144,14 +174,148 @@ export const FIXTURES: Record<PageName, unknown> = {
   },
 };
 
+
+// ---------------------------------------------------------------- the other admin pages
+
+const iso = (ms: number) => new Date(ms).toISOString();
+/** Stored text in the page's language (what an Arabic admin or app would have written): resolved by PageApp. */
+const T = (en: string, ar: string) => ({ __text: true as const, en, ar });
+function inLang(value: unknown, lang: "en" | "ar"): unknown {
+  if (Array.isArray(value)) return value.map((v) => inLang(v, lang));
+  if (value && typeof value === "object") {
+    if ((value as { __text?: boolean }).__text) return (value as { en: string; ar: string })[lang];
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, inLang(v, lang)]));
+  }
+  return value;
+}
+const sec = (ms: number) => Math.floor(ms / 1000);
+const PERMS = [
+  ["p-1", "users:read", "users", "read", T("See user accounts", "عرض حسابات المستخدمين")],
+  ["p-2", "users:write", "users", "write", T("Change user accounts", "تعديل حسابات المستخدمين")],
+  ["p-3", "content:moderate", "content", "moderate", T("Hide and restore content", "إخفاء المحتوى واستعادته")],
+  ["p-4", "audit:read", "audit", "read", T("Read the audit log", "قراءة سجل التدقيق")],
+  ["p-5", "roles:read", "roles", "read", T("See roles", "عرض الأدوار")],
+].map(([id, name, resource, action, description]) => ({ id: id as string, name: name as string, resource: resource as string, action: action as string, description, is_system: true, created_at: sec(ago(200)) }));
+const byResource = (list: typeof PERMS) => list.reduce<Record<string, typeof PERMS>>((m, p) => ((m[p.resource] ??= []).push(p), m), {});
+
+const MOD_REQUEST = {
+  id: "mr-1", status: "pending", subject_user_id: "u-17", action: "suspend_account", reason_category: "spam",
+  reason: T("Posts the same link under many videos every few minutes.", "ينشر الرابط نفسه تحت مرئيات كثيرة كل بضع دقائق."), evidence: [{ url: "https://videos.alummahnow.net/watch/abc123", label: T("Comment thread", "سلسلة التعليقات") }],
+  requested_by: { id: "mod-7", display_name: "Huda Qasim" },
+  subject: { id: "u-17", email: "zaid.mansour@mail.alummahnow.net", name: "Zaid Mansour", status: "active", password_reset_required: false, created_at: ago(36) }, decision_note: null, decided_at: null, actioned_at: null,
+  created_at: iso(ago(0, 3, 12, 40)), updated_at: iso(ago(0, 3, 12, 40)), client_id: "videos", client_name: T("Videos", "المرئيات"), decided_by: null, action_result: null,
+  action_error: null, execution: { status: null, attempts: 0, needs_attention: false },
+  history: [{ id: "h-1", type: "created", actor_type: "client", actor_id: "videos", actor_name: "Huda Qasim", note: null, metadata: null, at: iso(ago(0, 3, 12, 40)) }],
+};
+const MOD_FAILED = {
+  ...MOD_REQUEST, id: "mr-2", status: "approved", subject_user_id: "u-19", action: "revoke_sessions", reason_category: "compromised_account",
+  reason: T("Compromised: sign-ins from several countries within an hour.", "حساب مخترق: تسجيلات دخول من بلدان عدة خلال ساعة."),
+  subject: { id: "u-19", email: "tariq.aziz@mail.alummahnow.net", name: "Tariq Aziz", status: "active", password_reset_required: false, created_at: ago(51) }, created_at: iso(ago(1, 6, 2, 9)), action_error: "auth service timed out",
+  execution: { status: "failed", attempts: 3, needs_attention: true },
+};
+const MOD_DONE = { ...MOD_REQUEST, id: "mr-3", status: "actioned", subject_user_id: "u-17", action: "require_password_reset", reason_category: "fraud", created_at: iso(ago(9, 2, 30, 0)) };
+
+const themeSummary = (id: string, i: number) => {
+  const pkg = builtinPackage(id)!;
+  return {
+    id, name: pkg.theme.name, kind: "builtin" as const, status: "published" as const, version: pkg.theme.version, draftVersion: null, basedOn: null,
+    isAuthDefault: id === "fawanees", clientIds: i === 1 ? ["videos"] : [], updatedAt: null, updatedBy: null, publishedAt: null,
+    swatches: swatchesOf(pkg.theme as AuthThemeJson),
+  };
+};
+const FAWANEES = builtinPackage("fawanees")!;
+
+Object.assign(FIXTURES, {
+  dashboard: {
+    isAuthenticated: true, user: ADMIN, totalUsers: 45230, adminUsers: 41, totalRoles: 6, systemRoles: 4, customRoles: 2,
+    usersByRole: [{ name: "Member", user_count: 45000 }, { name: "Admin", user_count: 40 }, { name: "Creator", user_count: 12 }, { name: "Moderator", user_count: 3 }, { name: "Super Admin", user_count: 1 }],
+    authServerUrl: "", appUrl: "", authorizeUrl: "",
+  },
+  roles: {
+    user: ADMIN, authServerUrl: "",
+    roles: [
+      { id: "r-0", name: "super_admin", description: "Administrative access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 1 },
+      { id: "r-1", name: "Admin", description: "Administrative access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 40 },
+      { id: "r-2", name: "Moderator", description: "Video platform content moderation", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 3 },
+      { id: "r-3", name: "Member", description: "Basic member access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 45000 },
+      { id: "r-4", name: T("Translator", "مترجم"), description: T("Reviews translations", "مراجعة الترجمات"), is_system_role: false, created_at: sec(ago(20)), updated_at: sec(ago(4)), user_count: 12 },
+    ],
+  },
+  role: {
+    user: ADMIN, authServerUrl: "",
+    role: { id: "r-4", name: T("Translator", "مترجم"), description: T("Reviews translations", "مراجعة الترجمات"), is_system_role: false, created_at: sec(ago(20, 3)), updated_at: sec(ago(4, 7)), permissions: PERMS.slice(2, 4) },
+    allPermissions: byResource(PERMS),
+    usersWithRole: [
+      { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", assigned_at: sec(ago(4, 7, 12)), assigned_by: "admin-1" },
+      { id: "u-20", email: "safiya.omar@mail.alummahnow.net", assigned_at: sec(ago(2, 1, 40)), assigned_by: "system" },
+    ],
+    names: { "admin-1": "Omar Saleh" },
+  },
+  moderation: {
+    user: ADMIN, authServerUrl: "", page: 1,
+    filters: { status: "pending", client_id: "", action: "", from: "", to: "", needs_attention: "" },
+    queue: { requests: [MOD_REQUEST, MOD_FAILED], total: 1250, open: 37, needs_attention: 2, limit: 25, offset: 0, clients: [{ id: "videos", name: T("Videos", "المرئيات") }, { id: "cms", name: T("CMS", "إدارة المحتوى") }] },
+  },
+  "moderation-request": {
+    user: ADMIN, authServerUrl: "",
+    detail: {
+      request: { ...MOD_FAILED, history: [...MOD_REQUEST.history, { id: "h-2", type: "approved", actor_type: "admin", actor_id: "admin-1", actor_name: "Omar Saleh", note: null, metadata: null, at: iso(ago(1, 5)) }, { id: "h-3", type: "action_failed", actor_type: "system", actor_id: "moderation-actions", actor_name: null, note: "auth service timed out", metadata: { attempts: 3 }, at: iso(ago(1, 4, 50)) }] },
+      subject: { id: "u-19", email: "tariq.aziz@mail.alummahnow.net", name: "Tariq Aziz", status: "active", password_reset_required: false, created_at: ago(51, 17, 19, 48) },
+      prior_requests: [MOD_DONE],
+    },
+  },
+  themes: {
+    user: ADMIN, authServerUrl: "",
+    themes: BUILTIN_IDS.map(themeSummary),
+    authDefault: "fawanees",
+    clientDefaults: { videos: BUILTIN_IDS[1] },
+    clients: [{ id: "videos", name: T("Videos", "المرئيات") }, { id: "cms", name: T("CMS", "إدارة المحتوى") }, { id: "profile", name: T("Profile", "الملف الشخصي") }],
+  },
+  theme: {
+    user: ADMIN, authServerUrl: "",
+    detail: {
+      summary: themeSummary("fawanees", 0),
+      theme: FAWANEES.theme,
+      assets: FAWANEES.assets,
+      assetUrls: Object.fromEntries(Object.entries(FAWANEES.assets).map(([path, a]) => [path, `/themes/assets/${(a as { hash: string }).hash}`])),
+    },
+  },
+  security: {
+    user: ADMIN, authServerUrl: "", canChange: true, passkeyGraceUntil: undefined, loadError: undefined,
+    settings: {
+      enforced: true, enforcedAt: ago(3, 2), graceDays: 7, staff: 46, capped: false, actorHasPasskey: true,
+      withoutPasskey: [{ id: "u-17", email: "zaid.mansour@mail.alummahnow.net" }, { id: "u-18", email: "huda.qasim@mail.alummahnow.net" }],
+    },
+  },
+  "signing-keys": {
+    user: ADMIN, authServerUrl: "", passkeyGraceUntil: undefined, loadError: undefined,
+    view: {
+      keys: [
+        { id: "k-2026-11", alg: "ES256", created: ago(12, 3), activates: ago(10, 3), state: "active" },
+        { id: "k-2026-10", alg: "ES256", created: ago(42, 3), activates: ago(40, 3), expired: ago(10, 3), state: "previous" },
+      ],
+      policy: { publishLeadMs: 2 * DAY, rotateEveryMs: 30 * DAY, retireAfterMs: 14 * DAY, scheduled: true },
+      status: { lastRunAt: ago(0, 5, 2), lastTrigger: "schedule", queuedAt: null, error: null, errorAt: null, attempts: 0 },
+      canRotate: true,
+    },
+  },
+});
+
 const STUBS = Object.fromEntries(
   (Object.keys(PAGES) as PageName[]).map((name) => {
     const { path, Component } = PAGES[name];
-    return [name, createRoutesStub([{ id: "root", path: "/", Component: Outlet, children: [{ id: "page", path, Component }] }])];
+    return [name, createRoutesStub([{ id: "root", path: "/", Component: Outlet, children: [path ? { id: "page", path, Component } : { id: "page", index: true, Component }] }])];
   }),
 ) as Record<PageName, ReturnType<typeof createRoutesStub>>;
 
-export function PageApp({ page, url }: { page: PageName; url: string }) {
+/**
+ * `authServerUrl` (screenshots only): the admin is signed in, so the header shows the account menu,
+ * filled from the server's /session/accounts.
+ */
+export function PageApp({ page, url, authServerUrl }: { page: PageName; url: string; authServerUrl?: string }) {
   const Stub = STUBS[page];
-  return <Stub initialEntries={[url]} hydrationData={{ loaderData: { root: null, page: FIXTURES[page] } }} />;
+  const lang = new URLSearchParams(url.split("?")[1] ?? "").get("lang") === "ar" ? "ar" : "en";
+  const fixture = inLang(FIXTURES[page], lang) as object;
+  const data = authServerUrl ? { ...fixture, authServerUrl } : fixture;
+  return <Stub initialEntries={[url]} hydrationData={{ loaderData: { root: null, page: data } }} />;
 }

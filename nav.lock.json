@@ -1,9 +1,9 @@
 {
   "repo": "Al-Ummah-Now/AlUmmahNow",
-  "ref": "ba0e1e534375d1df7810ceb383d71bd43daa75cc",
+  "ref": "4683eeb9e6142d191780dba2a6d005de7d0dff87",
   "source": "packages/fanous-tokens/nav/aun-nav.css",
-  "sourceSha256": "2aaa696e3c8a07e4f376a2d4f48943e03ba4dc98808eb0d12b48d34a7af417b3",
-  "output": "7af09571ec0d40ef07fbe1b5b2e5ba13e8190c76727c037a9265e6284e4638e4",
+  "sourceSha256": "8f5f8b1ad366c3987dc559395bd2c9d19071639491cc776eb3d495a0d57050d8",
+  "output": "e8832b1baa281f1cf35d4a56d6c38bb65e9d7d3a7fecd1f15b2cfca12a02f20a",
   "icons": {
     "apps/admin/public/aun-nav/icons/www.webp": "b0feb2c79ff71890862210489b49db96fb0d90f58d7818279f6bec53ae032b56",
     "apps/admin/public/aun-nav/icons/videos.webp": "856d631b870c5805002379271469e1dd475a23f3b07d61f5141b7f8149fd3366",
@@ -12,12 +12,25 @@
     "apps/admin/public/aun-nav/icons/admin.webp": "33d3ae62ec9a9cf98b65c3d04007c1cdbfd12a8633b506c0b610c35a43074c81",
     "apps/admin/public/aun-nav/icons/auth-admin.webp": "61f4fd5b7dc27ccc009d7dd0b8f8488d6a989800644d1f69fc5896ad1430764f",
     "apps/admin/public/brand/logo-64.webp": "c51a8d293fe139cf4682aace98b21c95bada76b69ba88dce7342f040712845a3",
-    "packages/ui/src/nav/aun-nav-icons.generated.ts": "061dc1099a98f48a0d6a77ad8a248a31a9682400bb6e26c5dc3ac9b6f2897b0c"
+    "packages/ui/src/nav/aun-nav-icons.generated.ts": "0bb15a10b20751a84ef175f3d19bcddcd0854c9e5ead6688e8e09ff83e6f3fb8"
   },
   "files": {
-    "packages/ui/src/nav/header.js": "c9725d5c5cf087536cc8e4aa8ef3218fb462f0cb49626d301d2ef718139f3ee7",
-    "packages/ui/src/nav/header.d.ts": "8110c2c9c8912254a5a17af8c0a1763b2116950f122b3451eb24e9bffbf3669d",
+    "packages/ui/src/nav/header.js": "d4793248fede578606e0906fce7c6672903e8efe5cf3ee2599d948a089a5f98c",
+    "packages/ui/src/nav/header.d.ts": "5162f25ae31a76fa7c79c74f0c70f45c292fd4869320f1d1ad8052dc081aa09d",
     "packages/ui/src/nav/mode-toggle.js": "a05f5544599c1364710427baf455213cbd5a2655a38e791e9cc055580db55a7b",
     "packages/ui/src/nav/mode-toggle.d.ts": "c57c9674622027069eb1fa5b05b4268a187c557b0bd714c6698a39efce3c682e"
+  },
+  "fonts": {
+    "apps/admin/public/aun-nav/fonts/amiri-arabic-400-normal.woff2": "9abf8a10b4a2f27b698740522c9beec9ded7728aeef0738ac0d6e175bf6249d7",
+    "apps/admin/public/aun-nav/fonts/amiri-arabic-700-normal.woff2": "c775d9f8c3a7cf0d0c2bb5246dd699e8c09bf6f8758e1be0b98939331b18bcce",
+    "apps/admin/public/aun-nav/fonts/inter-latin-400-normal.woff2": "8909904ab6c872eb994093482a88a28eca2cd95912d7b6fecd72103b0dc07edc",
+    "apps/admin/public/aun-nav/fonts/inter-latin-600-normal.woff2": "f9a06e79cd3a2a20951c0f0e28f66dd0e6d3fda73911d640a2125c8fcb78f21a",
+    "apps/admin/public/aun-nav/fonts/inter-latin-700-normal.woff2": "6f56409fd3d64bb85f7d070bce20749db2d66b6d63cec586cc22d1c761be2491",
+    "apps/admin/public/aun-nav/fonts/noto-kufi-arabic-arabic-400-normal.woff2": "d287128ffedd6cab026665c63e580d6fa397fbc47286fa47edd446482cffc5e5",
+    "apps/admin/public/aun-nav/fonts/noto-kufi-arabic-arabic-700-normal.woff2": "c964525ff0ef5e1005c41f68fcb8937da8bad92cffc51a6464c20cf470b532a5",
+    "apps/admin/public/aun-nav/fonts/source-serif-4-latin-400-normal.woff2": "02194deb92d3975dd30e11a3824a1f1db32b48c93654e60560cb81ce8e7b5f95",
+    "apps/admin/public/aun-nav/fonts/source-serif-4-latin-600-normal.woff2": "f2b7e1cf1d277b7608231868135648f8ad8e2b58d8e97ca088bee15dc357bee7",
+    "apps/admin/public/aun-nav/fonts/source-serif-4-latin-700-normal.woff2": "7691c51bc286a9014db0048277d2c3f2ad0a90b533dc8adfb16cb22a95390d39",
+    "packages/ui/src/nav/aun-nav-fonts.generated.ts": "fe885eef6c952bb001df0b15e08a4837e732a35e33d184bfaffcfa6c3df56ffd"
   }
 }

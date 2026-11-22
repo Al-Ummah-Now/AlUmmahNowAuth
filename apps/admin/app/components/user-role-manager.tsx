@@ -166,6 +166,7 @@ export function UserRoleManager({
                   value={selectedRoleId}
                   onValueChange={setSelectedRoleId}
                   disabled={isLoading}
+                  dir={dirOf(lang)}
                 >
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder={t.select} />

@@ -4,9 +4,12 @@
  * shift it sideways (CSS `translate`) to an 8px gutter, narrow it if wider than the screen; keep it
  * below its anchor when it fits, else open it upwards when the anchor has more room above, capping
  * its height to the room on that side (it scrolls inside). Never a minimum height (a 96px floor
- * pushed a picker past a landscape phone's bottom in WebKit). Re-fits on size change and resize.
+ * pushed a picker past a landscape phone's bottom in WebKit). A fixed sheet (the phone account menu) hangs
+ * 4px under its `.aun-header`, wherever the bar is. Re-fits on size change and resize.
  */
 const GUTTER = 8;
+/** A phone sheet's gap under the bar (aun-nav.css: var(--fanous-spacing-xs)). */
+const SHEET_GAP = 4;
 const fitted = new Set<HTMLElement>();
 const observers = new Map<HTMLElement, ResizeObserver>();
 let listening = false;
@@ -66,12 +69,18 @@ export function fitToViewport(el: HTMLElement | null | undefined): void {
   }
   const dx = r.left < vp.left + GUTTER ? vp.left + GUTTER - r.left : r.right > vp.right - GUTTER ? vp.right - GUTTER - r.right : 0;
   let dy = 0;
-  const below = Math.floor(vp.bottom - GUTTER - Math.max(r.top, vp.top + GUTTER));
+  // A fixed sheet (the phone account menu) hangs 4px under its bar wherever the bar is: its CSS top
+  // knows only the bar's height, so a banner above the header would put it over the bar (AUDIT-2, CMS #154).
+  const sheet = getComputedStyle(el).position === "fixed";
+  const bar = sheet ? el.closest<HTMLElement>(".aun-header") : null;
+  if (bar) dy = Math.max(bar.getBoundingClientRect().bottom, vp.top) + SHEET_GAP - r.top;
+  const top = r.top + dy;
+  const below = Math.floor(vp.bottom - GUTTER - Math.max(top, vp.top + GUTTER));
   let cap: number | null = r.height > below ? below : null;
   if (cap !== null) {
     // No room below: open upwards when the anchor (the positioned box it hangs from) has more room
     // above. A fixed popup (a phone sheet) has no anchor to flip around.
-    const anchor = getComputedStyle(el).position === "fixed" ? null : el.offsetParent;
+    const anchor = sheet ? null : el.offsetParent;
     if (anchor && anchor !== document.body && anchor !== document.documentElement) {
       const a = anchor.getBoundingClientRect();
       const gap = Math.max(0, r.top - a.bottom);

@@ -1,4 +1,5 @@
 import { formatDate } from "../../../../packages/ui/src/format.ts";
+import { pageTitle } from "../lib/admin-copy";
 import { useState, useSyncExternalStore } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
@@ -17,7 +18,7 @@ import { getAuditLogs, getUser, isErrorResponse, listUserPasskeys, removeUserPas
 import { actingOf, adminUserOf, type AdminEnv } from "../lib/passkeys.server";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => [{ title: "Passkeys - Al Ummah Now Admin" }];
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("passkeys", langOf(location.search)) }];
 
 /**
  * One user's passkeys (AUTH-PASSKEYS PK4, staff recovery): list, remove
@@ -137,7 +138,7 @@ export default function UserPasskeys() {
     key === "removed" ? t.removed : key === "sent" ? t.sent(SETUP_LINK_HOURS) : key === "not_self" ? t.linkSelf : key === "email_failed" ? t.emailFailed : key;
 
   return (
-    <AdminLayout user={data.user} authServerUrl={data.authServerUrl} passkeyGraceUntil={data.passkeyGraceUntil} localized>
+    <AdminLayout user={data.user} authServerUrl={data.authServerUrl} passkeyGraceUntil={data.passkeyGraceUntil}>
       <p className="text-sm mb-2">
         <Link className="underline" to={lang === "ar" ? "/users?lang=ar" : "/users"}>
           {t.back}

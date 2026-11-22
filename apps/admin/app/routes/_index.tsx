@@ -1,6 +1,10 @@
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { formatCompact } from "../../../../packages/ui/src/format.ts";
-import { Link, useLoaderData } from "react-router";
+import { Link, useLoaderData, useSearchParams } from "react-router";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
+import { langOf } from "../lib/deletion-copy";
+import { withLang } from "../lib/shell-copy";
+import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
 import { Users, ShieldCheck, Activity, Database, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { AdminLayout } from "../components/admin-layout";
@@ -10,10 +14,11 @@ import { getAuthServerUrl, getAppUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => {
+export const meta: MetaFunction = ({ location }) => {
+  const lang = langOf(location.search);
   return [
-    { title: "Al Ummah Now - Admin Dashboard" },
-    { name: "description", content: "User management and administration" },
+    { title: pageTitle("dashboard", lang) },
+    { name: "description", content: adminCopy(lang).dashboard.intro },
   ];
 };
 
@@ -158,83 +163,73 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function Index() {
   const data = useLoaderData<typeof loader>();
+  const [searchParams] = useSearchParams();
+  const lang = langOf(searchParams);
+  const t = adminCopy(lang).dashboard;
 
-  // Show dashboard if authenticated
   return (
     <AdminLayout user={data.user} authServerUrl={data.authServerUrl}>
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">Dashboard</h2>
-        <p className="text-[var(--color-muted-foreground)]">
-          Welcome to the Al Ummah Now administration panel
-        </p>
+        <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
+        <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>
       </div>
 
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.totalUsers}</CardTitle>
             <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCompact(data.totalUsers, "en")}</div>
-            <p className="text-xs text-[var(--color-muted-foreground)]">
-              Registered users
-            </p>
+            <div className="text-2xl font-bold">{formatCompact(data.totalUsers, lang)}</div>
+            <p className="text-xs text-[var(--color-muted-foreground)]">{t.registered}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Admin Users</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.adminUsers}</CardTitle>
             <ShieldCheck className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCompact(data.adminUsers, "en")}</div>
-            <p className="text-xs text-[var(--color-muted-foreground)]">
-              Users with admin role
-            </p>
+            <div className="text-2xl font-bold">{formatCompact(data.adminUsers, lang)}</div>
+            <p className="text-xs text-[var(--color-muted-foreground)]">{t.adminUsersNote}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Roles</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.totalRoles}</CardTitle>
             <Shield className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCompact(data.totalRoles, "en")}</div>
-            <p className="text-xs text-[var(--color-muted-foreground)]">
-              {data.systemRoles} system / {data.customRoles} custom
-            </p>
+            <div className="text-2xl font-bold">{formatCompact(data.totalRoles, lang)}</div>
+            <p className="text-xs text-[var(--color-muted-foreground)]">{t.rolesSplit(data.systemRoles, data.customRoles)}</p>
           </CardContent>
         </Card>
 
-        <Link to="/sessions" className="block hover:opacity-80 transition-opacity">
+        <Link to={withLang("/sessions", lang)} className="block hover:opacity-80 transition-opacity">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
+              <CardTitle className="text-sm font-medium">{t.activeSessions}</CardTitle>
               <Activity className="h-4 w-4 text-[var(--color-muted-foreground)]" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">-</div>
-              <p className="text-xs text-[var(--color-muted-foreground)]">
-                Click to manage sessions
-              </p>
+              <p className="text-xs text-[var(--color-muted-foreground)]">{t.manageSessions}</p>
             </CardContent>
           </Card>
         </Link>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Database</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.database}</CardTitle>
             <Database className="h-4 w-4 text-[var(--color-muted-foreground)]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-[var(--color-success-text)]">Connected</div>
-            <p className="text-xs text-[var(--color-muted-foreground)]">
-              D1 Database Status
-            </p>
+            <div className="text-2xl font-bold text-[var(--color-success-text)]">{t.connected}</div>
+            <p className="text-xs text-[var(--color-muted-foreground)]">{t.databaseNote}</p>
           </CardContent>
         </Card>
       </div>
@@ -243,22 +238,16 @@ export default function Index() {
       {data.usersByRole && data.usersByRole.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Users by Role</CardTitle>
-            <CardDescription>
-              Distribution of users across roles
-            </CardDescription>
+            <CardTitle>{t.usersByRole}</CardTitle>
+            <CardDescription>{t.usersByRoleIntro}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {data.usersByRole.map((role) => (
                 <div key={role.name} className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-[var(--color-foreground)]">
-                      {role.name}
-                    </span>
-                    <span className="text-[var(--color-muted-foreground)]">
-                      {role.user_count} {role.user_count === 1 ? 'user' : 'users'}
-                    </span>
+                    <span className="font-medium text-[var(--color-foreground)]"><bdi>{roleLabel(role.name, lang)}</bdi></span>
+                    <span className="text-[var(--color-muted-foreground)]">{t.users(role.user_count)}</span>
                   </div>
                   <div className="h-2 bg-[var(--color-muted)] rounded-full overflow-hidden">
                     <div

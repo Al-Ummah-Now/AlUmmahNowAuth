@@ -3,6 +3,7 @@ import type { Locale, VisibleApp } from "./apps";
 import { dirFor, MESSAGES } from "./i18n";
 import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
 import { NAV_CSS } from '../../../packages/ui/src/nav/aun-nav.generated.ts';
+import { NAV_FONTS_CSS } from '../../../packages/ui/src/nav/aun-nav-fonts.generated.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { streetHeadTags, streetOn } from '../../../packages/ui/src/fanous-street/index.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
@@ -57,8 +58,8 @@ const STYLES = `
         :focus-visible { outline: 2px solid var(--fanous-color-primary); outline-offset: 2px; }
 
         /* The header (AlUmmahNow docs/design/NAV.md "Header"): the shared .aun-* classes (NAV_CSS) and
-           markup (packages/ui/src/nav/page-header.ts); a theme's profile nav material is its background */
-        .aun-header { --aun-header-bg: var(--auth-profile-nav-background, var(--fanous-c-nav-bg)); }
+           markup (packages/ui/src/nav/page-header.ts); its band, edge and control font are the
+           contract's for <html data-theme> ("Theme"), as in every app */
         /* The shared nav's menus pick light or dark with light-dark(): the device's mode until the
            sun/moon button saves a choice (PAGE_MODE_SCRIPT puts .light / .dark on <html>) */
         :root { color-scheme: light dark; }
@@ -216,8 +217,9 @@ export function renderHomePage(o: HomePageOptions): string {
                         <span class="aun-avatar" id="activeAvatar" aria-hidden="true">?</span>
                         <span class="aun-acct-name" id="activeEmail" dir="auto">${e(t.loading)}</span>
                         <span class="visually-hidden">${e(t.accountMenu)}</span>
-                        <svg class="aun-caret" id="chevronIcon" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                            <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <!-- the shared caret: the same chevron (lucide chevron-down) as every other app's account pill -->
+                        <svg class="aun-caret" id="chevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="m6 9 6 6 6-6"/>
                         </svg>
                     </button>
                     <div class="account-dropdown aun-menu" id="accountDropdown" role="menu" hidden>
@@ -253,7 +255,7 @@ export function renderHomePage(o: HomePageOptions): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${e(t.pageTitle)}</title>
     ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
-    <style>${theme.css}${NAV_CSS}${STYLES}${PAGE_HEADER_CSS}</style>
+    <style>${theme.css}${NAV_FONTS_CSS}${NAV_CSS}${STYLES}${PAGE_HEADER_CSS}</style>
     ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
     <script>${PAGE_MODE_SCRIPT}</script>
 </head>

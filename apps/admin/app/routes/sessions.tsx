@@ -1,4 +1,5 @@
 import { formatDateTime } from "../lib/date-utils";
+import { pageTitle } from "../lib/admin-copy";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useNavigate, useSearchParams } from "react-router";
 import { UserAutocomplete } from "../components/autocomplete";
@@ -80,12 +81,7 @@ const SessionQuerySchema = v.object({
   user_id: v.optional(v.pipe(v.string(), v.uuid("Invalid user ID format"))),
 });
 
-export const meta: MetaFunction = () => {
-  return [
-    { title: "Session Management - Al Ummah Now Admin" },
-    { name: "description", content: "Monitor and manage active user sessions" },
-  ];
-};
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("sessions", langOf(location.search)) }];
 
 type LoaderData = {
   sessions: Session[];
@@ -320,7 +316,7 @@ export default function SessionsPage() {
   );
 
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-[var(--color-foreground)] mb-2">{t.title}</h2>
         <p className="text-[var(--color-muted-foreground)]">{t.intro}</p>
@@ -408,7 +404,7 @@ export default function SessionsPage() {
                       <div key={i} className="text-sm p-2 rounded bg-[var(--color-card)] text-[var(--color-foreground)]">
                         <span className="font-medium"><bdi>{item.email}</bdi></span> — {t.manyIpsLine(item.ipCount)}
                         <div className="text-xs text-[var(--color-muted-foreground)]">
-                          {t.ips} <bdi>{Array.isArray(item.ipAddresses) ? item.ipAddresses.join(', ') : item.ipAddresses}</bdi>
+                          {t.ips} <bdi>{Array.isArray(item.ipAddresses) ? item.ipAddresses.join(lang === "ar" ? "، " : ", ") : item.ipAddresses}</bdi>
                         </div>
                       </div>
                     ))}
@@ -515,7 +511,7 @@ export default function SessionsPage() {
                           <span>{t.device}</span>
                         </div>
                         {session.device?.userAgent && (
-                          <div className="text-xs text-[var(--color-muted-foreground)] max-w-[200px] truncate" dir="ltr" title={session.device.userAgent}>
+                          <div className="text-xs text-[var(--color-muted-foreground)] max-w-[200px] truncate rtl:text-right" dir="ltr" title={session.device.userAgent}>
                             {session.device.userAgent}
                           </div>
                         )}

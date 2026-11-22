@@ -6,6 +6,16 @@ import { describe, expect, it } from "vitest";
 import { confirmCopy } from "./confirm-copy";
 import { formatDate, formatDateTime, formatDateTimeMs } from "./date-utils";
 import { deletionCopy, RETENTION_DAYS } from "./deletion-copy";
+import { sameMonthYear } from "../../../../packages/ui/src/format.ts";
+
+describe("Arabic long dates hydrate in Safari", () => {
+  it("no comma between the month and the year (WebKit adds one, Node does not)", () => {
+    expect(sameMonthYear("١٢ نوفمبر، ٢٠٢٦")).toBe("١٢ نوفمبر ٢٠٢٦");
+    expect(sameMonthYear("١٢ نوفمبر ٢٠٢٦")).toBe("١٢ نوفمبر ٢٠٢٦");
+    // The weekday's comma stays: «الخميس، ١٢ نوفمبر ٢٠٢٦»
+    expect(sameMonthYear("الخميس، ١٢ نوفمبر، ٢٠٢٦")).toBe("الخميس، ١٢ نوفمبر ٢٠٢٦");
+  });
+});
 
 const ASCII_DIGIT = /[0-9]/;
 

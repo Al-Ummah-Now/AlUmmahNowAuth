@@ -15,6 +15,7 @@ import { MODE_SCRIPT } from "./lib/color-mode";
 import { scheduleKeepTypedBeforeHydration, TYPED_RECORDER_SCRIPT } from "./lib/keep-typed-before-hydration";
 import { dirOf, langOf } from "./lib/deletion-copy";
 import { NAV_CSS } from "../../../packages/ui/src/nav/aun-nav.generated";
+import { NAV_FONTS_CSS } from "../../../packages/ui/src/nav/aun-nav-fonts.generated";
 import { PAGE_HEADER_CSS } from "../../../packages/ui/src/nav/page-header.ts";
 import { STREET_CSS_PATH, STREET_JS_PATH, streetOn } from "../../../packages/ui/src/fanous-street/index.ts";
 import { environmentOfHost, tabIconLinks } from "../../../packages/ui/src/app-icons/serve";
@@ -42,8 +43,11 @@ export const links: LinksFunction = () => [
 /** The admin shell's look from Auth's theme for this app (empty keeps the admin's own). */
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getCloudflare(context).env as { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_ID?: string } | undefined;
+  const shell = await fetchShellTheme(getAuthServerUrl(request, env), getOAuthClientId(env), fetch, new URL(request.url).searchParams.get("theme"));
   return {
-    shellCss: await fetchShellTheme(getAuthServerUrl(request, env), getOAuthClientId(env), fetch, new URL(request.url).searchParams.get("theme")),
+    shellCss: shell.css,
+    // <html data-theme>: the shared header's band, edge and control font for this theme (AlUmmahNow NAV.md "Theme")
+    themeId: shell.id,
     // QA and stage tabs get a corner dot (SVG) and the header a QA / STAGE badge; production the
     // ICO and exact-size PNGs. One build serves stage and production, so read the host
     tabIcons: tabIconLinks(environmentOfHost(new URL(request.url).hostname)),
@@ -58,11 +62,12 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({ formMethod, default
 export function Layout({ children }: { children: React.ReactNode }) {
   const data = useRouteLoaderData<typeof loader>("root");
   const shellCss = data?.shellCss;
+  const themeId = data?.themeId ?? undefined;
   // English unless the link asks for Arabic (?lang=ar), the admin's language switch for its dialogs
   const lang = langOf(useLocation().search);
   return (
     // The light/dark class on <html> belongs to MODE_SCRIPT (lib/color-mode.ts), never to React
-    <html lang={lang} dir={dirOf(lang)} suppressHydrationWarning>
+    <html lang={lang} dir={dirOf(lang)} data-theme={themeId} suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -76,8 +81,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <link key={l.href} rel="icon" href={l.href} type={l.type} sizes={l.sizes} />
         ))}
         <meta name="theme-color" content="#09273a" />
-        {/* The shared header, its account button and menus (AlUmmahNow docs/design/NAV.md "Header") */}
-        <style data-nav dangerouslySetInnerHTML={{ __html: NAV_CSS + PAGE_HEADER_CSS }} />
+        {/* The shared header, its account button and menus (AlUmmahNow docs/design/NAV.md "Header"), and the
+            faces of its control fonts (served from public/aun-nav/fonts) */}
+        <style data-nav dangerouslySetInnerHTML={{ __html: NAV_FONTS_CSS + NAV_CSS + PAGE_HEADER_CSS }} />
         {shellCss ? <style data-shell-theme dangerouslySetInnerHTML={{ __html: shellCss }} /> : null}
         {/* The Fanous lantern street (shared module, served by this app's worker) when the theme switches it on */}
         {/* Its script starts after hydration (App), so its drawing never meets React's markup check */}

@@ -150,14 +150,24 @@ describe("admin theme: light and dark", () => {
     const failing = (async () => {
       throw new Error("down");
     }) as unknown as typeof fetch;
-    expect(await fetchShellTheme("https://auth.example", "c", failing)).toBe("");
+    expect(await fetchShellTheme("https://auth.example", "c", failing)).toEqual({ css: "", id: null });
     const notFound = (async () => new Response("no", { status: 500 })) as unknown as typeof fetch;
-    expect(await fetchShellTheme("https://auth.example", "c", notFound)).toBe("");
+    expect(await fetchShellTheme("https://auth.example", "c", notFound)).toEqual({ css: "", id: null });
     const ok = (async (url: string) => {
       expect(url).toBe("https://auth.example/themes/resolve?client_id=c");
-      return Response.json({ id: "x", css: withShell() });
+      return Response.json({ id: "nahas", css: withShell() });
     }) as unknown as typeof fetch;
-    expect(await fetchShellTheme("https://auth.example", "c", ok)).toContain("data-shell");
+    const theme = await fetchShellTheme("https://auth.example", "c", ok);
+    expect(theme.css).toContain("data-shell");
+    // the shared header's data-theme (AlUmmahNow NAV.md "Theme")
+    expect(theme.id).toBe("nahas");
+  });
+
+  it("drops a malformed theme id, keeping the theme's style", async () => {
+    const odd = (async () => Response.json({ id: '"><x', css: withShell() })) as unknown as typeof fetch;
+    const theme = await fetchShellTheme("https://auth.example", "c", odd);
+    expect(theme.id).toBeNull();
+    expect(theme.css).toContain("data-shell");
   });
 
   it("asks Auth for the theme the link names (?theme=), ignoring malformed ids", async () => {

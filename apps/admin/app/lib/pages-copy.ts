@@ -6,7 +6,7 @@
  * «عملاء OAuth», «سجل التدقيق», «مفاتيح المرور». Protocol names (OAuth, OpenID, grant and
  * scope values, event types) stay as they are: they are code.
  */
-import { formatNumber } from "../../../../packages/ui/src/format.ts";
+import { formatCompact, formatNumber } from "../../../../packages/ui/src/format.ts";
 import type { AdminLang } from "./deletion-copy";
 
 const n = (value: number, lang: AdminLang) => formatNumber(value, lang);
@@ -255,7 +255,7 @@ const sessions = {
     failedThenOk: "Failed Then Successful Logins",
     failedLine: (count: number) => `${n(count, "en")} failed attempts before success`,
     tableTitle: "Active Sessions",
-    count: (count: number) => `${n(count, "en")} total sessions`,
+    count: (count: number) => `${formatCompact(count, "en")} total sessions`,
     page: (page: number, pages: number) => `Page ${n(page, "en")} of ${n(pages, "en")}`,
     user: "User",
     showUser: "Show this user's sessions",
@@ -288,7 +288,7 @@ const sessions = {
     failedThenOk: "محاولات فاشلة ثم تسجيل دخول ناجح",
     failedLine: (count: number) => `${arCount(count, "محاولة فاشلة واحدة", "محاولتان فاشلتان", "محاولات فاشلة", "محاولة فاشلة")} قبل النجاح`,
     tableTitle: "الجلسات النشطة",
-    count: (count: number) => `عدد الجلسات: ${n(count, "ar")}`,
+    count: (count: number) => `عدد الجلسات: ${formatCompact(count, "ar")}`,
     page: (page: number, pages: number) => `الصفحة ${n(page, "ar")} من ${n(pages, "ar")}`,
     user: "المستخدم",
     showUser: "عرض جلسات هذا المستخدم",

@@ -6,6 +6,7 @@
  * and makes every link inside the sign-in flow keep the theme the flow started with.
  */
 import { streetHeadTags, streetOn } from '../fanous-street/index.ts';
+import { NAV_FONTS_CSS } from '../nav/aun-nav-fonts.generated.ts';
 import { NAV_CSS } from '../nav/aun-nav.generated.ts';
 import { APP_NAMES, langHref, PAGE_HEADER_CSS, PAGE_MODE_SCRIPT, pageHeaderHtml } from '../nav/page-header.ts';
 import type { CompiledTheme, Scheme } from './types.ts';
@@ -129,7 +130,7 @@ function addHeader(html: string, header: string): string {
 	});
 	if (!placed) return html;
 	// a function, so "$" in the CSS or script is never read as a replacement pattern
-	return out.replace(/<\/head>/i, () => `<style data-aun-header>${NAV_CSS}${PAGE_HEADER_CSS}${SIGN_IN_HEADER_CSS}</style><script>${PAGE_MODE_SCRIPT}</script></head>`);
+	return out.replace(/<\/head>/i, () => `<style data-aun-header>${NAV_FONTS_CSS}${NAV_CSS}${PAGE_HEADER_CSS}${SIGN_IN_HEADER_CSS}</style><script>${PAGE_MODE_SCRIPT}</script></head>`);
 }
 
 /** Media queries on the colour scheme answer as `scheme` (preview frames can't set the device's). */

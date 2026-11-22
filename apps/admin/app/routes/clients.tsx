@@ -1,4 +1,5 @@
 import { formatDate } from "../lib/date-utils";
+import { pageTitle } from "../lib/admin-copy";
 import { pagesCopy } from "../lib/pages-copy";
 import { useState, useEffect } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
@@ -36,12 +37,7 @@ import {
 } from "../lib/admin-api.server";
 import { getCloudflare } from "../lib/cloudflare-context";
 
-export const meta: MetaFunction = () => {
-  return [
-    { title: "OAuth Clients - Al Ummah Now Admin" },
-    { name: "description", content: "Manage OAuth clients" },
-  ];
-};
+export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("clients", langOf(location.search)) }];
 
 interface OAuthClient {
   id: string;
@@ -476,7 +472,7 @@ export default function ClientsPage() {
   const redirectList = (client: OAuthClient) => (
     <>
       {client.redirect_uris.slice(0, 2).map((uri, i) => (
-        <div key={i} className="text-xs text-muted-foreground truncate" dir="ltr" title={uri}>
+        <div key={i} className="text-xs text-muted-foreground truncate rtl:text-right" dir="ltr" title={uri}>
           {uri}
         </div>
       ))}
@@ -510,7 +506,7 @@ export default function ClientsPage() {
   );
 
   return (
-    <AdminLayout user={user} authServerUrl={authServerUrl} localized>
+    <AdminLayout user={user} authServerUrl={authServerUrl}>
       <div className="mb-6">
         <div className="flex flex-wrap justify-between items-center gap-3">
           <div>
@@ -549,7 +545,7 @@ export default function ClientsPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="font-medium"><bdi>{client.name}</bdi></div>
-                        <div className="font-mono text-xs text-muted-foreground break-all" dir="ltr">{client.client_id}</div>
+                        <div className="font-mono text-xs text-muted-foreground break-all rtl:text-right" dir="ltr">{client.client_id}</div>
                       </div>
                       {typeBadge(client)}
                     </div>
@@ -585,7 +581,7 @@ export default function ClientsPage() {
                 {clients.map((client) => (
                   <TableRow key={client.id}>
                     <TableCell className="font-medium"><bdi>{client.name}</bdi></TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground" dir="ltr">{client.client_id}</TableCell>
+                    <TableCell className="font-mono text-sm text-muted-foreground rtl:text-right" dir="ltr">{client.client_id}</TableCell>
                     <TableCell>{typeBadge(client)}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">{grantBadges(client)}</div>
@@ -656,7 +652,7 @@ export default function ClientsPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Scopes</Label>
+              <Label>{t.scopes}</Label>
               <div className="grid grid-cols-2 gap-2">
                 {availableScopes.map((scope) => (
                   <label key={scope.value} className="flex items-center gap-2" title={scope.description}>
@@ -731,7 +727,7 @@ export default function ClientsPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Scopes</Label>
+              <Label>{t.scopes}</Label>
               <div className="grid grid-cols-2 gap-2">
                 {availableScopes.map((scope) => (
                   <label key={scope.value} className="flex items-center gap-2" title={scope.description}>
