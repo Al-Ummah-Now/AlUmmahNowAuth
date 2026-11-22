@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
+import { roleDescription, roleLabel } from "../../../../packages/ui/src/role-names.ts";
 
 describe("roleLabel", () => {
   it("names a role in Arabic on an Arabic page, whatever its spelling", () => {
@@ -15,5 +15,14 @@ describe("roleLabel", () => {
   });
   it("keeps an unknown role's own name in Arabic", () => {
     expect(roleLabel("Translator", "ar")).toBe("Translator");
+  });
+});
+
+describe("roleDescription", () => {
+  it("shows a built-in role's seeded description in Arabic, anything else as written", () => {
+    expect(roleDescription("Administrative access", "ar")).toBe("صلاحيات الإدارة");
+    expect(roleDescription("Administrative access", "en")).toBe("Administrative access");
+    expect(roleDescription("مراجعة الترجمات", "ar")).toBe("مراجعة الترجمات");
+    expect(roleDescription(null, "ar")).toBe("");
   });
 });

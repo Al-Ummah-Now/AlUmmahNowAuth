@@ -39,7 +39,7 @@ import { actorLabel, isSystemUserId } from "../lib/system-accounts";
 import { langOf } from "../lib/deletion-copy";
 import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { withLang } from "../lib/shell-copy";
-import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
+import { roleDescription as describeRole, roleLabel } from "../../../../packages/ui/src/role-names.ts";
 import { getAuthServerUrl } from "../lib/config";
 import { AdminLayout } from "../components/admin-layout";
 import { logger } from "../lib/logger.server";
@@ -384,7 +384,7 @@ export default function RoleDetail() {
                     )}
                   </div>
                   <CardDescription>
-                    {role.description ? <bdi>{role.description}</bdi> : t.noDescription}
+                    {role.description ? <bdi>{describeRole(role.description, lang)}</bdi> : t.noDescription}
                   </CardDescription>
                   <div className="flex items-center gap-4 text-sm text-[var(--color-muted-foreground)]">
                     <span>{t.created(formatDate(role.created_at, lang))}</span>

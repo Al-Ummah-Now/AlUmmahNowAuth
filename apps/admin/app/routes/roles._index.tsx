@@ -6,7 +6,7 @@ import { deletionCopy, dirOf, langOf } from "../lib/deletion-copy";
 import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { withLang } from "../lib/shell-copy";
 import { formatCompact } from "../../../../packages/ui/src/format.ts";
-import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
+import { roleDescription, roleLabel } from "../../../../packages/ui/src/role-names.ts";
 import { LoadErrorBanner } from "../components/load-error-banner";
 import { Plus, Pencil, Trash2, Shield, Users } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -381,7 +381,7 @@ export default function Roles() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-[var(--color-muted-foreground)]">
-                          {role.description ? <bdi>{role.description}</bdi> : t.noDescription}
+                          {role.description ? <bdi>{roleDescription(role.description, lang)}</bdi> : t.noDescription}
                         </span>
                       </TableCell>
                       <TableCell>

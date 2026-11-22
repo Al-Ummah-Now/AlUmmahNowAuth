@@ -202,7 +202,7 @@ describe("pages render", () => {
   it("a built-in opens read-only, with the live preview", async () => {
     api.get.mockResolvedValue(detail());
     const html = await render("/themes/nahas", [{ path: "/themes/:id", loader: (a) => builder.loader({ ...a, context: cloudflareLoadContext(env, undefined) } as never), Component: builder.default }]);
-    expect(html).toContain("Built-in themes can&#x27;t be changed");
+    expect(html).toContain("Built-in themes can’t be changed");
     expect(html).toContain('data-testid="theme-preview"');
     expect(html).not.toContain(">Save draft<");
   });
@@ -212,6 +212,6 @@ describe("pages render", () => {
     const html = await render("/themes/eid", [{ path: "/themes/:id", loader: (a) => builder.loader({ ...a, context: cloudflareLoadContext(env, undefined) } as never), Component: builder.default }]);
     expect(html).toContain("Save draft");
     expect(html).toContain("Not published yet");
-    expect(html).toContain('aria-label="primary value (light)"');
+    expect(html).toContain('aria-label="primary value (Light)"');
   });
 });

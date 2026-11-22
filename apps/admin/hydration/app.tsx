@@ -222,10 +222,10 @@ Object.assign(FIXTURES, {
   roles: {
     user: ADMIN, authServerUrl: "",
     roles: [
-      { id: "r-0", name: "super_admin", description: "Everything, including other admins", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 1 },
-      { id: "r-1", name: "Admin", description: "Manage users, roles and content", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 40 },
-      { id: "r-2", name: "Moderator", description: "Review reports and hide content", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 3 },
-      { id: "r-3", name: "Member", description: "", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 45000 },
+      { id: "r-0", name: "super_admin", description: "Administrative access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 1 },
+      { id: "r-1", name: "Admin", description: "Administrative access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 40 },
+      { id: "r-2", name: "Moderator", description: "Video platform content moderation", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 3 },
+      { id: "r-3", name: "Member", description: "Basic member access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 45000 },
       { id: "r-4", name: "Translator", description: "مراجعة الترجمات", is_system_role: false, created_at: sec(ago(20)), updated_at: sec(ago(4)), user_count: 12 },
     ],
   },
