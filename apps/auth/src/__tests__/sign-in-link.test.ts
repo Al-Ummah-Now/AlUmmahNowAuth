@@ -171,6 +171,9 @@ describe('the sign-in page', () => {
 		expect(b.jar.get('signin_csrf')).toBe(csrfOf(html));
 		// The script asks /sign-in/method and never posts the password form for an email without one
 		expect(html).toContain('"method":"/sign-in/method"');
+		// One email field: sign-in helpers and password managers find it by name (v2026.11.22.3)
+		expect(html.match(/<input[^>]*name="email"/g)).toHaveLength(1);
+		expect(html).toContain('<input type="hidden" name="link_email" value=""/>');
 	});
 
 	it('without JavaScript: signing in with an email that has no password shows the options at once, never "wrong password"', async () => {
@@ -182,7 +185,9 @@ describe('the sign-in page', () => {
 		const html = await res.text();
 		expect(optionsBlock(html)).not.toContain('hidden');
 		expect(loginMode(html)).toBe('no-password');
-		expect(html).toContain(`name="email" value="${email}"`);
+		// The sign-in field keeps the email; the link's form carries it as link_email, so only one input is named email
+		expect(html.match(/<input[^>]*name="email"[^>]*>/g)).toEqual([expect.stringContaining(`value="${email}"`)]);
+		expect(html).toContain(`name="link_email" value="${email}"`);
 	});
 
 	it('an unknown email gets the very same options (nothing says whether an account exists)', async () => {
@@ -208,7 +213,7 @@ describe('the sign-in page', () => {
 describe('"Email me a sign-in link"', () => {
 	async function ask(b: Browser, email: string, lang: 'en' | 'ar' = 'en') {
 		const { path, html } = await b.signInPage(lang === 'ar' ? 'ar' : undefined);
-		const res = await b.form('/sign-in/link', { csrf: csrfOf(html), email, lang, back: path });
+		const res = await b.form('/sign-in/link', { csrf: csrfOf(html), link_email: email, lang, back: path });
 		await settle();
 		return { res, html: await res.text(), path };
 	}
@@ -241,6 +246,17 @@ describe('"Email me a sign-in link"', () => {
 		const again = await new Browser().fetch(link);
 		expect(await again.text()).not.toContain('data-state="ready"');
 		expect(userId).toMatch(/^usr_/);
+	});
+
+	it('still reads `email` from a sign-in page served before the field was link_email', async () => {
+		const b = new Browser();
+		const { email } = await invitedAccount({ active: true });
+		const { path, html } = await b.signInPage();
+		const res = await b.form('/sign-in/link', { csrf: csrfOf(html), email, lang: 'en', back: path });
+		await settle();
+		expect(res.status).toBe(200);
+		expect(await res.text()).toContain(`<bdi dir="ltr">${email}</bdi>`);
+		expect(sent).toHaveLength(1);
 	});
 
 	it('speaks Arabic when asked from the Arabic page', async () => {
