@@ -472,7 +472,7 @@ export default function ClientsPage() {
   const redirectList = (client: OAuthClient) => (
     <>
       {client.redirect_uris.slice(0, 2).map((uri, i) => (
-        <div key={i} className="text-xs text-muted-foreground truncate" dir="ltr" title={uri}>
+        <div key={i} className="text-xs text-muted-foreground truncate rtl:text-right" dir="ltr" title={uri}>
           {uri}
         </div>
       ))}
@@ -545,7 +545,7 @@ export default function ClientsPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="font-medium"><bdi>{client.name}</bdi></div>
-                        <div className="font-mono text-xs text-muted-foreground break-all" dir="ltr">{client.client_id}</div>
+                        <div className="font-mono text-xs text-muted-foreground break-all rtl:text-right" dir="ltr">{client.client_id}</div>
                       </div>
                       {typeBadge(client)}
                     </div>
@@ -581,7 +581,7 @@ export default function ClientsPage() {
                 {clients.map((client) => (
                   <TableRow key={client.id}>
                     <TableCell className="font-medium"><bdi>{client.name}</bdi></TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground" dir="ltr">{client.client_id}</TableCell>
+                    <TableCell className="font-mono text-sm text-muted-foreground rtl:text-right" dir="ltr">{client.client_id}</TableCell>
                     <TableCell>{typeBadge(client)}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">{grantBadges(client)}</div>

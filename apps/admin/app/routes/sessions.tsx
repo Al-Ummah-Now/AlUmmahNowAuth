@@ -404,7 +404,7 @@ export default function SessionsPage() {
                       <div key={i} className="text-sm p-2 rounded bg-[var(--color-card)] text-[var(--color-foreground)]">
                         <span className="font-medium"><bdi>{item.email}</bdi></span> — {t.manyIpsLine(item.ipCount)}
                         <div className="text-xs text-[var(--color-muted-foreground)]">
-                          {t.ips} <bdi>{Array.isArray(item.ipAddresses) ? item.ipAddresses.join(', ') : item.ipAddresses}</bdi>
+                          {t.ips} <bdi>{Array.isArray(item.ipAddresses) ? item.ipAddresses.join(lang === "ar" ? "، " : ", ") : item.ipAddresses}</bdi>
                         </div>
                       </div>
                     ))}
@@ -511,7 +511,7 @@ export default function SessionsPage() {
                           <span>{t.device}</span>
                         </div>
                         {session.device?.userAgent && (
-                          <div className="text-xs text-[var(--color-muted-foreground)] max-w-[200px] truncate" dir="ltr" title={session.device.userAgent}>
+                          <div className="text-xs text-[var(--color-muted-foreground)] max-w-[200px] truncate rtl:text-right" dir="ltr" title={session.device.userAgent}>
                             {session.device.userAgent}
                           </div>
                         )}

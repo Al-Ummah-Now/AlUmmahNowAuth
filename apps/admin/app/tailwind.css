@@ -149,6 +149,14 @@ body {
   color: var(--color-foreground);
 }
 
+/* No lone last word on a line (Arabic especially): paragraphs and list items wrap evenly */
+p, li, dd, label {
+  text-wrap: pretty;
+}
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
 /* Surfaces in the theme's own materials (--m-*, from the theme package: gradients, edges and
    shadows per mode); a flat token colour when the theme sets none */
 @layer components {
@@ -245,4 +253,11 @@ body {
   .shell-link[aria-current="page"] svg {
     color: currentColor;
   }
+}
+
+/* The header never lets the page show through it: a glass header material (Zujaj's is 86% at its
+   bottom edge) is laid over the solid nav colour, so content scrolling under the bar never shows.
+   Unlayered and two classes: it must beat the shared header CSS (NAV_CSS, unlayered). */
+.aun-header.shell-header {
+  background-color: var(--fanous-c-nav-bg);
 }

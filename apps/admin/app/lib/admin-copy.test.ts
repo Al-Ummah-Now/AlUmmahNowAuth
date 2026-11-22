@@ -82,7 +82,7 @@ describe("Arabic numbers", () => {
     expect(countOf(2999, "en", ["user", "users"], AR_USERS)).toBe("2.9K users");
     expect(countOf(2999, "ar", ["user", "users"], AR_USERS)).toBe("٢٫٩ ألف مستخدم");
     expect(countOf(1_500_000, "ar", ["user", "users"], AR_USERS)).toBe("١٫٥ م مستخدم");
-    expect(ADMIN_COPY.ar.moderation.queueSummary(45000, 1250)).toBe("٤٥ ألف مطابقة · ١٫٢ ألف مفتوحة (قيد الانتظار أو بانتظار معلومات)");
+    expect(ADMIN_COPY.ar.moderation.queueSummary(45000, 1250)).toBe("٤٥ ألف مطابقة، ١٫٢ ألف مفتوحة (قيد الانتظار أو بانتظار معلومات)");
   });
 
   it("the noun agrees with the number", () => {

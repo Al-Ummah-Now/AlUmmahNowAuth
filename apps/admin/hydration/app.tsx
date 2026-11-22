@@ -178,27 +178,39 @@ export const FIXTURES: Record<string, unknown> = {
 // ---------------------------------------------------------------- the other admin pages
 
 const iso = (ms: number) => new Date(ms).toISOString();
+/** Stored text in the page's language (what an Arabic admin or app would have written): resolved by PageApp. */
+const T = (en: string, ar: string) => ({ __text: true as const, en, ar });
+function inLang(value: unknown, lang: "en" | "ar"): unknown {
+  if (Array.isArray(value)) return value.map((v) => inLang(v, lang));
+  if (value && typeof value === "object") {
+    if ((value as { __text?: boolean }).__text) return (value as { en: string; ar: string })[lang];
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, inLang(v, lang)]));
+  }
+  return value;
+}
 const sec = (ms: number) => Math.floor(ms / 1000);
 const PERMS = [
-  ["p-1", "users:read", "users", "read", "See user accounts"],
-  ["p-2", "users:write", "users", "write", "Change user accounts"],
-  ["p-3", "content:moderate", "content", "moderate", "Hide and restore content"],
-  ["p-4", "audit:read", "audit", "read", "Read the audit log"],
-  ["p-5", "roles:read", "roles", "read", "See roles"],
-].map(([id, name, resource, action, description]) => ({ id, name, resource, action, description, is_system: true, created_at: sec(ago(200)) }));
+  ["p-1", "users:read", "users", "read", T("See user accounts", "عرض حسابات المستخدمين")],
+  ["p-2", "users:write", "users", "write", T("Change user accounts", "تعديل حسابات المستخدمين")],
+  ["p-3", "content:moderate", "content", "moderate", T("Hide and restore content", "إخفاء المحتوى واستعادته")],
+  ["p-4", "audit:read", "audit", "read", T("Read the audit log", "قراءة سجل التدقيق")],
+  ["p-5", "roles:read", "roles", "read", T("See roles", "عرض الأدوار")],
+].map(([id, name, resource, action, description]) => ({ id: id as string, name: name as string, resource: resource as string, action: action as string, description, is_system: true, created_at: sec(ago(200)) }));
 const byResource = (list: typeof PERMS) => list.reduce<Record<string, typeof PERMS>>((m, p) => ((m[p.resource] ??= []).push(p), m), {});
 
 const MOD_REQUEST = {
   id: "mr-1", status: "pending", subject_user_id: "u-17", action: "suspend_account", reason_category: "spam",
-  reason: "Posts the same link under many videos every few minutes.", evidence: [{ url: "https://videos.alummahnow.net/watch/abc123", label: "Comment thread" }],
-  requested_by: { id: "mod-7", display_name: "Huda Qasim" }, decision_note: null, decided_at: null, actioned_at: null,
-  created_at: iso(ago(0, 3, 12, 40)), updated_at: iso(ago(0, 3, 12, 40)), client_id: "videos", client_name: "Videos", decided_by: null, action_result: null,
+  reason: T("Posts the same link under many videos every few minutes.", "ينشر الرابط نفسه تحت مرئيات كثيرة كل بضع دقائق."), evidence: [{ url: "https://videos.alummahnow.net/watch/abc123", label: T("Comment thread", "سلسلة التعليقات") }],
+  requested_by: { id: "mod-7", display_name: "Huda Qasim" },
+  subject: { id: "u-17", email: "zaid.mansour@mail.alummahnow.net", name: "Zaid Mansour", status: "active", password_reset_required: false, created_at: ago(36) }, decision_note: null, decided_at: null, actioned_at: null,
+  created_at: iso(ago(0, 3, 12, 40)), updated_at: iso(ago(0, 3, 12, 40)), client_id: "videos", client_name: T("Videos", "المرئيات"), decided_by: null, action_result: null,
   action_error: null, execution: { status: null, attempts: 0, needs_attention: false },
   history: [{ id: "h-1", type: "created", actor_type: "client", actor_id: "videos", actor_name: "Huda Qasim", note: null, metadata: null, at: iso(ago(0, 3, 12, 40)) }],
 };
 const MOD_FAILED = {
   ...MOD_REQUEST, id: "mr-2", status: "approved", subject_user_id: "u-19", action: "revoke_sessions", reason_category: "compromised_account",
-  reason: "حساب مخترق: تسجيلات دخول من بلدان عدة خلال ساعة.", created_at: iso(ago(1, 6, 2, 9)), action_error: "auth service timed out",
+  reason: T("Compromised: sign-ins from several countries within an hour.", "حساب مخترق: تسجيلات دخول من بلدان عدة خلال ساعة."),
+  subject: { id: "u-19", email: "tariq.aziz@mail.alummahnow.net", name: "Tariq Aziz", status: "active", password_reset_required: false, created_at: ago(51) }, created_at: iso(ago(1, 6, 2, 9)), action_error: "auth service timed out",
   execution: { status: "failed", attempts: 3, needs_attention: true },
 };
 const MOD_DONE = { ...MOD_REQUEST, id: "mr-3", status: "actioned", subject_user_id: "u-17", action: "require_password_reset", reason_category: "fraud", created_at: iso(ago(9, 2, 30, 0)) };
@@ -226,22 +238,23 @@ Object.assign(FIXTURES, {
       { id: "r-1", name: "Admin", description: "Administrative access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 40 },
       { id: "r-2", name: "Moderator", description: "Video platform content moderation", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 3 },
       { id: "r-3", name: "Member", description: "Basic member access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 45000 },
-      { id: "r-4", name: "Translator", description: "مراجعة الترجمات", is_system_role: false, created_at: sec(ago(20)), updated_at: sec(ago(4)), user_count: 12 },
+      { id: "r-4", name: T("Translator", "مترجم"), description: T("Reviews translations", "مراجعة الترجمات"), is_system_role: false, created_at: sec(ago(20)), updated_at: sec(ago(4)), user_count: 12 },
     ],
   },
   role: {
     user: ADMIN, authServerUrl: "",
-    role: { id: "r-4", name: "Translator", description: "مراجعة الترجمات", is_system_role: false, created_at: sec(ago(20, 3)), updated_at: sec(ago(4, 7)), permissions: PERMS.slice(2, 4) },
+    role: { id: "r-4", name: T("Translator", "مترجم"), description: T("Reviews translations", "مراجعة الترجمات"), is_system_role: false, created_at: sec(ago(20, 3)), updated_at: sec(ago(4, 7)), permissions: PERMS.slice(2, 4) },
     allPermissions: byResource(PERMS),
     usersWithRole: [
       { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", assigned_at: sec(ago(4, 7, 12)), assigned_by: "admin-1" },
       { id: "u-20", email: "safiya.omar@mail.alummahnow.net", assigned_at: sec(ago(2, 1, 40)), assigned_by: "system" },
     ],
+    names: { "admin-1": "Omar Saleh" },
   },
   moderation: {
     user: ADMIN, authServerUrl: "", page: 1,
     filters: { status: "pending", client_id: "", action: "", from: "", to: "", needs_attention: "" },
-    queue: { requests: [MOD_REQUEST, MOD_FAILED], total: 1250, open: 37, needs_attention: 2, limit: 25, offset: 0, clients: [{ id: "videos", name: "Videos" }, { id: "cms", name: "CMS" }] },
+    queue: { requests: [MOD_REQUEST, MOD_FAILED], total: 1250, open: 37, needs_attention: 2, limit: 25, offset: 0, clients: [{ id: "videos", name: T("Videos", "المرئيات") }, { id: "cms", name: T("CMS", "إدارة المحتوى") }] },
   },
   "moderation-request": {
     user: ADMIN, authServerUrl: "",
@@ -256,7 +269,7 @@ Object.assign(FIXTURES, {
     themes: BUILTIN_IDS.map(themeSummary),
     authDefault: "fawanees",
     clientDefaults: { videos: BUILTIN_IDS[1] },
-    clients: [{ id: "videos", name: "Videos" }, { id: "cms", name: "CMS" }, { id: "profile", name: "Profile" }],
+    clients: [{ id: "videos", name: T("Videos", "المرئيات") }, { id: "cms", name: T("CMS", "إدارة المحتوى") }, { id: "profile", name: T("Profile", "الملف الشخصي") }],
   },
   theme: {
     user: ADMIN, authServerUrl: "",
@@ -301,6 +314,8 @@ const STUBS = Object.fromEntries(
  */
 export function PageApp({ page, url, authServerUrl }: { page: PageName; url: string; authServerUrl?: string }) {
   const Stub = STUBS[page];
-  const data = authServerUrl ? { ...(FIXTURES[page] as object), authServerUrl } : FIXTURES[page];
+  const lang = new URLSearchParams(url.split("?")[1] ?? "").get("lang") === "ar" ? "ar" : "en";
+  const fixture = inLang(FIXTURES[page], lang) as object;
+  const data = authServerUrl ? { ...fixture, authServerUrl } : fixture;
   return <Stub initialEntries={[url]} hydrationData={{ loaderData: { root: null, page: data } }} />;
 }
