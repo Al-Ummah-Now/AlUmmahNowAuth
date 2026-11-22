@@ -16,6 +16,12 @@ describe('add-a-passkey failure messages say what went wrong and what to do', ()
 		expect(html).toContain('"expired":');
 		expect(html).toContain('n.__network=true');
 	});
+	it('names the button the same way in both languages and never strands «أخرى» on its own line', () => {
+		const en = copyFor('en');
+		for (const key of ['cancelled', 'expired'] as const) expect(en[key]).toContain('Press "Add a passkey"');
+		const ar = copyFor('ar');
+		for (const key of ['cancelled', 'network', 'expired'] as const) expect(ar[key]).toContain('مرة\u00a0أخرى');
+	});
 });
 
 describe('registrationExpired', () => {
