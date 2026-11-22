@@ -141,13 +141,16 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 	// ---- photos behind the card, header graphic
 	const backgrounds = (x.photos?.light ?? []).map(imageUrl);
 	// The street draws between the body's background and the page: the body paints the page colour
-	// (the sign-in page background) and the root wrapper, which paints it otherwise, lets the street through
+	// (the sign-in page background) and the root wrapper, which paints it otherwise, lets the street through.
+	// The street is as tall as the body (fanous-street.css body::after), so the root stays in the flow
+	// (openauth positions it absolutely, which left the body 0px tall and the street unseen) and the body
+	// has no margin of its own (the street makes the body the root's containing block)
 	const pageRaw = get(t, SPEC_SLOTS['page.background']) as SchemeValue | undefined;
 	const pagePaint = pageRaw === undefined
 		? 'var(--fanous-color-background)'
 		: value(schemeOf(pageRaw, 'light')) !== value(schemeOf(pageRaw, 'dark')) ? 'var(--auth-base-page-background)' : value(schemeOf(pageRaw, 'light'));
 	const streetCss = t.street?.enabled
-		? `html.fanous-street body { background: ${pagePaint}; }\nhtml.fanous-street [data-component="root"] { background: transparent !important; }\n`
+		? `html.fanous-street body { background: ${pagePaint}; margin: 0; }\nhtml.fanous-street [data-component="root"] { background: transparent !important; position: relative; min-height: 100dvh; }\n`
 		: '';
 	const bgCss = backgrounds.length
 		? `[data-component="root"] { background-image: url('${BG_PLACEHOLDER}'); background-size: cover; background-position: center; background-repeat: no-repeat; }\n`
@@ -196,7 +199,10 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 
 /**
  * The lantern street's tokens for one scheme (the shared street module reads them):
- * --fanous-street-on 1 switches it on; a theme without a street sets 0.
+ * --fanous-street-on 1 switches it on; a theme without a street sets 0. The tiles: the first is the
+ * default, --fanous-street-tile-<n> the variants the server picks from (<html
+ * data-fanous-street-variant>); image-set(… 2x) shows each 2x tile at its CSS size, and an unused
+ * custom property never fetches its image.
  */
 export function streetTokens(t: StoredPackage['theme'], s: Scheme, fileUrl: (path: string) => string): string[] {
 	const street = t.street;
@@ -207,7 +213,15 @@ export function streetTokens(t: StoredPackage['theme'], s: Scheme, fileUrl: (pat
 		`--fanous-street-window: ${street.window[s].toLowerCase()}`,
 		`--fanous-street-glow: ${street.glow[s]}`,
 		`--fanous-street-lights: url("${fileUrl(street.lights[s])}")`,
+		...tileTokens(street.tile?.[s] ?? [], fileUrl),
+		`--fanous-street-faint: ${street.faint?.[s] ?? 1}`,
+		`--fanous-street-lights-opacity: ${street.lightsOpacity?.[s] ?? 1}`,
 	];
+}
+
+function tileTokens(files: readonly string[], fileUrl: (path: string) => string): string[] {
+	const tile = (file: string) => `image-set(url("${fileUrl(file)}") 2x)`;
+	return [`--fanous-street-tile: ${files[0] ? tile(files[0]) : 'none'}`, ...files.map((file, i) => `--fanous-street-tile-${i + 1}: ${tile(file)}`)];
 }
 
 /** OpenAuth's theme for one page: picks one of the theme's photos. */

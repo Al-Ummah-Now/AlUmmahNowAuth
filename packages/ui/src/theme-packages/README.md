@@ -5,8 +5,8 @@ Auth's themes use the platform theme package format, version 1:
 in the AlUmmahNow monorepo.
 
 This folder is a copy of that format's library (`packages/theme-packages/src` at
-`370bd6d86464241a42fac7b5847c9d8ac4c8e49c`: components' light-only `lightStyle` and the lantern
-`street` section) and its schema (`theme-package.v1.schema.json`, from `docs/themes`).
+`a44fbed0fe2a8740fc74aadc58b024aadd6fdc94`: components' light-only `lightStyle` and the lantern
+`street` section, with its tiles: 4 variants per mode, `faint`, `lightsOpacity`) and its schema (`theme-package.v1.schema.json`, from `docs/themes`).
 `builtins.generated.ts` lists the monorepo's built-ins; Auth's own are in `../auth-theme/themes`. Auth has no runtime or build dependency on the monorepo; the files are copied.
 Don't edit them here: copy a newer version over them and run `pnpm themes:check`, which fails when
 `schema.generated.ts` and the JSON schema disagree.

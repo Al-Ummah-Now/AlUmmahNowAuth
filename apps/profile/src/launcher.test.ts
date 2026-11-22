@@ -111,6 +111,17 @@ describe("renderHomePage", () => {
     expect(live).toContain("html.fanous-street .welcome-message { background: linear-gradient(");
   });
 
+  it("arrives with the street variant the server picked, pinned by the aun_street_variant cookie", () => {
+    const fawanees = { id: "fawanees", css: compileBuiltin("fawanees", base.authServerUrl)!.tokensCss };
+    const pinned = renderHomePage({ ...base, locale: "en", theme: fawanees, street: true, cookie: "x=1; aun_street_variant=4" });
+    expect(pinned).toMatch(/<html lang="en" dir="ltr" data-theme="fawanees" data-fanous-street-variant="4">/);
+    expect(renderHomePage({ ...base, locale: "en", theme: fawanees, street: true })).toMatch(/data-fanous-street-variant="[1-4]"/);
+    // no street, no variant
+    expect(renderHomePage({ ...base, locale: "en", theme: fawanees, cookie: "aun_street_variant=4" })).not.toContain("data-fanous-street-variant");
+    const lantern = { id: "lantern", css: compileBuiltin("lantern", base.authServerUrl)!.tokensCss };
+    expect(renderHomePage({ ...base, locale: "en", theme: lantern, street: true })).not.toContain("data-fanous-street-variant");
+  });
+
   it("words the dialog in Arabic for Arabic pages", () => {
     const html = renderHomePage({ ...base, locale: "ar" });
     expect(html).toContain(`autofocus>${MESSAGES.ar.confirmCancel}<`);

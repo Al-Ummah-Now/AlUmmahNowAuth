@@ -2,6 +2,7 @@
   "name": "al-ummah-now-auth-dev",
   "compatibility_date": "2024-12-30",
   "main": "src/index.ts",
+  "assets": { "directory": "./public", "binding": "ASSETS" },
   "compatibility_flags": [
     "nodejs_compat"
   ],

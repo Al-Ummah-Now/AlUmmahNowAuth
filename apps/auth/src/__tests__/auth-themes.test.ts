@@ -3,8 +3,9 @@
  * page decoration, fallback order, SVG sanitizing, zip round trip, email.
  */
 import { describe, expect, it } from 'vitest';
+import { env } from 'cloudflare:test';
 import vendoredSchema from '../../../../packages/ui/src/theme-packages/theme-package.v1.schema.json?raw';
-import { BUILTIN_IDS, blobBytes, builtinBlob, builtinPackage, compileBuiltin } from '../../../../packages/ui/src/auth-theme/builtin.ts';
+import { BUILTIN_IDS, blobBytes, builtinBlob, builtinPackage, builtinStaticPath, compileBuiltin } from '../../../../packages/ui/src/auth-theme/builtin.ts';
 import { compileTheme, openauthThemeFor } from '../../../../packages/ui/src/auth-theme/compile.ts';
 import { carryThemeOnLocation, decorateHtml, forceScheme, pageKind } from '../../../../packages/ui/src/auth-theme/decorate.ts';
 import { BUILTIN_DEFAULT_THEME, chooseTheme } from '../../../../packages/ui/src/auth-theme/resolve.ts';
@@ -13,13 +14,22 @@ import type { AuthThemeJson, StoredPackage } from '../../../../packages/ui/src/a
 import { referencedAssets, validateTheme } from '../../../../packages/ui/src/auth-theme/validate.ts';
 import { SCHEMA } from '../../../../packages/ui/src/theme-packages/schema.generated.ts';
 import { packageToZip, zipToPackage } from '../../../../packages/ui/src/theme-packages/zip.ts';
-import { STREET_CSS_PATH, STREET_JS_PATH, STREET_START_JS, streetAsset, streetHeadTags, streetOn, streetResponse } from '../../../../packages/ui/src/fanous-street/index.ts';
+import { STREET_CSS_PATH, STREET_JS_PATH, STREET_START_JS, streetAsset, streetHeadTags, streetOn, streetResponse, streetVariantAttr } from '../../../../packages/ui/src/fanous-street/index.ts';
 import { STREET_CSS, STREET_JS } from '../../../../packages/ui/src/fanous-street/street.generated.ts';
 import { getVerificationCodeTemplate } from '../email-templates';
 
 const BASE = 'https://auth.example';
 const fawanees = () => structuredClone(builtinPackage('fawanees')!) as StoredPackage;
-const files = (pkg: StoredPackage) => Object.fromEntries(Object.entries(pkg.assets).map(([p, a]) => [p, blobBytes(builtinBlob(a.hash)!)]));
+/** A built-in file's bytes: bundled, or (the street tiles) the auth Worker's static files. */
+async function builtinBytes(hash: string): Promise<Uint8Array> {
+	const blob = builtinBlob(hash);
+	if (blob) return blobBytes(blob);
+	const res = await (env as unknown as Env).ASSETS!.fetch(`https://assets.invalid${builtinStaticPath(hash)!}`);
+	expect(res.status).toBe(200);
+	return new Uint8Array(await res.arrayBuffer());
+}
+const files = async (pkg: StoredPackage) =>
+	Object.fromEntries(await Promise.all(Object.entries(pkg.assets).map(async ([p, a]) => [p, await builtinBytes(a.hash)] as const)));
 
 describe('built-in packages', () => {
 	it('are the five Auth looks, Fawanees by default', () => {
@@ -27,11 +37,11 @@ describe('built-in packages', () => {
 		expect(BUILTIN_DEFAULT_THEME).toBe('fawanees');
 	});
 
-	it.each(['classic', 'fawanees', 'lantern', 'nahas', 'zujaj'])('%s is a valid format v1 package with its files', (id) => {
+	it.each(['classic', 'fawanees', 'lantern', 'nahas', 'zujaj'])('%s is a valid format v1 package with its files', async (id) => {
 		const pkg = builtinPackage(id)!;
 		expect(pkg.theme.format).toBe('alummahnow.theme-package');
 		expect(pkg.theme.formatVersion).toBe(1);
-		const v = validateTheme(pkg.theme, { files: files(pkg), builtIn: true });
+		const v = validateTheme(pkg.theme, { files: await files(pkg), builtIn: true });
 		expect(v.errors).toEqual([]);
 		expect(v.contrast).toEqual([]);
 	});
@@ -127,7 +137,7 @@ describe('compileTheme', () => {
 	});
 });
 
-describe('the lantern street (Fawanees 1.2.0)', () => {
+describe('the lantern street (Fawanees 1.3.0)', () => {
 	/** The declarations of one colour scheme's :root block. */
 	const scheme = (css: string, s: 'light' | 'dark') => {
 		const m = new RegExp(`@media\\(prefers-color-scheme:${s}\\)\\{:root\\{([^}]*)\\}\\}`).exec(css);
@@ -137,7 +147,7 @@ describe('the lantern street (Fawanees 1.2.0)', () => {
 
 	it('Fawanees switches the street on in both schemes, with each scheme\'s colours and lights', () => {
 		const pkg = builtinPackage('fawanees')!;
-		expect(pkg.theme.version).toBe('1.2.0');
+		expect(pkg.theme.version).toBe('1.3.0');
 		const css = compileBuiltin('fawanees', BASE)!.tokensCss;
 		const light = scheme(css, 'light');
 		const dark = scheme(css, 'dark');
@@ -145,6 +155,24 @@ describe('the lantern street (Fawanees 1.2.0)', () => {
 		expect(light).toEqual(expect.arrayContaining(['--fanous-street-on: 1', '--fanous-street-line: #d8cebdff', '--fanous-street-window: #f4ae3a29', '--fanous-street-glow: 0.34', `--fanous-street-lights: ${url('assets/street-lights.svg')}`]));
 		expect(dark).toEqual(expect.arrayContaining(['--fanous-street-on: 1', '--fanous-street-line: #f5cf9242', '--fanous-street-window: #fbc661b8', '--fanous-street-glow: 0.6', `--fanous-street-lights: ${url('assets/street-lights-dark.svg')}`]));
 		expect(streetOn(css)).toBe(true);
+	});
+
+	it('Fawanees has four street tiles per scheme, served by the auth Worker as static files, and its faint opacity', () => {
+		const pkg = builtinPackage('fawanees')!;
+		const css = compileBuiltin('fawanees', BASE)!.tokensCss;
+		for (const [s, prefix, faint, lights] of [['light', 'street-tile-', '1', '1'], ['dark', 'street-tile-dark-', '0.35', '0.85']] as const) {
+			const decls = scheme(css, s);
+			const tile = (n: number) => `image-set(url("${BASE}/fanous/street/${prefix}${n}.webp") 2x)`;
+			expect(decls).toEqual(expect.arrayContaining([
+				`--fanous-street-tile: ${tile(1)}`,
+				...[1, 2, 3, 4].map((n) => `--fanous-street-tile-${n}: ${tile(n)}`),
+				`--fanous-street-faint: ${faint}`,
+				`--fanous-street-lights-opacity: ${lights}`,
+			]));
+			for (const n of [1, 2, 3, 4]) expect(builtinStaticPath(pkg.assets[`assets/${prefix}${n}.webp`]!.hash)).toBe(`/fanous/street/${prefix}${n}.webp`);
+		}
+		// the tiles are not bundled into the workers
+		for (const [path, a] of Object.entries(pkg.assets)) if (path.endsWith('.webp')) expect(builtinBlob(a.hash)).toBeUndefined();
 	});
 
 	it('Fawanees light is the approved palette', () => {
@@ -183,8 +211,9 @@ describe('the lantern street (Fawanees 1.2.0)', () => {
 
 	it('the body paints the flat page colour and the sign-in root wrapper lets the street through', () => {
 		const css = compileBuiltin('fawanees', BASE)!.openauth.css;
-		expect(css).toContain('html.fanous-street body { background: var(--fanous-color-background); }');
-		expect(css).toContain('html.fanous-street [data-component="root"] { background: transparent !important; }');
+		expect(css).toContain('html.fanous-street body { background: var(--fanous-color-background); margin: 0; }');
+		// In the flow (openauth's root is absolute, which left the body, and so the street, 0px tall)
+		expect(css).toContain('html.fanous-street [data-component="root"] { background: transparent !important; position: relative; min-height: 100dvh; }');
 		// Fawanees' page is flat in both modes
 		expect(builtinPackage('fawanees')!.theme.components.page).toEqual({ style: { background: '{color.background}' } });
 	});
@@ -197,6 +226,19 @@ describe('the lantern street (Fawanees 1.2.0)', () => {
 		expect(streetHeadTags()).toBe(`<link rel="stylesheet" href="${STREET_CSS_PATH}" data-fanous-street><script type="module" src="${STREET_JS_PATH}" data-fanous-street></script>`);
 		expect(decorateHtml(html, compileBuiltin('lantern', BASE)!, { page: 'sign-in', street: true })).not.toContain('fanous-street');
 		expect(decorateHtml(html, compileBuiltin('fawanees', BASE)!, { page: 'sign-in' })).not.toContain(STREET_JS_PATH);
+	});
+
+	it('the server picks the street variant per response and puts it on <html>; a cookie pins it', () => {
+		const html = '<html lang="en" data-fanous-street-variant="9"><head></head><body></body></html>';
+		const fawaneesTheme = compileBuiltin('fawanees', BASE)!;
+		const pinned = decorateHtml(html, fawaneesTheme, { page: 'sign-in', street: true, streetVariant: streetVariantAttr('a=1; aun_street_variant=3') });
+		expect(pinned).toMatch(/^<html lang="en" data-theme="fawanees" data-auth-page="sign-in" data-fanous-street-variant="3">/);
+		expect(streetVariantAttr(null, () => 0)).toBe(' data-fanous-street-variant="1"');
+		expect(streetVariantAttr(null, () => 0.99)).toBe(' data-fanous-street-variant="4"');
+		expect(streetVariantAttr('aun_street_variant=7', () => 0.3)).toBe(' data-fanous-street-variant="2"');
+		// no street, no variant (and a stale one is dropped)
+		expect(decorateHtml(html, compileBuiltin('lantern', BASE)!, { page: 'sign-in', street: true, streetVariant: streetVariantAttr(null) })).not.toContain('data-fanous-street-variant');
+		expect(decorateHtml(html, fawaneesTheme, { page: 'sign-in', streetVariant: streetVariantAttr(null) })).not.toContain('data-fanous-street-variant');
 	});
 
 	it('serves the module and its start call under hashed, immutable paths', async () => {
@@ -282,7 +324,7 @@ describe('sanitizeSvg', () => {
 describe('zip', () => {
 	it('round-trips a package as <id>/theme.json + assets/', async () => {
 		const pkg = fawanees();
-		const zip = packageToZip({ theme: pkg.theme as AuthThemeJson, assets: files(pkg) });
+		const zip = packageToZip({ theme: pkg.theme as AuthThemeJson, assets: await files(pkg) });
 		const back = await zipToPackage(zip);
 		expect(back.theme).toEqual(pkg.theme);
 		expect(Object.keys(back.assets).sort()).toEqual(Object.keys(pkg.assets).sort());
