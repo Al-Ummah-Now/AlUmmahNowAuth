@@ -17,9 +17,10 @@ import { CSRF_COOKIE, SETUP_EMAIL_KEY, SIGN_IN_LINK_PATH, SIGN_IN_METHOD_PATH, s
 const LOGIN_FORM = '<form data-component="form" method="post">';
 
 const STYLE = `
-[data-aun-no-password] { display:flex; flex-direction:column; gap:.75rem; }
+/* data-component="form": the same inset and gap as the sign-in form above it */
 [data-aun-no-password][hidden] { display:none; }
-[data-aun-no-password] form { display:flex; flex-direction:column; }
+/* The link's form only carries its fields: its button lines up with the others */
+[data-aun-no-password] form { display:contents; }
 [data-aun-no-password] [data-component="button"] { width:100%; text-decoration:none; text-align:center; }
 [data-aun-no-password] [data-component="button"][data-color="ghost"] { background:transparent; color:inherit; border:1px solid color-mix(in srgb, currentColor 55%, transparent); box-shadow:none; }
 [data-aun-no-password] [data-slot="hint"] { font-size:var(--font-size-sm); opacity:.85; margin:0; }
@@ -82,8 +83,8 @@ export function addNoPasswordOptions(
 	if (!register) return page;
 	const t = signInLinkCopy(opts.lang);
 	const setupHref = `${register}&amp;setup=1${opts.lang === 'ar' ? '&amp;lang=ar' : ''}`;
-	const block = `<div data-aun-no-password${opts.noPassword ? '' : ' hidden'} data-testid="no-password-options">
-<p data-component="description">${escapeText(t.noPassword)}</p>
+	const block = `<div data-component="form" data-aun-no-password${opts.noPassword ? '' : ' hidden'} data-testid="no-password-options">
+<p data-component="description" style="margin:0">${escapeText(t.noPassword)}</p>
 <form method="post" action="${SIGN_IN_LINK_PATH}">
 <input type="hidden" name="csrf" value="${escapeAttr(opts.csrf)}"/>
 <input type="hidden" name="email" value="${escapeAttr(opts.email ?? '')}"/>
