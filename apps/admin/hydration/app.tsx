@@ -108,6 +108,11 @@ export const FIXTURES: Record<PageName, unknown> = {
     targetEmail: "yusuf.rahman@mail.alummahnow.net",
     passkeys: [{ id: "pk-1", name: "Laptop", createdAt: ago(10, 3, 51, 22), lastUsedAt: ago(1, 1, 7, 46), synced: true, removedAt: null }],
     staff: true,
+    // passkey.add_failed audit events (the loader maps them), newest first: the times render in the browser's zone
+    failures: [
+      { id: 412, at: new Date(ago(10, 4, 2, 9)).toISOString(), reason: "cancelled", browser: "Safari", os: "iOS" },
+      { id: 409, at: new Date(ago(10, 4, 5, 31)).toISOString(), reason: "network", browser: "Chrome", os: "Android" },
+    ],
   },
   audit: {
     events: [
