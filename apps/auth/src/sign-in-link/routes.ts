@@ -19,7 +19,7 @@
  *
  * Routes:
  *   POST /sign-in/method  { email } → { password: boolean }   the sign-in page's check (same origin)
- *   POST /sign-in/link    form email, csrf, lang, back        "Email me a sign-in link"
+ *   POST /sign-in/link    form link_email, csrf, lang, back       "Email me a sign-in link"
  *   GET  /sign-in/link?state=sent|busy|invalid&back&lang       that page again, display only: no
  *        email (sent says "this email"), nothing sent. Each POST answer names it in
  *        Content-Location, so the shared header's language switch (router.ts withSignInChrome) works.
@@ -43,6 +43,13 @@ export type Lang = 'en' | 'ar';
 export const SIGN_IN_METHOD_PATH = '/sign-in/method';
 export const SIGN_IN_LINK_PATH = '/sign-in/link';
 export const CSRF_COOKIE = 'signin_csrf';
+/**
+ * The link form's email field: not `email`, so the sign-in page has a single
+ * `input[name="email"]` (page.ts). The POST still reads `email` from a page
+ * served before this name.
+ */
+export const LINK_EMAIL_FIELD = 'link_email';
+
 /** sessionStorage key: the email typed on the sign-in page, prefilled by "Add a password" */
 export const SETUP_EMAIL_KEY = 'aun.setupEmail';
 
@@ -249,7 +256,7 @@ export async function routeSignInLink(request: Request, env: Env, ctx: Execution
 	const field = form?.get('csrf');
 	const cookie = readCookie(request, CSRF_COOKIE);
 	if (!cookie || typeof field !== 'string' || !sameBytes(field, cookie)) return json({ error: 'forbidden' }, 403);
-	const typed = form?.get('email');
+	const typed = form?.get(LINK_EMAIL_FIELD) ?? form?.get('email');
 	const email = typeof typed === 'string' ? normalizeInviteEmail(typed) : '';
 	if (!plausibleEmail(email)) return noticePage(lang, theme, 400, 'invalid', back);
 	if (

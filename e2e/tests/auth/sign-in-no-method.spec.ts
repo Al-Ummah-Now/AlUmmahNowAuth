@@ -116,6 +116,8 @@ async function openSignIn(page: Page): Promise<void> {
   const challenge = createHash('sha256').update(hex(32)).digest('base64url');
   await page.goto(`${AUTH}/authorize?client_id=${PROFILE.id}&response_type=code&state=s&provider=password&redirect_uri=${encodeURIComponent(PROFILE.redirect)}&code_challenge=${challenge}&code_challenge_method=S256`);
   await expect(page.locator('form[data-aun-login] input[name="email"]')).toBeVisible();
+  // One field named email: every app's sign-in helper finds it by name (v2026.11.22.3)
+  await expect(page.locator('input[name="email"]')).toHaveCount(1);
 }
 
 /** The action signs in: the app's callback gets a code (nothing listens there), or the after-sign-in passkey card shows. */

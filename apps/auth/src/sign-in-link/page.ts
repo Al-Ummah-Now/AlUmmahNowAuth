@@ -9,10 +9,15 @@
  * Without JavaScript, a sign-in POST for such an email comes back with the
  * options already showing (`noPassword`).
  *
+ * The link's own form carries the typed email as `link_email`, never `email`:
+ * the page then has exactly one `input[name="email"]` (the sign-in field), so
+ * password managers, scripts and tests that look the field up by name find
+ * that one, never the hidden copy (it broke every sign-in helper, v2026.11.22.3).
+ *
  * The register page with `setup=1` (from "Add a password") gets the title
  * "Add a password", its explanation, and the email typed on the sign-in page.
  */
-import { CSRF_COOKIE, SETUP_EMAIL_KEY, SIGN_IN_LINK_PATH, SIGN_IN_METHOD_PATH, signInLinkCopy, type Lang } from './routes';
+import { CSRF_COOKIE, LINK_EMAIL_FIELD, SETUP_EMAIL_KEY, SIGN_IN_LINK_PATH, SIGN_IN_METHOD_PATH, signInLinkCopy, type Lang } from './routes';
 
 const LOGIN_FORM = '<form data-component="form" method="post">';
 
@@ -41,7 +46,7 @@ var C=${json};
 var f=document.querySelector('form[data-aun-login]'),box=document.querySelector('[data-aun-no-password]');
 if(!f||!box)return;
 var em=f.querySelector('input[name="email"]'),pw=f.querySelector('input[name="password"]'),go=f.querySelector(':scope > button[data-component="button"]');
-var lf=box.querySelector('form'),hid=lf.querySelector('input[name="email"]'),add=box.querySelector('[data-aun-add-password]');
+var lf=box.querySelector('form'),hid=lf.querySelector('input[name="${LINK_EMAIL_FIELD}"]'),add=box.querySelector('[data-aun-add-password]');
 if(!em||!pw)return;
 var checked=f.getAttribute('data-aun-mode')==='no-password'?em.value.trim().toLowerCase():'',seq=0,asking='',waiters=[];
 if(checked)pw.required=false;
@@ -91,7 +96,7 @@ export function addNoPasswordOptions(
 <p data-component="description" style="margin:0">${escapeText(t.noPassword)}</p>
 <form method="post" action="${SIGN_IN_LINK_PATH}">
 <input type="hidden" name="csrf" value="${escapeAttr(opts.csrf)}"/>
-<input type="hidden" name="email" value="${escapeAttr(opts.email ?? '')}"/>
+<input type="hidden" name="${LINK_EMAIL_FIELD}" value="${escapeAttr(opts.email ?? '')}"/>
 <input type="hidden" name="lang" value="${opts.lang}"/>
 <input type="hidden" name="back" value="${escapeAttr(opts.back)}"/>
 <button data-component="button" data-aun-email-link>${escapeText(t.link)}</button>
