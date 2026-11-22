@@ -45,7 +45,7 @@ export const SETUP_EMAIL_KEY = 'aun.setupEmail';
 
 const COPY = {
 	en: {
-		noPassword: 'This email has no password yet. Choose how to sign in:',
+		noPassword: 'This email has no password yet. Choose how to sign\u00a0in:',
 		link: 'Email me a sign-in link',
 		addPassword: 'Add a password',
 		hint: 'The link works once and signs you in. To add a password, we first email you a code to confirm it’s your inbox.',
@@ -60,10 +60,10 @@ const COPY = {
 		invalid: 'Enter a valid email address.',
 	},
 	ar: {
-		noPassword: 'لا كلمة مرور لهذا البريد بعد. اختر طريقة تسجيل الدخول:',
+		noPassword: 'لا كلمة مرور لهذا البريد بعد. اختر طريقة تسجيل\u00a0الدخول:',
 		link: 'أرسل لي رابط تسجيل الدخول',
 		addPassword: 'إضافة كلمة مرور',
-		hint: 'يعمل الرابط مرة واحدة ويسجّل دخولك. ولإضافة كلمة مرور، نرسل إليك أولًا رمزًا لنتأكد أن البريد بريدك.',
+		hint: 'يعمل الرابط مرة واحدة ويسجّل دخولك. ولإضافة كلمة\u00a0مرور، نرسل إليك أولًا رمزًا لنتأكد أن البريد بريدك.',
 		setupTitle: 'إضافة كلمة مرور',
 		setupText: 'سنرسل إليك رمزًا لنتأكد أن البريد بريدك، ثم نحفظ كلمة المرور ونسجّل دخولك.',
 		sentTitle: 'تحقّق من بريدك',
