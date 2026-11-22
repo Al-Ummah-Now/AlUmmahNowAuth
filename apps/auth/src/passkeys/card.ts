@@ -15,7 +15,8 @@
  * always gets it: the passkey specs opt in that way.
  */
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
-import { renderAddPasskeyPage, type PageLocale } from './pages';
+import { CARD_LANGUAGE_PATH, renderAddPasskeyPage, type PageLocale } from './pages';
+import { signCardLanguage } from './card-language';
 import { isStaff } from './policy';
 import { countForUser, promptDismissedAt, PROMPT_SNOOZE_MS } from './store';
 
@@ -40,7 +41,7 @@ export function cardEnabledFor(env: { PASSKEY_PROMPT?: string }, email: string):
 
 export interface CardInput {
 	db: D1Database;
-	env: { PASSKEY_PROMPT?: string };
+	env: { PASSKEY_PROMPT?: string; SESSION_SECRET?: string };
 	provider: string;
 	userId: string;
 	email: string;
@@ -72,7 +73,10 @@ export async function afterSignInCard(input: CardInput): Promise<Response | null
 		const dismissed = await promptDismissedAt(input.db, input.userId);
 		if (dismissed !== null && (input.now ?? Date.now()) - dismissed < PROMPT_SNOOZE_MS) return null;
 	}
+	// What the header's language switch re-renders from (card-language.ts): posted, never in a link
+	const languageToken = await signCardLanguage(input.env, { u: input.userId, m: input.email, s: staff, g: input.deadline, c: location }, input.now);
 	const page = await renderAddPasskeyPage({
+		languageToken,
 		locale: input.locale,
 		theme: input.theme,
 		mode: 'card',
@@ -87,6 +91,8 @@ export async function afterSignInCard(input: CardInput): Promise<Response | null
 	});
 	// Keep the issuer's cookies (the new __session, flow cleanup)
 	const headers = new Headers(page.headers);
+	// The language switch's no-script link (the page answers the issuer's POST): a path with no code in it
+	headers.set('Content-Location', CARD_LANGUAGE_PATH);
 	for (const cookie of (input.redirect.headers as Headers & { getSetCookie(): string[] }).getSetCookie()) headers.append('Set-Cookie', cookie);
 	return new Response(page.body, { status: 200, headers });
 }

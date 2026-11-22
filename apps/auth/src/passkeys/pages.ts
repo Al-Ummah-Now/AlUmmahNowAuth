@@ -134,7 +134,20 @@ export interface AddPasskeyPage {
 	 * sign-in: the account may have no password). Skip then shows it with Continue instead of leaving.
 	 */
 	noPasskeyNote?: boolean;
+	/**
+	 * The after-sign-in card's signed token (card-language.ts): the header's language switch posts
+	 * it to re-render this card in the other language, so the app's redirect never goes into a link.
+	 */
+	languageToken?: string;
 }
+
+/** POST target of the card's language switch (card-language.ts) */
+export const CARD_LANGUAGE_PATH = '/passkeys/card/language';
+/** The card's hidden form that the header's language link submits */
+export const CARD_LANGUAGE_FORM_ID = 'aun-card-language';
+
+/** The header's language link submits the card's form instead (a POST: no OAuth values in a URL) */
+const LANGUAGE_FORM_SCRIPT = `(function(){var f=document.getElementById('${CARD_LANGUAGE_FORM_ID}');if(!f)return;document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a.aun-lang'):null;if(!a)return;e.preventDefault();f.submit();});})();`;
 
 function formatDate(epochSeconds: number, locale: PageLocale): string {
 	return formatShared(epochSeconds * 1000, locale, { dateStyle: 'long', timeZone: 'UTC' });
@@ -287,8 +300,15 @@ export async function renderAddPasskeyPage(p: AddPasskeyPage): Promise<Response>
 				<button type="button" data-component="button" data-color="ghost" data-action="skip">${skipLabel}</button>
 			</div>
 		</div>
+		${p.languageToken
+			? html`<form id="${CARD_LANGUAGE_FORM_ID}" method="post" action="${CARD_LANGUAGE_PATH}" hidden>
+					<input type="hidden" name="token" value="${p.languageToken}" />
+					<input type="hidden" name="lang" value="${p.locale === 'ar' ? 'en' : 'ar'}" />
+				</form>`
+			: ''}
 		<script>
 			${raw(pageScript(p, t))}
+			${raw(p.languageToken ? LANGUAGE_FORM_SCRIPT : '')}
 		</script>`;
 	const page = Layout({ theme: p.theme, locale: p.locale, children: body });
 	return new Response(`<!DOCTYPE html>${await page.toString()}`, {

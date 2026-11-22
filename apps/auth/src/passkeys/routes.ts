@@ -25,6 +25,7 @@
  * stolen password alone can't enrol a thief's passkey. Every add/remove is
  * audited and emailed to the user.
  */
+import { CARD_LANGUAGE_PATH, handleCardLanguage } from './card-language';
 import { toAsciiDigits } from '../../../../packages/ui/src/format.ts';
 import { registrationOptions, verifyRegistration } from '@al-ummah-now/openauth/passkey';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
@@ -560,6 +561,13 @@ export async function routePasskeys(rctx: PasskeyRouteContext): Promise<Response
 	if (path === '/passkeys/setup') {
 		if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405);
 		return handleSetupPage(rctx);
+	}
+	// The after-sign-in card in the other language (the header's switch posts the card's token)
+	if (path === CARD_LANGUAGE_PATH) {
+		if (request.method === 'GET') return handleCardLanguage(request, env, rctx.theme);
+		if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+		if (!sameOrigin(request, env)) return json({ error: 'forbidden' }, 403);
+		return handleCardLanguage(request, env, rctx.theme);
 	}
 	if (path.startsWith('/passkeys/')) {
 		if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
