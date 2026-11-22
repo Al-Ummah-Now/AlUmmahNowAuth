@@ -149,7 +149,7 @@ describe('sign-in page links', () => {
 		expect(html).not.toMatch(/href="(\.\/)?(register|change)\?/);
 		expect(html).not.toContain('/password/register');
 		expect(html).not.toContain('/password/change');
-		expect(html).not.toMatch(/Forgot password|Don&#39;t have an account|Don't have an account|نسيت كلمة المرور|configured/i);
+		expect(html).not.toMatch(/Forgot password|Don&#39;t have an account|Don't have an account|Don’t have an account|نسيت كلمة المرور|configured/i);
 		expect(html).toContain('name="password"');
 		expect(html).toContain('data-passkey');
 	});

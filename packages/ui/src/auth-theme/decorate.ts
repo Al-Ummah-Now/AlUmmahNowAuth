@@ -71,8 +71,12 @@ export function signInHeaderHtml(h: SignInHeader): string {
  * The passkey block ("or" + "Sign in with a passkey") sits one card gap below the form like every
  * other section (OpenAuth's own top margin doubled it), and its verify form only carries hidden
  * fields: display:contents keeps it (and its margin) from adding an empty row under "or".
+ * OpenAuth's pages have no doctype (quirks mode: <html> and <body> fill the window); Auth's own
+ * (invite, passkey card, sign-in link) have one, where the absolute root leaves <body> 0px tall
+ * and the lantern street finds no room. Both fill the window either way.
  */
 export const SIGN_IN_HEADER_CSS =
+	`html{height:100%}body{min-height:100%}` +
 	`[data-component="root"]{padding:0 0 .75rem;bottom:auto;min-height:100%;justify-content:flex-start;align-items:stretch}` +
 	`[data-component="root"]>.aun-header{flex:none;user-select:auto;margin-block-end:.75rem}` +
 	`[data-passkey]{margin-block-start:0}[data-passkey]>form{display:contents}` +

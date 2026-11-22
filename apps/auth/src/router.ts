@@ -46,6 +46,8 @@ import { routeSignInLink, SIGN_IN_LINK_PATH, SIGN_IN_METHOD_PATH } from './sign-
 import { openauthThemeFor } from '../../../packages/ui/src/auth-theme/compile.ts';
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
+import { decorateHtml } from '../../../packages/ui/src/auth-theme/decorate.ts';
+import { signInHeaderFor } from './themes/pages';
 
 const methodNotAllowed = (allow: string) =>
 	new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: { Allow: allow, 'Content-Type': 'application/json' } });
@@ -564,6 +566,30 @@ function passkeyPageTheme(url: URL) {
 	return openauthThemeFor(compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!);
 }
 
+/**
+ * Auth's own sign-in pages (the invite card, the passkey card, "Check your email" after a
+ * sign-in link) dressed like the issuer's: the shared site header (one header in every app,
+ * wiki E10 "UNIFY"), the theme's backdrop and header graphic (themes/pages.ts does the same
+ * for the issuer's pages). Only HTML built on OpenAuth's Layout; redirects and JSON pass as is.
+ */
+export async function withSignInChrome(response: Response, url: URL, env: { ENVIRONMENT?: string; PROFILE_APP_URL?: string }): Promise<Response> {
+	if (response.status >= 300 && response.status < 400) return response;
+	if (!(response.headers.get('Content-Type') ?? '').includes('text/html')) return response;
+	const html = await response.text();
+	const rebuilt = (body: string) => {
+		const headers = new Headers(response.headers);
+		headers.delete('Content-Length');
+		return new Response(body, { status: response.status, statusText: response.statusText, headers });
+	};
+	if (!/data-component="root"/.test(html) || /class="aun-header/.test(html)) return rebuilt(html);
+	const lang = /<html\b[^>]*\blang="ar"/i.test(html) ? 'ar' : 'en';
+	// A page that answers a POST names its GET twin (sign-in-link/routes.ts): the language switch goes there
+	const self = response.headers.get('Content-Location');
+	const pageUrl = self?.startsWith('/') && !self.startsWith('//') ? new URL(self, url.origin) : url;
+	const compiled = compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!;
+	return rebuilt(decorateHtml(html, compiled, { page: 'other', street: true, header: signInHeaderFor(pageUrl, lang, env) }));
+}
+
 export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	const { url, request } = rctx;
 	const { pathname } = url;
@@ -581,7 +607,7 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	// Passkeys (AUTH-PASSKEYS): setup page and ceremonies, the hub's list, the admin's recovery
 	if (pathname.startsWith('/passkeys/') || pathname === '/account/passkeys' || pathname.startsWith('/account/passkeys/') || pathname === '/admin/settings/staff-passkeys' || /^\/admin\/users\/[^/]+\/passkeys/.test(pathname)) {
 		const response = await routePasskeys({ request, env: rctx.env as never, ctx: rctx.ctx, requestId: rctx.requestId, theme: passkeyPageTheme(url), emailAvailable: rctx.emailAvailable });
-		if (response) return addSecurityHeaders(response, rctx.isProduction);
+		if (response) return addSecurityHeaders(await withSignInChrome(response, url, rctx.env), rctx.isProduction);
 	}
 
 	// Handle exact path matches first
@@ -685,12 +711,12 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	if (pathname === SIGN_IN_METHOD_PATH || pathname === SIGN_IN_LINK_PATH) {
 		const theme = openauthThemeFor(compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!);
 		const response = await routeSignInLink(request, rctx.env, rctx.ctx, rctx.requestId, theme);
-		return response ? addSecurityHeaders(response, rctx.isProduction) : null;
+		return response ? addSecurityHeaders(await withSignInChrome(response, url, rctx.env), rctx.isProduction) : null;
 	}
 	if (pathname.startsWith('/invite/')) {
 		const theme = openauthThemeFor(compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!);
 		const response = await routeInvitePage(request, rctx.env, rctx.ctx, rctx.requestId, theme);
-		return response ? addSecurityHeaders(response, rctx.isProduction) : null;
+		return response ? addSecurityHeaders(await withSignInChrome(response, url, rctx.env), rctx.isProduction) : null;
 	}
 
 	// A client app ends one native install's (or one client's) sign-in (#363)

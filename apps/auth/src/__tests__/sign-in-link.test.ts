@@ -17,6 +17,7 @@ import { coarseAgent, failureReason } from '../passkeys/agent';
 import { copyFor } from '../passkeys/pages';
 import { SIGN_IN_LINK_COPY } from '../invites/email';
 import { safeBack, signInLinkCopy } from '../sign-in-link/routes';
+import { PASSWORD_COPY } from '../ui/copy';
 
 const sent = vi.hoisted(() => [] as Array<{ to: string; subject: string; html: string; text?: string }>);
 vi.mock('../email', () => ({
@@ -258,7 +259,7 @@ describe('"Email me a sign-in link"', () => {
 		const b = await ask(new Browser(), unknownEmail);
 		expect(a.res.status).toBe(200);
 		expect(b.res.status).toBe(200);
-		const strip = (html: string, email: string) => html.split(email).join('EMAIL').replace(/auth_flow=[^"&]+/g, '').replace(/[0-9a-f]{64}/g, '');
+		const strip = (html: string, email: string) => html.split(email).join('EMAIL').replace(/auth_flow(?:=|%3D)[^"&%]+/g, '').replace(/[0-9a-f]{64}/g, '');
 		expect(strip(a.html, withPassword.email)).toBe(strip(b.html, unknownEmail));
 		expect(sent).toHaveLength(0);
 	});
@@ -397,5 +398,90 @@ describe('coarseAgent', () => {
 	it('keeps only the four reasons', () => {
 		for (const r of ['failed', 'cancelled', 'network', 'expired']) expect(failureReason(r)).toBe(r);
 		for (const r of ['exists', '', null, 7]) expect(failureReason(r)).toBe('failed');
+	});
+});
+
+describe('one header on every sign-in page (wiki E10 "UNIFY")', () => {
+	const langLink = (html: string) => /<a\b[^>]*href="([^"]+)"[^>]*hreflang="(?:ar|en)"/.exec(html)?.[1]?.replace(/&amp;/g, '&');
+	const header = (html: string) => /class="aun-header/.test(html);
+
+	it('"Check your inbox" has the header; its language switch shows the same page, without the email', async () => {
+		const b = new Browser();
+		const { email } = await invitedAccount({ active: true });
+		const { html: page, path } = await b.signInPage();
+		const res = await b.form('/sign-in/link', { csrf: csrfOf(page), email, lang: 'en', back: path });
+		await settle();
+		const html = await res.text();
+		expect(header(html)).toBe(true);
+		const twin = langLink(html)!;
+		expect(twin).toMatch(/^\/sign-in\/link\?state=sent&back=[^&]+&lang=ar$/);
+		expect(res.headers.get('Content-Location')).toBe(twin.replace('lang=ar', 'lang=en'));
+
+		const ar = await b.fetch(twin);
+		expect(ar.status).toBe(200);
+		const arHtml = await ar.text();
+		expect(header(arHtml)).toBe(true);
+		expect(arHtml).toContain('lang="ar"');
+		expect(arHtml).toContain(signInLinkCopy('ar').sentAny);
+		expect(arHtml).not.toContain(email);
+		// "Back to sign in" goes to the same sign-in page, now in Arabic
+		const back = /<a data-component="button" data-color="ghost" href="([^"]+)"/.exec(arHtml)![1].replace(/&amp;/g, '&');
+		expect(back.startsWith(path)).toBe(true);
+		expect(new URL(back, ORIGIN).searchParams.get('lang')).toBe('ar');
+		expect(sent).toHaveLength(1);
+	});
+
+	it('the GET views only display: busy and invalid stay themselves, anything else goes back, never off-site', async () => {
+		const b = new Browser();
+		const busy = await (await b.fetch('/sign-in/link?state=busy&back=%2Fpassword%2Fauthorize&lang=en')).text();
+		expect(busy).toContain('data-state="busy"');
+		expect(busy).toContain(signInLinkCopy('en').busyTitle);
+		const invalid = await (await b.fetch('/sign-in/link?state=invalid&back=%2Fpassword%2Fauthorize&lang=ar')).text();
+		expect(invalid).toContain('data-state="invalid"');
+		expect(invalid).toContain(signInLinkCopy('ar').invalidTitle);
+		const other = await b.fetch('/sign-in/link?state=anything&back=%2Fpassword%2Fauthorize');
+		expect(other.status).toBe(303);
+		expect(other.headers.get('Location')).toBe('/password/authorize');
+		const evil = await b.fetch('/sign-in/link?state=sent&back=%2F%2Fevil.example');
+		expect(await evil.text()).toContain('href="/"');
+		expect(sent).toHaveLength(0);
+	});
+
+	it('the invite sign-in and its passkey card have the header; the card\'s language switch opens the setup page', async () => {
+		const b = new Browser();
+		const { email } = await invitedAccount({ active: true });
+		const { html, path } = await b.signInPage();
+		await b.form('/sign-in/link', { csrf: csrfOf(html), email, lang: 'en', back: path });
+		await settle();
+		const invite = await (await b.fetch(linkIn(sent[sent.length - 1])!)).text();
+		expect(header(invite)).toBe(true);
+		const csrf = /name="csrf" value="([0-9a-f]{64})"/.exec(invite)![1];
+		const action = /<form[^>]*action="([^"]+)"/.exec(invite)![1].replace(/&amp;/g, '&');
+		const card = await b.form(action, { csrf });
+		const cardHtml = await card.text();
+		expect(cardHtml).toContain('data-page="passkey"');
+		expect(header(cardHtml)).toBe(true);
+		const twin = new URL(langLink(cardHtml)!, ORIGIN);
+		expect(twin.pathname).toBe('/passkeys/setup');
+		expect(twin.searchParams.get('lang')).toBe('ar');
+		expect(twin.searchParams.get('return_to')).toBeTruthy();
+		// Signed in now: the setup page offers the passkey in Arabic
+		const setup = await (await b.fetch(twin.pathname + twin.search)).text();
+		expect(setup).toContain('data-page="passkey"');
+		expect(setup).toContain(copyFor('ar').add);
+		expect(header(setup)).toBe(true);
+	});
+
+	it('OpenAuth\'s links say "sign in" and use ’: "Don’t have an account?", "Back to sign in" / «العودة إلى تسجيل الدخول»', async () => {
+		const b = new Browser();
+		const { html, path } = await b.signInPage();
+		expect(html).toContain('Don’t have an account?');
+		expect(html).not.toContain("Don't have an account?");
+		const { email } = await invitedAccount({ active: true, password: true });
+		const change = `/password/change${new URL(path, ORIGIN).search}`;
+		const code = await (await b.form(change, { action: 'code', email })).text();
+		expect(code).toMatch(/Back to\s*<a data-component="link"[^>]*>sign in<\/a>/);
+		expect(PASSWORD_COPY.ar.login.toLowerCase()).toBe('تسجيل الدخول');
+		expect(PASSWORD_COPY.en.register_prompt).not.toMatch(/'/);
 	});
 });

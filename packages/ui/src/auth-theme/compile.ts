@@ -38,7 +38,13 @@ export const OPENAUTH_FIXED_CSS =
 	`[data-component="divider"]{color:var(--fanous-color-text-secondary,currentColor)}` +
 	`[data-component="divider"]::before,[data-component="divider"]::after{border-top-color:var(--fanous-color-outline,currentColor);opacity:1}` +
 	`:root [data-component="button"][data-color="ghost"]{background:var(--fanous-c-button-secondary-bg,transparent);color:var(--fanous-c-button-secondary-text,var(--fanous-color-text-primary,inherit));border:1px solid var(--fanous-c-button-secondary-border,var(--fanous-color-outline,currentColor));box-shadow:none}` +
-	`:root [data-component="button"][data-color="ghost"]:hover{background:var(--fanous-c-button-secondary-hover,transparent)}\n`;
+	`:root [data-component="button"][data-color="ghost"]:hover{background:var(--fanous-c-button-secondary-hover,transparent)}` +
+	// The links under a form ("Don’t have an account? Register" / "Forgot password?", "Back to sign in" /
+	// "Resend code"): a link never splits, and when both don't fit on one row they stack, each whole.
+	// Inside the sign-in form (already inset) the row takes no second inset: flush with the fields.
+	`[data-component="form-footer"]{flex-wrap:wrap;row-gap:.5rem}` +
+	`[data-component="form-footer"] [data-component="link"]{white-space:nowrap}` +
+	`[data-component="form"] [data-component="form-footer"]{padding-inline:0}\n`;
 
 export function compileTheme(pkg: StoredPackage, opts: CompileOptions): CompiledTheme {
 	const t = pkg.theme;

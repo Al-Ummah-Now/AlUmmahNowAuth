@@ -47,6 +47,9 @@ export async function finishThemedResponse(response: Response, compiled: Compile
 	const html = await response.text();
 	const headers = new Headers(response.headers);
 	headers.delete('Content-Length');
-	const body = decorateHtml(html, compiled, { page: pageKind(url.pathname, html), carryTheme: compiled.id, street: true, header });
+	// A page that answers a POST (the passkey card after signing in) names its GET twin: the language switch goes there
+	const self = response.headers.get('Content-Location');
+	const pageHeader = header && self?.startsWith('/') && !self.startsWith('//') ? { ...header, url: new URL(self, url.origin) } : header;
+	const body = decorateHtml(html, compiled, { page: pageKind(url.pathname, html), carryTheme: compiled.id, street: true, header: pageHeader });
 	return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }

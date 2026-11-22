@@ -71,7 +71,7 @@ import { openauthThemeFor } from '../../../packages/ui/src/auth-theme/compile.ts
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { serveIcon, signInFavicon } from './themes/favicon';
-import { CODE_INPUT_LABEL } from "./ui/copy";
+import { PASSWORD_COPY } from "./ui/copy";
 import { ThemeStore } from "./themes/store";
 import { assetBaseOf, resolveRequestTheme } from "./themes/runtime";
 import { finishThemedResponse, requestedTheme, signInHeaderFor, wantsPage } from "./themes/pages";
@@ -438,7 +438,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // PasswordUI reads this copy object on every render, so the guard can swap in
     // a "too many attempts" message for this request.
     // In the page's own language: copy overrides openauth's translation in every locale.
-    const passwordCopy: PasswordCopy = { input_code: CODE_INPUT_LABEL[getLocaleFromRequest(request)] };
+    const passwordCopy: PasswordCopy = { ...PASSWORD_COPY[getLocaleFromRequest(request)] };
     // Register and forgot password only work by emailing a code: without email they are not there
     if (!emailAvailable && isEmailOnlyPasswordRoute(routedPath(url.pathname))) {
       return addSecurityHeaders(new Response('Not found', { status: 404 }), isProduction);
