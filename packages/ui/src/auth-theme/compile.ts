@@ -162,6 +162,9 @@ export function compileTheme(pkg: StoredPackage, opts: CompileOptions): Compiled
 	const graphic = gLight ? { light: gLight, dark: svg(signInGraphic ?? header?.dark) ?? gLight } : undefined;
 	const graphicCss = graphic
 		? `[data-component="center"] { overflow: hidden; }\n[data-component="center"] > .demo-gfx svg { display: block; width: 100%; height: auto; }\n` +
+			// A graphic theme's card has no top padding (the graphic sits flush). Pages without the
+			// graphic (invite, passkey card, link sent) start with the brand: give it, and its glow, room.
+			`[data-component="center"] > [data-component="branding"]:first-child { padding-top: 2rem; }\n` +
 			(graphic.dark !== graphic.light
 				? `@media(prefers-color-scheme:dark){.demo-gfx[data-scheme="light"]{display:none}}@media(prefers-color-scheme:light){.demo-gfx[data-scheme="dark"]{display:none}}\n`
 				: '')
