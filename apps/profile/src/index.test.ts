@@ -239,6 +239,15 @@ describe("account menu app icons", () => {
       expect(new TextDecoder().decode(body.subarray(8, 12))).toBe("WEBP");
     }
   });
+
+  it("serves the header controls' fonts, without a session", async () => {
+    for (const name of ["source-serif-4-latin-400-normal", "amiri-arabic-400-normal", "inter-latin-400-normal", "noto-kufi-arabic-arabic-400-normal"]) {
+      const res = await get(`/aun-nav/fonts/${name}.woff2`);
+      expect(res.status, name).toBe(200);
+      expect(res.headers.get("content-type")).toBe("font/woff2");
+      expect(new TextDecoder().decode(new Uint8Array(await res.arrayBuffer()).subarray(0, 4))).toBe("wOF2");
+    }
+  });
 });
 
 describe("passkeys in the hub (AUTH-PASSKEYS)", () => {

@@ -219,11 +219,6 @@ h1, h2, h3 {
   .ui-alert-info { --tone: var(--color-link); }
 
   /* The shell */
-  /* the shared header (.aun-header, NAV.md "Header") takes the theme's header material as its background */
-  .shell-header {
-    --aun-header-bg: var(--m-header, var(--fanous-c-nav-bg));
-    box-shadow: var(--m-header-edge, none);
-  }
   .shell-rail {
     background: var(--m-rail, var(--color-sidebar));
     box-shadow: var(--m-rail-edge, inset -1px 0 0 var(--color-sidebar-divider));

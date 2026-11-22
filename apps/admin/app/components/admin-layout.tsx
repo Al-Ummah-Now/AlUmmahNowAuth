@@ -91,7 +91,7 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
       {/* The shared header (AlUmmahNow docs/design/NAV.md "Header"): drawer toggle, brand, QA/stage
           badge, then language, light/dark and the account menu (no links to other sites: they are
           in the account menu's apps). Dark in every
-          theme and mode; a theme's header material is its background (.shell-header) */}
+          theme and mode; its band, edge and control font are the contract's for <html data-theme> */}
       <header data-shell="header" data-testid="aun-header" className="aun-header shell-header" style={{ zIndex: 50 }}>
         {/* The drawer toggle (the videos site's: lucide menu in every state). Phones and tablets:
             open the drawer. Desktop: collapse the rail */}

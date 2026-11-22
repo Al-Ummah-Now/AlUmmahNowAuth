@@ -70,20 +70,32 @@ export function adminStreetCss(tokensCss: string): string {
 const TIMEOUT_MS = 500;
 const TTL_SECONDS = 30;
 
-export async function fetchShellTheme(authServerUrl: string, clientId: string, fetcher: typeof fetch = fetch, requested?: string | null): Promise<string> {
+/** A resolved theme for the admin: its style (shellThemeCss) and its id, the shared header's `data-theme`. */
+export interface ShellTheme {
+  css: string;
+  /** null when no theme resolved or its id is malformed: the header then draws the default theme's band. */
+  id: string | null;
+}
+
+const THEME_ID = /^[a-z][a-z0-9-]{1,39}$/;
+
+export async function fetchShellTheme(authServerUrl: string, clientId: string, fetcher: typeof fetch = fetch, requested?: string | null): Promise<ShellTheme> {
+  const none = { css: "", id: null };
   try {
     const url = new URL("/themes/resolve", authServerUrl);
     url.searchParams.set("client_id", clientId);
     // A theme the link asks for (?theme=, if Auth publishes it), like the profile app
-    if (requested && /^[a-z][a-z0-9-]{1,39}$/.test(requested)) url.searchParams.set("theme", requested);
+    if (requested && THEME_ID.test(requested)) url.searchParams.set("theme", requested);
     const response = await fetcher(url.toString(), {
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cf: { cacheTtl: TTL_SECONDS, cacheEverything: true },
     } as RequestInit);
-    if (!response.ok) return "";
-    const body = (await response.json()) as { css?: unknown };
-    return typeof body.css === "string" ? shellThemeCss(body.css) : "";
+    if (!response.ok) return none;
+    const body = (await response.json()) as { css?: unknown; id?: unknown };
+    const css = typeof body.css === "string" ? shellThemeCss(body.css) : "";
+    if (!css) return none;
+    return { css, id: typeof body.id === "string" && THEME_ID.test(body.id) ? body.id : null };
   } catch {
-    return "";
+    return none;
   }
 }

@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { renderHomePage } from "./page";
+import { NAV_FONTS_CSS } from "../../../packages/ui/src/nav/aun-nav-fonts.generated.ts";
 import { brandHtml, envBadgeHtml, langButtonHtml, signInHtml } from "../../../packages/ui/src/nav/header.js";
 import { modeIconSvg } from "../../../packages/ui/src/nav/mode-toggle.js";
 import {
@@ -72,6 +73,19 @@ describe("profile header", () => {
     const html = renderHomePage({ ...base, locale: "en" });
     expect(html.indexOf(`<script>${PAGE_MODE_SCRIPT}</script>`)).toBeGreaterThan(html.indexOf("</style>"));
     expect(html.indexOf(`<script>${PAGE_MODE_SCRIPT}</script>`)).toBeLessThan(html.indexOf("</head>"));
+  });
+});
+
+describe("profile header theme (AlUmmahNow NAV.md \"Theme\")", () => {
+  it("the band, edge and control font are the contract's for <html data-theme>, with no profile override", () => {
+    const html = renderHomePage({ ...base, locale: "en", path: "/" });
+    expect(html).toMatch(/<html [^>]*data-theme="[a-z][a-z0-9-]*"/);
+    const style = html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
+    expect(style).toContain("--aun-header-band:");
+    expect(style).toContain(NAV_FONTS_CSS);
+    // the profile sets none of the header's look itself
+    expect(style).not.toMatch(/\.aun-header\s*\{[^}]*--aun-header-bg/);
+    expect(style).not.toContain("--auth-profile-nav-background");
   });
 });
 

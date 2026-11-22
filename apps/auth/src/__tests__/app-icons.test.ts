@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AUTH_ICONS, PROFILE_ICONS } from '../../../../packages/ui/src/app-icons/index.ts';
-import { signInFavicon } from '../themes/favicon';
+import { serveIcon, signInFavicon } from '../themes/favicon';
+import { NAV_FONTS_CSS } from '../../../../packages/ui/src/nav/aun-nav-fonts.generated.ts';
 import { environmentOfHost, faviconSvgPath, iconLinks, iconServer, tabIconHtml, tabIconLinks, tabIconPath } from '../../../../packages/ui/src/app-icons/serve.ts';
 
 describe('app icons', () => {
@@ -20,6 +21,19 @@ describe('app icons', () => {
 		expect(serve('/authorize')).toBeUndefined();
 		const manifest = await iconServer(PROFILE_ICONS)('/site.webmanifest')!.json();
 		expect(manifest.name).toBe('Al Ummah Now Account');
+	});
+
+	it("serves the header controls' fonts the face sheet names, from this origin only (CSP font-src 'self')", async () => {
+		const paths = [...NAV_FONTS_CSS.matchAll(/url\(['"]?([^'")]+)/g)].map((m) => m[1]!);
+		expect(paths.length).toBeGreaterThan(0);
+		for (const path of paths) {
+			expect(path).toMatch(/^\/aun-nav\/fonts\/[a-z0-9-]+\.woff2$/);
+			const res = serveIcon(path)!;
+			expect(res.status, path).toBe(200);
+			expect(res.headers.get('Content-Type')).toBe('font/woff2');
+			expect(new TextDecoder().decode(new Uint8Array(await res.arrayBuffer()).subarray(0, 4))).toBe('wOF2');
+		}
+		expect(serveIcon('/aun-nav/fonts/missing.woff2')).toBeUndefined();
 	});
 
 	it('sign-in and account have different marks', () => {
