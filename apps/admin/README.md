@@ -4,30 +4,16 @@ React Router v7 admin dashboard for managing Al Ummah Now authentication users.
 
 ## Configuration
 
-### Auth Server URLs
+### Auth Server URL
 
-The app automatically detects the environment and uses the appropriate auth server URL. Configure in `app/lib/config.ts`:
+The Auth server's origin comes from the Worker's `AUTH_SERVER_URL` var (`getAuthServerUrl` in
+`app/lib/config.ts`):
 
-```typescript
-export const config = {
-  authServer: {
-    production: "https://al-ummah-now-auth.alummahnow.workers.dev",
-    preview: "https://al-ummah-now-auth-preview.mahmoud-s-darwish.workers.dev",
-    local: "http://localhost:8787",
-  },
-  oauth: {
-    clientId: "admin-dashboard",
-    responseType: "code",
-  },
-};
-```
-
-### Environment Detection
-
-The app automatically detects the environment based on hostname:
-- **localhost/127.0.0.1** → Uses local auth server (`http://localhost:8787`)
-- **preview/-pr- domains** → Uses preview auth server
-- **Production domains** → Uses production auth server
+- `wrangler.dev.json` (`pnpm dev`, local E2E): `http://localhost:3301`, the local Auth server. To run the
+  admin against another Auth server (another port, or QA), change it there or pass `--var`.
+- `wrangler.qa.json`, `wrangler.json` (stage and production): the deployed Auth server.
+- With no `AUTH_SERVER_URL`, a localhost admin uses `http://localhost:3301` and any other host uses
+  `https://auth.alummahnow.net`.
 
 ## Development
 
@@ -144,17 +130,7 @@ app/
 
 ### Change Auth Server URL
 
-Edit `app/lib/config.ts`:
-
-```typescript
-export const config = {
-  authServer: {
-    local: "http://localhost:8787",        // ← Change for local dev
-    production: "https://your-auth.workers.dev", // ← Change for prod
-  },
-  // ...
-};
-```
+Set `AUTH_SERVER_URL` in the wrangler config for that environment (see "Auth Server URL" above).
 
 ### Change OAuth Client ID
 
