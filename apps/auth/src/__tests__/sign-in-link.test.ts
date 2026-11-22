@@ -347,7 +347,11 @@ describe('the passkey card after an invite sign-in', () => {
 	it('Arabic copy follows the Arabic rules: «،» and the guillemets around the place in the account', () => {
 		const t = copyFor('ar');
 		expect(t.noPasskeyYet).toContain('في المرة القادمة،');
-		expect(t.noPasskeyYet).toContain('«الحساب ← مفاتيح المرور»');
+		// The place in the account never breaks across lines
+		expect(t.noPasskeyYet).toContain('«الحساب\u00a0←\u00a0مفاتيح\u00a0المرور»');
+		expect(copyFor('en').noPasskeyYet).toContain('Account\u00a0→\u00a0Passkeys');
+		expect(signInLinkCopy('en').noPassword).toContain('sign\u00a0in:');
+		expect(signInLinkCopy('ar').noPassword).toContain('تسجيل\u00a0الدخول:');
 		expect(t.noPasskeyYet).not.toMatch(/[,0-9]/);
 		expect(t.continueWithout).toBe('المتابعة دون مفتاح مرور');
 	});
