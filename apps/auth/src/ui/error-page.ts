@@ -11,6 +11,7 @@ import { Layout } from '@al-ummah-now/openauth/ui/base';
 import { compileBuiltin } from '../../../../packages/ui/src/auth-theme/builtin.ts';
 import { openauthThemeFor } from '../../../../packages/ui/src/auth-theme/compile.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../../packages/ui/src/auth-theme/resolve.ts';
+import { formatNumber } from '../../../../packages/ui/src/format.ts';
 import { signInFavicon } from '../themes/favicon.ts';
 import { finishThemedResponse, signInHeaderFor } from '../themes/pages.ts';
 
@@ -71,7 +72,7 @@ const STATUS: Record<AuthErrorKind, number> = { notFound: 404, server: 500, unav
 
 /** "Error 500" / «خطأ ٥٠٠» (Eastern Arabic digits in Arabic, never the implicit 'ar' default). */
 export function errorCodeLabel(locale: ErrorLocale, code: number): string {
-	const digits = new Intl.NumberFormat(locale === 'ar' ? 'ar-u-nu-arab' : 'en-US', { useGrouping: false }).format(code);
+	const digits = formatNumber(code, locale, { useGrouping: false }, 'en-US');
 	return ERROR_COPY[locale].errorCode.replace('{code}', digits);
 }
 
