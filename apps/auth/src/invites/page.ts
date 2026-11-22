@@ -117,6 +117,8 @@ export const pageLocale = (url: URL, inviteLocale?: string | null): Locale => {
 
 const STYLE = `
 [data-page^="invite"] { display:flex; flex-direction:column; gap:1rem; }
+/* The card's heading: same size and weight as the passkey card's and the link-sent page's */
+[data-page^="invite"] [data-component="title"] { font-size:1.25rem; font-weight:600; line-height:1.4; margin:0; }
 [data-page^="invite"] [data-slot="actions"] { display:flex; flex-direction:column; gap:.75rem; }
 [data-page^="invite"] [data-component="button"] { width:100%; text-decoration:none; text-align:center; }
 /* Secondary actions: an outline that stays visible on the dark card, never a second filled button */
