@@ -2,7 +2,8 @@
  * @fileoverview Auth's error pages: a server error (500), the database being unreachable (503) and an
  * unknown page (404). The Al Ummah Now error-page family (wiki guides/error-pages.md): the same badge,
  * "Error 500" line, words and actions as the videos site, admin, www, scholar sites and the CMS, inside
- * Auth's own themed sign-in card and lantern street with the shared header (finishThemedResponse).
+ * Auth's sign-in page and lantern street with the shared header (finishThemedResponse); the card is the
+ * family's own (the vendored sheet), not the sign-in card.
  * Built-in theme only: an error page never waits on the theme store (D1 may be the thing that failed).
  * English unless `?lang=ar`. Never a stack trace, a raw message or a timestamp; the reference to quote.
  */
@@ -13,6 +14,7 @@ import { openauthThemeFor } from '../../../../packages/ui/src/auth-theme/compile
 import { BUILTIN_DEFAULT_THEME } from '../../../../packages/ui/src/auth-theme/resolve.ts';
 import { formatNumber } from '../../../../packages/ui/src/format.ts';
 import { signInFavicon } from '../themes/favicon.ts';
+import { ERROR_PAGE_CSS } from './error-page-css.vendored.ts';
 import { finishThemedResponse, signInHeaderFor } from '../themes/pages.ts';
 
 type ErrorLocale = 'en' | 'ar';
@@ -29,15 +31,15 @@ export function errorPageLocale(request?: Request): ErrorLocale {
 }
 
 /** The family's words (a copy of the monorepo's ERROR_SCREEN_STRINGS; keep them in step). */
-export const ERROR_COPY: Record<ErrorLocale, { kinds: Record<AuthErrorKind, { title: string; body: string }>; tryAgain: string; goHome: string; goBack: string; reference: string; referenceHint: string; copy: string; copied: string; needHelp: string; contactUs: string; errorCode: string }> = {
+export const ERROR_COPY: Record<ErrorLocale, { kinds: Record<AuthErrorKind, { title: string; body: string }>; tryAgain: string; goHome: string; goBack: string; reference: string; referenceHint: string; copy: string; copied: string; needHelp: string; contactUs: string; errorCode: string; pageTitle: string }> = {
 	en: {
 		kinds: {
-			notFound: { title: 'Page not found', body: "We couldn't find this page. The link may be wrong, or the page may have moved." },
-			server: { title: 'We could not load this page', body: 'Our server had a problem with this request. It has been reported. Please try again in a moment.' },
-			unavailable: { title: 'Sign-in is temporarily unavailable', body: 'We could not reach our account service. It has been reported. Please try again in a few minutes.' },
+			notFound: { title: 'Page not found', body: 'We couldn’t find this page. The link may be wrong, or the page may have moved.' },
+			server: { title: 'We could not load this page', body: 'Our server had a problem with this request. It has been reported. Please try again in a moment.' },
+			unavailable: { title: 'Sign-in is temporarily unavailable', body: 'We could not reach our account service. It has been reported. Please try again in a few minutes.' },
 		},
 		tryAgain: 'Try again',
-		goHome: 'Go to home',
+		goHome: 'Home page',
 		goBack: 'Go back',
 		reference: 'Reference',
 		referenceHint: 'Quote this reference if you contact us, so we can find what happened.',
@@ -46,6 +48,7 @@ export const ERROR_COPY: Record<ErrorLocale, { kinds: Record<AuthErrorKind, { ti
 		needHelp: 'Still stuck?',
 		contactUs: 'Contact us',
 		errorCode: 'Error {code}',
+		pageTitle: '{title} | Al Ummah Now',
 	},
 	ar: {
 		kinds: {
@@ -63,6 +66,7 @@ export const ERROR_COPY: Record<ErrorLocale, { kinds: Record<AuthErrorKind, { ti
 		needHelp: 'ما زلت تواجه المشكلة؟',
 		contactUs: 'تواصل معنا',
 		errorCode: 'خطأ {code}',
+		pageTitle: '{title} | الأمة الآن',
 	},
 };
 
@@ -76,32 +80,36 @@ export function errorCodeLabel(locale: ErrorLocale, code: number): string {
 	return ERROR_COPY[locale].errorCode.replace('{code}', digits);
 }
 
+/** "Page not found | Al Ummah Now" / «الصفحة غير موجودة | الأمة الآن»: the family's tab title. */
+export function errorPageTitle(locale: ErrorLocale, title: string): string {
+	return ERROR_COPY[locale].pageTitle.replace('{title}', title);
+}
+
 /** The family's lucide shapes (monorepo ERROR_PAGE_ICONS). */
 const ICONS = {
 	notFound: '<path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/>',
 	alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
 	copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+	back: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+	home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+	retry: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
 } as const;
-const icon = (name: keyof typeof ICONS, size = 26) =>
-	raw(`<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`);
+const icon = (name: keyof typeof ICONS) =>
+	raw(`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-icon="${name}">${ICONS[name]}</svg>`);
 
-/* The family card's inner parts inside Auth's themed card: theme tokens only, logical properties, no
-   animation. The card, button, links and street are the sign-in theme's own. */
-const STYLE = `
-[data-page=error] .ep-head{display:grid;grid-template-columns:auto 1fr;column-gap:16px;align-items:center;text-align:start}
-[data-page=error] .ep-badge{display:grid;place-items:center;width:52px;height:52px;border-radius:14px;background:var(--fanous-color-primary,#e8b477);color:var(--fanous-color-on-primary,#09151e);box-shadow:0 0 18px -4px color-mix(in srgb,var(--fanous-color-primary,#e8b477) 60%,transparent)}
-[data-page=error] .ep-code{margin:0 0 2px;font-size:13px;font-weight:600;letter-spacing:.06em;opacity:.8}
-[data-page=error]:lang(ar) .ep-code{letter-spacing:0}
-[data-page=error] [data-component=title]{margin:0;text-align:start}
-[data-page=error] [data-component=description]{text-align:start;line-height:1.65}
-[data-page=error] .ep-ref{padding:12px 16px;border-radius:10px;background:color-mix(in srgb,currentColor 7%,transparent);font-size:14px;text-align:start}
-[data-page=error] .ep-ref-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-[data-page=error] .ep-ref code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600}
-[data-page=error] .ep-ref-copy{display:inline-flex;align-items:center;gap:6px;margin-inline-start:auto;min-height:36px;padding-inline:10px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-[data-page=error] .ep-ref p{margin:6px 0 0;opacity:.85;line-height:1.5}
-[data-page=error] .ep-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 20px;font-size:14px}
-[data-page=error] .ep-links button{border:0;background:none;padding:0;font:inherit;cursor:pointer}
-[data-page=error] a[data-component=button]{text-decoration:none}
+/** The family's own buttons (the vendored sheet), never the sign-in theme's: the same on every app. */
+const PRIMARY = 'ep-btn ep-btn-primary';
+const SECONDARY = 'ep-btn ep-btn-secondary';
+
+/* Auth's frame around the family card: the sign-in theme's header, page and street stay; its card
+   chrome (the lantern graphic, logo and wordmark) steps aside so the family card is the only card and
+   the page has one h1. The card reads the theme's own fonts (the sign-in pages' body font). */
+const FRAME_STYLE = `
+[data-component=center]:has(>.ep){width:100%;max-width:none;margin:0;padding:0;background:none;border:0;border-radius:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+[data-component=center]:has(>.ep)>.demo-gfx{display:none}
+[data-component=center]:has(>.ep)::before,[data-component=center]:has(>.ep)::after{content:none}
+.ep{font-family:var(--fanous-font-latin,system-ui,sans-serif)}
+.ep[lang=ar]{font-family:var(--fanous-font-arabic,system-ui,sans-serif)}
 `;
 
 const COPY_SCRIPT = `(function(){var b=document.querySelector('[data-ep-back]');if(b&&history.length>1){b.hidden=false;b.addEventListener('click',function(){history.back()})}var c=document.querySelector('[data-ep-copy]');if(!c)return;c.addEventListener('click',function(){var r=document.getElementById('ep-ref').textContent;navigator.clipboard.writeText(r).then(function(){var s=c.querySelector('span');var o=s.textContent;s.textContent=c.dataset.copied;setTimeout(function(){s.textContent=o},2000)})})})();`;
@@ -130,44 +138,54 @@ async function renderFamilyPage(o: RenderOptions): Promise<Response> {
 	const t = ERROR_COPY[locale];
 	const copy = t.kinds[o.kind];
 	const status = STATUS[o.kind];
+	const lost = o.kind === 'notFound';
 	const url = new URL(o.request?.url ?? 'https://auth.alummahnow.net/');
 	const header = signInHeaderFor(url, locale, o.env ?? {});
 	const compiled = compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!;
-	const retry = o.kind === 'notFound' ? null : sameOriginPath(o.retryUrl, url.origin);
+	// 500/503: Home page + Try again (the page that failed, else this page); 404: Go back + Home page
+	const retry = lost ? null : (sameOriginPath(o.retryUrl, url.origin) ?? `${url.pathname}${url.search}`);
 	// hono/html escapes every interpolated value; raw() only for our own constants
-	const body = html`<style>${raw(STYLE)}</style>
-		<div data-component="form" data-page="error" data-error-status="${status}" data-testid="error-screen" ${o.kind === 'notFound' ? '' : raw('role="alert"')}>
-			<div class="ep-head">
-				<span class="ep-badge" aria-hidden="true">${icon(o.kind === 'notFound' ? 'notFound' : 'alert')}</span>
-				<div>
-					<p class="ep-code">${errorCodeLabel(locale, status)}</p>
-					<h1 data-component="title">${copy.title}</h1>
+	const body = html`<style>${raw(ERROR_PAGE_CSS)}${raw(FRAME_STYLE)}</style>
+		<div class="ep" lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}" data-page="error" data-error-status="${status}" data-testid="error-screen" ${lost ? '' : raw('role="alert"')}>
+			<section class="ep-card" aria-labelledby="ep-title">
+				<div class="ep-head">
+					<span class="ep-badge" aria-hidden="true">${icon(lost ? 'notFound' : 'alert')}</span>
+					<div class="ep-heading">
+						<p class="ep-code">${errorCodeLabel(locale, status)}</p>
+						<h1 class="ep-title" id="ep-title">${copy.title}</h1>
+					</div>
+					<p class="ep-body">${copy.body}</p>
 				</div>
-			</div>
-			<p data-component="description">${copy.body}</p>
-			${o.reference
-				? html`<div class="ep-ref" data-testid="error-reference-box">
-						<div class="ep-ref-row">
-							<span>${t.reference}</span>
-							<code id="ep-ref" dir="ltr" data-testid="error-reference">${o.reference}</code>
-							<button type="button" class="ep-ref-copy" data-ep-copy data-copied="${t.copied}">${icon('copy', 16)}<span>${t.copy}</span></button>
-						</div>
-						<p>${t.referenceHint}</p>
-					</div>`
-				: ''}
-			<a data-component="button" href="${retry ?? header.home}" data-action="${retry ? 'retry' : 'home'}">${retry ? t.tryAgain : t.goHome}</a>
-			<p class="ep-links">
-				<button type="button" data-component="link" data-ep-back hidden>${t.goBack}</button>
-				${retry ? html`<a data-component="link" href="${header.home}">${t.goHome}</a>` : ''}
-				<span>${t.needHelp} <a data-component="link" href="${contactHref(url, locale, o.reference)}">${t.contactUs}</a></span>
-			</p>
+				${o.reference
+					? html`<div class="ep-ref" data-testid="error-reference-box">
+							<div class="ep-ref-row">
+								<span class="ep-ref-label">${t.reference}</span>
+								<code id="ep-ref" class="ep-ref-code" dir="ltr" data-testid="error-reference">${o.reference}</code>
+								<button type="button" class="ep-ref-copy" data-ep-copy data-copied="${t.copied}">${icon('copy')}<span>${t.copy}</span></button>
+							</div>
+							<p class="ep-ref-hint">${t.referenceHint}</p>
+						</div>`
+					: ''}
+				<footer class="ep-foot">
+					<p class="ep-help">${t.needHelp} <a href="${contactHref(url, locale, o.reference)}">${t.contactUs}</a></p>
+					<div class="ep-actions">
+						${lost
+							? html`<button type="button" class="${SECONDARY}" data-ep-back hidden>${icon('back')}<span>${t.goBack}</span></button>
+									<a class="${PRIMARY}" href="${header.home}" data-action="home">${icon('home')}<span>${t.goHome}</span></a>`
+							: html`<a class="${SECONDARY}" href="${header.home}" data-action="home">${icon('home')}<span>${t.goHome}</span></a>
+									<a class="${PRIMARY}" href="${retry}" data-action="retry">${icon('retry')}<span>${t.tryAgain}</span></a>`}
+					</div>
+				</footer>
+			</section>
 		</div>
 		<script>${raw(COPY_SCRIPT)}</script>`;
 	const theme = { ...openauthThemeFor(compiled), favicon: signInFavicon(compiled, o.env?.ENVIRONMENT) };
 	const page = Layout({ theme, locale, children: body });
-	// The tab says what happened (the theme's title stays the card's site name)
+	// The tab says what happened; the sign-in card's branding (logo and wordmark h1) is not drawn here:
+	// the family card has its own heading and the header already carries the brand.
 	const doc = `<!DOCTYPE html>${(await page.toString())
-		.replace(/<title>[^<]*<\/title>/, `<title>${escapeText(copy.title)} | ${locale === 'ar' ? 'الأمة الآن' : 'Al Ummah Now'}</title>`)
+		.replace(/<div data-component="branding">[\s\S]*?<\/div>/, '')
+		.replace(/<title>[^<]*<\/title>/, `<title>${escapeText(errorPageTitle(locale, copy.title))}</title>`)
 		.replace('</head>', '<meta name="robots" content="noindex, nofollow"></head>')}`;
 	const raw500 = new Response(doc, {
 		status,
@@ -175,7 +193,7 @@ async function renderFamilyPage(o: RenderOptions): Promise<Response> {
 			'Content-Type': 'text/html; charset=utf-8',
 			'Content-Language': locale,
 			'Cache-Control': 'no-store',
-			'X-Robots-Tag': 'noindex',
+			'X-Robots-Tag': 'noindex, nofollow',
 			...(o.kind === 'unavailable' ? { 'Retry-After': '30' } : {}),
 		},
 	});

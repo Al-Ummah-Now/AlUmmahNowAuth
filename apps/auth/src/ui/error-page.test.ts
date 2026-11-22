@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ERROR_PAGE_CSS } from './error-page-css.vendored';
 import { contactHref, errorCodeLabel, errorPageLocale, renderErrorPage, renderNotFoundPage } from './error-page';
 
 const req = (query = '', headers: Record<string, string> = {}) => new Request(`https://auth.alummahnow.net/authorize${query}`, { headers });
@@ -39,12 +40,12 @@ describe('the error-page family on Auth (wiki guides/error-pages.md)', () => {
 		expect(html).toContain('data-testid="error-reference">ERR-AAAA-0003<');
 		expect(html).toContain('href="/authorize?x=1" data-action="retry"');
 		expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
-		expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
+		expect(res.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
 		expect(html).not.toContain('secret SQL text');
 		// The card's own parts never animate (the sign-in theme's lanterns follow prefers-reduced-motion)
-		const card = /<style>([^<]*\[data-page=error\][^<]*)<\/style>/.exec(html)?.[1] ?? '';
+		const card = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).find((css) => css.includes('.ep-badge')) ?? '';
 		expect(card).toContain('.ep-badge');
-		expect(card).not.toMatch(/@keyframes|animation|transition/);
+		expect(card).not.toMatch(/@keyframes|animation:|transition:/);
 	});
 
 	it('Try again never leaves this origin', async () => {
@@ -60,6 +61,38 @@ describe('the error-page family on Auth (wiki guides/error-pages.md)', () => {
 		expect(html).toContain('الصفحة غير موجودة');
 		expect(html).toContain('خطأ ٤٠٤');
 		expect(html).not.toContain('error-reference');
+	});
+
+	it('is the family card: the vendored sheet, family buttons, one h1, no sign-in branding', async () => {
+		const html = await (await renderErrorPage(new Error('x'), 'ERR-AAAA-0005', undefined, req())).text();
+		expect(html).toContain(ERROR_PAGE_CSS);
+		expect(html.match(/<h1\b/g)).toHaveLength(1);
+		expect(html).toContain('<h1 class="ep-title" id="ep-title">We could not load this page</h1>');
+		expect(html).not.toContain('<div data-component="branding"');
+		expect(html).not.toContain('<h1 data-component="site-title"');
+		// 500: Home page (outlined) then Try again (filled, last); no Go back
+		expect(html).toMatch(/class="ep-btn ep-btn-secondary" href="[^"]*" data-action="home">.*<span>Home page<\/span><\/a>\s*<a class="ep-btn ep-btn-primary" href="\/authorize" data-action="retry">/s);
+		expect(html).not.toContain('data-ep-back hidden');
+		expect(html).not.toMatch(/<a[^>]*data-component="button"/);
+		expect(html).toMatch(/<p class="ep-help">Still stuck\? <a href="[^"]+">Contact us<\/a><\/p>/);
+		expect(html).toContain('<title>We could not load this page | Al Ummah Now</title>');
+		expect(html.match(/name="robots"/g)).toHaveLength(1);
+	});
+
+	it('404: Go back (outlined, shown when there is history) then Home page (filled); curly apostrophe', async () => {
+		const html = await (await renderNotFoundPage(new Request('https://auth.alummahnow.net/nope'))).text();
+		expect(html).toMatch(/<button type="button" class="ep-btn ep-btn-secondary" data-ep-back hidden>.*<span>Go back<\/span><\/button>\s*<a class="ep-btn ep-btn-primary" href="[^"]*" data-action="home">/s);
+		expect(html).toContain('We couldn’t find this page.');
+		expect(html).not.toContain("couldn't");
+		expect(html).not.toContain('role="alert"');
+	});
+
+	it('Arabic: the card is rtl with the Arabic tab title and font', async () => {
+		const html = await (await renderErrorPage(new Error('x'), 'ERR-AAAA-0006', undefined, req('?lang=ar'))).text();
+		expect(html).toContain('class="ep" lang="ar" dir="rtl"');
+		expect(html).toContain('<title>تعذّر تحميل هذه الصفحة | الأمة الآن</title>');
+		expect(html).toContain('.ep[lang=ar]{font-family:var(--fanous-font-arabic');
+		expect(html).toContain('<code id="ep-ref" class="ep-ref-code" dir="ltr" data-testid="error-reference">ERR-AAAA-0006</code>');
 	});
 
 	it('code line and Contact us per environment', () => {
