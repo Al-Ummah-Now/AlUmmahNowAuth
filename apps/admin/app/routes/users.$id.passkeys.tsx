@@ -1,4 +1,4 @@
-import { formatDate } from "../../../../packages/ui/src/format.ts";
+import { formatDate, NUMERIC_DATE_TIME } from "../../../../packages/ui/src/format.ts";
 import { useState, useSyncExternalStore } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
@@ -94,17 +94,19 @@ interface PasskeyFailure {
 /**
  * An admin time: the viewer's local time with its zone, UTC on hover (one formatter for every
  * admin time). The server render has no viewer zone, so it shows UTC until the browser takes over.
+ * Numeric, as on the audit page (lib/date-utils.ts), which lists the same events: ICU builds spell
+ * month names differently (WebKit writes «٥ نوفمبر، ٢٠٢٦», Node «٥ نوفمبر ٢٠٢٦»), which broke hydration.
  */
-const TIME_FIELDS: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+const TIME_FIELDS = NUMERIC_DATE_TIME;
 const noSubscribe = () => () => {};
 
 function AdminTime({ value, lang, utcLabel }: { value: string; lang: "en" | "ar"; utcLabel: (s: string) => string }) {
-  const utc = utcLabel(formatDate(value, lang, { ...TIME_FIELDS, timeZone: "UTC" }));
+  const utc = utcLabel(formatDate(value, lang, { ...TIME_FIELDS, timeZone: "UTC" }, "en-US"));
   // false in the server render and while hydrating, true after: no hydration mismatch
   const inBrowser = useSyncExternalStore(noSubscribe, () => true, () => false);
   return (
     <time dateTime={value} title={utc}>
-      {inBrowser ? formatDate(value, lang, { ...TIME_FIELDS, timeZoneName: "short" }) : utc}
+      {inBrowser ? formatDate(value, lang, { ...TIME_FIELDS, timeZoneName: "short" }, "en-US") : utc}
     </time>
   );
 }
