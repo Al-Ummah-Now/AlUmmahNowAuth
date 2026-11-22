@@ -127,6 +127,8 @@ const PAGE_STYLE = `
 [data-page="sign-in-link"] { display:flex; flex-direction:column; gap:1rem; }
 [data-page="sign-in-link"] [data-component="button"] { width:100%; text-decoration:none; text-align:center; }
 [data-page="sign-in-link"] bdi { overflow-wrap:anywhere; }
+/* The same heading as the passkey card's (passkeys/pages.ts) */
+[data-page="sign-in-link"] [data-component="title"] { font-size:1.25rem; font-weight:600; line-height:1.4; margin:0; }
 `;
 
 async function respond(lang: Lang, theme: Theme | undefined, status: number, body: ReturnType<typeof html>): Promise<Response> {
