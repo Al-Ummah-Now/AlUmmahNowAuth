@@ -68,13 +68,14 @@ export function signInHeaderHtml(h: SignInHeader): string {
  * centred column: the header takes the top and the card stays centred in the space below.
  * The card's auto margins shrink to nothing once it is taller than that space, so the header's
  * margin and the root's end padding keep the same .75rem gap above and below it at any height.
- * The passkey block's verify form only carries hidden fields: display:contents keeps it (and its
- * margin) from adding an empty row between "or" and "Sign in with a passkey".
+ * The passkey block ("or" + "Sign in with a passkey") sits one card gap below the form like every
+ * other section (OpenAuth's own top margin doubled it), and its verify form only carries hidden
+ * fields: display:contents keeps it (and its margin) from adding an empty row under "or".
  */
 export const SIGN_IN_HEADER_CSS =
 	`[data-component="root"]{padding:0 0 .75rem;bottom:auto;min-height:100%;justify-content:flex-start;align-items:stretch}` +
 	`[data-component="root"]>.aun-header{flex:none;user-select:auto;margin-block-end:.75rem}` +
-	`[data-passkey]>form{display:contents}` +
+	`[data-passkey]{margin-block-start:0}[data-passkey]>form{display:contents}` +
 	`[data-component="root"]>[data-component="center"]{align-self:center;margin-block:auto;padding-block:1rem;max-width:calc(100% - 2rem)}` +
 	`body:has(>.aun-header){flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0}` +
 	`body>.aun-header~.container{margin:auto;width:calc(100% - 40px)}`;
