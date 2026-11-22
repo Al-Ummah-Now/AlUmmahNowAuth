@@ -18,7 +18,9 @@ describe('add-a-passkey failure messages say what went wrong and what to do', ()
 	});
 	it('names the button the same way in both languages and never strands «أخرى» or "again." on its own line', () => {
 		const en = copyFor('en');
-		for (const key of ['cancelled', 'expired'] as const) expect(en[key]).toContain('Press "Add a passkey"');
+		for (const key of ['cancelled', 'expired'] as const) expect(en[key]).toContain('Press “Add a passkey”');
+		// Curly quotes and apostrophes throughout, like the rest of the English copy
+		for (const text of Object.values(en)) if (typeof text === 'string') expect(text).not.toMatch(/["']/);
 		for (const key of ['failed', 'cancelled', 'network', 'expired'] as const) expect(en[key]).toContain('try\u00a0again');
 		const ar = copyFor('ar');
 		for (const key of ['cancelled', 'network', 'expired'] as const) expect(ar[key]).toContain('مرة\u00a0أخرى');
