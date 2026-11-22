@@ -9,10 +9,11 @@
  * Without JavaScript, a sign-in POST for such an email comes back with the
  * options already showing (`noPassword`).
  *
- * The link's own form carries the typed email as `link_email`, never `email`:
- * the page then has exactly one `input[name="email"]` (the sign-in field), so
- * password managers, scripts and tests that look the field up by name find
- * that one, never the hidden copy (it broke every sign-in helper, v2026.11.22.3).
+ * While hidden, the block is a <template> (the script puts it in the page when
+ * it shows and takes it out again), and its form carries the email as
+ * `link_email`: the normal sign-in page has exactly one input named email and
+ * one submit button, so password managers, scripts and every app's sign-in
+ * helper find those (a hidden copy broke them all, v2026.11.22.3).
  *
  * The register page with `setup=1` (from "Add a password") gets the title
  * "Add a password", its explanation, and the email typed on the sign-in page.
@@ -23,7 +24,6 @@ const LOGIN_FORM = '<form data-component="form" method="post">';
 
 const STYLE = `
 /* data-component="form": the same inset and gap as the sign-in form above it */
-[data-aun-no-password][hidden] { display:none; }
 /* The link's form only carries its fields: its button lines up with the others */
 [data-aun-no-password] form { display:contents; }
 [data-aun-no-password] [data-component="button"] { width:100%; text-decoration:none; text-align:center; }
@@ -43,14 +43,17 @@ function script(lang: Lang): string {
 	const json = JSON.stringify(cfg).replace(/</g, '\\u003c');
 	return `(function(){
 var C=${json};
-var f=document.querySelector('form[data-aun-login]'),box=document.querySelector('[data-aun-no-password]');
-if(!f||!box)return;
+var f=document.querySelector('form[data-aun-login]'),box=document.querySelector('[data-aun-no-password]'),tpl=document.querySelector('template[data-aun-no-password-template]');
+if(!f||!tpl)return;
 var em=f.querySelector('input[name="email"]'),pw=f.querySelector('input[name="password"]'),go=f.querySelector(':scope > button[data-component="button"]');
-var lf=box.querySelector('form'),hid=lf.querySelector('input[name="${LINK_EMAIL_FIELD}"]'),add=box.querySelector('[data-aun-add-password]');
 if(!em||!pw)return;
+// The options live in the DOM only while they show: the page otherwise has the sign-in form's controls alone
+function show(){if(box)return box;box=tpl.content.firstElementChild.cloneNode(true);f.after(box);wire();return box;}
+function wire(){var add=box.querySelector('[data-aun-add-password]');if(add)add.addEventListener('click',function(){try{sessionStorage.setItem(C.key,em.value.trim());}catch(_){}});}
+if(box)wire();
 var checked=f.getAttribute('data-aun-mode')==='no-password'?em.value.trim().toLowerCase():'',seq=0,asking='',waiters=[];
 if(checked)pw.required=false;
-function mode(on){if(on){f.setAttribute('data-aun-mode','no-password');pw.required=false;box.hidden=false;hid.value=em.value.trim();}else{f.removeAttribute('data-aun-mode');pw.required=true;box.hidden=true;}}
+function mode(on){if(on){f.setAttribute('data-aun-mode','no-password');pw.required=false;show().querySelector('input[name="${LINK_EMAIL_FIELD}"]').value=em.value.trim();}else{f.removeAttribute('data-aun-mode');pw.required=true;if(box){box.remove();box=null;}}}
 function check(then){var v=em.value.trim().toLowerCase();
  if(!v||!em.checkValidity()){mode(false);if(then)then(null);return;}
  if(v===checked){if(then)then(f.getAttribute('data-aun-mode')==='no-password');return;}
@@ -67,7 +70,6 @@ em.addEventListener('blur',function(){check();});
 em.addEventListener('input',function(){if(em.value.trim().toLowerCase()!==checked&&f.getAttribute('data-aun-mode'))mode(false);});
 // Continue with an empty password: look the email up first, never ask for a password it doesn't have
 if(go)go.addEventListener('click',function(e){if(pw.value||!em.value.trim()||!em.checkValidity())return;e.preventDefault();check(function(none){if(none)return;pw.focus();if(f.reportValidity)f.reportValidity();});});
-if(add)add.addEventListener('click',function(){try{sessionStorage.setItem(C.key,em.value.trim());}catch(_){}});
 // A browser that filled the email in by itself
 if(!checked&&em.value.trim())check();
 })();`;
@@ -92,7 +94,7 @@ export function addNoPasswordOptions(
 	if (!register) return page;
 	const t = signInLinkCopy(opts.lang);
 	const setupHref = `${register}&amp;setup=1${opts.lang === 'ar' ? '&amp;lang=ar' : ''}`;
-	const block = `<div data-component="form" data-aun-no-password${opts.noPassword ? '' : ' hidden'} data-testid="no-password-options">
+	const options = `<div data-component="form" data-aun-no-password data-testid="no-password-options">
 <p data-component="description" style="margin:0">${escapeText(t.noPassword)}</p>
 <form method="post" action="${SIGN_IN_LINK_PATH}">
 <input type="hidden" name="csrf" value="${escapeAttr(opts.csrf)}"/>
@@ -103,7 +105,9 @@ export function addNoPasswordOptions(
 </form>
 <a data-component="button" data-color="ghost" data-aun-add-password href="${setupHref}">${escapeText(t.addPassword)}</a>
 <p data-slot="hint">${escapeText(t.hint)}</p>
-</div><style>${STYLE}</style><script>${script(opts.lang)}</script>`;
+</div>`;
+	// Kept in a template (shown again after a no-JavaScript POST): the page has one input named email and one submit button
+	const block = `${opts.noPassword ? options : ''}<template data-aun-no-password-template>${options}</template><style>${STYLE}</style><script>${script(opts.lang)}</script>`;
 	const marked = `<form data-component="form" method="post" data-aun-login${opts.noPassword ? ' data-aun-mode="no-password"' : ''}>`;
 	const close = end + '</form>'.length;
 	return page.slice(0, start) + marked + page.slice(start + LOGIN_FORM.length, close) + block + page.slice(close);

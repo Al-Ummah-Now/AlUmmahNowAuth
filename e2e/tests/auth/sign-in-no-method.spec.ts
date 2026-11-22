@@ -118,6 +118,7 @@ async function openSignIn(page: Page): Promise<void> {
   await expect(page.locator('form[data-aun-login] input[name="email"]')).toBeVisible();
   // One field named email: every app's sign-in helper finds it by name (v2026.11.22.3)
   await expect(page.locator('input[name="email"]')).toHaveCount(1);
+  await expect(page.locator('button[data-component="button"]:not([type="button"])')).toHaveCount(1);
 }
 
 /** The action signs in: the app's callback gets a code (nothing listens there), or the after-sign-in passkey card shows. */
