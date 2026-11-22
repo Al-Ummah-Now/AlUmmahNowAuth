@@ -170,8 +170,12 @@ passkey. The normal sign-in page never asks it for a password
   `GET /sign-in/link?state=sent&back=…&lang=…` (the same page, display only,
   "this email" in place of the address); the invite's passkey card →
   `/passkeys/setup?return_to=<the app's page>&lang=…`. The card after a normal
-  sign-in names none: it continues to the OAuth redirect (code, state), which
-  never goes in a URL.
+  sign-in continues to the OAuth redirect (code, state), which never goes in a
+  URL. So it carries a signed token (10 minutes, like the code) in a hidden form,
+  and the language switch posts it to `POST /passkeys/card/language`, which shows
+  the same card in the other language (`passkeys/card-language.ts`). The
+  switch's plain link (no script) is `GET /passkeys/card/language?lang=…`, which
+  goes to the signed-in setup page in that language.
 
 **The passkey card** (after any sign-in, and the invite's):
 

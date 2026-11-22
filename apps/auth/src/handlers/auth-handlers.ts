@@ -378,7 +378,7 @@ export function createOnSuccessHandler(
 				const card = await staged(timer, 'onsuccess.card', () =>
 					afterSignInCard({
 						db,
-						env: env as { PASSKEY_PROMPT?: string },
+						env: env as { PASSKEY_PROMPT?: string; SESSION_SECRET?: string },
 						provider: String(value.provider ?? ''),
 						userId: user.id,
 						email,
