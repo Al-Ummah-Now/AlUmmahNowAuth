@@ -113,7 +113,7 @@ describe("auth admin sign-in routes", () => {
 
   it("/login?error= renders a retry link instead of redirecting again", async () => {
     const data = (await login.loader(args("/login?error=boom&redirect=%2Fusers"))) as { error: string; retryUrl: string };
-    expect(data).toEqual({ error: "boom", retryUrl: "/login?redirect=%2Fusers" });
+    expect(data).toEqual({ error: "boom", retryUrl: "/login?redirect=%2Fusers", lang: "en" });
   });
 
   it("callback -> admin session, back to the saved path, previous session ended", async () => {
