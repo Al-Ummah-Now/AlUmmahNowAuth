@@ -17,30 +17,21 @@ export function getOAuthClientId(env?: { ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_
   return env?.ADMIN_CLIENT_ID || env?.OAUTH_CLIENT_ID || DEFAULT_CLIENT_ID;
 }
 
-// Get the auth server URL from environment variables
+/** The local Auth server `pnpm dev` runs (apps/auth); wrangler.dev.json sets the same value. */
+export const LOCAL_AUTH_SERVER_URL = "http://localhost:3301";
+const DEFAULT_AUTH_SERVER_URL = "https://auth.alummahnow.net";
+
+const isLocalHost = (hostname: string) => hostname === "localhost" || hostname === "127.0.0.1";
+
+/**
+ * The Auth server's origin. AUTH_SERVER_URL (wrangler vars: dev, QA, stage, prod) always wins, so a
+ * local admin can point at another Auth server (a different port, or QA). Without it, a local admin
+ * uses the local Auth server and anything else the production one.
+ */
 export function getAuthServerUrl(request?: Request, env?: { AUTH_SERVER_URL?: string }): string {
-  // Priority 1: Check if running locally (overrides env var for local dev)
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:3301';
-    }
-  }
-
-  if (request) {
-    const url = new URL(request.url);
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-      return 'http://localhost:3301';
-    }
-  }
-
-  // Priority 2: Environment variable (from wrangler.json vars or secrets)
-  if (env?.AUTH_SERVER_URL) {
-    return env.AUTH_SERVER_URL;
-  }
-
-  // Priority 3: Default fallback (should be set via environment variable in production)
-  return 'https://auth.alummahnow.net';
+  if (env?.AUTH_SERVER_URL) return env.AUTH_SERVER_URL;
+  const hostname = request ? new URL(request.url).hostname : typeof window !== "undefined" ? window.location.hostname : "";
+  return isLocalHost(hostname) ? LOCAL_AUTH_SERVER_URL : DEFAULT_AUTH_SERVER_URL;
 }
 
 // Get the current app URL (for OAuth redirect_uri)
