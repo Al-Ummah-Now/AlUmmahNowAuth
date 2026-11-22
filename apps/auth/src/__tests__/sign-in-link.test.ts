@@ -105,7 +105,12 @@ async function invitedAccount(opts: { active?: boolean; password?: boolean; loca
 
 const csrfOf = (html: string) => /name="csrf" value="([0-9a-f]{64})"/.exec(html)?.[1] ?? '';
 const loginMode = (html: string) => /<form data-component="form" method="post" data-aun-login( data-aun-mode="no-password")?>/.exec(html)?.[1] ? 'no-password' : 'password';
-const optionsBlock = (html: string) => /<div data-component="form" data-aun-no-password([^>]*)>/.exec(html)?.[1];
+/** The options as the page shows them: 'hidden' when only the template carries them (not in the DOM) */
+const optionsBlock = (html: string) => {
+	const template = /<template data-aun-no-password-template>([\s\S]*?)<\/template>/.exec(html);
+	if (!template) return undefined;
+	return html.replace(template[0], '').includes('data-testid="no-password-options"') ? 'shown' : 'hidden';
+};
 const linkIn = (email: { html: string }) => /href="(http:\/\/localhost\/invite\/[0-9a-f]{64}[^"]*)"/.exec(email.html)?.[1]?.replace(/&amp;/g, '&');
 
 let emits: ReturnType<typeof vi.spyOn>;
@@ -174,6 +179,10 @@ describe('the sign-in page', () => {
 		// One email field: sign-in helpers and password managers find it by name (v2026.11.22.3)
 		expect(html.match(/<input[^>]*name="email"/g)).toHaveLength(1);
 		expect(html).toContain('<input type="hidden" name="link_email" value=""/>');
+		// Hidden options are not in the DOM: no second submit button for a helper to find
+		const live = html.replace(/<template data-aun-no-password-template>[\s\S]*?<\/template>/, '');
+		expect(live).not.toContain('data-aun-email-link');
+		expect(live).not.toContain('link_email" value');
 	});
 
 	it('without JavaScript: signing in with an email that has no password shows the options at once, never "wrong password"', async () => {
