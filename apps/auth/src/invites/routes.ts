@@ -619,6 +619,11 @@ export async function routeInvitePage(request: Request, env: Env, ctx: Execution
 		noPasskeyNote: true,
 	});
 	const headers = new Headers(offer.headers);
+	// The card answers this POST and can't be loaded again: the header's language switch (router.ts
+	// withSignInChrome) opens the setup page, which goes on to the same app page. Only here: the
+	// app's continue page carries nothing secret. The card after a normal sign-in continues to the
+	// OAuth redirect (code, state), which must never be put in a URL; it names no twin.
+	headers.set('Content-Location', `/passkeys/setup?${new URLSearchParams({ return_to: continueUrl, lang }).toString()}`);
 	headers.set('Referrer-Policy', 'no-referrer');
 	headers.set('X-Robots-Tag', 'noindex');
 	headers.append('Set-Cookie', signedIn.cookie);

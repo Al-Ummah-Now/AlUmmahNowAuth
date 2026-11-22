@@ -14,7 +14,7 @@ import { registerTestClients, PROFILE } from './helpers/clients';
 import { AuditEmitter } from '../audit-emitter';
 import { claimInvitedAccount, InviteService } from '../invites/service';
 import { coarseAgent, failureReason } from '../passkeys/agent';
-import { copyFor } from '../passkeys/pages';
+import { copyFor, renderAddPasskeyPage } from '../passkeys/pages';
 import { SIGN_IN_LINK_COPY } from '../invites/email';
 import { safeBack, signInLinkCopy } from '../sign-in-link/routes';
 import { PASSWORD_COPY } from '../ui/copy';
@@ -470,6 +470,11 @@ describe('one header on every sign-in page (wiki E10 "UNIFY")', () => {
 		expect(setup).toContain('data-page="passkey"');
 		expect(setup).toContain(copyFor('ar').add);
 		expect(header(setup)).toBe(true);
+	});
+
+	it('the card after a normal sign-in never puts its OAuth redirect (code, state) in a URL', async () => {
+		const res = await renderAddPasskeyPage({ locale: 'en', mode: 'card', staff: false, needsCode: false, email: 'a@example.com', continueUrl: 'https://profile.example/callback?code=SECRET&state=s', autoContinue: true, lang: 'en' });
+		expect(res.headers.get('Content-Location')).toBeNull();
 	});
 
 	it('OpenAuth\'s links say "sign in" and use ’: "Don’t have an account?", "Back to sign in" / «العودة إلى تسجيل الدخول»', async () => {
