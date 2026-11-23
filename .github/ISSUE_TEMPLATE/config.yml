@@ -1,17 +1,14 @@
 blank_issues_enabled: true
 contact_links:
-  - name: 🗣️ Community Discussion
-    url: https://github.com/meywd/AlUmmahNowAuth/discussions
-    about: Ask questions, share ideas, or discuss features with the community
-  - name: 📖 Documentation
-    url: https://github.com/meywd/AlUmmahNowAuth/blob/main/README.md
-    about: Read the comprehensive documentation and guides
-  - name: 🗺️ Project Roadmap
-    url: https://github.com/meywd/AlUmmahNowAuth/blob/main/ROADMAP.md
-    about: View the strategic roadmap and v1.0 milestone planning
-  - name: 🚀 Live Demo
-    url: https://al-ummah-now-auth.alummahnow.workers.dev
-    about: Try the live authentication service
-  - name: 🔐 Security Contact
-    url: mailto:security@alummahnow.net
-    about: Report critical security vulnerabilities privately
+  - name: Report a security problem (private)
+    url: https://github.com/Al-Ummah-Now/AlUmmahNowAuth/security/advisories/new
+    about: Never in a public issue. See SECURITY.md.
+  - name: Help with your account
+    url: https://videos.alummahnow.net/contact
+    about: Sign-in trouble, account deletion or any question about using Al Ummah Now
+  - name: Documentation
+    url: https://github.com/Al-Ummah-Now/AlUmmahNowWiki/blob/main/repos/AlUmmahNowAuth.md
+    about: How this repository works, its environments and releases
+  - name: Roadmap
+    url: https://github.com/Al-Ummah-Now/AlUmmahNowWiki/blob/main/epics/README.md
+    about: What is planned, in progress and shipped

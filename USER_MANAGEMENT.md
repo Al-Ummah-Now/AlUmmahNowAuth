@@ -405,5 +405,5 @@ Handled automatically by OpenAuth client library.
 
 For issues or questions:
 1. Check this documentation
-2. Review [GitHub Issues](https://github.com/meywd/AlUmmahNowAuth/issues)
+2. Review [GitHub Issues](https://github.com/Al-Ummah-Now/AlUmmahNowAuth/issues)
 3. Create a new issue using the appropriate template

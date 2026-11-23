@@ -110,7 +110,7 @@ This project uses a **forked version of OpenAuth** with enterprise features. The
 ```bash
 # 1. Clone and build the OpenAuth fork
 cd /tmp
-git clone https://github.com/meywd/openauth.git openauth-fork
+git clone https://github.com/Al-Ummah-Now/openauth.git openauth-fork
 cd openauth-fork
 git checkout feat/enterprise-features
 bun install
@@ -291,10 +291,8 @@ This project follows a structured roadmap toward v1.0 release (March 31, 2025). 
 - **📦 Release & Distribution** - Security audit, performance optimization
 
 ### 📋 How to Contribute to Roadmap
-1. **View the [📋 Full Roadmap](./ROADMAP.md)** for detailed v1.0 planning
-2. **Create [🗺️ Epic Issues](https://github.com/meywd/AlUmmahNowAuth/issues/new?template=roadmap_epic.md)** for major features
-3. **Create [📋 Child Issues](https://github.com/meywd/AlUmmahNowAuth/issues/new?template=v1_child_issue.md)** for specific tasks
-4. **Track Progress** via [GitHub Milestones](https://github.com/meywd/AlUmmahNowAuth/milestones)
+1. **See what is planned** in the [wiki](https://github.com/Al-Ummah-Now/AlUmmahNowWiki/blob/main/epics/README.md)
+2. **Open an [issue](https://github.com/Al-Ummah-Now/AlUmmahNowAuth/issues/new/choose)** for a bug or an idea
 
 ## 🛠️ Technology Stack
 
