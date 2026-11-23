@@ -165,7 +165,7 @@ export default function ModerationRequestPage() {
             <CardHeader>
               <CardTitle className="text-base">{t.request}</CardTitle>
               <CardDescription>
-                {t.fromLabel} <bdi>{r.client_name ?? r.client_id}</bdi>{c.sep}{t.byLabel} <bdi className="whitespace-nowrap">{r.requested_by.display_name}</bdi> (<bdi dir="ltr">{r.requested_by.id}</bdi>){c.sep}{when(r.created_at)}
+                {t.fromLabel} <bdi>{r.client_name ?? r.client_id}</bdi>{c.sep}{t.byLabel} {/* name and id as one left-to-right unit: "Huda Qasim (mod-7)" in both languages */}<bdi dir="ltr" className="whitespace-nowrap">{r.requested_by.display_name} ({r.requested_by.id})</bdi>{c.sep}{when(r.created_at)}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
