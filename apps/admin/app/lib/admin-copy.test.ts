@@ -102,6 +102,14 @@ describe("Arabic numbers", () => {
     expect(countOf(12, "en", ["user", "users"], AR_USERS)).toBe("12 users");
   });
 
+  it("the failed-actions banner agrees with the count", () => {
+    const t = ADMIN_COPY.ar.moderation;
+    expect(t.needsAttention(1)).toBe("فشل إجراء واحد تمت الموافقة عليه بعد كل المحاولات، ويحتاج إلى مشرف.");
+    expect(t.needsAttention(2)).toBe("فشل إجراءان تمت الموافقة عليهما بعد كل المحاولات، ويحتاجان إلى مشرف.");
+    expect(t.needsAttention(3)).toBe("فشلت ٣ إجراءات تمت الموافقة عليها بعد كل المحاولات، وتحتاج إلى مشرف.");
+    expect(t.needsAttention(12)).toBe("فشل ١٢ إجراءً تمت الموافقة عليه بعد كل المحاولات، ويحتاج إلى مشرف.");
+  });
+
   it("the dashboard's role split and pager", () => {
     expect(ADMIN_COPY.ar.dashboard.rolesSplit(4, 2)).toBe("٤ للنظام / ٢ مخصَّصة");
     expect(ADMIN_COPY.ar.common.page(2, 13)).toBe("الصفحة ٢ من ١٣");

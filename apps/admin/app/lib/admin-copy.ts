@@ -439,7 +439,16 @@ const moderation = {
     title: "طلبات الإشراف",
     intro: "تطلب التطبيقات، ويقرر مشرفو الحسابات. الموافقة تنفّذ الإجراء على الحساب.",
     loadError: (e: string) => `تعذّر تحميل طلبات الإشراف: ${e}`,
-    needsAttention: (n: number) => `${n === 1 ? "فشل إجراء واحد تمت الموافقة عليه" : `فشلت ${countOf(n, "ar", ["", ""], AR_ACTIONS_FAILED)} تمت الموافقة عليها`} بعد كل المحاولات، وتحتاج إلى مشرف.`,
+    // The verb, the pronoun and the last verb agree with the count: 1, 2 (dual), 3–10 (plural), 11+ (singular)
+    needsAttention: (n: number) => {
+      if (n === 1) return "فشل إجراء واحد تمت الموافقة عليه بعد كل المحاولات، ويحتاج إلى مشرف.";
+      if (n === 2) return "فشل إجراءان تمت الموافقة عليهما بعد كل المحاولات، ويحتاجان إلى مشرف.";
+      const rest = n % 100;
+      const count = countOf(n, "ar", ["", ""], AR_ACTIONS_FAILED);
+      return rest >= 3 && rest <= 10
+        ? `فشلت ${count} تمت الموافقة عليها بعد كل المحاولات، وتحتاج إلى مشرف.`
+        : `فشل ${count} تمت الموافقة عليه بعد كل المحاولات، ويحتاج إلى مشرف.`;
+    },
     showThem: "اعرضها",
     filters: "التصفية",
     status: "الحالة",
