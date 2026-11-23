@@ -4,13 +4,11 @@ The full spec and plan live in the AlUmmahNow repo:
 - Spec: [`docs/release-pipeline/SPEC.md`](https://github.com/Al-Ummah-Now/AlUmmahNow/blob/main/docs/release-pipeline/SPEC.md)
 - Plan: [`docs/release-pipeline/PLAN.md`](https://github.com/Al-Ummah-Now/AlUmmahNow/blob/main/docs/release-pipeline/PLAN.md)
 
-(Until that PR merges, read them on branch `docs/release-pipeline-spec`.)
-
 This page covers only what is specific to this repo.
 
 ## Workers and environments
 
-One trunk: `main`. PRs are tested on QA (deployed from the PR head), and every merge to `main` is released through stage to production. There are no integration branches here, and this stays so. AlUmmahNow is converging to the same model (its SPEC §3.1, phase C).
+One trunk: `main`. Every merge to `main` deploys QA and is released through stage to production; pull requests deploy nothing. There are no integration branches here, and this stays so.
 
 | Worker | QA | stage | prod |
 |---|---|---|---|
@@ -19,7 +17,7 @@ One trunk: `main`. PRs are tested on QA (deployed from the PR head), and every m
 | admin | admin.auth.qa.alummahnow.net | admin.auth.stage.alummahnow.net | admin.auth.alummahnow.net |
 | audit-consumer | `audit-events-qa` | `audit-events-stage` | `audit-events` |
 
-Stage config is `env.stage` in each app's wrangler file, next to `env.production`. The config check (`scripts/check-wrangler-config.ts`) enforces that both envs have the same binding names and kinds. Only resource ids, routes and env-specific vars may differ.
+Stage config is `env.stage` in each app's wrangler file, next to `env.production`. The config check (`scripts/release/check-wrangler-config.ts`) enforces that both envs have the same binding names and kinds. Only resource ids, routes and env-specific vars may differ.
 
 ## Audit consumer
 
@@ -33,7 +31,7 @@ The consumer also reads each env's DLQ, so dead letters are replayed once the ca
 
 Tokens carry `iss`, so stage has its own issuer, `https://auth.stage.alummahnow.net`. It also has its own D1 (`al-ummah-now-d1-stage`), KV and signing keys. A stage token is never valid in prod.
 
-Stage registers a mirror of every prod client with stage redirect URIs: profile, auth admin (M2M), the web client for `videos.stage.alummahnow.net`, and the admin-web client. Seeding is in `apps/auth/scripts/seed-stage.ts`.
+Stage registers a mirror of every prod client with stage redirect URIs: profile, auth admin (M2M), the web client for `videos.stage.alummahnow.net`, and the admin-web client. Seeding is in `scripts/stage/seed.ts`.
 
 ## D1 migrations
 
@@ -62,6 +60,6 @@ See SPEC §9.2. Summary for this repo:
 
 | Incident | Test |
 |---|---|
-| Bare `wrangler deploy` shipped the dev config | `scripts/check-wrangler-config.ts` (CI and before every deploy), plus the `scripts/smoke.ts` issuer check (pre-traffic and post-promote) |
-| Forgot-password crash on unknown email (#179) | `e2e/tests/release/forgot-password.spec.ts`, `send-code-handler.test.ts` |
+| Bare `wrangler deploy` shipped the dev config | `scripts/release/check-wrangler-config.ts` (CI and before every deploy), plus the `scripts/release/smoke.ts` issuer check (pre-traffic and post-promote) |
+| Forgot-password crash on unknown email (#179) | `e2e/tests/auth/forgot-password.spec.ts`, `send-code-handler.test.ts` |
 | Prod sign-in failed after registration (web redirect_uri) | `e2e/tests/release/signup-signin.spec.ts` for the profile and admin clients; the web client is covered in AlUmmahNow |
