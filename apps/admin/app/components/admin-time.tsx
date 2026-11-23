@@ -63,7 +63,7 @@ export function AdminTime({ value, lang, dateOnly = false, missing = "—" }: { 
   const zone = inBrowser ? undefined : "UTC";
   return (
     <time dateTime={new Date(ms).toISOString()} title={utc}>
-      {adminDate(ms, lang, zone)}
+      <span className="whitespace-nowrap">{adminDate(ms, lang, zone)}</span>
       {dateOnly ? null : (
         <>
           {lang === "ar" ? "، " : ", "}
