@@ -496,7 +496,7 @@ export default function ClientsPage() {
           setSelectedClient(client);
           setDeleteDialogOpen(true);
         }}
-        className="text-destructive hover:text-destructive"
+        className="text-[var(--color-destructive-text)] hover:text-[var(--color-destructive-text)]"
         title={t.delete}
         aria-label={t.deleteOf(client.name)}
       >

@@ -379,7 +379,7 @@ export default function RoleDetail() {
           {/* Role Header */}
           <Card>
             <CardHeader>
-              <div className="flex items-start justify-between">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
                     <Shield className="h-6 w-6 text-[var(--color-link)]" />
@@ -413,7 +413,7 @@ export default function RoleDetail() {
           {/* Permissions Section */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Key className="h-5 w-5" />

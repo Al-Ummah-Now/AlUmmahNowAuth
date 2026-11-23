@@ -280,7 +280,7 @@ export default function Roles() {
       <LoadErrorBanner what={t.what} error={loadError} />
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <CardTitle>{t.cardTitle}</CardTitle>
                 <CardDescription>{t.intro}</CardDescription>

@@ -579,10 +579,11 @@ export default function ThemeBuilderPage() {
         {/* ------------------------------------------------ editor */}
         <Card className="min-w-0">
           <CardHeader className="pb-2">
-            <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" role="tablist" aria-label={t.tabsLabel}>
+            {/* Phones: a 4-column grid (every tab whole, no scrolling); wider: one row */}
+            <div className="grid grid-cols-4 gap-1 md:flex md:flex-wrap" role="tablist" aria-label={t.tabsLabel}>
               {THEME_TABS.map((id) => (
                 <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm ${tab === id ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "hover:bg-[var(--color-accent)]"}`}>
+                  className={`rounded-md px-1.5 py-1.5 text-center text-sm leading-tight md:px-3 md:whitespace-nowrap ${tab === id ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "hover:bg-[var(--color-accent)]"}`}>
                   {t.tabs[id]}
                 </button>
               ))}

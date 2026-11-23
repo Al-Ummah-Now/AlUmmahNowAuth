@@ -401,7 +401,7 @@ export default function SessionsPage() {
                           {t.ips}{" "}
                           {/* each address isolated: joined into one run they read in reverse in Arabic */}
                           {(Array.isArray(item.ipAddresses) ? item.ipAddresses : [item.ipAddresses]).map((ip, i) => (
-                            <span key={i} className="whitespace-nowrap">{i > 0 && (lang === "ar" ? "، " : ", ")}<bdi dir="ltr">{ip}</bdi></span>
+                            <span key={i}>{i > 0 && (lang === "ar" ? "، " : ", ")}<bdi dir="ltr" className="whitespace-nowrap">{ip}</bdi></span>
                           ))}
                         </div>
                       </div>
@@ -433,8 +433,9 @@ export default function SessionsPage() {
                 <CardTitle>{t.tableTitle}</CardTitle>
                 <CardDescription>{t.count(total)}</CardDescription>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <form method="get" className="flex items-end gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                {/* On phones the user search takes the full row, so its hint is never cut */}
+                <form method="get" className="flex min-w-0 flex-1 items-end gap-2 sm:flex-none">
                   <UserAutocomplete
                     key={currentUserId}
                     mode="pick"
