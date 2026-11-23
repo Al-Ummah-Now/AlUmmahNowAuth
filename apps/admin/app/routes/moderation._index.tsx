@@ -89,7 +89,7 @@ export default function ModerationRequestsPage() {
   // The browser's date field writes its own "mm/dd/yyyy" in the browser's language: Arabic pages
   // use a text field with an Arabic hint instead (YYYY-MM-DD, ٠–٩ accepted)
   const dateInput = lang === "ar"
-    ? { type: "text", inputMode: "numeric" as const, dir: "ltr", placeholder: t.datePlaceholder, pattern: "[0-9٠-٩]{4}-[0-9٠-٩]{2}-[0-9٠-٩]{2}" }
+    ? { type: "text", inputMode: "numeric" as const, dir: "ltr", className: "text-right", placeholder: t.datePlaceholder, pattern: "[0-9٠-٩]{4}-[0-9٠-٩]{2}-[0-9٠-٩]{2}" }
     : { type: "date" };
   const pages = queue ? Math.max(Math.ceil(queue.total / PAGE_SIZE), 1) : 1;
   const pageHref = (p: number) => {
