@@ -73,6 +73,7 @@ export function pageTitle(key: TitleKey, lang: AdminLang, name?: string): string
 const common = {
   en: {
     cancel: "Cancel",
+    close: "Close",
     save: "Save",
     remove: "Remove",
     name: "Name",
@@ -97,6 +98,7 @@ const common = {
   },
   ar: {
     cancel: "إلغاء",
+    close: "إغلاق",
     save: "حفظ",
     remove: "إزالة",
     name: "الاسم",

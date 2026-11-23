@@ -3,6 +3,7 @@ import { Email } from "../components/email";
 import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { pageTitle } from "../lib/admin-copy";
 import { pagesCopy } from "../lib/pages-copy";
+import { withLang } from "../lib/shell-copy";
 import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useNavigate, useRevalidator, useSearchParams } from "react-router";
@@ -770,9 +771,9 @@ export default function Users() {
                 defaultValue={searchQuery}
                 onQueryChange={setSearchQuery}
                 // Enter: the server-side search (every user, not only the loaded page)
-                onSearch={(q) => navigate(q ? `/users?q=${encodeURIComponent(q)}` : "/users")}
+                onSearch={(q) => navigate(withLang(q ? `/users?q=${encodeURIComponent(q)}` : "/users", lang))}
                 // A suggestion: the list narrowed to that user
-                hrefFor={(s) => `/users?q=${encodeURIComponent(s.secondary ?? s.label)}`}
+                hrefFor={(s) => withLang(`/users?q=${encodeURIComponent(s.secondary ?? s.label)}`, lang)}
                 className="max-w-sm"
                 testId="users-search"
               />

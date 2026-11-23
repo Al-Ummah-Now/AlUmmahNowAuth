@@ -1,4 +1,4 @@
-import { pageTitle } from "../lib/admin-copy";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { Email } from "../components/email";
 import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
@@ -265,7 +265,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return { success: true };
   }
 
-  return { success: false, error: "Unknown action" };
+  const lang = langOf(new URL(request.url).search);
+  return { success: false, error: adminCopy(lang).common.unknownAction };
 }
 
 export default function SessionsPage() {
@@ -436,6 +437,7 @@ export default function SessionsPage() {
               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                 {/* On phones the user search takes the full row, so its hint is never cut */}
                 <form method="get" className="flex min-w-0 flex-1 items-end gap-2 sm:flex-none">
+                  {lang === "ar" && <input type="hidden" name="lang" value="ar" />}
                   <UserAutocomplete
                     key={currentUserId}
                     mode="pick"

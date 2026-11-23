@@ -32,8 +32,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const returnTo = safeReturnPath(url.searchParams.get("redirect") ?? url.searchParams.get("return"));
   const error = url.searchParams.get("error");
   if (error) {
-    // The page the admin was going to sets the language (/roles?lang=ar)
-    const lang = langOf(new URL(returnTo, url).search);
+    // ?lang=ar on /login itself, else the page the admin was going to (/roles?lang=ar)
+    const lang = langOf(url.searchParams) === "ar" ? "ar" : langOf(new URL(returnTo, url).search);
     // Friendly text for known codes; the raw code stays out of the page
     const message = error === "invalid_state" ? adminCopy(lang).signIn.expired : error;
     return { error: message, retryUrl: loginPath(returnTo), lang };
