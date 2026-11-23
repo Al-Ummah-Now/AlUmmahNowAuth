@@ -393,10 +393,10 @@ export default function RoleDetail() {
                   <CardDescription>
                     {role.description ? <bdi>{describeRole(role.description, lang)}</bdi> : t.noDescription}
                   </CardDescription>
-                  <div className="flex items-center gap-4 text-sm text-[var(--color-muted-foreground)]">
-                    <span>{t.created(stamp(role.created_at, true))}</span>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[var(--color-muted-foreground)]">
+                    <span className="whitespace-nowrap">{t.created(stamp(role.created_at, true))}</span>
                     {role.updated_at !== role.created_at && (
-                      <span>{t.updated(stamp(role.updated_at, true))}</span>
+                      <span className="whitespace-nowrap">{t.updated(stamp(role.updated_at, true))}</span>
                     )}
                   </div>
                 </div>
@@ -524,7 +524,7 @@ export default function RoleDetail() {
                         <div className="font-medium"><bdi>{names[user.id] || user.email}</bdi></div>
                         {names[user.id] && <div className="text-xs text-[var(--color-muted-foreground)]"><Email value={user.email} /></div>}
                         <div className="text-xs text-[var(--color-muted-foreground)]">
-                          {t.colAssigned}: <AdminTime value={user.assigned_at} lang={lang} dateOnly />{c.sep}{t.colAssignedBy}: <bdi>{(user.assigned_by && names[user.assigned_by]) || actorLabel(user.assigned_by, lang)}</bdi>
+                          <span className="whitespace-nowrap">{t.colAssigned}: <AdminTime value={user.assigned_at} lang={lang} dateOnly /></span>{c.sep}<span className="whitespace-nowrap">{t.colAssignedBy}: <bdi>{(user.assigned_by && names[user.assigned_by]) || actorLabel(user.assigned_by, lang)}</bdi></span>
                         </div>
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => setUserToRemove(user)} title={t.removeFromUser(user.email)} aria-label={t.removeFromUser(user.email)}>
