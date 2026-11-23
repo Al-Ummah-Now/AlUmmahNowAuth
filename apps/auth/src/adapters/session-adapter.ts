@@ -14,6 +14,9 @@ import type {
 	SessionService,
 } from '@al-ummah-now/openauth/contracts/types';
 
+/** Accounts signed in side by side in one browser. */
+const MAX_ACCOUNTS = 3;
+
 /**
  * D1 Session Adapter implementing OpenAuth's SessionService interface
  */
@@ -57,14 +60,18 @@ export class D1SessionAdapter implements SessionService {
 	 * Get a browser session by ID and tenant ID
 	 */
 	async getBrowserSession(sessionId: string, tenantId: string): Promise<BrowserSession | null> {
-		const row = await this.db
-			.prepare(
-				`SELECT id, tenant_id, created_at, last_activity, user_agent, ip_address, version, active_user_id
-				FROM browser_sessions
-				WHERE id = ? AND tenant_id = ?`
-			)
-			.bind(sessionId, tenantId)
-			.first<{
+		// One round trip: this runs on every request with a session cookie
+		const [sessions, accounts] = (await this.db.batch([
+			this.db
+				.prepare(
+					`SELECT id, tenant_id, created_at, last_activity, user_agent, ip_address, version, active_user_id
+					FROM browser_sessions
+					WHERE id = ? AND tenant_id = ?`
+				)
+				.bind(sessionId, tenantId),
+			this.db.prepare(`SELECT user_id FROM account_sessions WHERE browser_session_id = ? ORDER BY authenticated_at ASC`).bind(sessionId),
+		])) as [
+			D1Result<{
 				id: string;
 				tenant_id: string;
 				created_at: number;
@@ -73,17 +80,13 @@ export class D1SessionAdapter implements SessionService {
 				ip_address: string | null;
 				version: number;
 				active_user_id: string | null;
-			}>();
-
+			}>,
+			D1Result<{ user_id: string }>,
+		];
+		const row = sessions.results[0];
 		if (!row) return null;
 
-		// Get account user IDs
-		const accounts = await this.db
-			.prepare(`SELECT user_id FROM account_sessions WHERE browser_session_id = ? ORDER BY authenticated_at ASC`)
-			.bind(sessionId)
-			.all<{ user_id: string }>();
-
-		const accountUserIds = (accounts.results || []).map((a) => a.user_id);
+		const accountUserIds = accounts.results.map((a) => a.user_id);
 
 		return {
 			id: row.id,
@@ -136,104 +139,63 @@ export class D1SessionAdapter implements SessionService {
 		const authenticatedAt = params.authenticatedAt ?? now;
 		const expiresAt = now + params.ttl * 1000;
 
-		// Check if account already exists for this user in this session
-		const existing = await this.db
-			.prepare(`SELECT id FROM account_sessions WHERE browser_session_id = ? AND user_id = ?`)
-			.bind(params.browserSessionId, params.userId)
-			.first<{ id: string }>();
-
-		if (existing) {
-			// Update existing account session
-			await this.db
-				.prepare(
-					`UPDATE account_sessions
-					SET is_active = 1, authenticated_at = ?, expires_at = ?,
-						subject_type = ?, subject_properties = ?, refresh_token = ?, client_id = ?
-					WHERE browser_session_id = ? AND user_id = ?`
-				)
-				.bind(
-					authenticatedAt,
-					expiresAt,
-					params.subjectType,
-					JSON.stringify(params.subjectProperties),
-					params.refreshToken,
-					params.clientId,
-					params.browserSessionId,
-					params.userId
-				)
-				.run();
-
-			// Deactivate other accounts
-			await this.db
-				.prepare(`UPDATE account_sessions SET is_active = 0 WHERE browser_session_id = ? AND user_id != ?`)
-				.bind(params.browserSessionId, params.userId)
-				.run();
-
-			// Update browser session active_user_id
-			await this.db
-				.prepare(`UPDATE browser_sessions SET active_user_id = ? WHERE id = ?`)
-				.bind(params.userId, params.browserSessionId)
-				.run();
-
-			return {
-				id: existing.id,
-				browser_session_id: params.browserSessionId,
-				user_id: params.userId,
-				is_active: true,
-				authenticated_at: authenticatedAt,
-				expires_at: expiresAt,
-				subject_type: params.subjectType,
-				subject_properties: params.subjectProperties,
-				refresh_token: params.refreshToken,
-				client_id: params.clientId,
-			};
-		}
-
-		// Check max accounts limit (3)
-		const countResult = await this.db
-			.prepare(`SELECT COUNT(*) as count FROM account_sessions WHERE browser_session_id = ?`)
+		// The accounts of this browser (3 at most): is the user among them, is there room
+		const accounts = await this.db
+			.prepare(`SELECT id, user_id FROM account_sessions WHERE browser_session_id = ?`)
 			.bind(params.browserSessionId)
-			.first<{ count: number }>();
-
-		if (countResult && countResult.count >= 3) {
+			.all<{ id: string; user_id: string }>();
+		const existing = accounts.results.find((a) => a.user_id === params.userId);
+		if (!existing && accounts.results.length >= MAX_ACCOUNTS) {
 			throw new Error('max_accounts_exceeded');
 		}
+		const accountId = existing?.id ?? id;
 
-		// Deactivate other accounts first
-		await this.db
-			.prepare(`UPDATE account_sessions SET is_active = 0 WHERE browser_session_id = ?`)
-			.bind(params.browserSessionId)
-			.run();
-
-		// Insert new account session
-		await this.db
-			.prepare(
-				`INSERT INTO account_sessions
-				(id, browser_session_id, user_id, is_active, authenticated_at, expires_at,
-				 subject_type, subject_properties, refresh_token, client_id)
-				VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`
-			)
-			.bind(
-				id,
-				params.browserSessionId,
-				params.userId,
-				authenticatedAt,
-				expiresAt,
-				params.subjectType,
-				JSON.stringify(params.subjectProperties),
-				params.refreshToken,
-				params.clientId
-			)
-			.run();
-
-		// Update browser session active_user_id
-		await this.db
-			.prepare(`UPDATE browser_sessions SET active_user_id = ? WHERE id = ?`)
-			.bind(params.userId, params.browserSessionId)
-			.run();
+		// One batch, which D1 runs as a transaction: one round trip instead of three, and never a
+		// browser session whose active user has no active account
+		const account = existing
+			? this.db
+					.prepare(
+						`UPDATE account_sessions
+						SET is_active = 1, authenticated_at = ?, expires_at = ?,
+							subject_type = ?, subject_properties = ?, refresh_token = ?, client_id = ?
+						WHERE browser_session_id = ? AND user_id = ?`
+					)
+					.bind(
+						authenticatedAt,
+						expiresAt,
+						params.subjectType,
+						JSON.stringify(params.subjectProperties),
+						params.refreshToken,
+						params.clientId,
+						params.browserSessionId,
+						params.userId
+					)
+			: this.db
+					.prepare(
+						`INSERT INTO account_sessions
+						(id, browser_session_id, user_id, is_active, authenticated_at, expires_at,
+						 subject_type, subject_properties, refresh_token, client_id)
+						VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`
+					)
+					.bind(
+						id,
+						params.browserSessionId,
+						params.userId,
+						authenticatedAt,
+						expiresAt,
+						params.subjectType,
+						JSON.stringify(params.subjectProperties),
+						params.refreshToken,
+						params.clientId
+					);
+		await this.db.batch([
+			this.db.prepare(`UPDATE account_sessions SET is_active = 0 WHERE browser_session_id = ? AND user_id != ?`).bind(params.browserSessionId, params.userId),
+			account,
+			this.db.prepare(`UPDATE browser_sessions SET active_user_id = ? WHERE id = ?`).bind(params.userId, params.browserSessionId),
+		]);
 
 		return {
-			id,
+			id: accountId,
 			browser_session_id: params.browserSessionId,
 			user_id: params.userId,
 			is_active: true,
@@ -331,23 +293,11 @@ export class D1SessionAdapter implements SessionService {
 	 * Switch the active account in a browser session
 	 */
 	async switchActiveAccount(browserSessionId: string, userId: string): Promise<void> {
-		// Deactivate all accounts
-		await this.db
-			.prepare(`UPDATE account_sessions SET is_active = 0 WHERE browser_session_id = ?`)
-			.bind(browserSessionId)
-			.run();
-
-		// Activate the specified account
-		await this.db
-			.prepare(`UPDATE account_sessions SET is_active = 1 WHERE browser_session_id = ? AND user_id = ?`)
-			.bind(browserSessionId, userId)
-			.run();
-
-		// Update browser session active_user_id
-		await this.db
-			.prepare(`UPDATE browser_sessions SET active_user_id = ? WHERE id = ?`)
-			.bind(userId, browserSessionId)
-			.run();
+		// A transaction: never two active accounts, nor an active user without one
+		await this.db.batch([
+			this.db.prepare(`UPDATE account_sessions SET is_active = (user_id = ?2) WHERE browser_session_id = ?1`).bind(browserSessionId, userId),
+			this.db.prepare(`UPDATE browser_sessions SET active_user_id = ? WHERE id = ?`).bind(userId, browserSessionId),
+		]);
 	}
 
 	/**
