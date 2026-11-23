@@ -4,6 +4,8 @@
  *   POST /test/run-users/delete/:email   teardown of one run account
  *   GET  /test/run-users/stale?hours=24  run accounts older than that (the sweeper
  *                                        for crashed runs), at most STALE_LIMIT
+ *   GET  /test/run-users/census?after=   dry run (#312): counts by kind, one page at a
+ *                                        time. Reads only, returns no address
  *
  * Every CI E2E run registers its own accounts, e2e+<run id>-<attempt>-<name>@e2e.alummahnow.net,
  * and deletes them when it ends. Registration of such an address on a deployment
@@ -29,11 +31,14 @@ import { getClientIP, RATE_LIMIT_PERIOD_SECONDS, withinRateLimit } from '../rate
 import type { DeletionEnv } from '../deletions/kinds';
 import { purgeItem } from '../deletions/purge';
 import { DeletionError, requestPurge, softDelete, type DeletionActor } from '../deletions/service';
+import { e2eAccountKind, type E2EAccountKind } from '../utils/e2e-accounts';
 import { constantTimeEqual, isRunUserEmail, RUN_USER_MARKER, runUsersEnabled, type RunUsersEnv } from '../utils/e2e-sink';
 
 export { isRunUserEmail };
 
 export const STALE_LIMIT = 200;
+/** Accounts per census page: each page is one short primary-key range read. */
+export const CENSUS_PAGE = 500;
 
 export interface RunUserRoutesEnv extends RunUsersEnv {
 	AUTH_DB: D1Database;
@@ -47,11 +52,12 @@ const json = (body: unknown, status: number, headers: Record<string, string> = {
 
 const MARKED = `json_extract(metadata, '$.${RUN_USER_MARKER}') IS NOT NULL`;
 
-/** Routes POST /test/run-users/delete/:email and GET /test/run-users/stale; null for anything else or when disabled. */
+/** Routes POST /test/run-users/delete/:email, GET /test/run-users/stale and GET /test/run-users/census; null for anything else or when disabled. */
 export async function routeRunUsers(url: URL, request: Request, env: RunUserRoutesEnv): Promise<Response | null> {
 	const isDelete = url.pathname.startsWith('/test/run-users/delete/') && request.method === 'POST';
 	const isStale = url.pathname === '/test/run-users/stale' && request.method === 'GET';
-	if (!isDelete && !isStale) return null;
+	const isCensus = url.pathname === '/test/run-users/census' && request.method === 'GET';
+	if (!isDelete && !isStale && !isCensus) return null;
 	if (!(await runUsersEnabled(env))) return null;
 
 	if (!constantTimeEqual(request.headers.get('X-Test-Secret') ?? '', env.TEST_PROMOTE_SECRET ?? '')) {
@@ -63,6 +69,7 @@ export async function routeRunUsers(url: URL, request: Request, env: RunUserRout
 		return json({ error: 'rate_limited' }, 429, { 'Retry-After': String(RATE_LIMIT_PERIOD_SECONDS) });
 	}
 	if (isStale) return stale(url, env);
+	if (isCensus) return census(url, env);
 
 	let email: string;
 	try {
@@ -124,15 +131,51 @@ async function remove(email: string, request: Request, ip: string, env: RunUserR
 	return json({ success: true, found: rows.length, purged }, 200);
 }
 
+/**
+ * The run accounts, through idx_users_email_lower: every address from "e2e+" up to "e2e," (the next
+ * character). The LIKE it replaces read the whole users table, every hour, on QA.
+ */
+export const STALE_SQL = `SELECT email FROM users WHERE lower(email) >= 'e2e+' AND lower(email) < 'e2e,'
+	AND lower(email) LIKE '%@e2e.alummahnow.net' AND ${MARKED} AND created_at < ? ORDER BY created_at LIMIT ?`;
+
 async function stale(url: URL, env: RunUserRoutesEnv): Promise<Response> {
 	const hours = Number(url.searchParams.get('hours') ?? '24');
 	if (!Number.isFinite(hours) || hours < 1) return json({ error: 'hours must be a number >= 1' }, 400);
 	const before = Date.now() - hours * 60 * 60 * 1000;
-	const { results } = await env.AUTH_DB.prepare(
-		`SELECT email FROM users WHERE email LIKE 'e2e+%@e2e.alummahnow.net' AND ${MARKED} AND created_at < ? ORDER BY created_at LIMIT ?`
-	)
-		.bind(before, STALE_LIMIT)
-		.all<{ email: string }>();
+	const { results } = await env.AUTH_DB.prepare(STALE_SQL).bind(before, STALE_LIMIT).all<{ email: string }>();
 	const emails = (results ?? []).map((r) => r.email.toLowerCase()).filter(isRunUserEmail);
 	return json({ emails, limit: STALE_LIMIT }, 200);
+}
+
+/** One page of accounts after a user id (primary key), oldest id first. */
+export const CENSUS_SQL = `SELECT id, email, created_at, deleted_at, (${MARKED}) AS marked FROM users WHERE id > ? ORDER BY id LIMIT ?`;
+
+export interface CensusCount {
+	total: number;
+	/** Created more than 24 hours ago */
+	old: number;
+	/** Already soft-deleted, waiting for the 30-day purge */
+	deleted: number;
+	/** Carries the run marker, so the run routes could delete it today */
+	marked: number;
+}
+
+/**
+ * Dry run for #312: how many accounts of each kind one page holds (utils/e2e-accounts.ts). The
+ * caller walks the pages with `next`, a user id. No address leaves the server and nothing is written.
+ */
+async function census(url: URL, env: RunUserRoutesEnv): Promise<Response> {
+	const before = Date.now() - 24 * 60 * 60 * 1000;
+	const { results } = await env.AUTH_DB.prepare(CENSUS_SQL)
+		.bind(url.searchParams.get('after') ?? '', CENSUS_PAGE)
+		.all<{ id: string; email: string; created_at: number; deleted_at: number | null; marked: number }>();
+	const counts: Partial<Record<E2EAccountKind, CensusCount>> = {};
+	for (const r of results) {
+		const c = (counts[e2eAccountKind(r.email)] ??= { total: 0, old: 0, deleted: 0, marked: 0 });
+		c.total++;
+		if (r.created_at < before) c.old++;
+		if (r.deleted_at !== null) c.deleted++;
+		if (r.marked) c.marked++;
+	}
+	return json({ scanned: results.length, counts, next: results.length === CENSUS_PAGE ? results[results.length - 1].id : null }, 200, { 'Cache-Control': 'no-store' });
 }

@@ -1,0 +1,37 @@
+name: E2E account census (QA, dry run)
+
+# How many test accounts the QA auth database holds, by kind (#312). Reads only: totals in the
+# run summary, no addresses. Deleting anything is a separate decision.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-census
+  cancel-in-progress: false
+
+jobs:
+  census:
+    name: Count (reads only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Count
+        env:
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          # QA's value, as qa-e2e.yml sets it; E2E_CODE_SINK_SECRET is the gate
+          TEST_PROMOTE_SECRET: test-secret-for-e2e
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --no-warnings scripts/users/e2e-census.ts | tee -a "$GITHUB_STEP_SUMMARY"

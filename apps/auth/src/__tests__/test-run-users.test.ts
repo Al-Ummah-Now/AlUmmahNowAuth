@@ -10,6 +10,8 @@ import qaConfig from '../../wrangler.qa.json';
 import { setupDatabase } from '../test-setup';
 import { routeTestEndpoints } from '../routes/test-routes';
 import { isRunUserEmail, markRunUser, runUsersEnabled, RUN_USERS_FLAG } from '../utils/e2e-sink';
+import { CENSUS_SQL, STALE_SQL } from '../routes/test-run-users';
+import { e2eAccountKind } from '../utils/e2e-accounts';
 import { fakeLimiter } from './helpers/fake-limiter';
 import { emitAuditEvent } from '../audit-emitter';
 
@@ -214,6 +216,70 @@ describe('GET /test/run-users/stale', () => {
 	it('validates hours and needs the CI secret', async () => {
 		expect((await stale('?hours=0'))?.status).toBe(400);
 		expect((await stale('', { testSecret: 'nope' }))?.status).toBe(401);
+	});
+});
+
+describe('GET /test/run-users/census (dry run, #312)', () => {
+	const census = (query = '', opts: { env?: TestEnv; isProduction?: boolean; testSecret?: string } = {}) =>
+		routeTestEndpoints(req(`/test/run-users/census${query}`, { ...opts, method: 'GET' }), (opts.env ?? qaEnv()) as never, ctx, opts.isProduction ?? false);
+
+	it('counts accounts by kind, returns no address and changes nothing', async () => {
+		const old = Date.now() - 30 * 60 * 60 * 1000;
+		await addUser('c-run', RUN_EMAIL, { createdAt: old });
+		await addUser('c-seed', 'qa-admin@e2e.alummahnow.net', { createdAt: old, marked: false });
+		await addUser('c-old', 'multi-1-1795461009517-1b6pqu@e2e.alummahnow.net', { createdAt: old, marked: false });
+		await addUser('c-new', 'test-single-1794124057313@e2e.alummahnow.net', { marked: false });
+		await addUser('c-person', 'someone@example.com', { createdAt: old, marked: false });
+		await ENV.AUTH_DB.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').bind(Date.now(), 'c-old').run();
+		const before = await ENV.AUTH_DB.prepare('SELECT * FROM users ORDER BY id').all();
+
+		const res = await census();
+		expect(res?.status).toBe(200);
+		const text = await res!.text();
+		expect(text).not.toContain('@');
+		const body = JSON.parse(text) as { counts: Record<string, unknown>; next: string | null };
+		expect(body.next).toBeNull();
+		expect(body.counts).toMatchObject({
+			run: { total: 1, old: 1, marked: 1 },
+			kept: { total: 1, old: 1, marked: 0 },
+			disposable: { total: 2, old: 1, deleted: 1, marked: 0 },
+		});
+		expect((await ENV.AUTH_DB.prepare('SELECT * FROM users ORDER BY id').all()).results).toEqual(before.results);
+	});
+
+	it('walks on from a user id', async () => {
+		await addUser('c-a', 'qa-admin@e2e.alummahnow.net', { marked: false });
+		await addUser('c-b', 'qa-viewer@e2e.alummahnow.net', { marked: false });
+		const body = (await (await census('?after=c-a'))!.json()) as { counts: { kept: { total: number } } };
+		expect(body.counts.kept.total).toBe(1);
+	});
+
+	it('needs the CI secret and does not exist in production', async () => {
+		expect((await census('', { testSecret: 'nope' }))?.status).toBe(401);
+		const prod = { ...ENV, ...varsOf(prodConfig, 'production'), E2E_CODE_SINK_SECRET: { get: async () => SINK }, TEST_PROMOTE_SECRET: PROMOTE };
+		expect(await census('', { env: prod, isProduction: true })).toBeNull();
+		expect((await census('', { env: prod }))?.status).toBe(404);
+	});
+
+	it('an address it does not recognise is kept, never disposable', () => {
+		expect(e2eAccountKind('QA-Admin@e2e.alummahnow.net')).toBe('kept');
+		expect(e2eAccountKind('test-single-1795000000001@e2e.alummahnow.net')).toBe('kept');
+		expect(e2eAccountKind('test-single-1795000000006@e2e.alummahnow.net')).toBe('disposable');
+		expect(e2eAccountKind('rel-history-1794124057313-pr4jgp@e2e.alummahnow.net')).toBe('disposable');
+		for (const name of ['moderator', 'user', 'someone', 'test-single', 'qa-new-thing', 'signup-1']) expect(e2eAccountKind(`${name}@e2e.alummahnow.net`)).toBe('other');
+		for (const email of ['multi-1-1795461009517-1b6pqu@example.com', 'a@e2e.alummahnow.net.evil.com', 'owner@alummahnow.net']) expect(e2eAccountKind(email)).toBe('outside');
+	});
+
+	it.each([
+		['stale', STALE_SQL, [1, 1], 'idx_users_email_lower'],
+		['census', CENSUS_SQL, ['', 1], 'sqlite_autoindex_users_1'],
+	])('the %s query searches an index, never the whole table', async (_name, sql, binds, index) => {
+		const { results } = await ENV.AUTH_DB.prepare(`EXPLAIN QUERY PLAN ${sql}`)
+			.bind(...binds)
+			.all<{ detail: string }>();
+		const plan = results.map((r) => r.detail).join(' ');
+		expect(plan).toContain(index);
+		expect(plan).not.toMatch(/\bSCAN users/);
 	});
 });
 
