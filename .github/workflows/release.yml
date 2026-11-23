@@ -258,6 +258,9 @@ jobs:
     name: Production (migrate, 0% smoke, promote)
     needs: stage
     runs-on: ubuntu-24.04
+    outputs:
+      # The promote went through, whatever happens after it (the code is live)
+      promoted: ${{ steps.promote.outcome == 'success' }}
     environment:
       name: production
       url: https://auth.alummahnow.net
@@ -339,6 +342,7 @@ jobs:
         run: npx wrangler deploy ../../dist/audit-consumer/index.js --no-bundle -c wrangler.jsonc
 
       - name: Promote (0% + override smoke → 100% → smoke, auto-rollback)
+        id: promote
         if: steps.head.outputs.current == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -376,3 +380,36 @@ jobs:
           path: release-result.json
           if-no-files-found: ignore
           retention-days: 90
+
+  # What is live and since when: one vYYYY.MM.DD[.N] GitHub release per promoted commit
+  # (scripts/release/record.ts). Nothing is deployed here and the job has no Cloudflare access.
+  # It can't fail the release: production is already serving, and the next record covers
+  # everything since the last one.
+  record:
+    name: Release record
+    needs: production
+    if: ${{ !cancelled() && needs.production.outputs.promoted == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-result
+          path: .release-result
+
+      - name: Create the release record
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types --no-warnings scripts/release/record.ts --result .release-result/release-result.json | tee -a "$GITHUB_STEP_SUMMARY"

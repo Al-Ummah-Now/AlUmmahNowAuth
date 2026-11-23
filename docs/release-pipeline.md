@@ -55,6 +55,7 @@ See SPEC §9.2. Summary for this repo:
 - PRs: `test.yml` (type-check, unit, config + migration checks). No QA deploy and no E2E against QA on a PR (owner rule 2026-11-13: tests run against QA only with releases).
 - Push to `main`: `test.yml` → `qa-e2e.yml` deploys QA and runs only the specs stage E2E leaves out (admin, profile, integration, and the "code delivery failure" specs of `auth/` and `release/`).
 - Merge to `main`: `release.yml` builds once, deploys stage, runs smoke and E2E on stage, then promotes each prod worker through Workers versions (upload → `@0%` + version-override smoke → `@100%` → smoke). If prod smoke fails, it rolls back automatically.
+- Record: after a successful promote, `record` (`scripts/release/record.ts`) creates a `vYYYY.MM.DD[.N]` GitHub release (US Eastern date) on that commit: the pull requests since the last record, the openauth version, new migrations, the worker versions and the rollback link. The newest record is what production runs, unless someone rolled back since. A superseded or rolled-back run records nothing; releasing the same commit again updates its record. The tag is a record, not a trigger: never push one by hand.
 - Rollback: Actions → **Rollback** → Run workflow, or `pnpm release:rollback` locally.
 
 ## Auth-specific regression tests

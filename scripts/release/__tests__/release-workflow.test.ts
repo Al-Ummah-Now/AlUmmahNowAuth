@@ -70,4 +70,14 @@ describe('release.yml', () => {
 			expect(step).toContain("if: steps.head.outputs.current == 'true'");
 		}
 	});
+
+	it('records only a promoted release, without Cloudflare access', () => {
+		const job = workflow.slice(workflow.indexOf('\n  record:'));
+		expect(job).toContain("needs.production.outputs.promoted == 'true'");
+		expect(job).not.toContain('CLOUDFLARE');
+		expect(workflow).toContain("promoted: ${{ steps.promote.outcome == 'success' }}");
+		expect(steps.find((s) => s.includes('- name: Promote (0%'))).toContain('id: promote');
+		// write access to the repository in this job only
+		expect(workflow.match(/contents: write/g)).toHaveLength(1);
+	});
 });
