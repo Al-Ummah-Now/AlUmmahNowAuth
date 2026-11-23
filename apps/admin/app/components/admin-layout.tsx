@@ -1,5 +1,5 @@
-import { formatDate } from "../../../../packages/ui/src/format.ts";
 import { Link, useLocation, useRouteLoaderData, useSearchParams } from "react-router";
+import { useAdminTime } from "./admin-time";
 import {
   LayoutDashboard,
   Users,
@@ -57,6 +57,7 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
   const lang = langOf(searchParams);
   const t = shellCopy(lang);
   const sec = adminCopy(lang).security;
+  const stamp = useAdminTime(lang);
   const menu = adminCopy(lang).accountMenu;
   const environment = useRouteLoaderData<{ environment?: string }>("root")?.environment;
   // Use lazy initializer to load from localStorage - avoids effect-based setState
@@ -182,7 +183,7 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
         <div className="p-4 md:p-6">
           {passkeyGraceUntil ? (
             <div role="status" data-testid="passkey-grace-banner" className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-muted)] p-3 text-sm text-[var(--color-foreground)]">
-              {sec.graceBanner(formatDate(passkeyGraceUntil * 1000, lang, { dateStyle: "long", timeZone: "UTC" }))}{" "}
+              {sec.graceBanner(stamp(passkeyGraceUntil * 1000, true))}{" "}
               <Link className="font-semibold underline" to={withLang("/passkey-needed?mode=grace", lang)}>{sec.addPasskey}</Link>
             </div>
           ) : null}

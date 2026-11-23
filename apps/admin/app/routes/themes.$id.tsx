@@ -469,10 +469,13 @@ export default function ThemeBuilderPage() {
 
   const colorRow = (role: { name: string }) => (
     <div key={role.name} className="grid grid-cols-2 items-start gap-2 border-b border-[var(--color-border)] py-2 last:border-0 md:grid-cols-[160px_1fr_1fr]">
-      <div className="col-span-2 pt-1.5 text-sm md:col-span-1"><code className="text-xs" dir="ltr">{role.name}</code></div>
+      <div className="col-span-2 pt-1 text-sm md:col-span-1">
+        <div className="font-medium">{t.colourRoles[role.name] ?? <code dir="ltr">{role.name}</code>}</div>
+        {t.colourRoles[role.name] && <code className="text-xs text-[var(--color-muted-foreground)]" dir="ltr">{role.name}</code>}
+      </div>
       {(["light", "dark"] as const).map((mode) => (
         <div key={mode}>
-          <ColorField theme={theme} mode={mode} label={role.name} disabled={readOnly} value={theme.tokens.color[mode][role.name]} onChange={(v) => update(setPath(theme, `tokens.color.${mode}.${role.name}`, v))} />
+          <ColorField theme={theme} mode={mode} label={t.colourRoles[role.name] ?? role.name} disabled={readOnly} value={theme.tokens.color[mode][role.name]} onChange={(v) => update(setPath(theme, `tokens.color.${mode}.${role.name}`, v))} />
           <Issues issues={issuesAt(`tokens.color.${mode}.${role.name}`)} />
         </div>
       ))}
@@ -518,7 +521,7 @@ export default function ThemeBuilderPage() {
         <div>
           <Link to={withLang("/themes", adminLang)} className={`mb-2 inline-flex items-center gap-1 text-sm ${muted} hover:underline`}><ArrowLeft className="h-4 w-4 rtl:-scale-x-100" /> {t.back}</Link>
           {adminLang === "ar" ? (
-            <h2 className="text-3xl font-bold text-[var(--color-foreground)]">{theme.name.ar || theme.name.en} <span className={`text-xl font-normal ${muted}`} dir="ltr" lang="en">{theme.name.en}</span></h2>
+            <h2 className="text-3xl font-bold text-[var(--color-foreground)]">{theme.name.ar || theme.name.en}</h2>
           ) : (
             <h2 className="text-3xl font-bold text-[var(--color-foreground)]">{theme.name.en} <span className={`text-xl font-normal ${muted}`} dir="rtl" lang="ar">{theme.name.ar}</span></h2>
           )}
@@ -576,10 +579,10 @@ export default function ThemeBuilderPage() {
         {/* ------------------------------------------------ editor */}
         <Card className="min-w-0">
           <CardHeader className="pb-2">
-            <div className="flex flex-wrap gap-1" role="tablist" aria-label={t.tabsLabel}>
+            <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" role="tablist" aria-label={t.tabsLabel}>
               {THEME_TABS.map((id) => (
                 <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                  className={`rounded-md px-3 py-1.5 text-sm ${tab === id ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "hover:bg-[var(--color-accent)]"}`}>
+                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm ${tab === id ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "hover:bg-[var(--color-accent)]"}`}>
                   {t.tabs[id]}
                 </button>
               ))}

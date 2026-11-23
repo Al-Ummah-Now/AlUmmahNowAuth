@@ -154,7 +154,7 @@ const server = createHttpServer(async (req, res) => {
       return json(res, { accounts: [
         { userId: "u-10", email: "yusuf.rahman@mail.alummahnow.net", name: "Yusuf Rahman", isActive: true, lastUsed: ago(0) },
         { userId: "u-11", email: "khadija.noor@mail.alummahnow.net", name: "Khadija Noor", isActive: false, lastUsed: ago(25) },
-        { userId: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "مريم الحسن", isActive: false, lastUsed: ago(60 * 30) },
+        { userId: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "Maryam Alhassan", isActive: false, lastUsed: ago(60 * 30) },
       ] });
     }
     if (url.pathname === "/api/me") return json(res, { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", roles: [] });

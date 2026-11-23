@@ -356,6 +356,34 @@ export default function Roles() {
                 </Button>
               </div>
             ) : (
+              <>
+              {/* Phones: one card per role (four columns do not fit) */}
+              <ul className="space-y-3 md:hidden" data-testid="role-cards">
+                {filteredRoles.map((role) => (
+                  <li key={role.id} className="rounded-lg border border-[var(--color-border)] p-3 text-sm space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <Link to={withLang(`/roles/${role.id}`, lang)} className="flex items-center gap-2 font-medium hover:underline">
+                        <Shield className="h-4 w-4 text-[var(--color-muted-foreground)]" />
+                        <bdi>{roleLabel(role.name, lang)}</bdi>
+                      </Link>
+                      <Badge variant={role.is_system_role ? "default" : "secondary"}>{role.is_system_role ? t.system : t.custom}</Badge>
+                    </div>
+                    <div className="text-[var(--color-muted-foreground)]">{role.description ? <bdi>{roleDescription(role.description, lang)}</bdi> : t.noDescription}</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2 whitespace-nowrap"><Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />{adminCopy(lang).dashboard.users(role.user_count)}</span>
+                      <span className="flex gap-1">
+                        <Button variant="ghost" size="icon" asChild title={t.edit}>
+                          <Link to={withLang(`/roles/${role.id}`, lang)} aria-label={t.editOf(roleLabel(role.name, lang))}><Pencil className="h-4 w-4" /></Link>
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(role)} disabled={role.is_system_role} title={role.is_system_role ? t.cannotDelete : t.delete} aria-label={t.deleteOf(roleLabel(role.name, lang))}>
+                          <Trash2 className={`h-4 w-4 ${role.is_system_role ? "text-[var(--color-muted-foreground)]" : "text-[var(--color-destructive-text)]"}`} />
+                        </Button>
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -391,7 +419,7 @@ export default function Roles() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Users className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-                          <span className="text-sm">{adminCopy(lang).dashboard.users(role.user_count)}</span>
+                          <span className="text-sm whitespace-nowrap">{adminCopy(lang).dashboard.users(role.user_count)}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-end">
@@ -428,6 +456,8 @@ export default function Roles() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
+              </>
             )}
           </CardContent>
         </Card>

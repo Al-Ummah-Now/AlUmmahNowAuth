@@ -1,4 +1,3 @@
-import { formatDateTimeMs } from "./date-utils";
 import { ADMIN_COPY } from "./admin-copy";
 import type { AdminLang } from "./deletion-copy";
 import { withLang } from "./shell-copy";
@@ -20,10 +19,6 @@ export const MODERATION_STATUS_CLASSES: Record<string, string> = {
 
 export const label = (map: Record<string, string>, key: string) => map[key] ?? key;
 
-export function formatWhen(value: string | number | null | undefined, lang: AdminLang = "en"): string {
-  if (!value) return "—";
-  return formatDateTimeMs(value, lang) || String(value);
-}
 
 /** The Users page, searching for this user. */
 export function userPageHref(subject: { email?: string | null; id: string }, lang: AdminLang = "en"): string {

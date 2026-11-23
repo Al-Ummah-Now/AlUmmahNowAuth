@@ -1,4 +1,6 @@
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
+import { Email } from "../components/email";
+import { AdminTime, useAdminTime } from "../components/admin-time";
 import { Form, Link, useLoaderData, useSearchParams } from "react-router";
 import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { toAsciiDigits } from "../../../../packages/ui/src/format.ts";
@@ -15,7 +17,7 @@ import { AdminLayout } from "../components/admin-layout";
 import { requireAuth, getAuthenticatedUser } from "../lib/auth.server";
 import { getAuthServerUrl } from "../lib/config";
 import { listModerationRequests, isErrorResponse, type ModerationQueue } from "../lib/admin-api.server";
-import { MODERATION_STATUS_CLASSES, formatWhen, label } from "../lib/moderation";
+import { MODERATION_STATUS_CLASSES, label } from "../lib/moderation";
 import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = ({ location }) => {
@@ -113,7 +115,7 @@ export default function ModerationRequestsPage() {
       {!!queue?.needs_attention && !filters.needs_attention && (
         <div role="alert" data-testid="moderation-needs-attention" className="mb-6 p-4 ui-alert-error rounded-lg flex flex-wrap items-center justify-between gap-2">
           <span>{t.needsAttention(queue.needs_attention)}</span>
-          <Link to={withLang("/moderation?needs_attention=1", lang)} className="underline font-medium">{t.showThem}</Link>
+          <Link to={withLang("/moderation?needs_attention=1", lang)} className="underline font-medium">{t.showThem(queue.needs_attention)}</Link>
         </div>
       )}
 
@@ -202,7 +204,7 @@ export default function ModerationRequestsPage() {
                   <div><bdi>{r.subject?.name || r.subject?.email || r.subject_user_id}</bdi></div>
                   <div>{label(L.reason, r.reason_category)}{c.sep}<bdi className="text-[var(--color-muted-foreground)]">{r.reason}</bdi></div>
                   <div className="text-xs text-[var(--color-muted-foreground)]">
-                    <bdi>{r.client_name ?? r.client_id}</bdi>{c.sep}<bdi>{r.requested_by.display_name}</bdi>{c.sep}{formatWhen(r.created_at, lang)}
+                    <bdi>{r.client_name ?? r.client_id}</bdi>{c.sep}<bdi className="whitespace-nowrap">{r.requested_by.display_name}</bdi>{c.sep}<AdminTime value={r.created_at} lang={lang} />
                   </div>
                 </li>
               ))}
@@ -223,21 +225,21 @@ export default function ModerationRequestsPage() {
                   {(queue?.requests ?? []).map((r) => (
                     <TableRow key={r.id} data-testid="moderation-row" data-request-id={r.id}>
                       <TableCell className="whitespace-nowrap">
-                        <Link to={withLang(`/moderation/${r.id}`, lang)} className="underline underline-offset-2">{formatWhen(r.created_at, lang)}</Link>
+                        <Link to={withLang(`/moderation/${r.id}`, lang)} className="underline underline-offset-2"><AdminTime value={r.created_at} lang={lang} /></Link>
                       </TableCell>
                       <TableCell>
                         {/* The person by name, then their email; the id only when the account is gone */}
                         <div className="font-medium"><bdi>{r.subject?.name || r.subject?.email || r.subject_user_id}</bdi></div>
-                        {r.subject?.name && r.subject.email && <div className="text-xs text-[var(--color-muted-foreground)]"><bdi>{r.subject.email}</bdi></div>}
+                        {r.subject?.name && r.subject.email && <div className="text-xs text-[var(--color-muted-foreground)]"><Email value={r.subject.email} /></div>}
                       </TableCell>
-                      <TableCell>{label(L.action, r.action)}</TableCell>
+                      <TableCell className="whitespace-nowrap">{label(L.action, r.action)}</TableCell>
                       <TableCell>
                         <div>{label(L.reason, r.reason_category)}</div>
                         <div className="text-xs text-[var(--color-muted-foreground)] line-clamp-1 max-w-xs"><bdi>{r.reason}</bdi></div>
                       </TableCell>
                       <TableCell>
                         <div><bdi>{r.client_name ?? r.client_id}</bdi></div>
-                        <div className="text-xs text-[var(--color-muted-foreground)]"><bdi>{r.requested_by.display_name}</bdi></div>
+                        <div className="text-xs text-[var(--color-muted-foreground)]"><bdi className="whitespace-nowrap">{r.requested_by.display_name}</bdi></div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={MODERATION_STATUS_CLASSES[r.status]}>{label(L.status, r.status)}</Badge>

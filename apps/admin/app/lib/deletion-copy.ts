@@ -77,20 +77,20 @@ const en: DeletionCopy = {
   reasonPlaceholder: 'Why is this being deleted?',
   deleteTitle: (k) => `Delete ${KIND.en[k]}`,
   deleteBody: (k, label) =>
-    `"${label}" moves to Recently deleted and stops working at once. It can be restored for ${RETENTION_DAYS} days; after that it is deleted permanently.` +
+    `“${label}” moves to Recently deleted and stops working at once. It can be restored for ${RETENTION_DAYS} days; after that it is deleted permanently.` +
     (k === 'user' ? ' The user is signed out everywhere.' : ''),
   deleteConfirm: 'Delete',
   roleHolders: (n) => ` ${n === 1 ? '1 user holds' : `${n} users hold`} this role; they lose it now and get it back if the role is restored.`,
   restoreTitle: (k) => `Restore ${KIND.en[k]}`,
-  restoreBody: (label) => `Restore "${label}"? It comes back exactly as it was before it was deleted.`,
+  restoreBody: (label) => `Restore “${label}”? It comes back exactly as it was before it was deleted.`,
   restoreConfirm: 'Restore',
   purgeTitle: 'Delete permanently',
   purgeBody: (label) =>
-    `"${label}" will be deleted permanently on the next cleanup run (within the hour). This cannot be undone once the cleanup has run.`,
-  purgeTypeLabel: (label) => `Type "${label}" to confirm`,
+    `“${label}” will be deleted permanently on the next cleanup run (within the hour). This cannot be undone once the cleanup has run.`,
+  purgeTypeLabel: (label) => `Type “${label}” to confirm`,
   purgeConfirm: 'Delete permanently',
   pageTitle: 'Recently deleted',
-  pageIntro: `Deleted items stay here for ${RETENTION_DAYS} days and can be restored. After that, or once you choose "Delete permanently", the hourly cleanup removes them for good.`,
+  pageIntro: `Deleted items stay here for ${RETENTION_DAYS} days and can be restored. After that, or once you choose “Delete permanently”, the hourly cleanup removes them for good.`,
   empty: (k) => `No deleted ${TAB.en[k].toLowerCase()}.`,
   colItem: 'Item',
   colDeletedBy: 'Deleted by',
@@ -118,16 +118,16 @@ const ar: DeletionCopy = {
   reasonPlaceholder: 'لماذا يُحذف هذا العنصر؟',
   deleteTitle: (k) => `حذف ${KIND.ar[k]}`,
   deleteBody: (k, label) =>
-    `ينتقل "${label}" إلى المحذوفات مؤخرًا ويتوقف عن العمل فورًا. يمكن استعادته خلال ${N(RETENTION_DAYS)} يومًا، وبعدها يُحذف نهائيًا.` +
+    `ينتقل «${label}» إلى المحذوفات مؤخرًا ويتوقف عن العمل فورًا. يمكن استعادته خلال ${N(RETENTION_DAYS)} يومًا، وبعدها يُحذف نهائيًا.` +
     (k === 'user' ? ' ويُسجَّل خروج المستخدم من كل الأجهزة.' : ''),
   deleteConfirm: 'حذف',
   roleHolders: (n) => ` يحمل هذا الدور ${n === 1 ? 'مستخدم واحد' : `${N(n)} من المستخدمين`}؛ يفقدونه الآن ويستعيدونه إذا استُعيد الدور.`,
   restoreTitle: (k) => `استعادة ${KIND.ar[k]}`,
-  restoreBody: (label) => `استعادة "${label}"؟ سيعود كما كان قبل حذفه تمامًا.`,
+  restoreBody: (label) => `استعادة «${label}»؟ سيعود كما كان قبل حذفه تمامًا.`,
   restoreConfirm: 'استعادة',
   purgeTitle: 'حذف نهائي',
-  purgeBody: (label) => `سيُحذف "${label}" نهائيًا في تشغيل التنظيف التالي (خلال ساعة). لا يمكن التراجع عن ذلك بعد تشغيل التنظيف.`,
-  purgeTypeLabel: (label) => `اكتب "${label}" للتأكيد`,
+  purgeBody: (label) => `سيُحذف «${label}» نهائيًا في تشغيل التنظيف التالي (خلال ساعة). لا يمكن التراجع عن ذلك بعد تشغيل التنظيف.`,
+  purgeTypeLabel: (label) => `اكتب «${label}» للتأكيد`,
   purgeConfirm: 'حذف نهائي',
   pageTitle: 'المحذوفات مؤخرًا',
   pageIntro: `تبقى العناصر المحذوفة هنا ${N(RETENTION_DAYS)} يومًا ويمكن استعادتها. بعد ذلك، أو عند اختيار «حذف نهائي»، يزيلها التنظيف الذي يعمل كل ساعة نهائيًا.`,

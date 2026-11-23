@@ -1,5 +1,6 @@
-import { formatDateTime } from "../lib/date-utils";
 import { pageTitle } from "../lib/admin-copy";
+import { Email } from "../components/email";
+import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher, useNavigate, useSearchParams } from "react-router";
 import { UserAutocomplete } from "../components/autocomplete";
@@ -267,15 +268,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
   return { success: false, error: "Unknown action" };
 }
 
-function formatDate(dateValue: string | number, lang: AdminLang, missing: string) {
-  if (!dateValue) return missing;
-  try {
-    return formatDateTime(dateValue, lang);
-  } catch {
-    return String(dateValue);
-  }
-}
-
 export default function SessionsPage() {
   const { sessions, stats, suspicious, total, limit, offset, error, user, authServerUrl } = useLoaderData<LoaderData>();
   const navigate = useNavigate();
@@ -292,7 +284,9 @@ export default function SessionsPage() {
   const c = pagesCopy(lang).common;
   // Stat tiles are counts: compact from 1,000, cut not rounded (owner, 2026-11-21).
   const num = (value: number) => formatCompact(value, lang);
-  const when = (value: string | number) => formatDate(value, lang, t.notAvailable);
+  const stamp = useAdminTime(lang);
+  // Times: local with the zone, UTC on hover (components/admin-time.tsx)
+  const when = (value: string | number) => <AdminTime value={value} lang={lang} missing={t.notAvailable} />;
   const [terminating, setTerminating] = useState<{ id: string; userId: string; email: string } | null>(null);
   const currentUserId = searchParams.get('user_id') ?? '';
 
@@ -402,9 +396,13 @@ export default function SessionsPage() {
                   <div className="space-y-2">
                     {suspicious.multipleIPsInShortTime.map((item, i) => (
                       <div key={i} className="text-sm p-2 rounded bg-[var(--color-card)] text-[var(--color-foreground)]">
-                        <span className="font-medium"><bdi>{item.email}</bdi></span> — {t.manyIpsLine(item.ipCount)}
+                        <span className="font-medium"><Email value={item.email} /></span> — {t.manyIpsLine(item.ipCount)}
                         <div className="text-xs text-[var(--color-muted-foreground)]">
-                          {t.ips} <bdi>{Array.isArray(item.ipAddresses) ? item.ipAddresses.join(lang === "ar" ? "، " : ", ") : item.ipAddresses}</bdi>
+                          {t.ips}{" "}
+                          {/* each address isolated: joined into one run they read in reverse in Arabic */}
+                          {(Array.isArray(item.ipAddresses) ? item.ipAddresses : [item.ipAddresses]).map((ip, i) => (
+                            <span key={i} className="whitespace-nowrap">{i > 0 && (lang === "ar" ? "، " : ", ")}<bdi dir="ltr">{ip}</bdi></span>
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -417,7 +415,7 @@ export default function SessionsPage() {
                   <div className="space-y-2">
                     {suspicious.failedThenSuccessfulLogins.map((item, i) => (
                       <div key={i} className="text-sm p-2 rounded bg-[var(--color-card)] text-[var(--color-foreground)]">
-                        <span className="font-medium"><bdi>{item.email}</bdi></span> — {t.failedLine(item.failedAttempts)}
+                        <span className="font-medium"><Email value={item.email} /></span> — {t.failedLine(item.failedAttempts)}
                       </div>
                     ))}
                   </div>
@@ -471,7 +469,7 @@ export default function SessionsPage() {
                   {sessions.map((session) => (
                     <li key={session.id} className="rounded-lg border border-[var(--color-border)] p-3">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="font-medium min-w-0 break-words"><bdi>{session.email}</bdi></div>
+                        <div className="font-medium min-w-0 break-words"><Email value={session.email} /></div>
                         {endButton(session)}
                       </div>
                       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
@@ -503,7 +501,7 @@ export default function SessionsPage() {
                   {sessions.map((session) => (
                     <TableRow key={session.id}>
                       <TableCell>
-                        <div className="font-medium"><bdi>{session.email}</bdi></div>
+                        <div className="font-medium"><Email value={session.email} /></div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -525,7 +523,7 @@ export default function SessionsPage() {
                       <TableCell>
                         <div>{when(session.lastUsed)}</div>
                         <div className="text-xs text-[var(--color-muted-foreground)]">
-                          {t.signedIn(when(session.authenticatedAt))}
+                          {t.signedIn(session.authenticatedAt ? stamp(session.authenticatedAt) : t.notAvailable)}
                         </div>
                       </TableCell>
                       <TableCell>

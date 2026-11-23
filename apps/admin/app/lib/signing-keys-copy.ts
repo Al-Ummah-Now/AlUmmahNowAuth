@@ -126,7 +126,7 @@ const ar: SigningKeysCopy = {
   neverRun: "لم تُشغَّل بعد.",
   queued: (when) => `تدوير طُلب في ${when} ينتظر في قائمة المهام.`,
   failedTitle: "فشلت آخر خطوة تدوير",
-  failedBody: (when, attempts) => `فشلت في ${when} بعد ${attempts === 1 ? "محاولة واحدة" : attempts === 2 ? "محاولتين" : `${attempts} محاولات`}. المفاتيح لم تتغير؛ شغّل الخطوة مرة أخرى.`,
+  failedBody: (when, attempts) => `فشلت في ${when} بعد ${attempts === 1 ? "محاولة واحدة" : attempts === 2 ? "محاولتين" : `${formatNumber(attempts, "ar")} محاولات`}. المفاتيح لم تتغير؛ شغّل الخطوة مرة أخرى.`,
   retry: "تشغيل مرة أخرى",
   rotateNow: "تدوير الآن",
   rotating: "جارٍ الإرسال…",

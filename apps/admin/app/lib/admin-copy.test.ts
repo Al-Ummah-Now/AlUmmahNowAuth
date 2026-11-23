@@ -111,7 +111,7 @@ describe("Arabic numbers", () => {
   });
 
   it("the dashboard's role split and pager", () => {
-    expect(ADMIN_COPY.ar.dashboard.rolesSplit(4, 2)).toBe("٤ للنظام / ٢ مخصَّصة");
+    expect(ADMIN_COPY.ar.dashboard.rolesSplit(4, 2)).toBe("٤ للنظام، ٢ مخصَّصة");
     expect(ADMIN_COPY.ar.common.page(2, 13)).toBe("الصفحة ٢ من ١٣");
   });
 });

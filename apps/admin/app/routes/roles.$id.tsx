@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Email } from "../components/email";
+import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { Link, useLoaderData, useFetcher, useSearchParams } from "react-router";
 import { ArrowLeft, Save, Plus, X, Shield, Users, Key, Settings, Trash2 } from "lucide-react";
@@ -8,7 +10,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
-import { formatDate } from "../lib/date-utils";
 import {
   Dialog,
   DialogContent,
@@ -141,7 +142,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       allPermissions,
       usersWithRole,
       // Who assigned the role, by name (never a raw id)
-      names: await userNames(env.AUTH_DB, usersWithRole.map((u) => u.assigned_by)),
+      names: await userNames(env.AUTH_DB, [...usersWithRole.map((u) => u.id), ...usersWithRole.map((u) => u.assigned_by)]),
     };
   } catch (error) {
     console.error("Error loading role:", error);
@@ -264,6 +265,7 @@ export default function RoleDetail() {
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
   const t = adminCopy(lang).role;
+  const stamp = useAdminTime(lang);
   const c = adminCopy(lang).common;
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [addPermissionOpen, setAddPermissionOpen] = useState(false);
@@ -392,9 +394,9 @@ export default function RoleDetail() {
                     {role.description ? <bdi>{describeRole(role.description, lang)}</bdi> : t.noDescription}
                   </CardDescription>
                   <div className="flex items-center gap-4 text-sm text-[var(--color-muted-foreground)]">
-                    <span>{t.created(formatDate(role.created_at, lang))}</span>
+                    <span>{t.created(stamp(role.created_at, true))}</span>
                     {role.updated_at !== role.created_at && (
-                      <span>{t.updated(formatDate(role.updated_at, lang))}</span>
+                      <span>{t.updated(stamp(role.updated_at, true))}</span>
                     )}
                   </div>
                 </div>
@@ -519,9 +521,10 @@ export default function RoleDetail() {
                   {usersWithRole.map((user) => (
                     <li key={user.id} className="flex items-start justify-between gap-3 rounded-lg border border-[var(--color-border)] p-3 text-sm">
                       <div className="min-w-0 space-y-1">
-                        <div className="font-medium break-all"><bdi>{user.email}</bdi></div>
+                        <div className="font-medium"><bdi>{names[user.id] || user.email}</bdi></div>
+                        {names[user.id] && <div className="text-xs text-[var(--color-muted-foreground)]"><Email value={user.email} /></div>}
                         <div className="text-xs text-[var(--color-muted-foreground)]">
-                          {t.colAssigned}: {formatDate(user.assigned_at, lang)}{c.sep}{t.colAssignedBy}: <bdi>{(user.assigned_by && names[user.assigned_by]) || actorLabel(user.assigned_by, lang)}</bdi>
+                          {t.colAssigned}: <AdminTime value={user.assigned_at} lang={lang} dateOnly />{c.sep}{t.colAssignedBy}: <bdi>{(user.assigned_by && names[user.assigned_by]) || actorLabel(user.assigned_by, lang)}</bdi>
                         </div>
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => setUserToRemove(user)} title={t.removeFromUser(user.email)} aria-label={t.removeFromUser(user.email)}>
@@ -534,7 +537,7 @@ export default function RoleDetail() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{c.email}</TableHead>
+                      <TableHead>{t.colUser}</TableHead>
                       <TableHead>{t.colAssigned}</TableHead>
                       <TableHead>{t.colAssignedBy}</TableHead>
                       <TableHead className="text-end">{c.actions}</TableHead>
@@ -543,9 +546,12 @@ export default function RoleDetail() {
                   <TableBody>
                     {usersWithRole.map((user) => (
                       <TableRow key={user.id}>
-                        <TableCell className="font-medium"><bdi>{user.email}</bdi></TableCell>
                         <TableCell>
-                          {formatDate(user.assigned_at, lang)}
+                          <div className="font-medium"><bdi>{names[user.id] || user.email}</bdi></div>
+                          {names[user.id] && <div className="text-xs text-[var(--color-muted-foreground)]"><Email value={user.email} /></div>}
+                        </TableCell>
+                        <TableCell>
+                          <AdminTime value={user.assigned_at} lang={lang} dateOnly />
                         </TableCell>
                         <TableCell>
                           <bdi>{(user.assigned_by && names[user.assigned_by]) || actorLabel(user.assigned_by, lang)}</bdi>

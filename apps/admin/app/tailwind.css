@@ -149,9 +149,12 @@ body {
   color: var(--color-foreground);
 }
 
-/* No lone last word on a line (Arabic especially): paragraphs and list items wrap evenly */
-p, li, dd, label {
-  text-wrap: pretty;
+/* No lone last word on a line (Arabic especially): every text block wraps evenly (inherited) */
+body {
+  text-wrap-style: pretty;
+}
+label {
+  text-wrap-style: balance;
 }
 h1, h2, h3 {
   text-wrap: balance;

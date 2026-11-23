@@ -53,7 +53,7 @@ const en: ConfirmCopy = {
   rotateSecret: {
     title: 'Rotate the client secret?',
     body: (name, clientId) =>
-      `The current secret of "${name}" (${clientId}) stops working at once. The app cannot get tokens until it is given the new secret.`,
+      `The current secret of “${name}” (${clientId}) stops working at once. The app cannot get tokens until it is given the new secret.`,
     confirm: 'Rotate secret',
   },
   removeFile: {
@@ -63,7 +63,7 @@ const en: ConfirmCopy = {
   },
   removeRole: {
     title: 'Remove this role?',
-    body: (email, role) => `${email} loses the "${role}" role and every permission it grants.`,
+    body: (email, role) => `${email} loses the “${role}” role and every permission it grants.`,
     confirm: 'Remove role',
   },
 };
@@ -92,7 +92,7 @@ const ar: ConfirmCopy = {
   rotateSecret: {
     title: 'تغيير السر الخاص بالعميل؟',
     body: (name, clientId) =>
-      `يتوقف السر الحالي لـ "${name}" (${clientId}) عن العمل فورًا. لا يستطيع التطبيق الحصول على رموز حتى يُعطى السر الجديد.`,
+      `يتوقف السر الحالي لـ «${name}» (${clientId}) عن العمل فورًا. لا يستطيع التطبيق الحصول على رموز حتى يُعطى السر الجديد.`,
     confirm: 'تغيير السر',
   },
   removeFile: {
@@ -102,7 +102,7 @@ const ar: ConfirmCopy = {
   },
   removeRole: {
     title: 'إزالة هذا الدور؟',
-    body: (email, role) => `يفقد ${email} الدور "${role}" وكل صلاحية يمنحها.`,
+    body: (email, role) => `يفقد ${email} الدور «${role}» وكل صلاحية يمنحها.`,
     confirm: 'إزالة الدور',
   },
 };

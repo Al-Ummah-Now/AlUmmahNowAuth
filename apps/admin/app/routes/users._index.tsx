@@ -1,6 +1,7 @@
 import { formatNumber } from "../../../../packages/ui/src/format.ts";
+import { Email } from "../components/email";
+import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { pageTitle } from "../lib/admin-copy";
-import { formatDateMs } from "../lib/date-utils";
 import { pagesCopy } from "../lib/pages-copy";
 import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
@@ -794,12 +795,12 @@ export default function Users() {
                   {filteredUsers.map((u) => (
                     <li key={u.id} className="rounded-lg border border-[var(--color-border)] p-3" data-testid="user-card">
                       <div className="font-medium"><bdi>{nameOf(u)}</bdi></div>
-                      {u.name?.trim() && <div className="text-sm text-[var(--color-muted-foreground)]"><bdi>{u.email}</bdi></div>}
+                      {u.name?.trim() && <div className="text-sm text-[var(--color-muted-foreground)]"><Email value={u.email} /></div>}
                       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                         <dt className="text-[var(--color-muted-foreground)]">{t.colRoles}</dt>
                         <dd className="flex flex-wrap gap-1">{rolesOf(u)}</dd>
                         <dt className="text-[var(--color-muted-foreground)]">{t.colCreated}</dt>
-                        <dd>{formatDateMs(u.created_at, lang)}</dd>
+                        <dd><AdminTime value={u.created_at} lang={lang} dateOnly /></dd>
                       </dl>
                       <div className="mt-3 flex flex-wrap justify-end gap-2">{actionsOf(u)}</div>
                     </li>
@@ -826,7 +827,7 @@ export default function Users() {
                             {user.name?.trim() && (
                               <div className="flex items-center gap-1 text-xs font-normal text-[var(--color-muted-foreground)]">
                                 <Mail className="h-3 w-3" aria-hidden="true" />
-                                <bdi>{user.email}</bdi>
+                                <Email value={user.email} />
                               </div>
                             )}
                           </div>
@@ -835,7 +836,7 @@ export default function Users() {
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2">{rolesOf(user)}</div>
                       </TableCell>
-                      <TableCell>{formatDateMs(user.created_at, lang)}</TableCell>
+                      <TableCell><AdminTime value={user.created_at} lang={lang} dateOnly /></TableCell>
                       <TableCell className="text-end">
                         <div className="flex justify-end gap-2">{actionsOf(user)}</div>
                       </TableCell>

@@ -53,6 +53,17 @@ const PAGES = {
   "signing-keys": { path: "signing-keys", Component: SigningKeys },
 } as const;
 
+/** Stored text in the page's language (what an Arabic admin or app would have written): resolved by PageApp. */
+const T = (en: string, ar: string) => ({ __text: true as const, en, ar });
+function inLang(value: unknown, lang: "en" | "ar"): unknown {
+  if (Array.isArray(value)) return value.map((v) => inLang(v, lang));
+  if (value && typeof value === "object") {
+    if ((value as { __text?: boolean }).__text) return (value as { en: string; ar: string })[lang];
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, inLang(v, lang)]));
+  }
+  return value;
+}
+
 // Fixed instants, so the server render and the browser agree on every date
 const NOW = Date.UTC(2026, 10, 15, 9, 30);
 const DAY = 86_400_000;
@@ -80,7 +91,8 @@ const SESSION_ROWS = Array.from({ length: 50 }, (_, i) => {
   const [userId, handle] = PEOPLE[rand(PEOPLE.length)];
   // i 0–9 within the last hour, then further back
   const lastUsed = i < 10 ? ago(0, 0, i * 5 + rand(5), rand(60)) : ago(Math.floor(i / 8), rand(24), rand(60), rand(60));
-  const signedIn = lastUsed - (rand(3) * DAY + rand(86_400) * 1000);
+  // The ten active sessions signed in within the last day; older ones up to three days before last use
+  const signedIn = i < 10 ? lastUsed - rand(20 * 3600) * 1000 : lastUsed - (rand(3) * DAY + rand(86_400) * 1000);
   return {
     id: `s-${100 + i}`, userId, email: `${handle}@mail.alummahnow.net`,
     authenticatedAt: Math.floor(signedIn / 1000), lastUsed: Math.floor(lastUsed / 1000), lastActivity: Math.floor(lastUsed / 1000),
@@ -89,7 +101,7 @@ const SESSION_ROWS = Array.from({ length: 50 }, (_, i) => {
   };
 }).sort((x, y) => y.lastUsed - x.lastUsed);
 const NAMES: Record<string, string> = {
-  "u-10": "Yusuf Rahman", "u-11": "Khadija Noor", "u-12": "مريم الحسن", "u-13": "Ibrahim Saeed", "u-14": "Fatima Zahra", "u-15": "Bilal Hamdan",
+  "u-10": "Yusuf Rahman", "u-11": "Khadija Noor", "u-12": "Maryam Alhassan", "u-13": "Ibrahim Saeed", "u-14": "Fatima Zahra", "u-15": "Bilal Hamdan",
   "u-16": "Aisha Karim", "u-17": "Zaid Mansour", "u-18": "Huda Qasim", "u-19": "Tariq Aziz", "u-20": "Safiya Omar", "u-21": "Idris Farouk",
 };
 // Everyone who signed in within 24h was active since, so all of them are on this newest-first page
@@ -106,14 +118,14 @@ export const FIXTURES: Record<string, unknown> = {
     authServerUrl: "",
     items: [
       { kind: "user", id: "u-1", label: "amina.yusuf@mail.alummahnow.net", name: "Amina Yusuf", deletedAt: ago(3, 4, 12, 37), deletedBy: "self", deletedByEmail: null, reason: null, purgeAt: ago(3, 4, 12, 37) + 30 * DAY, purgeRequestedAt: null, lastError: null },
-      { kind: "user", id: "u-2", label: "hamza.idris@mail.alummahnow.net", name: "Hamza Idris", deletedAt: ago(27, 19, 48, 5), deletedBy: "admin-1", deletedByEmail: "omar.saleh@mail.alummahnow.net", deletedByName: "Omar Saleh", reason: "رسائل مزعجة متكررة", purgeAt: ago(27, 19, 48, 5) + 30 * DAY, purgeRequestedAt: null, lastError: null },
+      { kind: "user", id: "u-2", label: "hamza.idris@mail.alummahnow.net", name: "Hamza Idris", deletedAt: ago(27, 19, 48, 5), deletedBy: "admin-1", deletedByEmail: "omar.saleh@mail.alummahnow.net", deletedByName: "Omar Saleh", reason: T("Repeated spam", "رسائل مزعجة متكررة"), purgeAt: ago(27, 19, 48, 5) + 30 * DAY, purgeRequestedAt: null, lastError: null },
     ],
   },
   users: {
     users: [
       { id: "admin-1", email: "omar.saleh@mail.alummahnow.net", name: "Omar Saleh", created_at: new Date(ago(71, 4, 22, 9)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
       { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", name: "Yusuf Rahman", created_at: new Date(ago(40, 6, 3, 51)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
-      { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "مريم الحسن", created_at: new Date(ago(12, 2, 44, 18)).toISOString(), roles: [{ id: "r-2", name: "Moderator" }] },
+      { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "Maryam Alhassan", created_at: new Date(ago(12, 2, 44, 18)).toISOString(), roles: [{ id: "r-2", name: "Moderator" }] },
       { id: "u-11", name: "Khadija Noor", email: "khadija.noor@mail.alummahnow.net", created_at: new Date(ago(19, 11, 26, 9)).toISOString(), roles: [] },
       { id: "u-13", name: "Ibrahim Saeed", email: "ibrahim.saeed@mail.alummahnow.net", created_at: new Date(ago(22, 8, 14, 3)).toISOString(), roles: [] },
       { id: "u-14", name: "Fatima Zahra", email: "fatima.zahra@mail.alummahnow.net", created_at: new Date(ago(25, 1, 37, 55)).toISOString(), roles: [] },
@@ -136,7 +148,8 @@ export const FIXTURES: Record<string, unknown> = {
     self: false,
     targetId: "u-10",
     targetEmail: "yusuf.rahman@mail.alummahnow.net",
-    passkeys: [{ id: "pk-1", name: "Laptop", createdAt: ago(10, 3, 51, 22), lastUsedAt: ago(1, 1, 7, 46), synced: true, removedAt: null }],
+    targetName: "Yusuf Rahman",
+    passkeys: [{ id: "pk-1", name: T("Laptop", "الحاسوب المحمول"), createdAt: ago(10, 3, 51, 22), lastUsedAt: ago(1, 1, 7, 46), synced: true, removedAt: null }],
     staff: true,
     // passkey.add_failed audit events (the loader maps them), newest first: the times render in the browser's zone
     failures: [
@@ -167,7 +180,7 @@ export const FIXTURES: Record<string, unknown> = {
   },
   clients: {
     clients: [
-      { id: "c-1", client_id: "1448ed27-39a6-417d-b4c8-07f881e81269", name: "Accounts admin", client_type: "confidential", allowed_grants: ["authorization_code", "refresh_token"], redirect_uris: ["https://admin.auth.alummahnow.net/auth/callback", "https://admin.auth.stage.alummahnow.net/auth/callback", "https://admin.auth.qa.alummahnow.net/auth/callback"], scopes: ["openid", "profile", "email", "offline_access"], metadata: {}, enabled: true, created_at: Math.floor(ago(30, 5, 9, 14) / 1000) },
+      { id: "c-1", client_id: "1448ed27-39a6-417d-b4c8-07f881e81269", name: T("Accounts admin", "إدارة الحسابات"), client_type: "confidential", allowed_grants: ["authorization_code", "refresh_token"], redirect_uris: ["https://admin.auth.alummahnow.net/auth/callback", "https://admin.auth.stage.alummahnow.net/auth/callback", "https://admin.auth.qa.alummahnow.net/auth/callback"], scopes: ["openid", "profile", "email", "offline_access"], metadata: {}, enabled: true, created_at: Math.floor(ago(30, 5, 9, 14) / 1000) },
     ],
     user: ADMIN,
     authServerUrl: "",
@@ -178,16 +191,6 @@ export const FIXTURES: Record<string, unknown> = {
 // ---------------------------------------------------------------- the other admin pages
 
 const iso = (ms: number) => new Date(ms).toISOString();
-/** Stored text in the page's language (what an Arabic admin or app would have written): resolved by PageApp. */
-const T = (en: string, ar: string) => ({ __text: true as const, en, ar });
-function inLang(value: unknown, lang: "en" | "ar"): unknown {
-  if (Array.isArray(value)) return value.map((v) => inLang(v, lang));
-  if (value && typeof value === "object") {
-    if ((value as { __text?: boolean }).__text) return (value as { en: string; ar: string })[lang];
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, inLang(v, lang)]));
-  }
-  return value;
-}
 const sec = (ms: number) => Math.floor(ms / 1000);
 const PERMS = [
   ["p-1", "users:read", "users", "read", T("See user accounts", "عرض حسابات المستخدمين")],
@@ -228,7 +231,9 @@ const FAWANEES = builtinPackage("fawanees")!;
 Object.assign(FIXTURES, {
   dashboard: {
     isAuthenticated: true, user: ADMIN, totalUsers: 45230, adminUsers: 41, totalRoles: 6, systemRoles: 4, customRoles: 2,
-    usersByRole: [{ name: "Member", user_count: 45000 }, { name: "Admin", user_count: 40 }, { name: "Creator", user_count: 12 }, { name: "Moderator", user_count: 3 }, { name: "Super Admin", user_count: 1 }],
+    // The roles page's roles and counts (4 system + Translator and Creator), the five largest
+    usersByRole: [{ name: "Member", user_count: 45000 }, { name: "Admin", user_count: 40 }, { name: "Creator", user_count: 12 }, { name: "Moderator", user_count: 3 }, { name: T("Translator", "مترجم"), user_count: 2 }],
+    activeSessions: 10,
     authServerUrl: "", appUrl: "", authorizeUrl: "",
   },
   roles: {
@@ -238,7 +243,8 @@ Object.assign(FIXTURES, {
       { id: "r-1", name: "Admin", description: "Administrative access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 40 },
       { id: "r-2", name: "Moderator", description: "Video platform content moderation", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 3 },
       { id: "r-3", name: "Member", description: "Basic member access", is_system_role: true, created_at: sec(ago(300)), updated_at: sec(ago(300)), user_count: 45000 },
-      { id: "r-4", name: T("Translator", "مترجم"), description: T("Reviews translations", "مراجعة الترجمات"), is_system_role: false, created_at: sec(ago(20)), updated_at: sec(ago(4)), user_count: 12 },
+      { id: "r-4", name: T("Translator", "مترجم"), description: T("Reviews translations", "مراجعة الترجمات"), is_system_role: false, created_at: sec(ago(20)), updated_at: sec(ago(4)), user_count: 2 },
+      { id: "r-5", name: "Creator", description: T("Uploads videos to their own channels", "يرفع المرئيات إلى قنواته"), is_system_role: false, created_at: sec(ago(60)), updated_at: sec(ago(60)), user_count: 12 },
     ],
   },
   role: {
@@ -249,17 +255,18 @@ Object.assign(FIXTURES, {
       { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", assigned_at: sec(ago(4, 7, 12)), assigned_by: "admin-1" },
       { id: "u-20", email: "safiya.omar@mail.alummahnow.net", assigned_at: sec(ago(2, 1, 40)), assigned_by: "system" },
     ],
-    names: { "admin-1": "Omar Saleh" },
+    names: { "admin-1": "Omar Saleh", "u-12": "Maryam Alhassan", "u-20": "Safiya Omar" },
   },
   moderation: {
     user: ADMIN, authServerUrl: "", page: 1,
-    filters: { status: "pending", client_id: "", action: "", from: "", to: "", needs_attention: "" },
+    filters: { status: "all", client_id: "", action: "", from: "", to: "", needs_attention: "" },
     queue: { requests: [MOD_REQUEST, MOD_FAILED], total: 1250, open: 37, needs_attention: 2, limit: 25, offset: 0, clients: [{ id: "videos", name: T("Videos", "المرئيات") }, { id: "cms", name: T("CMS", "إدارة المحتوى") }] },
   },
   "moderation-request": {
     user: ADMIN, authServerUrl: "",
     detail: {
-      request: { ...MOD_FAILED, history: [...MOD_REQUEST.history, { id: "h-2", type: "approved", actor_type: "admin", actor_id: "admin-1", actor_name: "Omar Saleh", note: null, metadata: null, at: iso(ago(1, 5)) }, { id: "h-3", type: "action_failed", actor_type: "system", actor_id: "moderation-actions", actor_name: null, note: "auth service timed out", metadata: { attempts: 3 }, at: iso(ago(1, 4, 50)) }] },
+      // In order: created when the request came in, approved, then the action failed
+      request: { ...MOD_FAILED, history: [{ ...MOD_REQUEST.history[0], at: MOD_FAILED.created_at }, { id: "h-2", type: "approved", actor_type: "admin", actor_id: "admin-1", actor_name: "Omar Saleh", note: null, metadata: null, at: iso(ago(1, 5)) }, { id: "h-3", type: "action_failed", actor_type: "system", actor_id: "moderation-actions", actor_name: null, note: "auth service timed out", metadata: { attempts: 3 }, at: iso(ago(1, 4, 50)) }] },
       subject: { id: "u-19", email: "tariq.aziz@mail.alummahnow.net", name: "Tariq Aziz", status: "active", password_reset_required: false, created_at: ago(51, 17, 19, 48) },
       prior_requests: [MOD_DONE],
     },
@@ -292,7 +299,8 @@ Object.assign(FIXTURES, {
     view: {
       keys: [
         { id: "k-2026-11", alg: "ES256", created: ago(12, 3), activates: ago(10, 3), state: "active" },
-        { id: "k-2026-10", alg: "ES256", created: ago(42, 3), activates: ago(40, 3), expired: ago(10, 3), state: "previous" },
+        // Retires 336 h (14 days) after the new key started signing: still ahead
+        { id: "k-2026-10", alg: "ES256", created: ago(42, 3), activates: ago(40, 3), expired: ago(10, 3) + 14 * DAY, state: "previous" },
       ],
       policy: { publishLeadMs: 2 * DAY, rotateEveryMs: 30 * DAY, retireAfterMs: 14 * DAY, scheduled: true },
       status: { lastRunAt: ago(0, 5, 2), lastTrigger: "schedule", queuedAt: null, error: null, errorAt: null, attempts: 0 },

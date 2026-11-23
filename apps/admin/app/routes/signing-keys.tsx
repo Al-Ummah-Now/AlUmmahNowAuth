@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { AdminTime, useAdminTime } from "../components/admin-time";
 import { pageTitle } from "../lib/admin-copy";
-import { formatDate } from "../../../../packages/ui/src/format.ts";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { AdminLayout } from "../components/admin-layout";
@@ -52,9 +52,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
 const HOUR = 3_600_000;
 
-function formatTime(ms: number | undefined | null, lang: AdminLang, t: SigningKeysCopy): string {
-  if (!ms) return t.never;
-  return formatDate(ms, lang, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC";
+/** A time inside a sentence: local with its zone after hydration (components/admin-time.tsx). */
+function formatTime(ms: number | undefined | null, stamp: (v: number) => string, t: SigningKeysCopy): string {
+  return ms ? stamp(ms) : t.never;
 }
 
 function errorText(t: SigningKeysCopy, code: string): string {
@@ -73,6 +73,7 @@ export default function SigningKeys() {
   const [searchParams] = useSearchParams();
   const lang = langOf(searchParams);
   const t = signingKeysCopy(lang);
+  const stamp = useAdminTime(lang);
   const fetcher = useFetcher<typeof action>();
   const [confirming, setConfirming] = useState(false);
   const busy = fetcher.state !== "idle";
@@ -102,7 +103,7 @@ export default function SigningKeys() {
             {view.status.error && (
               <div role="alert" data-testid="signing-keys-failed" className="rounded-lg border border-[var(--color-destructive)] bg-[var(--color-muted)] p-4">
                 <p className="font-semibold text-[var(--color-destructive-text)]">{t.failedTitle}</p>
-                <p className="mt-1 text-sm">{t.failedBody(formatTime(view.status.errorAt, lang, t), view.status.attempts)}</p>
+                <p className="mt-1 text-sm">{t.failedBody(formatTime(view.status.errorAt, stamp, t), view.status.attempts)}</p>
                 <p className="mt-1 text-xs text-[var(--color-muted-foreground)] rtl:text-right" dir="ltr">
                   {view.status.error}
                 </p>
@@ -118,8 +119,8 @@ export default function SigningKeys() {
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
                 <div>
                   <CardTitle>{t.keysTitle}</CardTitle>
-                  <CardDescription>{t.statusTitle}: {view.status.lastRunAt ? t.lastRun(formatTime(view.status.lastRunAt, lang, t), view.status.lastTrigger ?? "schedule") : t.neverRun}</CardDescription>
-                  {view.status.queuedAt && <p className="mt-1 text-sm" role="status">{t.queued(formatTime(view.status.queuedAt, lang, t))}</p>}
+                  <CardDescription>{t.statusTitle}: {view.status.lastRunAt ? t.lastRun(formatTime(view.status.lastRunAt, stamp, t), view.status.lastTrigger ?? "schedule") : t.neverRun}</CardDescription>
+                  {view.status.queuedAt && <p className="mt-1 text-sm" role="status">{t.queued(formatTime(view.status.queuedAt, stamp, t))}</p>}
                 </div>
                 {view.canRotate ? (
                   <div className="flex flex-col items-end gap-1">
@@ -150,13 +151,13 @@ export default function SigningKeys() {
                       <code className="mt-2 block break-all text-xs rtl:text-right" dir="ltr">{k.id}</code>
                       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                         <dt className="text-[var(--color-muted-foreground)]">{t.colCreated}</dt>
-                        <dd>{formatTime(k.created, lang, t)}</dd>
+                        <dd><AdminTime value={k.created} lang={lang} missing={t.never} /></dd>
                         <dt className="text-[var(--color-muted-foreground)]">{t.colSignsFrom}</dt>
-                        <dd>{formatTime(k.activates ?? k.created, lang, t)}</dd>
+                        <dd><AdminTime value={k.activates ?? k.created} lang={lang} missing={t.never} /></dd>
                         {k.expired && (
                           <>
                             <dt className="text-[var(--color-muted-foreground)]">{t.colRetired}</dt>
-                            <dd>{formatTime(k.expired, lang, t)}</dd>
+                            <dd><AdminTime value={k.expired} lang={lang} missing={t.never} /></dd>
                           </>
                         )}
                       </dl>
@@ -185,9 +186,9 @@ export default function SigningKeys() {
                             <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${STATE_STYLE[k.state]}`}>{t.state[k.state]}</span>
                             <div className="mt-1 max-w-xs text-xs text-[var(--color-muted-foreground)]">{t.stateHelp[k.state]}</div>
                           </TableCell>
-                          <TableCell className="whitespace-nowrap">{formatTime(k.created, lang, t)}</TableCell>
-                          <TableCell className="whitespace-nowrap">{formatTime(k.activates ?? k.created, lang, t)}</TableCell>
-                          <TableCell className="whitespace-nowrap">{formatTime(k.expired, lang, t)}</TableCell>
+                          <TableCell className="whitespace-nowrap"><AdminTime value={k.created} lang={lang} missing={t.never} /></TableCell>
+                          <TableCell className="whitespace-nowrap"><AdminTime value={k.activates ?? k.created} lang={lang} missing={t.never} /></TableCell>
+                          <TableCell className="whitespace-nowrap"><AdminTime value={k.expired} lang={lang} missing={t.never} /></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
