@@ -132,7 +132,7 @@ test.describe('Admin sign-in themes', () => {
 
       // ---- a colour: the page background, light and dark
       await page.getByRole('tab', { name: 'Pages' }).click();
-      for (const mode of ['light', 'dark']) {
+      for (const mode of ['Light', 'Dark']) {
         const field = page.getByLabel(`Page background (${mode})`, { exact: true });
         await field.fill(PAGE_BG);
         await field.press('Tab');

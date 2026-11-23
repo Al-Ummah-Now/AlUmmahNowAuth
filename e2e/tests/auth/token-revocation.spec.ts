@@ -235,6 +235,9 @@ test.describe('Token Revocation', () => {
   test('should prevent refresh after user logs out in another session', async ({
     browser,
   }) => {
+    // A sign-up, a sign-in and four page loads in two browsers: about 10 s on a quick runner, over
+    // the 30 s default on a slow one (stage, 2026-11-23). Like the other specs that sign in twice.
+    test.setTimeout(90_000);
     const testUser = TEST_USERS.user();
 
     // Create first browser context (session 1)

@@ -456,30 +456,36 @@ async function adminActor(request: Request, env: PasskeyEnv): Promise<{ id: stri
 	}
 }
 
-/** Staff without a passkey, for the enforcement panel: walks staff role assignments (role_id index), capped. */
-async function staffWithoutPasskey(db: D1Database): Promise<{ staff: number; withoutPasskey: { id: string; email: string }[]; capped: boolean }> {
+/**
+ * Staff without a passkey, for the enforcement panel: the staff role assignments (role_id index),
+ * capped, each with its account (primary key) and whether it holds a passkey (user_id index).
+ * One batch: a query or two per staff account, one after the other, hung the page on QA (2 minutes
+ * at 500 staff) and could pass D1's limit of 1,000 queries per request.
+ */
+export async function staffWithoutPasskey(db: D1Database): Promise<{ staff: number; withoutPasskey: { id: string; email: string }[]; capped: boolean }> {
 	const CAP = 500;
 	const { results: roles } = await db.prepare(`SELECT id, name FROM rbac_roles LIMIT 200`).all<{ id: string; name: string }>();
 	const staffRoleIds = (roles ?? []).filter((r) => (STAFF_ROLES as readonly string[]).includes(normaliseRole(r.name))).map((r) => r.id);
-	const users = new Set<string>();
-	let capped = false;
-	for (const roleId of staffRoleIds) {
-		const { results } = await db.prepare(`SELECT user_id FROM rbac_user_roles WHERE role_id = ?1 LIMIT ?2`).bind(roleId, CAP + 1).all<{ user_id: string }>();
-		for (const r of results ?? []) users.add(r.user_id);
-		if (users.size > CAP) {
-			capped = true;
-			break;
-		}
+	if (staffRoleIds.length === 0) return { staff: 0, withoutPasskey: [], capped: false };
+	const perRole = await db.batch<{ id: string; email: string | null; has_passkey: number }>(
+		staffRoleIds.map((roleId) => db.prepare(STAFF_OF_ROLE_SQL).bind(roleId, CAP + 1))
+	);
+	const staff = new Map<string, { email: string | null; hasPasskey: boolean }>();
+	for (const { results } of perRole) {
+		for (const r of results ?? []) staff.set(r.id, { email: r.email, hasPasskey: r.has_passkey === 1 });
 	}
-	const without: { id: string; email: string }[] = [];
-	for (const id of [...users].slice(0, CAP)) {
-		if ((await countForUser(db, id)) === 0) {
-			const email = await userEmail(db, id);
-			if (email) without.push({ id, email });
-		}
-	}
-	return { staff: Math.min(users.size, CAP), withoutPasskey: without, capped };
+	const capped = staff.size > CAP;
+	const listed = [...staff].slice(0, CAP);
+	const withoutPasskey: { id: string; email: string }[] = [];
+	for (const [id, s] of listed) if (!s.hasPasskey && s.email) withoutPasskey.push({ id, email: s.email });
+	return { staff: listed.length, withoutPasskey, capped };
 }
+
+/** ?1 role id, ?2 limit. A deleted account has no email here and so is never listed. */
+export const STAFF_OF_ROLE_SQL = `SELECT ur.user_id AS id, u.email AS email,
+	EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = ur.user_id AND w.deleted_at IS NULL) AS has_passkey
+	FROM rbac_user_roles ur LEFT JOIN users u ON u.id = ur.user_id AND u.deleted_at IS NULL
+	WHERE ur.role_id = ?1 LIMIT ?2`;
 
 async function handleAdmin(rctx: PasskeyRouteContext, path: string): Promise<Response | null> {
 	const { request, env } = rctx;

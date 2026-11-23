@@ -102,7 +102,7 @@ test.describe('Admin Audit View', () => {
 
     // Verify the event has expected structure (columns)
     const firstRow = tableRows.first();
-    await expect(firstRow.locator('td').nth(0)).toContainText(/\d{1,2}\/\d{1,2}\/\d{4}/); // Timestamp
+    await expect(firstRow.locator('td').nth(0)).toContainText(/[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M [A-Z]{2,5}/); // Timestamp with its zone (admin-time.tsx)
     await expect(firstRow.locator('td').nth(1)).toBeVisible(); // Event type
     await expect(firstRow.locator('td').nth(2)).toBeVisible(); // Severity badge
     await expect(firstRow.locator('td').nth(5)).toBeVisible(); // Status badge

@@ -20,7 +20,7 @@ import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
 import { clearPolicyCache, deadlineFor, isStaff, passkeyBlocked, writeStaffPasskeySetting } from '../passkeys/policy';
 import { createSetupTicket, peekSetupTicket, useSetupTicket, defaultPasskeyName, cleanPasskeyName } from '../passkeys/store';
 import { cardEnabledFor } from '../passkeys/card';
-import { safeReturnTo, signRegistration, readRegistration } from '../passkeys/routes';
+import { safeReturnTo, signRegistration, readRegistration, staffWithoutPasskey, STAFF_OF_ROLE_SQL } from '../passkeys/routes';
 
 const ISSUER = 'http://localhost:3301';
 const RP_ID = 'localhost';
@@ -392,6 +392,59 @@ describe('passkeys (worker)', () => {
 		const r = decodeJwt(((await refreshed.json()) as any).access_token) as any;
 		expect(r.properties.passkey_deadline).toBeUndefined();
 		expect(r.amr).toEqual(['pwd']);
+	});
+
+	it('staff without a passkey: the right accounts, in one batch however many staff there are', async () => {
+		const id = `pk-staff-${unique()}`;
+		const now = Date.now();
+		const ids = { none: `${id}-none`, has: `${id}-has`, removed: `${id}-removed`, gone: `${id}-gone`, member: `${id}-member` };
+		const db = E.AUTH_DB;
+		const credential = (user: string, deletedAt: number | null) =>
+			db
+				.prepare(`INSERT INTO webauthn_credentials (id, user_id, public_key, device_type, name, created_at, deleted_at) VALUES (?1, ?2, 'k', 'singleDevice', 'n', ?3, ?4)`)
+				.bind(`${user}-cred`, user, now, deletedAt);
+		await db.batch([
+			...Object.values(ids).map((u) =>
+				db.prepare(`INSERT INTO users (id, tenant_id, email, status, created_at, updated_at) VALUES (?1, 'default', ?2, 'active', ?3, ?3)`).bind(u, `${u}@example.com`, now)
+			),
+			db.prepare(`UPDATE users SET deleted_at = ?2 WHERE id = ?1`).bind(ids.gone, now),
+			credential(ids.has, null),
+			credential(ids.removed, now),
+		]);
+		for (const u of [ids.none, ids.has, ids.removed, ids.gone]) await grant(u, 'role_admin', now);
+		try {
+			let queries = 0;
+			let batches = 0;
+			const counted = {
+				prepare: (sql: string) => (queries++, db.prepare(sql)),
+				batch: (statements: D1PreparedStatement[]) => (batches++, db.batch(statements)),
+			} as unknown as D1Database;
+			const before = await staffWithoutPasskey(counted);
+			const listed = before.withoutPasskey.map((s) => s.id).filter((s) => s.startsWith(id));
+			expect(listed.sort()).toEqual([ids.none, ids.removed].sort());
+			expect(before.withoutPasskey.find((s) => s.id === ids.none)?.email).toBe(`${ids.none}@example.com`);
+			// One role query plus one statement per staff role, sent together
+			const perRole = queries;
+			expect(batches).toBe(1);
+			queries = 0;
+			await grant(ids.member, 'role_admin', now);
+			const after = await staffWithoutPasskey(counted);
+			expect(after.staff).toBe(before.staff + 1);
+			expect(queries).toBe(perRole);
+
+			// openauth's own migrations create it (schema.snapshot.sql); the test schema is hand-made
+			await db.prepare(`CREATE INDEX IF NOT EXISTS idx_rbac_user_roles_role ON rbac_user_roles(role_id)`).run();
+			const { results: plan } = await db.prepare(`EXPLAIN QUERY PLAN ${STAFF_OF_ROLE_SQL}`).bind('role_admin', 501).all<{ detail: string }>();
+			expect(plan.filter((p) => /\bSCAN (?!CONSTANT)/.test(p.detail))).toEqual([]);
+		} finally {
+			const list = Object.values(ids);
+			const marks = list.map((_, i) => `?${i + 1}`).join(',');
+			await db.batch([
+				db.prepare(`DELETE FROM webauthn_credentials WHERE user_id IN (${marks})`).bind(...list),
+				db.prepare(`DELETE FROM rbac_user_roles WHERE user_id IN (${marks})`).bind(...list),
+				db.prepare(`DELETE FROM users WHERE id IN (${marks})`).bind(...list),
+			]);
+		}
 	});
 
 	it('ceremonies refuse other origins (CSRF) and signed-out browsers', async () => {
