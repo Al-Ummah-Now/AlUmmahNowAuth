@@ -727,6 +727,7 @@ const theme = {
     previewUnavailable: "Preview unavailable",
     // controls
     colourValue: (label: string, mode: string) => `${label} value (${mode})`,
+    colourPicker: (label: string, mode: string) => `${label} color (${mode})`,
     angle: "Angle",
     gradientAngle: "Gradient angle",
     stopColour: (i: number) => `Stop ${formatNumber(i, "en")} color`,
@@ -847,6 +848,7 @@ const theme = {
     previewFailed: (status: number) => `تعذّرت المعاينة (${formatNumber(status, "ar")})`,
     previewUnavailable: "المعاينة غير متاحة",
     colourValue: (label: string, mode: string) => `قيمة ${label} (${mode})`,
+    colourPicker: (label: string, mode: string) => `لون ${label} (${mode})`,
     angle: "الزاوية",
     gradientAngle: "زاوية التدرج",
     stopColour: (i: number) => `لون النقطة ${formatNumber(i, "ar")}`,

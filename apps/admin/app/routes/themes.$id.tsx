@@ -315,7 +315,7 @@ function SlotEditor({ theme, sectionId, slot, onTheme, disabled, assetUrls }: { 
         {slot.kind === "paint" && (
           <input
             type="color"
-            aria-label={`${slotLabel} (${m === "light" ? c.light : c.dark})`}
+            aria-label={t.colourPicker(slotLabel, m === "light" ? c.light : c.dark)}
             value={pickerHex(theme, m, v)}
             disabled={disabled}
             onChange={(e) => set(mode, e.target.value)}

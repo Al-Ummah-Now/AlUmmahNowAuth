@@ -164,3 +164,20 @@ describe("no English typed into a page", () => {
     expect(found).toEqual([]);
   });
 });
+
+describe("theme builder: the controls of one colour have different names (a screen reader hears only the name)", () => {
+  it.each(["en", "ar"] as const)("%s", (lang) => {
+    const { theme, common } = ADMIN_COPY[lang];
+    for (const slot of SECTIONS.flatMap((s) => s.slots)) {
+      const label = catalogLabel(slot.label, lang);
+      // the text field, the colour picker, and a plain colour's value field, in both modes
+      const names = [common.light, common.dark].flatMap((mode) => [`${label} (${mode})`, theme.colourPicker(label, mode), theme.colourValue(label, mode)]);
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  it("the picker next to a CSS value field uses its own name", () => {
+    const page = readFileSync(join(__dirname, "../routes/themes.$id.tsx"), "utf8");
+    expect(page).toMatch(/type="color"\s+aria-label=\{t\.colourPicker\(slotLabel,/);
+  });
+});
