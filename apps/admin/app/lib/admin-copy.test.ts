@@ -142,6 +142,7 @@ describe("no English typed into a page", () => {
   const files = [
     ...readdirSync(join(dir, "routes")).filter((f) => f.endsWith(".tsx") && !f.includes(".test.")).map((f) => join(dir, "routes", f)),
     ...readdirSync(join(dir, "components")).filter((f) => f.endsWith(".tsx") && !f.includes(".test.")).map((f) => join(dir, "components", f)),
+    ...readdirSync(join(dir, "components", "ui")).filter((f) => f.endsWith(".tsx") && !f.includes(".test.")).map((f) => join(dir, "components", "ui", f)),
   ];
 
   it.each(files.map((f) => [f.slice(dir.length + 1), f]))("%s", (_name, file) => {
@@ -154,7 +155,7 @@ describe("no English typed into a page", () => {
     for (const m of source.matchAll(/>([^<>{}]*[A-Za-z]{2,}[^<>{}]*)</g)) {
       const text = m[1].trim();
       // TypeScript generics and arrows look like text between > and <
-      if (!text || /[=;()]|=>|\b(const|return|typeof|extends)\b/.test(m[1]) || ALLOWED.test(text)) continue;
+      if (!text || /[=;()]|=>|\b(const|return|typeof|extends)\b/.test(m[1]) || /^[,&]\s*(React\.|VariantProps)\b/.test(text) || ALLOWED.test(text)) continue;
       found.push(text);
     }
     for (const m of source.matchAll(/\b(title|placeholder|aria-label)="([^"]*[A-Za-z]{2,}[^"]*)"/g)) {

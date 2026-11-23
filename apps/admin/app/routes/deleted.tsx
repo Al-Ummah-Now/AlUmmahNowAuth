@@ -1,4 +1,4 @@
-import { pageTitle } from "../lib/admin-copy";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
@@ -73,12 +73,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const kind = kindOf(form.get("kind") as string | null);
   const id = String(form.get("id") ?? "");
   if (!id) return { ok: false, error: "Missing item" };
+  const lang = langOf(new URL(request.url).search);
   const result =
     intent === "restore"
       ? await restoreDeleted(env, actingUser, kind, id)
       : intent === "purge"
         ? await requestPermanentDeletion(env, actingUser, kind, id, String(form.get("confirm") ?? ""))
-        : { error: "Unknown action" };
+        : { error: adminCopy(lang).common.unknownAction };
   if (isErrorResponse(result)) return { ok: false, error: result.error };
   logger.info("Recently deleted: action", { intent: String(intent), kind, id, by: actingUser.id });
   return { ok: true, intent: String(intent) };

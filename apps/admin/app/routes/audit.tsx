@@ -19,6 +19,7 @@ import { logger } from "../lib/logger.server";
 import { actorLabel, isSystemUserId } from "../lib/system-accounts";
 import { dirOf, langOf } from "../lib/deletion-copy";
 import { pagesCopy } from "../lib/pages-copy";
+import { withLang } from "../lib/shell-copy";
 import { userNames } from "../lib/user-names.server";
 import {
   getAuditLogs,
@@ -216,6 +217,7 @@ export default function AuditLogs() {
 
   const applyFilters = () => {
     const params = new URLSearchParams();
+    if (lang === "ar") params.set("lang", "ar");
     if (eventTypeFilter) params.set("event_type", eventTypeFilter);
     if (severityFilter && severityFilter !== "all") params.set("severity", severityFilter);
     if (searchQuery) params.set("search", searchQuery);
@@ -231,7 +233,7 @@ export default function AuditLogs() {
     setSearchQuery("");
     setStartDate("");
     setEndDate("");
-    navigate("/audit");
+    navigate(withLang("/audit", lang));
   };
 
   const goToPage = (page: number) => {

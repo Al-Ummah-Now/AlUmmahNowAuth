@@ -1,4 +1,4 @@
-import { pageTitle } from "../lib/admin-copy";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { Email } from "../components/email";
 import { resolveUserDisplayName } from "../../../../packages/ui/src/display-name";
 import { AdminTime } from "../components/admin-time";
@@ -85,7 +85,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       notice: result.sent ? "sent" : null,
     };
   }
-  return { ok: false, error: "Unknown action", notice: null };
+  const lang = langOf(new URL(request.url).search);
+  return { ok: false, error: adminCopy(lang).common.unknownAction, notice: null };
 }
 
 interface PasskeyFailure {

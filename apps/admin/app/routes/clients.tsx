@@ -1,4 +1,4 @@
-import { pageTitle } from "../lib/admin-copy";
+import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { pagesCopy } from "../lib/pages-copy";
 import { useState, useEffect } from "react";
@@ -136,6 +136,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     roles: currentUser.roles || [],
   };
 
+  const lang = langOf(new URL(request.url).search);
   const formData = await request.formData();
   const intent = formData.get("intent");
 
@@ -153,7 +154,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
         metadata = JSON.parse(metadataStr);
       }
     } catch {
-      return { error: "Invalid metadata JSON" };
+      return { error: pagesCopy(lang).clients.invalidMetadataJson };
     }
 
     const result = await createClient(env, actingUser, {
@@ -215,7 +216,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
         metadata = JSON.parse(metadataStr);
       }
     } catch {
-      return { error: "Invalid metadata JSON" };
+      return { error: pagesCopy(lang).clients.invalidMetadataJson };
     }
 
     const result = await updateClient(env, actingUser, clientId, {
@@ -232,7 +233,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return { success: true };
   }
 
-  return { error: "Unknown action" };
+  return { error: adminCopy(lang).common.unknownAction };
 }
 
 interface FetcherData {
@@ -522,7 +523,7 @@ export default function ClientsPage() {
 
       {error && (
         <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive" dir="auto">
-          {error === "Invalid metadata JSON" && lang === "ar" ? "البيانات الوصفية ليست JSON صحيحًا." : error}
+          {error}
         </div>
       )}
 
