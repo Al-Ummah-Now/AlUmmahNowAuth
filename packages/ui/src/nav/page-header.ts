@@ -95,6 +95,12 @@ export function pageHeaderHtml(o: PageHeaderOptions): string {
  * on screen, and color-scheme following the chosen mode (the shared menus use light-dark()).
  */
 export const PAGE_HEADER_CSS =
+	// The header's material per theme, the same as the videos site's (AlUmmahNow apps/web/src/theme/materials.css
+	// --m-header and --m-header-edge): Fawanees is a gradient with the gold underline (AUDIT-2 2026-11-22: one header)
+	`html[data-theme="fawanees"] .aun-header{--aun-header-bg:linear-gradient(90deg,var(--fanous-c-nav-bg),color-mix(in srgb,var(--fanous-c-nav-bg) 84%,var(--fanous-color-primary)) 50%,var(--fanous-c-nav-bg));box-shadow:0 1px 0 color-mix(in srgb,var(--fanous-color-primary) 66%,transparent)}` +
+	`html[data-theme="lantern"] .aun-header{--aun-header-bg:linear-gradient(180deg,color-mix(in srgb,var(--fanous-c-nav-bg) 88%,var(--fanous-color-primary)),var(--fanous-c-nav-bg));box-shadow:0 1px 0 color-mix(in srgb,var(--fanous-color-primary) 34%,transparent),0 10px 30px -18px var(--m-glow)}` +
+	`html[data-theme="nahas"] .aun-header{--aun-header-bg:linear-gradient(180deg,color-mix(in srgb,var(--fanous-c-nav-bg) 82%,var(--fanous-color-primary)),var(--fanous-c-nav-bg) 62%,color-mix(in srgb,var(--fanous-c-nav-bg) 86%,black));box-shadow:inset 0 1px 0 color-mix(in srgb,var(--fanous-color-primary-sheen) 34%,transparent),0 1px 0 color-mix(in srgb,black 30%,transparent),0 2px 0 color-mix(in srgb,var(--fanous-color-primary) 34%,transparent)}` +
+	`html[data-theme="zujaj"] .aun-header{--aun-header-bg:linear-gradient(180deg,color-mix(in srgb,var(--fanous-c-nav-bg) 92%,white 8%),color-mix(in srgb,var(--fanous-c-nav-bg) 86%,transparent));box-shadow:inset 0 -1px 0 color-mix(in srgb,white 18%,transparent),0 8px 28px -18px rgb(5 40 48/.7)}` +
 	`.aun-mode .aun-mode-sun{display:none}` +
 	`html.dark .aun-mode .aun-mode-sun{display:block}` +
 	`html.dark .aun-mode .aun-mode-moon{display:none}` +
