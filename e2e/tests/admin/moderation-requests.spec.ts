@@ -117,7 +117,7 @@ test.describe('Moderation requests', () => {
 			expect(await clientStatus(request, id)).toMatchObject({ status: 'rejected', decision_note: 'E2E: not enough evidence' });
 			// The account was not suspended
 			await page.goto(`${TEST_URLS.adminDashboard}/moderation/${id}`);
-			await expect(page.getByText('Status:')).toContainText('active');
+			await expect(page.getByText('Status:')).toContainText('Active');
 		} finally {
 			await subject.page.context().close();
 			if (page.url().startsWith(TEST_URLS.adminDashboard)) await deleteUser(page, subject.email).catch(() => {});
