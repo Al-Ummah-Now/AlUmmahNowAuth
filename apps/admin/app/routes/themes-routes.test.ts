@@ -212,6 +212,6 @@ describe("pages render", () => {
     const html = await render("/themes/eid", [{ path: "/themes/:id", loader: (a) => builder.loader({ ...a, context: cloudflareLoadContext(env, undefined) } as never), Component: builder.default }]);
     expect(html).toContain("Save draft");
     expect(html).toContain("Not published yet");
-    expect(html).toContain('aria-label="primary value (Light)"');
+    expect(html).toContain('aria-label="Primary value (Light)"');
   });
 });

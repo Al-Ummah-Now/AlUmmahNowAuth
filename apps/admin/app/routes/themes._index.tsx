@@ -180,8 +180,9 @@ export default function ThemesPage() {
                       <Link to={withLang(`/themes/${th.id}`, lang)} className="hover:underline">{nameOf(th)}</Link>
                     </CardTitle>
                     <CardDescription>
-                      {lang === "ar" ? <span dir="ltr" lang="en">{th.name.en}</span> : <span dir="rtl" lang="ar">{th.name.ar}</span>}{words.sep}<code className="text-xs" dir="ltr">{th.id}</code>
-                      {th.version && <>{words.sep}<span dir="ltr">v{th.version}</span></>}
+                      {lang === "en" && <><span dir="rtl" lang="ar" className="whitespace-nowrap">{th.name.ar}</span>{words.sep}</>}
+                      <code className="text-xs whitespace-nowrap" dir="ltr">{th.id}</code>
+                      {th.version && <>{words.sep}<span dir="ltr" className="whitespace-nowrap">v{th.version}</span></>}
                     </CardDescription>
                   </div>
                   {th.isAuthDefault && (
@@ -246,6 +247,26 @@ export default function ThemesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Phones: one block per app, its theme picker under its name */}
+          <ul className="space-y-3 md:hidden" data-testid="client-default-cards">
+            {clients.map((c) => (
+              <li key={c.id} className="rounded-lg border border-[var(--color-border)] p-3 space-y-2">
+                <div className="font-medium"><bdi>{c.name}</bdi></div>
+                <Form method="post" className="flex gap-2">
+                  <input type="hidden" name="intent" value="set-client-default" />
+                  <input type="hidden" name="clientId" value={c.id} />
+                  <select name="themeId" defaultValue={clientDefaults[c.id] ?? ""} className={selectClass} aria-label={t.themeFor(c.name)}>
+                    <option value="">{t.authDefault}</option>
+                    {published.map((x) => (
+                      <option key={x.id} value={x.id}>{nameOf(x)}</option>
+                    ))}
+                  </select>
+                  <Button type="submit" size="sm" variant="outline" disabled={busy}>{words.save}</Button>
+                </Form>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -278,6 +299,7 @@ export default function ThemesPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

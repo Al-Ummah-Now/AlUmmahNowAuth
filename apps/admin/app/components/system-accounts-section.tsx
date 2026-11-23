@@ -4,6 +4,7 @@
  * hold no role; one that does is shown as an alert (lib/system-accounts.ts).
  */
 import { Bot } from "lucide-react";
+import { Email } from "./email";
 import { Badge } from "./ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -47,7 +48,7 @@ export function SystemAccountsSection({ accounts, lang }: { accounts: SystemAcco
               {accounts.map((a) => (
                 <TableRow key={a.id} data-testid={`system-account-${a.id}`}>
                   <TableCell>
-                    <div className="font-medium rtl:text-right" dir="ltr">{a.email}</div>
+                    <div className="font-medium"><Email value={a.email} /></div>
                     <div className="font-mono text-xs text-[var(--color-muted-foreground)] rtl:text-right" dir="ltr">{a.id}</div>
                   </TableCell>
                   <TableCell>{a.name ?? "—"}</TableCell>

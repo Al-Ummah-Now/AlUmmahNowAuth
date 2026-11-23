@@ -1,6 +1,8 @@
-import { formatDate } from "../../../../packages/ui/src/format.ts";
 import { pageTitle } from "../lib/admin-copy";
-import { useState, useSyncExternalStore } from "react";
+import { Email } from "../components/email";
+import { resolveUserDisplayName } from "../../../../packages/ui/src/display-name";
+import { AdminTime } from "../components/admin-time";
+import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { dirOf, langOf } from "../lib/deletion-copy";
@@ -43,6 +45,8 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
     self: user.id === userId,
     targetId: userId,
     targetEmail: isErrorResponse(target) ? "" : (target as { email?: string }).email ?? "",
+    // The person by name (display name, else first + last); the email only when there is none
+    targetName: isErrorResponse(target) ? "" : resolveUserDisplayName(target as { name?: string | null; metadata?: unknown }),
     passkeys: isErrorResponse(list) ? ([] as PasskeySummary[]) : list.passkeys,
     staff: isErrorResponse(list) ? false : list.staff,
     loadError: isErrorResponse(list) ? list.error : undefined,
@@ -92,32 +96,6 @@ interface PasskeyFailure {
   os: string;
 }
 
-/**
- * An admin time: the viewer's local time with its zone, UTC on hover (one formatter for every
- * admin time). The server render has no viewer zone, so it shows UTC until the browser takes over.
- * The date as in the Passkeys table above («٥ نوفمبر ٢٠٢٦» is spelled differently by WebKit's ICU and
- * broke hydration; dateStyle "medium" is the same everywhere), then the time on its own, as
- * "12:27 AM EST" (en-US: US zones get their names, not "GMT-5").
- */
-const noSubscribe = () => () => {};
-
-function adminStamp(value: string, lang: "en" | "ar", zone: Intl.DateTimeFormatOptions): string {
-  const date = formatDate(value, lang, { dateStyle: "medium", timeZone: zone.timeZone });
-  const time = formatDate(value, lang, { hour: "numeric", minute: "2-digit", ...zone }, "en-US");
-  return date + (lang === "ar" ? "، " : ", ") + time;
-}
-
-function AdminTime({ value, lang, utcLabel }: { value: string; lang: "en" | "ar"; utcLabel: (s: string) => string }) {
-  const utc = utcLabel(adminStamp(value, lang, { timeZone: "UTC" }));
-  // false in the server render and while hydrating, true after: no hydration mismatch
-  const inBrowser = useSyncExternalStore(noSubscribe, () => true, () => false);
-  return (
-    <time dateTime={value} title={utc}>
-      {inBrowser ? adminStamp(value, lang, { timeZoneName: "short" }) : utc}
-    </time>
-  );
-}
-
 /** A setup link works this long (Auth: passkeys/routes.ts). */
 const SETUP_LINK_HOURS = 24;
 
@@ -132,8 +110,7 @@ export default function UserPasskeys() {
   // The email's language: the admin picks; it starts as the page's language
   const [locale, setLocale] = useState<"en" | "ar">(lang);
   const busy = fetcher.state !== "idle";
-  const fmt = (ms: number | null) => (ms ? formatDate(ms, lang, { dateStyle: "medium", timeZone: "UTC" }) : t.never);
-  const who = data.targetEmail || data.targetId;
+  const fmt = (ms: number | null) => <AdminTime value={ms} lang={lang} dateOnly missing={t.never} />;
   const message = (key: string | null | undefined) =>
     key === "removed" ? t.removed : key === "sent" ? t.sent(SETUP_LINK_HOURS) : key === "not_self" ? t.linkSelf : key === "email_failed" ? t.emailFailed : key;
 
@@ -144,19 +121,9 @@ export default function UserPasskeys() {
           {t.back}
         </Link>
       </p>
-      <h1 className="text-2xl font-semibold mb-6 [overflow-wrap:anywhere]">{t.title("")}<bdi>
-          {/* A long email breaks after its "@" first (overflow-wrap: anywhere only when even that is too wide) */}
-          {who.includes("@") ? (
-            <>
-              {who.slice(0, who.indexOf("@") + 1)}
-              <wbr />
-              {who.slice(who.indexOf("@") + 1)}
-            </>
-          ) : (
-            who
-          )}
-        </bdi>
-      </h1>
+      <h1 className="text-2xl font-semibold mb-1">{t.title("")}<bdi>{data.targetName || data.targetEmail || data.targetId}</bdi></h1>
+      {data.targetName && data.targetEmail && <p className="mb-6 text-sm text-[var(--color-muted-foreground)]"><Email value={data.targetEmail} /></p>}
+      {!(data.targetName && data.targetEmail) && <div className="mb-5" />}
       <LoadErrorBanner title={c.couldNotLoad(t.what)} error={data.loadError} />
       {fetcher.data?.error && (
         <p className="text-sm text-[var(--color-destructive-text)] mb-4" role="alert">
@@ -251,7 +218,7 @@ export default function UserPasskeys() {
                   <li key={f.id} className="py-2 grid gap-1 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4 text-sm">
                     <span className="text-[var(--color-muted-foreground)]">
                       <span className="sr-only">{t.when}: </span>
-                      <AdminTime value={f.at} lang={lang} utcLabel={t.utc} />
+                      <AdminTime value={f.at} lang={lang} />
                     </span>
                     <span>
                       <span className="sr-only">{t.reason}: </span>

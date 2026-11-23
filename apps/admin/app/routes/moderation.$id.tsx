@@ -1,4 +1,6 @@
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
+import { Email } from "../components/email";
+import { AdminTime, useAdminTime } from "../components/admin-time";
 import { Link, useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
@@ -18,7 +20,7 @@ import {
   type ModerationDecision,
   type ModerationRequestDetail,
 } from "../lib/admin-api.server";
-import { MODERATION_STATUS_CLASSES, formatWhen, label, userPageHref } from "../lib/moderation";
+import { MODERATION_STATUS_CLASSES, label, userPageHref } from "../lib/moderation";
 import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { withLang } from "../lib/shell-copy";
 import { getCloudflare } from "../lib/cloudflare-context";
@@ -84,7 +86,8 @@ export default function ModerationRequestPage() {
   const t = adminCopy(lang).moderation;
   const L = adminCopy(lang).moderationLabels;
   const c = adminCopy(lang).common;
-  const when = (v: string | number | null | undefined) => formatWhen(v, lang);
+  // Times: local with the zone, UTC on hover (components/admin-time.tsx)
+  const when = (v: string | number | null | undefined) => <AdminTime value={v} lang={lang} />;
   const running = detail?.request.status === "approved" && (detail.request.execution?.status === "queued" || detail.request.execution?.status === "retrying");
   // While the action is queued, refresh every 5 s until it is done or flagged
   useEffect(() => {
@@ -162,7 +165,7 @@ export default function ModerationRequestPage() {
             <CardHeader>
               <CardTitle className="text-base">{t.request}</CardTitle>
               <CardDescription>
-                {t.fromLabel} <bdi>{r.client_name ?? r.client_id}</bdi>{c.sep}{t.byLabel} <bdi>{r.requested_by.display_name}</bdi> (<bdi dir="ltr">{r.requested_by.id}</bdi>){c.sep}{when(r.created_at)}
+                {t.fromLabel} <bdi>{r.client_name ?? r.client_id}</bdi>{c.sep}{t.byLabel} <bdi className="whitespace-nowrap">{r.requested_by.display_name}</bdi> (<bdi dir="ltr">{r.requested_by.id}</bdi>){c.sep}{when(r.created_at)}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -289,10 +292,10 @@ export default function ModerationRequestPage() {
               {subject ? (
                 <>
                   {subject.name && <div className="font-medium"><bdi>{subject.name}</bdi></div>}
-                  <div className={subject.name ? "" : "font-medium"} data-testid="moderation-subject-email"><bdi>{subject.email}</bdi></div>
+                  <div className={subject.name ? "" : "font-medium"} data-testid="moderation-subject-email"><Email value={subject.email} /></div>
                   <div>{t.userStatus} <span className="font-medium">{t.userStatusValue[subject.status] ?? subject.status}</span></div>
                   {subject.password_reset_required && <div>{t.passwordResetRequired}</div>}
-                  <div>{t.joined(when(subject.created_at))}</div>
+                  <div>{t.joined("")}{when(subject.created_at)}</div>
                   <Link to={userPageHref(subject, lang)} className="inline-block mt-2 underline">{t.openInUsers}</Link>
                 </>
               ) : (

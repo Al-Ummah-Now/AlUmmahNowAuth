@@ -8,7 +8,7 @@ import { roleLabel } from "../../../../packages/ui/src/role-names.ts";
 import { Users, ShieldCheck, Activity, Database, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { AdminLayout } from "../components/admin-layout";
-import { getRoleCounts, getUserStats, getRoleStats, getUsersByRole, isErrorResponse } from "../lib/admin-api.server";
+import { getRoleCounts, getUserStats, getRoleStats, getUsersByRole, getSessionStats, isErrorResponse } from "../lib/admin-api.server";
 import { redirectToLogin, requireAuth } from "../lib/auth.server";
 import { getAuthServerUrl, getAppUrl } from "../lib/config";
 import { logger } from "../lib/logger.server";
@@ -87,10 +87,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // Call stats APIs (pass request for localhost detection)
     // One count of users per role feeds both the admin card and the chart, so they agree
     const counts = await getRoleCounts(env, actingUser, request);
-    const [stats, roleStats, usersByRoleResult] = await Promise.all([
+    const [stats, roleStats, usersByRoleResult, sessionStats] = await Promise.all([
       getUserStats(env, actingUser, request, counts),
       getRoleStats(env, actingUser, request),
       getUsersByRole(env, actingUser, 5, request, counts),
+      // The same count the Sessions page shows; the card hides its number when this fails
+      getSessionStats(env, actingUser).catch(() => null),
     ]);
 
     // Handle errors gracefully
@@ -137,6 +139,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       systemRoles: isErrorResponse(roleStats) ? 0 : roleStats.systemRoles,
       customRoles: isErrorResponse(roleStats) ? 0 : roleStats.customRoles,
       usersByRole,
+      activeSessions: sessionStats && !isErrorResponse(sessionStats) ? sessionStats.activeSessions : null,
       authServerUrl,
       appUrl,
       authorizeUrl: "",
@@ -216,7 +219,9 @@ export default function Index() {
               <Activity className="h-4 w-4 text-[var(--color-muted-foreground)]" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">-</div>
+              {typeof (data as { activeSessions?: number | null }).activeSessions === "number" && (
+                <div className="text-2xl font-bold">{formatCompact((data as { activeSessions: number }).activeSessions, lang)}</div>
+              )}
               <p className="text-xs text-[var(--color-muted-foreground)]">{t.manageSessions}</p>
             </CardContent>
           </Card>

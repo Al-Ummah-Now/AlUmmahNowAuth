@@ -1,5 +1,6 @@
-import { formatDateTime } from "../../../../packages/ui/src/format.ts";
 import { useState } from "react";
+import { Email } from "../components/email";
+import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { adminCopy, pageTitle } from "../lib/admin-copy";
@@ -72,7 +73,7 @@ export default function Security() {
   const lang = langOf(searchParams);
   const t = adminCopy(lang).security;
   const c = adminCopy(lang).common;
-  const fmt = (ms: number) => `${formatDateTime(ms, lang, { dateStyle: "long", timeStyle: "short", timeZone: "UTC" })} ${t.utc}`;
+  const fmt = useAdminTime(lang);
   const [confirming, setConfirming] = useState<null | boolean>(null);
   const busy = fetcher.state !== "idle";
   const error = fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
@@ -110,7 +111,7 @@ export default function Security() {
                 {settings.withoutPasskey.slice(0, 50).map((s) => (
                   <li key={s.id}>
                     <Link className="inline-flex min-h-6 items-center underline" to={withLang(`/users/${encodeURIComponent(s.id)}/passkeys`, lang)}>
-                      <bdi>{s.email}</bdi>
+                      <Email value={s.email} />
                     </Link>
                   </li>
                 ))}

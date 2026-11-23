@@ -47,7 +47,7 @@ for (const lang of ["ar", "en"] as const) {
 test("Recently deleted in Arabic: dates and days left in ٠–٩", async ({ page }) => {
   expect(await hydrate(page, "/admin/deleted?lang=ar")).toEqual([]);
   // The formatted cells (dates, "in N days"); ids and emails stay as they are
-  const cells = (await page.locator("tbody td").allInnerTexts()).filter((text) => /UTC|بعد/.test(text));
+  const cells = (await page.locator("tbody td").allInnerTexts()).filter((text) => /بالتوقيت|غرينتش|بعد/.test(text));
   expect(cells.filter((text) => EASTERN_DIGIT.test(text)).length).toBeGreaterThanOrEqual(3); // two dates, "in 27 days"
   for (const text of cells) expect(text, text).not.toMatch(ASCII_DIGIT);
   await expect(page.locator("main p").first()).toContainText("٣٠");

@@ -1,5 +1,5 @@
-import { formatDateTime } from "../../../../packages/ui/src/format.ts";
 import { pageTitle } from "../lib/admin-copy";
+import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useFetcher, useLoaderData, useSearchParams } from "react-router";
@@ -94,9 +94,7 @@ function actorName(item: DeletedItem, lang: AdminLang): string {
   return item.deletedByName || item.deletedByEmail || t.unknownActor;
 }
 
-function formatTime(ms: number, lang: AdminLang): string {
-  return formatDateTime(ms, lang, { timeZone: "UTC" }) + " UTC";
-}
+
 
 export default function RecentlyDeleted() {
   const { kind, items, now, user, authServerUrl, loadError } = useLoaderData<LoaderData>();
@@ -203,7 +201,7 @@ export default function RecentlyDeleted() {
                       <dt className="text-[var(--color-muted-foreground)]">{t.colDeletedBy}</dt>
                       <dd><bdi>{actorName(item, lang)}</bdi></dd>
                       <dt className="text-[var(--color-muted-foreground)]">{t.colDeletedAt}</dt>
-                      <dd>{formatTime(item.deletedAt, lang)}</dd>
+                      <dd><AdminTime value={item.deletedAt} lang={lang} /></dd>
                       <dt className="text-[var(--color-muted-foreground)]">{t.colReason}</dt>
                       <dd><bdi>{item.reason ?? "—"}</bdi></dd>
                       <dt className="text-[var(--color-muted-foreground)]">{t.colRemoval}</dt>
@@ -230,7 +228,7 @@ export default function RecentlyDeleted() {
                     <TableRow key={item.id} data-testid="deleted-row">
                       <TableCell>{itemCell(item)}</TableCell>
                       <TableCell><bdi>{actorName(item, lang)}</bdi></TableCell>
-                      <TableCell>{formatTime(item.deletedAt, lang)}</TableCell>
+                      <TableCell><AdminTime value={item.deletedAt} lang={lang} /></TableCell>
                       <TableCell><bdi>{item.reason ?? "—"}</bdi></TableCell>
                       <TableCell>{removal(item)}</TableCell>
                       <TableCell>{actions(item)}</TableCell>

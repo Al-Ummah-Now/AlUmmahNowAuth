@@ -1,5 +1,5 @@
-import { formatDate } from "../lib/date-utils";
 import { pageTitle } from "../lib/admin-copy";
+import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { pagesCopy } from "../lib/pages-copy";
 import { useState, useEffect } from "react";
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
@@ -557,7 +557,7 @@ export default function ClientsPage() {
                       <dt className="text-muted-foreground">{t.redirects}</dt>
                       <dd className="min-w-0">{redirectList(client)}</dd>
                       <dt className="text-muted-foreground">{c.created}</dt>
-                      <dd>{formatDate(client.created_at, lang)}</dd>
+                      <dd><AdminTime value={client.created_at} lang={lang} dateOnly /></dd>
                     </dl>
                     <div className="mt-3 flex justify-end gap-2">{clientActions(client)}</div>
                   </li>
@@ -592,7 +592,7 @@ export default function ClientsPage() {
                     <TableCell>
                       <div className="max-w-[200px]">{redirectList(client)}</div>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(client.created_at, lang)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground"><AdminTime value={client.created_at} lang={lang} dateOnly /></TableCell>
                     <TableCell className="text-end">
                       <div className="flex justify-end gap-2">{clientActions(client)}</div>
                     </TableCell>

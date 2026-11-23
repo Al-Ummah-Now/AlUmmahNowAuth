@@ -1,5 +1,5 @@
-import { formatDateMs, formatDateTimeMs } from "../lib/date-utils";
 import { pageTitle } from "../lib/admin-copy";
+import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { useState } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useSearchParams, useNavigate } from "react-router";
@@ -250,9 +250,8 @@ export default function AuditLogs() {
       <span className="text-[var(--color-muted-foreground)]">—</span>
     );
 
-  const formatTimestamp = (timestamp: string) => {
-    return formatDateTimeMs(timestamp, lang);
-  };
+  // Times: local with the zone, UTC on hover (components/admin-time.tsx)
+  const formatTimestamp = (timestamp: string) => <AdminTime value={timestamp} lang={lang} />;
 
   const getSeverityColor = (severity: string) => {
     switch (severity.toLowerCase()) {
@@ -401,12 +400,12 @@ export default function AuditLogs() {
                 )}
                 {startDate && (
                   <Badge variant="outline">
-                    {t.fromChip(formatDateMs(startDate, lang))}
+                    {t.fromChip(adminDate(startDate, lang, "UTC"))}
                   </Badge>
                 )}
                 {endDate && (
                   <Badge variant="outline">
-                    {t.toChip(formatDateMs(endDate, lang))}
+                    {t.toChip(adminDate(endDate, lang, "UTC"))}
                   </Badge>
                 )}
                 <Button variant="ghost" size="sm" onClick={clearFilters} aria-label={t.clear} title={t.clear}>
