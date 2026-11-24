@@ -20,7 +20,7 @@ const spec = (): Any => ({
 				parameters: [{ name: 'lang', in: 'query', schema: { type: 'string', enum: ['en', 'ar'] } }],
 				requestBody: {
 					required: true,
-					content: { 'application/x-www-form-urlencoded': { schema: { oneOf: [{ $ref: '#/components/schemas/Code' }, { $ref: '#/components/schemas/Refresh' }] } } },
+					content: { 'application/x-www-form-urlencoded': { schema: { oneOf: [{ $ref: '#/components/schemas/Code' }, { $ref: '#/components/schemas/Refresh' }], discriminator: { propertyName: 'grant', mapping: { code: '#/components/schemas/Code', refresh: '#/components/schemas/Refresh' } } } } },
 				},
 				responses: { '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/Tokens' } } } }, '429': { $ref: '#/components/responses/Slow' } },
 			},
@@ -34,7 +34,8 @@ const spec = (): Any => ({
 			Refresh: { type: 'object', properties: { refresh_token: { type: 'string' } } },
 			Tokens: { type: 'object', required: ['access_token'], properties: { access_token: { type: 'string' }, kind: { type: 'string', enum: ['a', 'b'] }, next: { $ref: '#/components/schemas/Tokens' } } },
 		},
-		responses: { Slow: { headers: { 'Retry-After': {} } } },
+		responses: { Slow: { headers: { 'Retry-After': { schema: { type: 'integer' } } } } },
+		securitySchemes: { admin: { type: 'http', scheme: 'bearer', description: 'x' } },
 	},
 });
 const after = (edit: (s: Any) => void): string[] => {
@@ -59,7 +60,7 @@ describe('what breaks a client', () => {
 		['another type', (s) => (schemas(s).Code.properties.note.type = 'integer'), 'POST /token body oneOf Code note: type string became integer'],
 		['a shorter limit', (s) => (schemas(s).Code.properties.code.maxLength = 50), 'POST /token body oneOf Code code: maxLength 100 became 50'],
 		['a new pattern', (s) => (schemas(s).Code.properties.note.pattern = '^a$'), 'POST /token body oneOf Code note: pattern "none" became "^a$"'],
-		['a removed grant', (s) => token(s).requestBody.content['application/x-www-form-urlencoded'].schema.oneOf.pop(), 'POST /token body: oneOf Refresh removed'],
+		['a removed grant', (s) => (token(s).requestBody.content['application/x-www-form-urlencoded'].schema.oneOf.pop(), undefined), 'POST /token body: oneOf Refresh removed'],
 		['another body format', (s) => (token(s).requestBody.content = { 'application/json': {} }), 'POST /token body: application/x-www-form-urlencoded removed'],
 		['unknown fields refused', (s) => (schemas(s).Code.additionalProperties = false), 'POST /token body oneOf Code: unknown fields are refused now'],
 		['an answer field removed', (s) => delete schemas(s).Tokens.properties.access_token, 'POST /token 200: field "access_token" removed'],
@@ -67,12 +68,34 @@ describe('what breaks a client', () => {
 		['an answer field of another type', (s) => (schemas(s).Tokens.properties.access_token.type = ['string', 'null']), 'POST /token 200 access_token: type string became string|null'],
 		['an answer removed', (s) => delete token(s).responses['429'], 'POST /token: answer 429 removed'],
 		['a header removed', (s) => (s.components.responses.Slow.headers = {}), 'POST /token 429: header Retry-After removed'],
+		['a new kind of answer', (s) => (schemas(s).Tokens.properties.kind = { oneOf: [{ type: 'string', title: 'A' }] }, undefined), 'POST /token 200 kind: type string became any'],
+		['a header of another type', (s) => (s.components.responses.Slow.headers['Retry-After'] = { schema: { type: 'string' } }), 'POST /token 429 header Retry-After: type integer became string'],
+		['a minimum number of fields', (s) => (schemas(s).Code.minProperties = 2), 'POST /token body oneOf Code: minProperties none became 2'],
+		['an exclusive limit', (s) => (schemas(s).Code.properties.note.exclusiveMaximum = 5), 'POST /token body oneOf Code note: exclusiveMaximum none became 5'],
+		['a step', (s) => (schemas(s).Code.properties.note.multipleOf = 2), 'POST /token body oneOf Code note: multipleOf none became 2'],
+		['unique items', (s) => (schemas(s).Code.properties.note.uniqueItems = true), 'POST /token body oneOf Code note: items must be unique now'],
+		['a discriminator value lost', (s) => delete token(s).requestBody.content['application/x-www-form-urlencoded'].schema.discriminator.mapping.code, 'POST /token body: discriminator value "code" changed'],
+		['another discriminator', (s) => (token(s).requestBody.content['application/x-www-form-urlencoded'].schema.discriminator.propertyName = 'kind'), 'POST /token body: discriminator "grant" became "kind"'],
+		['a word the check does not know', (s) => (schemas(s).Code.propertyNames = { pattern: '^a' }), 'POST /token body oneOf Code: propertyNames "none" became {"pattern":"^a"}'],
+		['another kind of credential', (s) => (s.components.securitySchemes.admin.scheme = 'basic'), 'security scheme admin: [["scheme","bearer"],["type","http"]] became [["scheme","basic"],["type","http"]]'],
 		['sign-in required', (s) => (token(s).security = [{ admin: [] }]), 'POST /token: access {} no longer enough (now [{"admin":[]}])'],
 		['a wider right needed', (s) => (s.paths['/users/{id}'].get.security = [{ admin: ['users:write'] }, { basic: [] }]), 'GET /users/{id}: access {"admin":["users:read"]} no longer enough (now [{"admin":["users:write"]},{"basic":[]}])'],
 		['one way in removed', (s) => (s.paths['/users/{id}'].get.security = [{ admin: ['users:read'] }]), 'GET /users/{id}: access {"basic":[]} no longer enough (now [{"admin":["users:read"]}])'],
 	];
 	it.each(cases)('%s', (_name, edit, id) => {
 		expect(after(edit)).toEqual([id]);
+	});
+
+	it('an answer that may take a shape no client has seen, or any shape at all', () => {
+		const union = (list: string[]) => {
+			const s = spec();
+			s.components.schemas.Tokens.properties.kind = list.length ? { oneOf: list.map((title) => ({ title, type: 'object' })) } : {};
+			return s;
+		};
+		const ids = (a: string[], b: string[]) => breakingChanges(union(a), union(b), NOW).map((c) => c.id);
+		expect(ids(['A', 'B'], ['A', 'B', 'C'])).toEqual(['POST /token 200 kind: oneOf C added']);
+		expect(ids(['A', 'B'], [])).toEqual(['POST /token 200 kind: oneOf is gone: anything may be answered']);
+		expect(ids(['A', 'B'], ['A'])).toEqual([]);
 	});
 
 	it('keeps the promised audience: calling a public route a page hides nothing', () => {
@@ -108,8 +131,14 @@ describe('what does not', () => {
 			delete s.paths['/users/{id}'];
 			s.paths['/users/{userId}'].get.parameters[0].name = 'userId';
 		}],
-		['words and Arabic', (s: Any) => (token(s).description = 'x')],
+		['words and Arabic', (s: Any) => {
+			token(s).description = 'x';
+			schemas(s).Code.title = 'y';
+			schemas(s).Code['x-summary-ar'] = 'ع';
+			s.components.securitySchemes.admin.description = 'z';
+		}],
 		['a page', (s: Any) => delete s.paths['/sign-in']],
+		['a discriminator value added', (s: Any) => (token(s).requestBody.content['application/x-www-form-urlencoded'].schema.discriminator.mapping.device = 'x')],
 		['the same schema moved out of components', (s: Any) => (token(s).responses['200'].content['application/json'].schema = clone(schemas(s).Tokens))],
 	])('%s', (_name, edit) => {
 		expect(after(edit as (s: Any) => void)).toEqual([]);
@@ -150,6 +179,24 @@ describe('deprecation', () => {
 		expect(shortNotice(spec(), withSunset(undefined), NOW)).toEqual(['POST /token: deprecated without an x-sunset date']);
 		// The audience of the last release counts: relabelling does not shorten the notice
 		expect(shortNotice(spec(), withSunset('2026-12-02', 'admin'), NOW)[0]).toContain('(public)');
+	});
+
+	it.each([
+		['a parameter', (s: Any) => token(s).parameters[0], 'POST /token query lang'],
+		['a field that is sent', (s: Any) => schemas(s).Code.properties.note, 'POST /token body oneOf Code note'],
+		['a field that is answered', (s: Any) => schemas(s).Tokens.properties.kind, 'POST /token 200 kind'],
+		['a header', (s: Any) => s.components.responses.Slow.headers['Retry-After'], 'POST /token 429 header Retry-After'],
+	])('%s is owed the same: a date, the notice, never earlier', (_name, pick, where) => {
+		const marked = (date?: string) => {
+			const s = spec();
+			Object.assign(pick(s), { deprecated: true, ...(date ? { 'x-sunset': date } : {}) });
+			return s;
+		};
+		expect(shortNotice(spec(), marked(), NOW)).toContain(`${where}: deprecated without an x-sunset date`);
+		expect(shortNotice(spec(), marked('2026-11-01'), NOW)).toContain(`${where}: x-sunset 2026-11-01 is less than 182 days away (public)`);
+		expect(shortNotice(spec(), marked('2027-06-02'), NOW)).toEqual([]);
+		expect(shortNotice(marked('2027-06-02'), marked('2027-05-01'), NOW)).toContain(`${where}: x-sunset moved earlier (2027-06-02 to 2027-05-01)`);
+		expect(shortNotice(marked('2027-06-02'), marked('2027-09-01'), NOW)).toEqual([]);
 	});
 
 	it('an announced date may move later, never earlier', () => {
