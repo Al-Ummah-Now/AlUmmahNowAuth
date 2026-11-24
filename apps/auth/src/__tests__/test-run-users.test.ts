@@ -13,6 +13,7 @@ import { isRunUserEmail, markRunUser, runUsersEnabled, RUN_USERS_FLAG } from '..
 import { CENSUS_SQL, STALE_SQL } from '../routes/test-run-users';
 import { e2eAccountKind } from '../utils/e2e-accounts';
 import { fakeLimiter } from './helpers/fake-limiter';
+import { softDelete } from '../deletions/service';
 import { emitAuditEvent } from '../audit-emitter';
 
 vi.mock('../audit-emitter', () => ({ emitAuditEvent: vi.fn().mockResolvedValue(undefined) }));
@@ -76,6 +77,20 @@ function varsOf(config: unknown, envName?: string): TestEnv {
 	const c = config as { vars?: TestEnv; env?: Record<string, { vars?: TestEnv }> };
 	return { ...((envName ? c.env?.[envName]?.vars : c.vars) ?? {}) };
 }
+
+/** Events on, and a subscriber to every deletion event. */
+async function eventsOn(): Promise<TestEnv> {
+	await ENV.AUTH_DB.prepare('DELETE FROM account_events').run();
+	await ENV.AUTH_DB
+		.prepare(
+			`INSERT OR REPLACE INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at)
+			 VALUES ('ev-receiver', 'default', 'ev-receiver', 'hash', '["client_credentials"]', '["account-events:receive"]', '[]', ?1, 1, 1, 1)`
+		)
+		.bind(JSON.stringify({ events: { uri: 'https://receiver.example.com/events', types: ['account-disabled', 'account-enabled', 'account-purged'] } }))
+		.run();
+	return { ACCOUNT_EVENTS: 'on', ACCOUNT_EVENTS_QUEUE: { sendBatch: vi.fn() } };
+}
+const eventCount = () => ENV.AUTH_DB.prepare('SELECT COUNT(*) AS n FROM account_events').first<{ n: number }>().then((r) => r!.n);
 
 beforeEach(async () => {
 	await setupDatabase();
@@ -142,6 +157,19 @@ describe('POST /test/run-users/delete/:email', () => {
 		const body = await res!.text();
 		expect(JSON.parse(body)).toEqual({ error: 'delete_failed' });
 		expect(body).not.toContain('secret_col');
+	});
+
+	it('sends no account event, with events on and a subscriber', async () => {
+		const on = qaEnv(await eventsOn());
+		await addUser('run-ev', RUN_EMAIL);
+		expect(await (await del(RUN_EMAIL, { env: on }))!.json()).toMatchObject({ found: 1, purged: 1 });
+		expect(await userCount(RUN_EMAIL)).toBe(0);
+		expect(await eventCount()).toBe(0);
+		// the same deletion, not a run account's, is one
+		await addUser('run-ev2', RUN_EMAIL);
+		await softDelete(on as unknown as Env, 'user', 'run-ev2', { userId: 'x' });
+		expect(await eventCount()).toBe(1);
+		await ENV.AUTH_DB.prepare(`DELETE FROM oauth_clients WHERE id = 'ev-receiver'`).run();
 	});
 
 	it('is idempotent: an unknown or already removed run account is a 200 with nothing found', async () => {

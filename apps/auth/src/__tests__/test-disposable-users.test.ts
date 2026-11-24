@@ -63,6 +63,20 @@ async function addUser(id: string, email: string, over: { created?: number; logi
 const exists = async (id: string) => (await ENV.AUTH_DB.prepare('SELECT 1 FROM users WHERE id = ?').bind(id).first()) !== null;
 const DISPOSABLE = (n: number | string) => `multi-${n}-1794461009517-1b6pqu@e2e.alummahnow.net`;
 
+/** Events on, and a subscriber to every deletion event. */
+async function eventsOn(): Promise<TestEnv> {
+	await ENV.AUTH_DB.prepare('DELETE FROM account_events').run();
+	await ENV.AUTH_DB
+		.prepare(
+			`INSERT OR REPLACE INTO oauth_clients (id, tenant_id, name, client_secret_hash, grant_types, scopes, redirect_uris, metadata, enabled, created_at, updated_at)
+			 VALUES ('ev-receiver', 'default', 'ev-receiver', 'hash', '["client_credentials"]', '["account-events:receive"]', '[]', ?1, 1, 1, 1)`
+		)
+		.bind(JSON.stringify({ events: { uri: 'https://receiver.example.com/events', types: ['account-disabled', 'account-enabled', 'account-purged'] } }))
+		.run();
+	return { ACCOUNT_EVENTS: 'on', ACCOUNT_EVENTS_QUEUE: { sendBatch: vi.fn() } };
+}
+const eventCount = () => ENV.AUTH_DB.prepare('SELECT COUNT(*) AS n FROM account_events').first<{ n: number }>().then((r) => r!.n);
+
 beforeEach(async () => {
 	await setupDatabase();
 	await ENV.AUTH_DB.prepare('DELETE FROM users').run();
@@ -129,6 +143,17 @@ describe('who is deleted', () => {
 		await addUser('gone', DISPOSABLE('gone'));
 		for (const id of ['used', 'marked', 'renamed']) expect((await bind(id)).meta.changes).toBe(0);
 		expect((await bind('gone')).meta.changes).toBe(1);
+	});
+});
+
+describe('account events', () => {
+	it('are not sent for test accounts, with events on and a subscriber', async () => {
+		const on = qaEnv(await eventsOn());
+		await addUser('ev1', DISPOSABLE(1));
+		await call('?dryRun=0', { env: on });
+		expect(await exists('ev1')).toBe(false);
+		expect(await eventCount()).toBe(0);
+		await ENV.AUTH_DB.prepare(`DELETE FROM oauth_clients WHERE id = 'ev-receiver'`).run();
 	});
 });
 

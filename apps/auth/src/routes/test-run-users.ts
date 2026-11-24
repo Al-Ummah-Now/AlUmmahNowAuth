@@ -31,6 +31,7 @@
 import { logger } from '../logger';
 import { getClientIP, RATE_LIMIT_PERIOD_SECONDS, withinRateLimit } from '../rate-limit';
 import type { DeletionEnv } from '../deletions/kinds';
+import { withoutAccountEvents } from '../account-events/types';
 import { purgeItem } from '../deletions/purge';
 import { DeletionError, requestPurge, softDelete, type DeletionActor } from '../deletions/service';
 import { disposableUsers } from './test-disposable-users';
@@ -112,7 +113,8 @@ async function remove(email: string, request: Request, ip: string, env: RunUserR
 		userAgent: request.headers.get('User-Agent'),
 		requestId: request.headers.get('X-Request-Id'),
 	};
-	const deletionEnv = env as unknown as DeletionEnv;
+	// A run account's deletion is no account event (docs/account-hub/SPEC.md §5.4)
+	const deletionEnv = withoutAccountEvents(env) as unknown as DeletionEnv;
 	let purged = 0;
 	try {
 		for (const user of rows) {

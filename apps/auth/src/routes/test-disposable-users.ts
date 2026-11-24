@@ -21,6 +21,7 @@
  * by a migration that only QA's database has).
  */
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
+import { withoutAccountEvents } from '../account-events/types';
 import { HANDLERS, type DeletionEnv } from '../deletions/kinds';
 import { auditDeletion } from '../deletions/service';
 import { DeletionStore, type DeletionRow } from '../deletions/store';
@@ -114,7 +115,8 @@ async function erase(env: DeletionEnv, row: AccountRow, now: number): Promise<bo
 		last_error: null,
 	};
 	// The account's own purge (every statement by index), then its entry in the list of deleted items
-	await HANDLERS.user.purge(env, deletion);
+	// No account event for a test account (docs/account-hub/SPEC.md §5.4)
+	await HANDLERS.user.purge(withoutAccountEvents(env), deletion);
 	await new DeletionStore(env.AUTH_DB).removeStatement('user', row.id).run();
 	return true;
 }

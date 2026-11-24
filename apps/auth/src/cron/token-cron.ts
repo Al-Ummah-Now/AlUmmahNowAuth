@@ -93,7 +93,7 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 				}
 				// Revoked invites past their 30 days, or queued with "Delete permanently now" (docs/USER_INVITES.md)
 				try {
-					const invites = await purgeRevokedInvites(env.AUTH_DB);
+					const invites = await purgeRevokedInvites(env.AUTH_DB, undefined, undefined, env);
 					if (invites.purged || invites.failed) logger.info('Invite cleanup completed', invites);
 				} catch (error) {
 					logger.error('Invite cleanup failed', { error: error instanceof Error ? error.message : String(error) });

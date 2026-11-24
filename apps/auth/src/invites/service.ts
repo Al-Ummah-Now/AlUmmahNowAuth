@@ -29,6 +29,8 @@
 import { generateSecureToken, hashToken } from '../utils/crypto';
 import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
+import { enqueue, recordAccountEvent, type OnlyIf, type Recorded } from '../account-events/record';
+import type { AccountEvent, AccountEventsEnv } from '../account-events/types';
 import { DeletionStore } from '../deletions/store';
 
 export const DEFAULT_INVITE_TTL_DAYS = 14;
@@ -237,7 +239,7 @@ function cleanText(value: unknown, max: number): string | null {
 export class InviteService {
 	constructor(
 		private readonly db: D1Database,
-		private readonly options: { tenantId?: string; defaultTtlDays?: number; now?: () => number } = {}
+		private readonly options: { tenantId?: string; defaultTtlDays?: number; now?: () => number; events?: AccountEventsEnv } = {}
 	) {}
 
 	private get tenantId() {
@@ -602,8 +604,11 @@ export class InviteService {
 		// The unused account is an admin soft delete like any other (admin_deletions, #293): it shows
 		// in Auth's Recently deleted, and that cleanup removes everything keyed by the user.
 		const account = await this.userById(row.user_id);
+		let event: Recorded = { statements: [], jtis: [] };
 		if (account?.status === 'invited') {
+			event = await this.record({ type: 'account-disabled', userId: row.user_id, reason: 'deleted' }, 'invited', now);
 			statements.push(
+				...event.statements,
 				this.db
 					.prepare(
 						`UPDATE users SET status = 'deleted', deleted_at = ?3, updated_at = ?3
@@ -624,7 +629,17 @@ export class InviteService {
 			);
 		}
 		await this.db.batch(statements);
+		await this.enqueue(event.jtis, now);
 		return toInvite(await this.requireRow(id), now);
+	}
+
+	/** The account event of a change, for its batch; nothing without the events env. */
+	private async record(event: AccountEvent, onlyIf: OnlyIf, now: number): Promise<Recorded> {
+		return this.options.events ? recordAccountEvent(this.options.events, event, { now, onlyIf }) : { statements: [], jtis: [] };
+	}
+
+	private async enqueue(jtis: string[], now: number): Promise<void> {
+		if (this.options.events) await enqueue(this.options.events, jtis, now);
 	}
 
 	/** Undo a revoke (within the 30 days): the invite and its account come back; the email must still be free. */
@@ -637,7 +652,9 @@ export class InviteService {
 			.first<{ id: string }>();
 		if (taken) throw new InviteError(409, 'email_taken', 'Another account now uses this email', { userId: taken.id });
 		const now = this.now();
+		const event = await this.record({ type: 'account-enabled', userId: row.user_id }, 'unused', now);
 		await this.db.batch([
+			...event.statements,
 			new DeletionStore(this.db).removeStatement('user', row.user_id),
 			this.db
 				.prepare(
@@ -653,6 +670,7 @@ export class InviteService {
 				)
 				.bind(this.tenantId, row.user_id, now),
 		]);
+		await this.enqueue(event.jtis, now);
 		return toInvite(await this.requireRow(id), now);
 	}
 
@@ -726,7 +744,7 @@ export async function claimInvitedAccount(db: D1Database, tenantId: string, user
  * permanently now", are removed with their never-used account (users row and
  * role links). An account that somehow signed in is kept; only the invite goes.
  */
-export async function purgeRevokedInvites(db: D1Database, now = Date.now(), batchSize = 25): Promise<{ purged: number; failed: number }> {
+export async function purgeRevokedInvites(db: D1Database, now = Date.now(), batchSize = 25, events?: AccountEventsEnv): Promise<{ purged: number; failed: number }> {
 	const due = await db
 		.prepare(
 			`SELECT id, user_id FROM user_invites
@@ -739,7 +757,9 @@ export async function purgeRevokedInvites(db: D1Database, now = Date.now(), batc
 	let failed = 0;
 	for (const row of due.results ?? []) {
 		try {
+			const event = events ? await recordAccountEvent(events, { type: 'account-purged', userId: row.user_id }, { now, onlyIf: 'unused' }) : { statements: [], jtis: [] };
 			await db.batch([
+				...event.statements,
 				db
 					.prepare(
 						`DELETE FROM rbac_user_roles WHERE user_id = ?1 AND EXISTS (
@@ -751,6 +771,7 @@ export async function purgeRevokedInvites(db: D1Database, now = Date.now(), batc
 				db.prepare('DELETE FROM user_invites WHERE id = ?1 AND deleted_at IS NOT NULL').bind(row.id),
 			]);
 			purged++;
+			if (events) await enqueue(events, event.jtis, now);
 			await emitAuditEvent({
 				timestamp: new Date(now).toISOString(),
 				eventType: AuditEventType.USER_INVITE_PURGED,
