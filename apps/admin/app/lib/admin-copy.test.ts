@@ -8,6 +8,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SECTIONS } from "../../../../packages/ui/src/auth-theme/catalog.ts";
+import { accountEventsCopy } from "./account-events-copy";
 import { ADMIN_COPY, AR_USERS, CATALOG_AR, catalogLabel, countOf, pageTitle } from "./admin-copy";
 import { autocompleteStrings } from "./autocomplete-strings";
 import { confirmCopy } from "./confirm-copy";
@@ -40,6 +41,7 @@ const COPY_FILES: Record<string, (lang: "en" | "ar") => unknown> = {
   "deletion-copy": deletionCopy,
   "confirm-copy": confirmCopy,
   "signing-keys-copy": signingKeysCopy,
+  "account-events-copy": accountEventsCopy,
   "system-accounts": systemAccountsCopy,
   "autocomplete-strings": autocompleteStrings,
 };

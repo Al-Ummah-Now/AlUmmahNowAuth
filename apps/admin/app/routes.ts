@@ -24,6 +24,7 @@ export default [
   route("passkey-needed", "routes/passkey-needed.tsx"),
   route("security", "routes/security.tsx"),
   route("signing-keys", "routes/signing-keys.tsx"),
+  route("account-events", "routes/account-events.tsx"),
   route("users/:id/passkeys", "routes/users.$id.passkeys.tsx"),
   route("debug-m2m", "routes/debug-m2m.tsx"),
 ] satisfies RouteConfig;

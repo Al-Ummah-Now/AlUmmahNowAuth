@@ -8,7 +8,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { APPS } from './apps.ts';
 import { parseJsonc } from './jsonc.ts';
-import { checkApp, type WranglerConfig } from './wrangler-config.ts';
+import { checkApp, resolveEnv, type WranglerConfig } from './wrangler-config.ts';
 import { checkDeployCommands, scanPackageScripts, scanWorkflow, type DeployCommand } from './deploy-commands.ts';
 
 export function runCheck(root: string): string[] {
@@ -22,6 +22,8 @@ export function runCheck(root: string): string[] {
 		}
 		errors.push(...checkApp(rule, parseJsonc(readFileSync(path, 'utf8')) as WranglerConfig));
 	}
+
+	errors.push(...checkAccountEvents(root));
 
 	const commands: DeployCommand[] = [];
 	const workflowDir = join(root, '.github/workflows');
@@ -38,6 +40,21 @@ export function runCheck(root: string): string[] {
 	}
 	errors.push(...checkDeployCommands(commands, APPS));
 	return errors;
+}
+
+/** The admin shows Account events exactly where the Auth server sends them (#507): the same ACCOUNT_EVENTS in every environment. */
+export function checkAccountEvents(root: string, read = (path: string) => readFileSync(join(root, path), 'utf8')): string[] {
+	const value = (path: string, env: string | null) => resolveEnv(parseJsonc(read(path)) as WranglerConfig, env).vars.ACCOUNT_EVENTS;
+	const pairs: [where: string, auth: [string, string | null], admin: [string, string | null]][] = [
+		['production', ['apps/auth/wrangler.json', 'production'], ['apps/admin/wrangler.json', null]],
+		['stage', ['apps/auth/wrangler.json', 'stage'], ['apps/admin/wrangler.json', 'stage']],
+		['qa', ['apps/auth/wrangler.qa.json', null], ['apps/admin/wrangler.qa.json', null]],
+		['dev', ['apps/auth/wrangler.dev.json', null], ['apps/admin/wrangler.dev.json', null]],
+	];
+	return pairs.flatMap(([where, auth, admin]) => {
+		const [a, b] = [value(...auth), value(...admin)];
+		return a === b ? [] : [`${where}: vars.ACCOUNT_EVENTS is ${JSON.stringify(a)} in auth and ${JSON.stringify(b)} in admin; they must match`];
+	});
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));

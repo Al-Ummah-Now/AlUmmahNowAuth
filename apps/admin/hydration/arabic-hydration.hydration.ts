@@ -33,7 +33,7 @@ async function hydrate(page: Page, path: string): Promise<string[]> {
 /** Every admin page the harness renders (hydration/app.tsx PAGE_PATHS). */
 const PAGES = [
   "dashboard", "users", "passkeys", "roles", "role", "sessions", "clients", "audit", "moderation", "moderation-request",
-  "themes", "theme", "deleted", "security", "signing-keys",
+  "themes", "theme", "deleted", "security", "signing-keys", "account-events", "account-events-delivered", "account-events-empty",
 ] as const;
 
 for (const lang of ["ar", "en"] as const) {

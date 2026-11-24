@@ -12,6 +12,7 @@ import {
   Trash2,
   KeyRound,
   FileKey,
+  Send,
 } from "lucide-react";
 import { AccountSwitcher } from "@al-ummah-now/ui";
 import { otherApps } from "../lib/app-links";
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { key: "deleted", href: "/deleted", icon: <Trash2 className="h-5 w-5" /> },
   { key: "security", href: "/security", icon: <KeyRound className="h-5 w-5" /> },
   { key: "signingKeys", href: "/signing-keys", icon: <FileKey className="h-5 w-5" /> },
+  { key: "accountEvents", href: "/account-events", icon: <Send className="h-5 w-5" /> },
 ];
 
 interface AdminLayoutProps {
@@ -59,7 +61,10 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
   const sec = adminCopy(lang).security;
   const stamp = useAdminTime(lang);
   const menu = adminCopy(lang).accountMenu;
-  const environment = useRouteLoaderData<{ environment?: string }>("root")?.environment;
+  const root = useRouteLoaderData<{ environment?: string; accountEvents?: boolean }>("root");
+  const environment = root?.environment;
+  // Off by default (#507): no link while the Auth server sends no account events
+  const items = navItems.filter((item) => item.key !== "accountEvents" || root?.accountEvents);
   // Use lazy initializer to load from localStorage - avoids effect-based setState
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -149,7 +154,7 @@ export function AdminLayout({ children, user, authServerUrl, passkeyGraceUntil }
         <div className="flex flex-col h-full">
           {/* Navigation Items */}
           <nav aria-label={t.navLabel} className="flex-1 p-3 space-y-1 overflow-y-auto">
-            {navItems.map((item) => (
+            {items.map((item) => (
               <Link
                 key={item.href}
                 to={withLang(item.href, lang)}

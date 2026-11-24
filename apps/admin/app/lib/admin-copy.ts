@@ -47,7 +47,7 @@ export const AR_USERS: ArNoun = { one: "مستخدم واحد", two: "مستخد
 const AR_APPS: ArNoun = { one: "تطبيق واحد", two: "تطبيقين", few: "تطبيقات", many: "تطبيقًا", hundreds: "تطبيق" };
 const AR_PROBLEMS: ArNoun = { one: "مشكلة واحدة", two: "مشكلتان", few: "مشكلات", many: "مشكلةً", hundreds: "مشكلة" };
 const AR_ACTIONS_FAILED: ArNoun = { one: "إجراء واحد", two: "إجراءان", few: "إجراءات", many: "إجراءً", hundreds: "إجراء" };
-const AR_ATTEMPTS: ArNoun = { one: "محاولة واحدة", two: "محاولتين", few: "محاولات", many: "محاولةً", hundreds: "محاولة" };
+export const AR_ATTEMPTS: ArNoun = { one: "محاولة واحدة", two: "محاولتين", few: "محاولات", many: "محاولةً", hundreds: "محاولة" };
 const AR_DAYS: ArNoun = { one: "يومًا واحدًا", two: "يومين", few: "أيام", many: "يومًا", hundreds: "يوم" };
 
 const num = (n: number, lang: AdminLang) => formatNumber(n, lang);
