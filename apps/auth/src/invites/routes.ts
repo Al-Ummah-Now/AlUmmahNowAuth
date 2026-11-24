@@ -187,7 +187,7 @@ export async function routeInviteProvisioning(request: Request, env: Env, ctx: E
 		return tooMany();
 	}
 
-	const service = new InviteService(env.AUTH_DB, { tenantId: client.tenant_id || 'default', defaultTtlDays: Number(env.INVITE_TTL_DAYS) || undefined });
+	const service = new InviteService(env.AUTH_DB, { events: env, tenantId: client.tenant_id || 'default', defaultTtlDays: Number(env.INVITE_TTL_DAYS) || undefined });
 	const body = writes ? await readJson(request) : {};
 	const by = (body.actor && typeof body.actor === 'object' ? body.actor : {}) as Record<string, unknown>;
 	const actor: InviteActor = { userId: str(by.id) || `client:${client.id}`, email: str(by.email) || '', clientId: client.id };

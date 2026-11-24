@@ -19,9 +19,24 @@ export interface Recorded {
 	jtis: string[];
 }
 
+/**
+ * The state the account must still be in when the batch runs, read before the
+ * change that follows in it: when another request got there first, there is no
+ * change, so there is no event. A purge of a restored account must never be sent.
+ */
+const ONLY_IF = {
+	live: 'deleted_at IS NULL',
+	deleted: 'deleted_at IS NOT NULL',
+	/** An invited account nobody has claimed. */
+	invited: `status = 'invited' AND deleted_at IS NULL`,
+	/** A deleted account nobody ever signed in to (a revoked invite's). */
+	unused: `status = 'deleted' AND last_login_at IS NULL`,
+} as const;
+export type OnlyIf = keyof typeof ONLY_IF;
+
 type Row = { type: AccountEvent['type'] | 'verification'; userId: string; reason?: string; exportId?: string };
 
-export function statementsFor(db: D1Database, event: Row, to: Subscriber[], now: number): Recorded {
+export function statementsFor(db: D1Database, event: Row, to: Subscriber[], now: number, onlyIf?: OnlyIf): Recorded {
 	if (!to.length) return { statements: [], jtis: [] };
 	const id = crypto.randomUUID();
 	const jtis = to.map(() => crypto.randomUUID());
@@ -29,7 +44,10 @@ export function statementsFor(db: D1Database, event: Row, to: Subscriber[], now:
 		jtis,
 		statements: [
 			db
-				.prepare('INSERT INTO account_events (id, type, user_id, reason, export_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)')
+				.prepare(
+					`INSERT INTO account_events (id, type, user_id, reason, export_id, created_at)
+					 SELECT ?1, ?2, ?3, ?4, ?5, ?6${onlyIf ? ` WHERE EXISTS (SELECT 1 FROM users WHERE id = ?3 AND ${ONLY_IF[onlyIf]})` : ''}`
+				)
 				.bind(id, event.type, event.userId, event.reason ?? null, event.exportId ?? null, now),
 			...to.map((s, i) =>
 				db
@@ -44,8 +62,8 @@ export function statementsFor(db: D1Database, event: Row, to: Subscriber[], now:
 	};
 }
 
-/** The event and its deliveries, to add to the batch of the change. */
-export async function recordAccountEvent(env: AccountEventsEnv, event: AccountEvent, now = Date.now()): Promise<Recorded> {
+/** The event and its deliveries, to add to the batch of the change, before the change. */
+export async function recordAccountEvent(env: AccountEventsEnv, event: AccountEvent, opts: { now?: number; onlyIf?: OnlyIf } = {}): Promise<Recorded> {
 	if (!accountEventsOn(env)) return { statements: [], jtis: [] };
 	const to = (await subscribers(env.AUTH_DB)).filter((s) => s.types.includes(event.type));
 	return statementsFor(
@@ -57,7 +75,8 @@ export async function recordAccountEvent(env: AccountEventsEnv, event: AccountEv
 			...(event.type === 'account-export-requested' ? { exportId: event.exportId } : {}),
 		},
 		to,
-		now
+		opts.now ?? Date.now(),
+		opts.onlyIf
 	);
 }
 

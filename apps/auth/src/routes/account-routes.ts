@@ -24,6 +24,7 @@ import { removeAllRefreshTokens } from '@al-ummah-now/openauth/refresh-token';
 import type { StorageAdapter } from '@al-ummah-now/openauth/storage/storage';
 import { getAuditEmitter } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType, createAuditEvent } from '../audit-events';
+import { enqueue, recordAccountEvent } from '../account-events/record';
 import { logger } from '../logger';
 import { revokeUser } from '../revocation/revocation-list';
 import { parseAccessTtl } from '../revocation/token-gate';
@@ -150,14 +151,13 @@ interface UserRow {
  * removing them, a deleted account could keep minting access tokens.
  */
 /** Lists the account in Recently deleted so the cleanup purges it after 30 days. */
-async function recordSelfDeletion(db: D1Database, row: { id: string; tenant_id: string; email: string; status: string }): Promise<void> {
-	await db
+function selfDeletion(db: D1Database, row: { id: string; tenant_id: string; email: string; status: string }, now: number): D1PreparedStatement {
+	return db
 		.prepare(
 			`INSERT OR IGNORE INTO admin_deletions (kind, item_id, tenant_id, label, deleted_at, deleted_by, reason, snapshot)
 			 VALUES ('user', ?1, ?2, ?3, ?4, 'self', 'Deleted by the account owner', ?5)`
 		)
-		.bind(row.id, row.tenant_id, row.email, Date.now(), JSON.stringify({ status: row.status === 'suspended' ? 'suspended' : 'active', email: row.email }))
-		.run();
+		.bind(row.id, row.tenant_id, row.email, now, JSON.stringify({ status: row.status === 'suspended' ? 'suspended' : 'active', email: row.email }));
 }
 
 async function removeRefreshTokens(storage: StorageAdapter, subject: string | undefined): Promise<number> {
@@ -195,12 +195,20 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	const userAdapter = new D1UserAdapter({ db: env.AUTH_DB, usersTable: 'users' });
 	// The old KV user record and email index, when the account has them (never written since AU-3)
 	await new D1UserService({ db: env.AUTH_DB, adapter: userAdapter, legacy: storage }).removeLegacy(row.tenant_id, row.id, row.email.toLowerCase());
-	// D1 is the source of truth: soft delete and drop the sign-in sessions (idempotent)
-	await userAdapter.softDeleteUser(row.tenant_id, row.id, Date.now());
-	// The hourly cleanup removes the account's data 30 days from now (deletions/purge.ts)
-	await recordSelfDeletion(env.AUTH_DB, row);
-	// The date of birth goes at once (wiki E20 §5.1); a restored account is asked again
-	await deleteBirthDate(env.AUTH_DB, row.id).run();
+	// D1 is the source of truth: in one batch, the soft delete, its row in Recently deleted (the hourly
+	// cleanup removes the account's data 30 days from now, deletions/purge.ts) and the event that tells
+	// subscribed apps to hide its content (account-events/). The date of birth goes with them (wiki E20
+	// §5.1); a restored account is asked again. Then drop the sign-in sessions (idempotent)
+	const now = Date.now();
+	const event = await recordAccountEvent(env, { type: 'account-disabled', userId: row.id, reason: 'deleted' }, { now, onlyIf: 'live' });
+	await env.AUTH_DB.batch([
+		...event.statements,
+		env.AUTH_DB.prepare(`UPDATE users SET status = 'deleted', deleted_at = ?3, updated_at = ?3 WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL`).bind(row.tenant_id, row.id, now),
+		selfDeletion(env.AUTH_DB, row, now),
+		deleteBirthDate(env.AUTH_DB, row.id),
+	]);
+	// Only queued here: no app is waited for
+	ctx.waitUntil(enqueue(env, event.jtis, now));
 	await userAdapter.revokeAllUserSessions(row.tenant_id, row.id);
 	// The password credential: the deleted account can't be signed in to again
 	for (const email of new Set([row.email, row.email.toLowerCase()])) {

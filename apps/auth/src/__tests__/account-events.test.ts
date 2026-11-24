@@ -44,7 +44,7 @@ async function client(over: Partial<{ id: string; secret: string | null; grants:
 		.run();
 }
 async function record(event: AccountEvent, e = on(), now?: number) {
-	const r = await recordAccountEvent(e, event, now);
+	const r = await recordAccountEvent(e, event, { now });
 	if (r.statements.length) await e.AUTH_DB.batch(r.statements);
 	return r.jtis;
 }

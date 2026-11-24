@@ -27,6 +27,9 @@ export interface AccountEventsEnv {
 
 export const accountEventsOn = (env: { ACCOUNT_EVENTS?: string }) => env.ACCOUNT_EVENTS === 'on';
 
+/** The same env with events off: for accounts no app should hear about (E2E run accounts). */
+export const withoutAccountEvents = <T extends object>(env: T): T & { ACCOUNT_EVENTS: 'off' } => ({ ...env, ACCOUNT_EVENTS: 'off' });
+
 export interface AccountEventMessage {
 	type: 'account-event.deliver';
 	jti: string;

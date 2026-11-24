@@ -6,7 +6,8 @@
  *           restore: the status before deletion, unless another live account
  *           has taken the email since. purge: the users row and everything
  *           keyed by the user (identities, role links, sessions, codes,
- *           refresh tokens, the password credential, old KV copies).
+ *           refresh tokens, the password credential, old KV copies). Subscribed
+ *           apps are told of each (account-events/): hide, show again, erase.
  *   client  delete: enabled = 0 (/authorize and client credentials refuse
  *           disabled clients). restore: the enabled flag it had. purge: the
  *           oauth_clients row (its permissions cascade) and its theme default.
@@ -31,6 +32,7 @@ import { ThemeService } from '../themes/service';
 import { invalidateThemeSettings } from '../themes/runtime';
 import { deleteBirthDate } from '../birth-date/store';
 import { logger } from '../logger';
+import { enqueue, recordAccountEvent } from '../account-events/record';
 import type { DeletionKind, DeletionRow } from './store';
 
 
@@ -45,7 +47,7 @@ export class DeletionError extends Error {
 	}
 }
 
-export type DeletionEnv = Pick<Env, 'AUTH_DB' | 'AUTH_STORAGE' | 'TOKEN_REVOCATIONS' | 'AUTH_THEMES'>;
+export type DeletionEnv = Pick<Env, 'AUTH_DB' | 'AUTH_STORAGE' | 'TOKEN_REVOCATIONS' | 'AUTH_THEMES' | 'ACCOUNT_EVENTS' | 'ACCOUNT_EVENTS_QUEUE'>;
 
 /** The item as it is before deletion: its label and what restore needs. */
 export interface Prepared {
@@ -97,10 +99,13 @@ const user: KindHandler = {
 			.first<{ id: string; email: string; status: string }>();
 		if (!row) throw new DeletionError(404, 'user_not_found', `User '${userId}' not found`);
 		if (userId === actorId) throw new DeletionError(409, 'cannot_delete_self', 'You cannot delete your own account here');
+		// Apps hide its content now; they erase it when it is purged
+		const event = await recordAccountEvent(env, { type: 'account-disabled', userId, reason: 'deleted' }, { now, onlyIf: 'live' });
 		return {
 			label: row.email,
 			snapshot: { status: row.status, email: row.email } satisfies UserSnapshot,
 			statements: [
+				...event.statements,
 				env.AUTH_DB.prepare(
 					`UPDATE users SET status = 'deleted', deleted_at = ?3, updated_at = ?3 WHERE id = ?1 AND tenant_id = ?2 AND deleted_at IS NULL`
 				).bind(userId, tenantId, now),
@@ -110,6 +115,7 @@ const user: KindHandler = {
 				await revokeUser({ kv: env.TOKEN_REVOCATIONS, db: env.AUTH_DB }, userId, 'admin_deleted');
 				await revokeUserTokens(userId, env.AUTH_DB);
 				await endBrowserSignIns(env.AUTH_DB, userId);
+				await enqueue(env, event.jtis, now);
 			},
 		};
 	},
@@ -124,14 +130,17 @@ const user: KindHandler = {
 			.bind(current.tenant_id, current.email, row.item_id)
 			.first();
 		if (taken) throw new DeletionError(409, 'email_in_use', `Another account now uses ${current.email}; it can't be restored`);
+		const event = await recordAccountEvent(env, { type: 'account-enabled', userId: row.item_id }, { now, onlyIf: 'deleted' });
 		return {
 			statements: [
+				...event.statements,
 				env.AUTH_DB.prepare('UPDATE users SET status = ?2, deleted_at = NULL, updated_at = ?3 WHERE id = ?1 AND deleted_at IS NOT NULL').bind(
 					row.item_id,
 					status,
 					now
 				),
 			],
+			after: () => enqueue(env, event.jtis, now).then(() => undefined),
 		};
 	},
 
@@ -231,7 +240,11 @@ const user: KindHandler = {
 		statements.push(db.prepare('DELETE FROM passkey_setup_tickets WHERE user_id = ?').bind(userId));
 		statements.push(deleteBirthDate(db, userId));
 		for (const stmt of statements) await run(stmt);
-		await run(db.prepare('DELETE FROM users WHERE id = ? AND deleted_at IS NOT NULL').bind(userId));
+		// Apps erase the account's data, told exactly when the row goes: not for a retry that finds it
+		// gone, nor for an account restored meanwhile
+		const event = await recordAccountEvent(env, { type: 'account-purged', userId }, { onlyIf: 'deleted' });
+		await db.batch([...event.statements, db.prepare('DELETE FROM users WHERE id = ? AND deleted_at IS NOT NULL').bind(userId)]);
+		await enqueue(env, event.jtis);
 		// user_revocations / TOKEN_REVOCATIONS stay: they hold only the id, a time and a reason
 		// code (never the email) and keep any token still in flight dead until the entry expires
 	},
