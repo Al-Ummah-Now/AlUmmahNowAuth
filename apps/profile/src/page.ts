@@ -221,10 +221,19 @@ const STYLES = `
         .delete-status { margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.45; min-height: 1.25rem; text-align: start; color: var(--fanous-color-text-primary); }
         .delete-status:empty { display: none; }
         .delete-status[data-tone="error"] { color: var(--fanous-color-error-text, #dc2626); }
-        .delete-stack { display: flex; flex-direction: column; gap: 1.5rem; max-width: 600px; margin: 0 auto; }
+        .delete-stack { display: flex; flex-direction: column; gap: 1rem; max-width: 600px; margin: 0 auto; }
+        .container:has(.delete-stack) { padding-top: 1.25rem; padding-bottom: 1.5rem; }
         .delete-stack > .profile-card, .delete-stack > .welcome-message { margin: 0; width: 100%; }
+        .delete-stack .hero { margin-bottom: 0.25rem; }
         /* Solid heading ink on /delete-account so light mode has full contrast on cream surfaces */
-        .delete-stack .hero h1 { background: none; -webkit-background-clip: border-box; -webkit-text-fill-color: currentColor; background-clip: border-box; color: var(--auth-profile-heading-text, var(--fanous-color-text-primary)); }
+        .delete-stack .hero h1 { font-size: clamp(1.6rem, 2.8vw, 2.2rem); margin-bottom: 0.45rem; background: none; -webkit-background-clip: border-box; -webkit-text-fill-color: currentColor; background-clip: border-box; color: var(--auth-profile-heading-text, var(--fanous-color-text-primary)); }
+        .delete-stack .hero p { font-size: 0.98rem; line-height: 1.48; }
+        .delete-stack .error-message { margin-bottom: 0; padding: 0.75rem 1rem; font-size: 0.92rem; }
+        .delete-stack .profile-card { padding: 1.25rem 1.5rem; }
+        .delete-stack .profile-card h2 { margin-bottom: 0.75rem; font-size: 1.25rem; }
+        .delete-stack .delete-list { gap: 0.4rem; margin-bottom: 0.85rem; font-size: 0.9rem; line-height: 1.45; }
+        .delete-stack .profile-field { padding: 0.6rem 0.85rem; margin-bottom: 0.65rem; }
+        .delete-stack .card-actions { margin-top: 0.85rem; }
 `;
 
 const ICON_SIGNIN = '<svg class="aun-menu-icon aun-flip" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>';
