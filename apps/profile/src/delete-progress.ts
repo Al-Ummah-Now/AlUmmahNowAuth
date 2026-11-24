@@ -18,6 +18,10 @@ export interface DeleteProgress {
   /** Opaque, from api-videos and bound to the account there; handed back unread. */
   resumeToken?: string;
   leftover?: Leftover;
+  /** stage deleted only: false when the account went some other way, so nothing is said about its content. */
+  erased?: boolean;
+  /** Of the attempt that wrote it: no two records are equal, so an attempt only ever removes its own. */
+  attempt?: string;
   startedAt: number;
   updatedAt: number;
 }
@@ -72,6 +76,7 @@ export async function readDeleteProgress(db: D1Database, userId: string, nowMs =
     stage,
     ...(typeof p?.resumeToken === "string" && p.resumeToken ? { resumeToken: p.resumeToken } : {}),
     ...(leftover ? { leftover } : {}),
+    ...(stage === "deleted" && p?.erased === false ? { erased: false } : {}),
     startedAt: typeof p?.startedAt === "number" ? p.startedAt : nowMs,
     updatedAt: typeof p?.updatedAt === "number" ? p.updatedAt : nowMs,
   };
@@ -79,6 +84,40 @@ export async function readDeleteProgress(db: D1Database, userId: string, nowMs =
 
 export async function writeDeleteProgress(db: D1Database, userId: string, p: DeleteProgress): Promise<void> {
   await putValue(db, progressKey(userId), p, p.stage === "deleted" ? p.updatedAt + DELETED_TTL_MS : null);
+}
+
+/**
+ * Writes the first record of a deletion. True when there was none (or only a finished one's, which has an expiry):
+ * this attempt made it. Otherwise another attempt has started meanwhile; the record is replaced all the same, so
+ * that the other attempt can no longer remove it.
+ */
+export async function startDeleteProgress(db: D1Database, userId: string, p: DeleteProgress): Promise<boolean> {
+  const created = await db
+    .prepare(
+      `INSERT INTO openauth_atomic (key, value, expires_at) VALUES (?1, ?2, NULL)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = NULL WHERE openauth_atomic.expires_at IS NOT NULL
+       RETURNING key`,
+    )
+    .bind(progressKey(userId), JSON.stringify(p))
+    .first();
+  if (created) return true;
+  await writeDeleteProgress(db, userId, p);
+  return false;
+}
+
+/**
+ * The account is proven gone: what is left of the record expires in a day, without the resume token. Nothing is
+ * written when there was no record to keep and no erase to speak of.
+ */
+export async function settleDeleteProgress(db: D1Database, userId: string, before: DeleteProgress | null, proof: DoneProof, nowMs = Date.now()): Promise<void> {
+  if (before?.stage === "deleted" || (!before && !proof.erased)) return;
+  await writeDeleteProgress(db, userId, {
+    stage: "deleted",
+    ...(proof.leftover ? { leftover: proof.leftover } : {}),
+    ...(proof.erased ? {} : { erased: false }),
+    startedAt: before?.startedAt ?? nowMs,
+    updatedAt: nowMs,
+  });
 }
 
 /** Removes exactly the record `p` (written by this request), never one another tab has written since. */

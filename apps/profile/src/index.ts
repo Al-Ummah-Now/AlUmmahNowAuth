@@ -10,6 +10,8 @@ import {
   putDoneProof,
   readDeleteProgress,
   removeDeleteProgress,
+  settleDeleteProgress,
+  startDeleteProgress,
   takeDoneProof,
   writeDeleteProgress,
   type DeleteProgress,
@@ -162,7 +164,7 @@ async function bestEffort(what: string, run: () => Promise<unknown>): Promise<bo
 
 /** What may be said once the account is gone: about Videos content only if this app erased it. */
 const doneProofOf = (p: DeleteProgress | null): DoneProof =>
-  p?.stage === "content_erased" || p?.stage === "deleted"
+  p?.stage === "content_erased" || (p?.stage === "deleted" && p.erased !== false)
     ? { erased: true, ...(p.leftover ? { leftover: p.leftover } : {}) }
     : { erased: false };
 
@@ -385,18 +387,14 @@ const worker = {
       const sessionToken = sessionTokenOf(request);
       const state = {
         read: () => readDeleteProgress(env.AUTH_DB, userId),
+        start: (p: DeleteProgress) => startDeleteProgress(env.AUTH_DB, userId, p),
         write: (p: DeleteProgress) => writeDeleteProgress(env.AUTH_DB, userId, p),
         remove: (p: DeleteProgress) => removeDeleteProgress(env.AUTH_DB, userId, p),
         accountDeleted: () => accountDeleted(env.AUTH_DB, userId),
       };
       /** The account is gone: from here on nothing may turn the answer into a failure. */
-      const deleted = async (proof: DoneProof, deletedAt?: number) => {
-        const now = Date.now();
-        if (proof.erased) {
-          await bestEffort('its progress record stays', () =>
-            state.write({ stage: 'deleted', ...(proof.leftover ? { leftover: proof.leftover } : {}), startedAt: now, updatedAt: now }),
-          );
-        }
+      const deleted = async (proof: DoneProof, before: DeleteProgress | null, deletedAt?: number) => {
+        await bestEffort('its progress record stays', () => settleDeleteProgress(env.AUTH_DB, userId, before, proof));
         if (sessionToken) await bestEffort('the profile session could not be ended', () => endSession(stores, sessionToken));
         const nonce = crypto.randomUUID();
         const proved = await bestEffort('the confirmation could not be stored', () => putDoneProof(env.AUTH_DB, nonce, proof));
@@ -420,7 +418,10 @@ const worker = {
       // A deletion whose last answer was lost (its session has ended with it): done, not "sign in again"
       if (owner !== null) {
         try {
-          if (await state.accountDeleted()) return await deleted(doneProofOf(await state.read()));
+          if (await state.accountDeleted()) {
+            const before = await state.read();
+            return await deleted(doneProofOf(before), before);
+          }
         } catch {
           return json({ error: 'progress_unavailable', started: false }, 503);
         }
@@ -457,7 +458,7 @@ const worker = {
       if (!result.complete) {
         return json({ deleted: false, complete: false, ...('leftover' in result ? { leftover: result.leftover } : result.restarted ? { restarted: true } : {}) });
       }
-      return await deleted({ erased: true, ...(result.leftover ? { leftover: result.leftover } : {}) }, result.deletedAt);
+      return await deleted({ erased: true, ...(result.leftover ? { leftover: result.leftover } : {}) }, null, result.deletedAt);
     }
 
     // Public web account deletion page (AlUmmahNowAuth#532; Google Play Data safety URL): signed out it says what is
@@ -481,8 +482,10 @@ const worker = {
           progress = await readDeleteProgress(env.AUTH_DB, owner);
           // Gone although this browser still holds its session, or held one: a lost answer
           if ((!session || progress) && (await accountDeleted(env.AUTH_DB, owner))) {
-            done = doneProofOf(progress);
+            const proof = doneProofOf(progress);
+            done = proof;
             endedHere = true;
+            await bestEffort('its progress record stays', () => settleDeleteProgress(env.AUTH_DB, owner, progress, proof));
             if (session && sessionToken) await bestEffort('the profile session could not be ended', () => endSession(storesOf(env), sessionToken));
           }
           // Restored by staff after a finished deletion: nothing is under way
