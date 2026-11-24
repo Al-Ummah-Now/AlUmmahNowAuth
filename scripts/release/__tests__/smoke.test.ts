@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { deriveEnvConfig } from '../admin-config.ts';
+import { adminSource, deriveEnvConfig, resourceIds } from '../admin-config.ts';
+import { parseJsonc } from '../jsonc.ts';
 import { HOSTS, overrideHeader, runSmoke } from '../smoke.ts';
 
 /** A fake auth deployment for the smoke checks. */
@@ -82,5 +85,24 @@ describe('deriveEnvConfig (admin build)', () => {
 
 	it('throws for an unknown env', () => {
 		expect(() => deriveEnvConfig({}, { env: {} }, 'stage')).toThrow('no env.stage');
+	});
+
+	// The build writes production's config, so every binding has to be replaced
+	const root = resolve(__dirname, '../../..');
+	const built = { ...(parseJsonc(readFileSync(resolve(root, 'apps/admin/wrangler.json'), 'utf8')) as Record<string, unknown>), main: 'index.js', no_bundle: true };
+	it.each(['qa', 'stage'])('%s binds its own stores and no production ones', (envName) => {
+		const source = adminSource(root, envName);
+		const out = deriveEnvConfig(built, source, envName);
+		for (const key of ['name', 'vars', 'kv_namespaces', 'd1_databases', 'routes', 'observability', 'logpush']) expect(out[key], key).toEqual(source.env![envName]![key]);
+		expect(out.d1_databases).toHaveLength(1);
+		expect(out.main).toBe('index.js');
+		expect(resourceIds(out)).toHaveLength(3); // KV, D1, host
+	});
+
+	it("refuses a config that still holds one of production's", () => {
+		const d1 = (built as Record<string, unknown>).d1_databases;
+		expect(() => deriveEnvConfig(built, { env: { qa: { name: 'qa', d1_databases: d1 } } }, 'qa')).toThrow(/production's .+, admin\.auth\.alummahnow\.net/);
+		// a kind of binding the list does not know is kept, and so refused
+		expect(() => deriveEnvConfig({ ...built, r2_buckets: [{ binding: 'R', bucket_name: 'prod-files' }] }, adminSource(root, 'qa'), 'qa')).toThrow('prod-files');
 	});
 });
