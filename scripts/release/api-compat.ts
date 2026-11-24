@@ -54,6 +54,12 @@ const types = (s: Json): string[] => (typeof s.type === 'string' ? [s.type] : ar
 const values = (s: Json): unknown[] | null => ('const' in s ? [s.const] : Array.isArray(s.enum) ? s.enum : null);
 const show = (v: unknown) => JSON.stringify(v);
 
+/** Schema words compared one by one below. */
+const COMPARED = new Set(['$ref', 'type', 'enum', 'const', 'format', 'pattern', 'additionalProperties', 'properties', 'required', 'items', 'oneOf', 'anyOf', 'allOf', 'discriminator', 'uniqueItems', 'multipleOf', 'maxLength', 'maximum', 'exclusiveMaximum', 'maxItems', 'maxProperties', 'minLength', 'minimum', 'exclusiveMinimum', 'minItems', 'minProperties']);
+/** Words that promise nothing. Any other word must stay as it was: what is not understood never passes unseen. */
+const NOTES = new Set(['title', 'description', 'default', 'example', 'examples', 'deprecated', 'externalDocs', '$comment']);
+const STRICTER = { maxLength: -1, maximum: -1, exclusiveMaximum: -1, maxItems: -1, maxProperties: -1, minLength: 1, minimum: 1, exclusiveMinimum: 1, minItems: 1, minProperties: 1 } as const;
+
 class Comparison {
 	readonly changes: string[] = [];
 	private readonly seen = new Set<string>();
@@ -91,14 +97,24 @@ class Comparison {
 		if (sent) {
 			if (isValues && !wasValues) this.add(where, `only ${show(isValues)} accepted now`);
 			else if (isValues && wasValues) for (const v of wasValues) if (!isValues.some((w) => show(w) === show(v))) this.add(where, `value ${show(v)} no longer accepted`);
-			for (const [limit, stricter] of [['maxLength', -1], ['maximum', -1], ['maxItems', -1], ['minLength', 1], ['minimum', 1], ['minItems', 1]] as const) {
+			for (const [limit, stricter] of Object.entries(STRICTER)) {
 				const [x, y] = [old[limit], cur[limit]];
-				if (typeof y === 'number' && (typeof x !== 'number' ? !(stricter === 1 && y === 0) : (y - x) * stricter > 0)) this.add(where, `${limit} ${x ?? 'none'} became ${y}`);
+				if (typeof y === 'number' && (typeof x !== 'number' ? !(limit.startsWith('min') && limit !== 'minimum' && y === 0) : (y - x) * stricter > 0)) this.add(where, `${limit} ${x ?? 'none'} became ${y}`);
 			}
+			if (cur.multipleOf !== undefined && cur.multipleOf !== old.multipleOf) this.add(where, `multipleOf ${old.multipleOf ?? 'none'} became ${cur.multipleOf}`);
+			if (cur.uniqueItems === true && old.uniqueItems !== true) this.add(where, 'items must be unique now');
 			if (cur.pattern !== undefined && cur.pattern !== old.pattern) this.add(where, `pattern ${show(old.pattern ?? 'none')} became ${show(cur.pattern)}`);
 			if (cur.additionalProperties === false && old.additionalProperties !== false) this.add(where, 'unknown fields are refused now');
 		}
 		if (old.format !== cur.format && (sent ? cur.format !== undefined : old.format !== undefined)) this.add(where, `format ${old.format ?? 'none'} became ${cur.format ?? 'none'}`);
+
+		const [oldPick, curPick] = [obj(old.discriminator), obj(cur.discriminator)];
+		if (oldPick.propertyName !== undefined && oldPick.propertyName !== curPick.propertyName) this.add(where, `discriminator ${show(oldPick.propertyName)} became ${show(curPick.propertyName ?? 'none')}`);
+		for (const [value, target] of Object.entries(obj(oldPick.mapping))) if (show(obj(curPick.mapping)[value]) !== show(target)) this.add(where, `discriminator value ${show(value)} changed`);
+		for (const word of new Set([...Object.keys(old), ...Object.keys(cur)])) {
+			if (COMPARED.has(word) || NOTES.has(word) || word.startsWith('x-')) continue;
+			if (show(old[word]) !== show(cur[word])) this.add(where, `${word} ${show(old[word] ?? 'none')} became ${show(cur[word] ?? 'none')}`);
+		}
 
 		const [oldProps, curProps] = [obj(old.properties), obj(cur.properties)];
 		const [oldReq, curReq] = [new Set(arr(old.required).map(String)), new Set(arr(cur.required).map(String))];
@@ -126,11 +142,13 @@ class Comparison {
 					if (sent !== (word === 'allOf')) this.add(where, `${word} ${label} removed`);
 				} else this.schema(v, match, `${where} ${word} ${label}`, sent);
 			});
+			if (!sent && word !== 'allOf' && !y.length) this.add(where, `${word} is gone: anything may be answered`);
 			const names = new Set(x.map(name));
 			y.forEach((v, i) => {
 				if (names.has(name(v, i))) return;
 				// allOf adds a condition to what is sent; a choice that did not exist narrows what was free
-				if (sent && (word === 'allOf' || x.length === 0)) this.add(where, `${word} ${name(v, i).split('/').pop()} added`);
+				// and a client may meet an answer it has never seen
+				if (sent ? word === 'allOf' || x.length === 0 : word !== 'allOf' && x.length > 0) this.add(where, `${word} ${name(v, i).split('/').pop()} added`);
 			});
 		}
 	}
@@ -173,7 +191,11 @@ class Comparison {
 			}
 			const [x, y] = [deref(this.before, res), deref(this.after, other)];
 			this.content(x, y, `${where} ${status}`, false);
-			for (const h of Object.keys(obj(x.headers))) if (!Object.keys(obj(y.headers)).some((k) => k.toLowerCase() === h.toLowerCase())) this.add(`${where} ${status}`, `header ${h} removed`);
+			for (const [h, header] of Object.entries(obj(x.headers))) {
+				const same = Object.entries(obj(y.headers)).find(([k]) => k.toLowerCase() === h.toLowerCase());
+				if (!same) this.add(`${where} ${status}`, `header ${h} removed`);
+				else this.schema(deref(this.before, header).schema ?? {}, deref(this.after, same[1]).schema ?? {}, `${where} ${status} header ${h}`, false);
+			}
 		}
 
 		// Alternatives: each way that worked must still work. None, or an empty one, is "anyone"
@@ -211,6 +233,14 @@ function operations(spec: Json): Map<string, Op> {
 /** What `after` takes away from what `before` promised, pages left out. The audience is the promised one. */
 export function breakingChanges(before: Json, after: Json, now = Date.now()): Change[] {
 	const out: Change[] = [];
+	// How a client proves itself: another kind or place for the credential breaks whoever sends it
+	const schemes = (s: Json) => obj(obj(s.components).securitySchemes);
+	const plain = (s: unknown) => show(Object.entries(obj(s)).filter(([k]) => k !== 'description' && !k.startsWith('x-')).sort(([x], [y]) => (x < y ? -1 : 1)));
+	for (const [name, scheme] of Object.entries(schemes(before))) {
+		const other = schemes(after)[name];
+		if (other === undefined || plain(scheme) === plain(other)) continue; // a removed one shows where it was used
+		out.push({ id: `security scheme ${name}: ${plain(scheme)} became ${plain(other)}`, audience: 'public' });
+	}
 	const next = operations(after);
 	for (const [key, a] of operations(before)) {
 		if (a.audience === 'page') continue;
@@ -226,26 +256,72 @@ export function breakingChanges(before: Json, after: Json, now = Date.now()): Ch
 	return out;
 }
 
+interface Deprecation {
+	where: string;
+	audience: string;
+	sunset: string | undefined;
+}
+
+/** Everything marked deprecated: operations, parameters, and fields and headers at any depth. Pages left out. */
+function deprecations(spec: Json): Map<string, Deprecation> {
+	const out = new Map<string, Deprecation>();
+	for (const [key, { where, op, item, audience }] of operations(spec)) {
+		if (audience === 'page') continue;
+		const note = (node: Json, path: string) => {
+			if (node.deprecated === true) out.set(`${key}${path}`, { where: `${where}${path}`, audience, sunset: typeof node['x-sunset'] === 'string' ? node['x-sunset'] : undefined });
+		};
+		const walk = (raw: unknown, path: string, refs: string[]): void => {
+			// The marker may sit beside a $ref as well as on what it points to
+			const ref = obj(raw).$ref;
+			note(obj(raw), path);
+			if (typeof ref === 'string' && refs.includes(ref)) return;
+			const inside = typeof ref === 'string' ? [...refs, ref] : refs;
+			const node = deref(spec, raw);
+			note(node, path);
+			for (const [name, prop] of Object.entries(obj(node.properties))) walk(prop, `${path} ${name}`, inside);
+			if (node.items !== undefined) walk(node.items, `${path} []`, inside);
+			for (const word of ['oneOf', 'anyOf', 'allOf']) arr(node[word]).forEach((v, i) => walk(v, `${path} ${word} ${String(obj(v).$ref ?? i).split('/').pop()}`, inside));
+		};
+		const media = (node: Json, path: string) => {
+			for (const m of Object.values(obj(node.content))) walk(obj(m).schema ?? {}, path, []);
+		};
+		note(op, '');
+		for (const raw of [...arr(item.parameters), ...arr(op.parameters)]) {
+			const p = deref(spec, raw);
+			note(p, ` ${p.in} ${p.name}`);
+			walk(p.schema ?? {}, ` ${p.in} ${p.name}`, []);
+		}
+		media(deref(spec, op.requestBody), ' body');
+		for (const [status, raw] of Object.entries(obj(op.responses))) {
+			const res = deref(spec, raw);
+			media(res, ` ${status}`);
+			for (const [h, header] of Object.entries(obj(res.headers))) note(deref(spec, header), ` ${status} header ${h}`);
+		}
+	}
+	return out;
+}
+
 /** New deprecations that give less notice than their audience is owed, or no date at all. */
 export function shortNotice(before: Json, after: Json, now = Date.now()): string[] {
 	const out: string[] = [];
-	const earlier = operations(before);
-	for (const [key, b] of operations(after)) {
-		if (b.op.deprecated !== true) continue;
-		const a = earlier.get(key);
-		const sunset = typeof b.op['x-sunset'] === 'string' ? Date.parse(b.op['x-sunset']) : NaN;
+	const earlier = deprecations(before);
+	const promised = operations(before);
+	for (const [key, d] of deprecations(after)) {
+		const sunset = d.sunset === undefined ? NaN : Date.parse(d.sunset);
 		if (Number.isNaN(sunset)) {
-			out.push(`${b.where}: deprecated without an x-sunset date`);
+			out.push(`${d.where}: deprecated without an x-sunset date`);
 			continue;
 		}
 		// A date already announced may move later, not earlier
-		const announced = a?.op.deprecated === true && typeof a.op['x-sunset'] === 'string' ? Date.parse(a.op['x-sunset']) : null;
-		if (announced !== null) {
-			if (sunset < announced) out.push(`${b.where}: x-sunset moved earlier (${a!.op['x-sunset']} to ${b.op['x-sunset']})`);
+		const was = earlier.get(key);
+		if (was?.sunset !== undefined) {
+			if (sunset < Date.parse(was.sunset)) out.push(`${d.where}: x-sunset moved earlier (${was.sunset} to ${d.sunset})`);
 			continue;
 		}
-		const days = NOTICE[a?.audience ?? b.audience] ?? 0;
-		if (sunset < now + days * DAY) out.push(`${b.where}: x-sunset ${b.op['x-sunset']} is less than ${days} days away (${a?.audience ?? b.audience})`);
+		const operation = [...promised].find(([k]) => key === k || key.startsWith(`${k} `));
+		const audience = operation?.[1].audience ?? d.audience;
+		const days = NOTICE[audience] ?? 0;
+		if (sunset < now + days * DAY) out.push(`${d.where}: x-sunset ${d.sunset} is less than ${days} days away (${audience})`);
 	}
 	return out;
 }
