@@ -22,7 +22,7 @@ Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the
 | C3a | AlUmmahNow | Videos receiver: verify the SET, `jti` and `seq`, own queue, retry and DLQ, last verified event. Off | C1a |
 | C3b | AlUmmahNow | Erase on `account-purged` | C3a |
 | C3c | AlUmmahNow | Hide and restore on `account-disabled` and `account-enabled` | C3a |
-| C4 | auth | Migration that subscribes Videos, per environment | C1b, C3c released |
+| C4 | auth | Migration that subscribes the machine client **API Videos** (never the public Web client) and grants its scopes, per environment | C1b, C3c released |
 | T1 | auth | QA-only migration removing the theme demo redirect URIs from #249 | Theme demos torn down (any time, independent of the hub) |
 
 ---
@@ -134,9 +134,9 @@ Acceptance: QA E2E: a throwaway account is deleted, signing in with it fails, an
 
 ## C3: Videos receiver (AlUmmahNow)
 
-Scope (Q3: Videos deletes all of the user's data): an endpoint in api-videos, behind a switch that is off, verifies the SET against auth's JWKS (issuer, `aud` = Videos' client id, `typ`, one known event), stores `jti` and `seq`, queues the action on Videos' own queue with retry and DLQ, and answers `202`. A worker runs it: erase (the existing resumable `eraseUserData`, then `UserDataErased`), hide, restore. Each event moves `last_verified_event_at`, which admin-api reads for the `ageRules` check (48 hours). The export job is E20-B6.
+Scope (Q3: Videos deletes all of the user's data): an endpoint in api-videos, behind the switch `accountEvents` (off by default, and not `ageRules`: that one can't go on until a verified event arrived, which would never happen), verifies the SET against auth's JWKS (issuer, `aud` = the **API Videos** machine client, `env.ClientId`; `typ`; one known event), stores the `jti`, queues the action on Videos' own queue with retry and DLQ, and answers `202`. A worker runs it: erase (the existing resumable `eraseUserData`, then `UserDataErased`), hide, restore. **The worker checks and records the applied `seq`** with the change, not the endpoint at receipt. Each event moves `last_verified_event_at`, which admin-api reads for the `ageRules` check (48 hours). The export job is E20-B6.
 
-Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data; a replayed `jti` is a no-op; an old `seq` is ignored; a bad signature, issuer, audience or `typ` is refused, and so is an access token; retries end in the DLQ and can be replayed; hide then restore leaves every record as it was. After C4, QA shows a `verification` event within a day.
+Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data; a replayed `jti` is a no-op; an old `seq` is ignored, also when a hide is retried after a later restore finished; the switch off answers `404 feature_off`; a bad signature, issuer, audience or `typ` is refused, and so is an access token; retries end in the DLQ and can be replayed; hide then restore leaves every record as it was. After C4, QA shows a `verification` event within a day.
 
 ## T1: remove the theme demo redirect URIs
 
