@@ -65,6 +65,25 @@ save(next.tokens!);
 
 Refresh in one place at a time. Two refreshes with one token within two minutes get the same family; later than that it is treated as stolen.
 
+## Servers, TVs and the rest (1.1.0 and up)
+
+```ts
+// A server's own token
+const own = await client.clientCredentials({ scopes: ['users:read'] });
+
+// A TV: show the code, then wait for the approval
+const started = await client.device.start();
+if (!started.err) {
+	show(started.device.userCode, started.device.verificationURI);
+	const approved = await client.device.poll(started.device, { signal });
+}
+
+await client.revoke(refreshToken); // end one sign-in
+const info = await client.userinfo(subjects.user, accessToken);
+```
+
+These four never throw: each answers `{ err }`, an `AuthRequestError` with the OAuth code in `err.error`, `network_error` when the server can't be reached.
+
 ## Accounts on this browser
 
 Our web apps show the accounts signed in on the browser with the session routes, from a page on one of our own origins:
