@@ -6,6 +6,7 @@
  * when a user tried it. Reports pass/fail booleans plus the environment name and
  * issuer (already public via /.well-known metadata); never secret values or errors.
  */
+import { isProfileKey } from './birth-date/key';
 import { logger } from './logger';
 
 export const RATE_LIMIT_BINDINGS = [
@@ -28,13 +29,15 @@ const CHECK_TIMEOUT_MS = 3000;
  * Resolves a secret binding without utils/secrets' module-level cache, so a
  * binding that stopped resolving is reported even in a warm isolate.
  */
-async function secretResolves(binding: unknown): Promise<boolean> {
-	if (typeof binding === 'string') return binding.length > 0;
+async function secretValue(binding: unknown): Promise<string> {
+	if (typeof binding === 'string') return binding;
 	if (binding && typeof (binding as { get?: unknown }).get === 'function') {
-		return !!(await (binding as { get: () => Promise<string> }).get());
+		return (await (binding as { get: () => Promise<string> }).get()) || '';
 	}
-	return false;
+	return '';
 }
+
+const secretResolves = async (binding: unknown): Promise<boolean> => (await secretValue(binding)).length > 0;
 
 async function probe(name: string, fn: () => Promise<boolean>): Promise<boolean> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
@@ -102,6 +105,8 @@ export async function deepHealth(env: Env): Promise<DeepHealth> {
 				return typeof raw.ERRORS_INGEST_URL === 'string' && raw.ERRORS_INGEST_URL.startsWith('https://') && (await secretResolves(raw.INTERNAL_API_KEY));
 			}),
 		],
+		// Encrypts dates of birth: exactly 32 bytes, or nothing is saved or read (birth-date/key.ts). Yes or no only.
+		['secret:PROFILE_DATA_KEY', probe('secret:PROFILE_DATA_KEY', async () => environment === 'development' || isProfileKey(await secretValue(raw.PROFILE_DATA_KEY)))],
 		...REQUIRED_SECRETS.map(
 			(name) => [`secret:${name}`, probe(`secret:${name}`, () => secretResolves(raw[name]))] as [string, Promise<boolean>]
 		),

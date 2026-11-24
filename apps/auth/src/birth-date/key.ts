@@ -23,9 +23,20 @@ export async function keyIdOf(material: string): Promise<string> {
 	return Array.from(digest.slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** A key as it must be stored: base64 of exactly 32 bytes. */
+export function isProfileKey(material: string): boolean {
+	try {
+		return atob(material.trim()).length === 32;
+	} catch {
+		return false;
+	}
+}
+
 async function load(binding: unknown, name: string): Promise<EncryptionKey | null> {
 	const material = binding ? (await getSecret(binding, name)).trim() : '';
-	return material ? { id: await keyIdOf(material), material } : null;
+	if (!material) return null;
+	if (!isProfileKey(material)) throw new ProfileKeyMissingError(`${name} is not base64 of 32 bytes`);
+	return { id: await keyIdOf(material), material };
 }
 
 /** The key new values are written with. */

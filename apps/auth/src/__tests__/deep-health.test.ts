@@ -14,6 +14,7 @@ function deployedEnv(overrides: Record<string, unknown> = {}): Env {
     OPENAUTH_ISSUER: 'https://auth.alummahnow.net',
     CLIENT_SECRET_SALT: secret('salt'),
     KEY_ENCRYPTION_MASTER_KEY: secret('key'),
+    PROFILE_DATA_KEY: secret(btoa('k'.repeat(32))),
     RESEND_API_KEY: secret('re_test'),
     SESSION_SECRET: 'ab'.repeat(32),
     ERRORS_INGEST_URL: 'https://admin.api.alummahnow.net/internal/errors',
@@ -40,6 +41,7 @@ describe('deepHealth', () => {
         errorReporting: true,
         'secret:CLIENT_SECRET_SALT': true,
         'secret:KEY_ENCRYPTION_MASTER_KEY': true,
+        'secret:PROFILE_DATA_KEY': true,
         'secret:RESEND_API_KEY': true,
         'secret:SESSION_SECRET': true,
       },
@@ -77,6 +79,16 @@ describe('deepHealth', () => {
       deployedEnv({ KEY_ENCRYPTION_MASTER_KEY: { get: async () => { throw new Error('denied'); } } })
     );
     expect(report.checks['secret:KEY_ENCRYPTION_MASTER_KEY']).toBe(false);
+  });
+
+  it('is degraded when PROFILE_DATA_KEY is missing or is not base64 of 32 bytes, without saying what it is', async () => {
+    const secret = (value: string) => ({ get: async () => value });
+    for (const bad of [undefined, secret(''), secret('not base64!'), secret(btoa('k'.repeat(31))), secret(btoa('k'.repeat(33)))]) {
+      const report = await deepHealth(deployedEnv({ PROFILE_DATA_KEY: bad }));
+      expect(report.status).toBe('degraded');
+      expect(report.checks['secret:PROFILE_DATA_KEY']).toBe(false);
+      expect(JSON.stringify(report)).not.toMatch(/kkk|a2tr/);
+    }
   });
 
   it('flags a localhost issuer outside development', async () => {

@@ -15,4 +15,6 @@ RESEND_API_KEY=replace-me
 SESSION_SECRET=replace-me
 CLIENT_SECRET_SALT=replace-me
 KEY_ENCRYPTION_MASTER_KEY=replace-me
+# Base64 of 32 bytes: `openssl rand -base64 32`
+PROFILE_DATA_KEY=replace-me
 TEST_PROMOTE_SECRET=replace-me
