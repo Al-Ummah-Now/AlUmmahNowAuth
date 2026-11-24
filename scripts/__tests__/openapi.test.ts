@@ -242,6 +242,39 @@ const files = globSync('**/*.ts', { cwd: join(ROOT, SRC) })
 const served = new Set([...HONO.flatMap(honoRoutes), ...Object.values(LITERALS).flatMap((l) => Object.values(l).flat())].map(shape));
 const documented = new Set(operations.map(({ key }) => shape(key)));
 
+/** Every text the public reference shows besides summaries: each `description` reachable from an app's operation, through every `$ref`, and the tags. */
+function shownTexts(doc: unknown): Set<string> {
+	const shown = new Set<string>();
+	const seen = new Set<unknown>();
+	// Maps from a name to a node: a name may be anything, «description» included
+	const MAPS = new Set(['properties', 'patternProperties', 'headers', 'responses', 'content', '$defs', 'dependentSchemas']);
+	// Values, not texts
+	const VALUES = new Set(['example', 'examples', 'default', 'enum', 'const', 'mapping', 'security', 'tags']);
+	const visit = (node: unknown): void => {
+		if (!node || typeof node !== 'object' || seen.has(node)) return;
+		seen.add(node);
+		if (Array.isArray(node)) return node.forEach(visit);
+		const at = node as Record<string, unknown>;
+		if (typeof at.$ref === 'string') visit(at.$ref.slice(2).split('/').reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], doc));
+		if (typeof at.description === 'string') shown.add(at.description);
+		for (const [key, value] of Object.entries(at)) {
+			if (VALUES.has(key)) continue;
+			if (MAPS.has(key)) Object.values(value as object).forEach(visit);
+			else visit(value);
+		}
+	};
+	for (const item of Object.values((doc as { paths: Record<string, Record<string, unknown>> }).paths)) {
+		const ops = Object.entries(item).filter(([key]) => key !== 'parameters').map(([, op]) => op as Record<string, unknown>);
+		const mine = ops.filter((op) => op['x-audience'] === 'public' || op['x-audience'] === 'app');
+		if (mine.length) visit(item.parameters);
+		for (const op of mine) {
+			visit(op);
+			(op.tags as string[]).forEach((t) => shown.add(t));
+		}
+	}
+	return shown;
+}
+
 describe('openapi.json covers the server', () => {
 	it('every route is documented', () => {
 		const missing = [...served].filter((key) => !documented.has(key)).sort();
@@ -323,36 +356,36 @@ describe('openapi.json is sound', () => {
 		}
 	});
 
+	it('finds a text at any depth of what the reference shows', () => {
+		const doc = (op: object, components: object = {}) => ({ paths: { '/a': { get: { 'x-audience': 'app', tags: ['T'], responses: {}, ...op } } }, components });
+		const body = (schema: object) => ({ requestBody: { content: { 'application/json': { schema } } } });
+		const field = { type: 'string', description: 'deep' };
+		for (const [where, d] of Object.entries({
+			'a nested property': doc(body({ properties: { a: { properties: { b: field } } } })),
+			'an array item': doc(body({ properties: { a: { items: { properties: { b: field } } } } })),
+			'a property named description': doc(body({ properties: { description: field } })),
+			allOf: doc(body({ allOf: [{ properties: { b: field } }] })),
+			anyOf: doc(body({ anyOf: [{ oneOf: [field] }] })),
+			additionalProperties: doc(body({ additionalProperties: { properties: { b: field } } })),
+			'a response header': doc({ responses: { 429: { $ref: '#/components/responses/R' } } }, { responses: { R: { headers: { 'Retry-After': { description: 'deep' } } } } }),
+			'a shared parameter': doc({ parameters: [{ $ref: '#/components/parameters/P' }] }, { parameters: { P: { name: 'p', description: 'deep' } } }),
+			'a shared body': doc({ requestBody: { $ref: '#/components/requestBodies/B' } }, { requestBodies: { B: body({ properties: { b: field } }).requestBody } }),
+			'a shared schema that names itself': doc(body({ $ref: '#/components/schemas/S' }), { schemas: { S: { properties: { child: { $ref: '#/components/schemas/S' }, b: field } } } }),
+			'a parameter of the path': { paths: { '/a': { parameters: [{ name: 'p', description: 'deep' }], get: { 'x-audience': 'public', tags: ['T'], responses: {} } } } },
+		}))
+			expect(shownTexts(d), where).toContain('deep');
+		// what is only staff's, or only a value, is not shown
+		expect(shownTexts(doc({ 'x-audience': 'admin', description: 'deep' }))).not.toContain('deep');
+		expect(shownTexts(doc(body({ properties: { a: { default: { description: 'deep' }, enum: ['deep'] } } })))).not.toContain('deep');
+	});
+
 	it('openapi.ar.json has the Arabic of every other string the reference shows, and nothing more', () => {
 		const ar = JSON.parse(read('openapi.ar.json')) as Record<string, string>;
-		const doc = spec as unknown as { components: Record<'schemas' | 'responses', Record<string, unknown>> };
-		const shown = new Set<string>();
-		const add = (text: unknown) => typeof text === 'string' && shown.add(text);
-		type Node = { $ref?: string; description?: string; properties?: Record<string, Node>; oneOf?: Node[]; content?: Record<string, { schema?: Node }> };
-		const follow = (node: Node | undefined): Node | undefined => (node?.$ref ? (node.$ref.slice(2).split('/').reduce<unknown>((at, k) => (at as Record<string, unknown>)[k], doc) as Node) : node);
-		const schema = (raw: Node | undefined): void => {
-			const node = follow(raw);
-			add(node?.description);
-			for (const field of Object.values(node?.properties ?? {})) add(field.description);
-			node?.oneOf?.forEach(schema);
-		};
-		const content = (node: Node | undefined) => Object.values(node?.content ?? {}).forEach((c) => schema(c.schema));
-		for (const { op } of operations.filter(({ op }) => op['x-audience'] === 'public' || op['x-audience'] === 'app')) {
-			const o = op as unknown as Node & { tags: string[]; parameters?: Node[]; requestBody?: Node; responses: Record<string, Node> };
-			add(o.description);
-			o.tags.forEach(add);
-			o.parameters?.forEach((p) => add(p.description));
-			content(o.requestBody);
-			for (const raw of Object.values(o.responses)) {
-				const response = follow(raw)!;
-				add(response.description);
-				content(response);
-			}
-		}
+		const shown = shownTexts(spec);
 		expect(Object.keys(ar).sort()).toEqual([...shown].sort());
 		for (const [en, text] of Object.entries(ar)) {
 			// Numbers are {N…} or {N=…}, formatted in the reader's numerals; a status or a name stays as it is
-			const plain = text.replace(/\{N=?\d+\}/g, '').replace(/[A-Za-z][\w./:()-]*/g, '').replace(/\b[245]\d\d\b/g, '');
+			const plain = text.replace(/\{N=?\d+\}/g, '').replace(/[A-Za-z][\w./:()-]*/g, '').replace(/\b(?:200|201|202|204|400|401|403|404|409|410|429|500|503)\b/g, '');
 			expect(plain, en).not.toMatch(/[0-9]/);
 			expect(text, en).not.toMatch(/,(?=\s)|;(?=\s)/);
 		}

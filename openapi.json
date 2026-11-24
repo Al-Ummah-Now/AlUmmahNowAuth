@@ -8957,7 +8957,7 @@
         "properties": {
           "url": {
             "type": "string",
-            "description": "https",
+            "description": "An https address",
             "format": "uri"
           },
           "label": {

@@ -13,6 +13,7 @@
   "Account, roles, identities, sessions, tokens (no secrets), passkeys and audit events": "الحساب والأدوار والهويات والجلسات والرموز (بلا أسرار) ومفاتيح المرور وأحداث التدقيق",
   "An email to suggest": "بريد يُقترح",
   "An error page: the client or redirect_uri is not registered, or a parameter is missing": "صفحة خطأ: العميل أو redirect_uri غير مسجّل، أو مُعامِل ناقص",
+  "An https address": "عنوان يبدأ بـ https",
   "BASE64URL(SHA256(code_verifier))": "BASE64URL(SHA256(code_verifier))",
   "Browser session": "جلسة المتصفح",
   "Can be undone. A staff member can’t remove their last one (409 last_staff_passkey).": "يمكن التراجع عنه. ولا يستطيع عضو الفريق إزالة مفتاحه الأخير (409 مع last_staff_passkey).",
@@ -65,6 +66,7 @@
   "S256": "S256",
   "Saved": "حُفظ",
   "Seconds": "بالثواني",
+  "Seconds to wait": "عدد الثواني التي تنتظرها",
   "Secret: poll with it, never show it": "سرّ: اسأل به ولا تعرضه أبدًا",
   "Server to server": "بين الخوادم",
   "Sign in again when the last sign-in is older than this many seconds": "دخول جديد إذا كان آخر دخول أقدم من هذا العدد من الثواني",
@@ -119,10 +121,10 @@
   "Use code": "استعمل code",
   "Where to go after; must be one of our apps or a live scholar site": "إلى أين بعدها، ويجب أن يكون تطبيقًا من تطبيقاتنا أو موقع عالِم يعمل",
   "Whether the token is active": "هل الرمز فعّال",
+  "With none there is no page: it fails with login_required. With login the person always signs in again. With select_account they choose an account": "مع none لا صفحة، ويفشل بالخطأ login_required. ومع login يسجّل الشخص دخوله من جديد دائمًا. ومع select_account يختار حسابًا",
   "Your client id": "معرّف عميلك",
   "client_credentials only": "مع client_credentials فقط",
   "inv_ and 32 hex digits": "inv_ مع {N32} رقمًا ست عشريًا",
-  "With none there is no page: it fails with login_required. With login the person always signs in again. With select_account they choose an account": "مع none لا صفحة، ويفشل بالخطأ login_required. ومع login يسجّل الشخص دخوله من جديد دائمًا. ومع select_account يختار حسابًا",
   "true unless set to false": "قيمته true ما لم تُجعل false",
   "usr_ and 32 hex digits": "usr_ مع {N32} رقمًا ست عشريًا"
 }
