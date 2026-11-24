@@ -84,6 +84,8 @@ export function isRecentSignIn(
 /** The progress record and Auth's row, as one deletion sees them. */
 export interface DeletionState {
   read(): Promise<DeleteProgress | null>;
+  /** The first record of a deletion; false when another attempt already has one (it is replaced). */
+  start(p: DeleteProgress): Promise<boolean>;
   write(p: DeleteProgress): Promise<void>;
   /** Only the very record given, if it is still the stored one. */
   remove(p: DeleteProgress): Promise<void>;
@@ -155,7 +157,7 @@ export async function orchestrateAccountDeletion(opts: {
   }
   // A finished deletion of an account that is live again (restored by staff): a new one
   if (saved?.stage === "deleted") saved = null;
-  const startedBefore = saved !== null;
+  let startedBefore = saved !== null;
 
   const maxAge = startedBefore ? CONTINUATION_REAUTH_MAX_AGE_SECONDS : PRECHECK_REAUTH_MAX_AGE_SECONDS;
   if (!isRecentSignIn(opts.accessToken, nowMs, maxAge)) {
@@ -169,11 +171,14 @@ export async function orchestrateAccountDeletion(opts: {
   let record: DeleteProgress = {
     stage: "started",
     ...(resumeToken ? { resumeToken, ...(saved?.leftover ? { leftover: saved.leftover } : {}) } : {}),
+    attempt: crypto.randomUUID(),
     startedAt: saved?.startedAt ?? nowMs,
     updatedAt: nowMs,
   };
   try {
-    await state.write(record);
+    if (saved) await state.write(record);
+    // Another first attempt may be erasing already: then this one removes nothing
+    else if (!(await state.start(record))) startedBefore = true;
   } catch (error) {
     console.error("Account deletion not started: its record could not be written", error instanceof Error ? error.message : String(error));
     return { ok: false, status: 503, error: "progress_unavailable", started: startedBefore };
@@ -239,6 +244,7 @@ export async function orchestrateAccountDeletion(opts: {
     stage: data?.complete === true ? "content_erased" : "started",
     ...(data?.complete === true ? {} : { resumeToken: next }),
     ...(leftover ? { leftover } : {}),
+    attempt: record.attempt,
     startedAt: record.startedAt,
     updatedAt: nowMs,
   };

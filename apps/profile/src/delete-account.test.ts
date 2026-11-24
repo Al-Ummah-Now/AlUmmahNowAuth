@@ -12,7 +12,7 @@ import {
   tokenUserIdOf,
   type DeletionState,
 } from "./delete-account";
-import { clearAccountDeletionSwitchCache, progressKey, readDeleteProgress, writeDeleteProgress, type DeleteProgress } from "./delete-progress";
+import { clearAccountDeletionSwitchCache, progressKey, readDeleteProgress, removeDeleteProgress, startDeleteProgress, writeDeleteProgress, type DeleteProgress } from "./delete-progress";
 import { renderHomePage } from "./page";
 import { FakeKV, NOW_MS, NOW_S, fakeD1 } from "./test-helpers";
 import { getSession, sessionId } from "./session-store";
@@ -67,6 +67,11 @@ function memoryState(initial: DeleteProgress | null = null, o: { deleted?: () =>
   const writes: DeleteProgress[] = [];
   const state: DeletionState = {
     read: async () => stored,
+    start: async (p) => {
+      const created = stored === null || stored.stage === "deleted";
+      await state.write(p);
+      return created;
+    },
     write: async (p) => {
       if (o.failWrite?.(p)) throw new Error("D1 down");
       writes.push(p);
@@ -367,6 +372,8 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
     );
 
   const progress = () => readDeleteProgress(db, USER.id, NOW_MS);
+  const expiry = async () =>
+    (await db.prepare(`SELECT expires_at FROM openauth_atomic WHERE key = ?1`).bind(progressKey(USER.id)).first<{ expires_at: number | null }>())?.expires_at;
   const cookiesOf = (res: Response) => res.headers.getSetCookie();
   const nonceOf = (res: Response) => /delete_account_done=([0-9a-f-]{36});/.exec(cookiesOf(res).join("\n"))![0].replace(";", "");
 
@@ -688,13 +695,18 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
     expect([retry.status, await retry.json()]).toEqual([200, { deleted: true, complete: true, erased: true }]);
     expect(await pageText(cookie)).toContain("Your Videos content was erased and your Al Ummah Now account was deleted");
     expect(none.calls).toEqual([]);
+    expect(await expiry()).toBe(NOW_MS + 86400_000);
   });
 
   it("a Worker that died right after Auth committed: settled on the next request or view, session still open", async () => {
     const cookie = await seedSession(signedInAgo(20));
     await writeDeleteProgress(db, USER.id, record({ stage: "content_erased", leftover: "channel" }));
+    expect(await expiry()).toBeNull();
     await setAccount("deleted");
     const view = await page(cookie);
+    // Settled by the view alone
+    expect(await expiry()).toBe(NOW_MS + 86400_000);
+    expect(await progress()).toMatchObject({ stage: "deleted", leftover: "channel" });
     expect(cookiesOf(view).join("\n")).toContain("profile_session=;");
     const html = await view.text();
     expect(html).toContain("except for a channel we could not remove. It stays until our team removes it");
@@ -714,6 +726,80 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
     const html = await pageText(nonceOf(res));
     expect(html).toContain("Your Al Ummah Now account was deleted. You are signed out of all apps.");
     expect(html).not.toContain("content was erased");
+    // No record to keep
+    expect(await progress()).toBeNull();
+  });
+
+  it("an account deleted some other way while a deletion was under way: its record expires, without the token or a claim", async () => {
+    for (const how of ["retry", "view"]) {
+      const cookie = await seedSession(signedInAgo(20), `sid-${how}`);
+      await writeDeleteProgress(db, USER.id, record({ resumeToken: "sealed-1" }));
+      await setAccount("deleted");
+      if (how === "retry") expect(await (await del(cookie)).json()).toEqual({ deleted: true, complete: true, erased: false });
+      else expect(await pageText(cookie)).toContain("Your Al Ummah Now account was deleted. You are signed out of all apps.");
+      expect(await expiry()).toBe(NOW_MS + 86400_000);
+      const left = await progress();
+      expect(left).toMatchObject({ stage: "deleted", erased: false });
+      expect(left).not.toHaveProperty("resumeToken");
+      // Asked again: still no claim, and the day does not start over
+      vi.setSystemTime(NOW_MS + 3600_000);
+      expect(await pageText(cookie)).not.toContain("content was erased");
+      expect(await expiry()).toBe(NOW_MS + 86400_000);
+      vi.setSystemTime(NOW_MS + 86400_001);
+      expect(await readDeleteProgress(db, USER.id)).toBeNull();
+      vi.setSystemTime(NOW_MS);
+      await db.prepare(`DELETE FROM openauth_atomic`).run();
+    }
+  });
+
+  it("two first attempts in the same millisecond: the refused one never takes the other's record away", async () => {
+    const cookie = await seedSession(signedInAgo(20));
+    for (const refusedFirst of [true, false]) {
+      // Both start; one is refused by Videos at once, the other is still erasing
+      let finish: (r: Response) => void = () => {};
+      const erasing = () => new Promise<Response>((r) => { finish = r; });
+      const refused = () => reply({ error: "invalid_audience" }, 401);
+      let waiting = 0;
+      let bothOut: () => void = () => {};
+      const both = new Promise<void>((r) => { bothOut = r; });
+      const answers = refusedFirst ? [refused, erasing] : [erasing, refused];
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        if (String(input).includes("/themes/")) return new Response("", { status: 404 });
+        const mine = answers.shift()!;
+        if (++waiting === 2) bothOut();
+        await both;
+        return mine();
+      }) as typeof fetch;
+      const a = del(cookie);
+      const b = del(cookie);
+      const first = await Promise.race([a, b]);
+      expect(((await first.json()) as { error: string }).error).toBe("videos_erasure_refused");
+      expect(await progress()).toMatchObject({ stage: "started" });
+      // The other Worker dies here: the page still says so
+      const held = globalThis.fetch;
+      globalThis.fetch = upstream([]).fetchFn;
+      expect(await pageText(cookie)).toContain("was started and is not finished");
+      globalThis.fetch = held;
+      finish(reply({ complete: false, resumeToken: "t1" }));
+      await Promise.all([a, b]);
+      expect(await progress()).toMatchObject({ stage: "started", resumeToken: "t1" });
+      await db.prepare(`DELETE FROM openauth_atomic`).run();
+    }
+  });
+
+  it("the first record: made once, replaced by a second attempt, only ever removed by the attempt that still owns it", async () => {
+    const a = record({ attempt: "a" });
+    const b = record({ attempt: "b" });
+    expect(await startDeleteProgress(db, USER.id, a)).toBe(true);
+    expect(await startDeleteProgress(db, USER.id, b)).toBe(false);
+    await removeDeleteProgress(db, USER.id, a);
+    expect(await progress()).toMatchObject({ stage: "started" });
+    await removeDeleteProgress(db, USER.id, b);
+    expect(await progress()).toBeNull();
+    // A finished deletion's record (with an expiry) is no attempt: the account was restored
+    await writeDeleteProgress(db, USER.id, record({ stage: "deleted" }));
+    expect(await startDeleteProgress(db, USER.id, a)).toBe(true);
+    expect(await expiry()).toBeNull();
   });
 
   it("an account restored after a finished deletion starts afresh", async () => {

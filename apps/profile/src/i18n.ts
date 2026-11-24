@@ -81,7 +81,7 @@ const en = {
   deleteAccountWhatChannels: "Channels you own are deleted whole, including what other members added. Their other admins do not keep them.",
   deleteAccountWhatAnon: "Your comments on other people's videos and posts are emptied and lose your name. What you added to someone else's channel, and reports you filed, stay without your name.",
   deleteAccountWhatFiles: "Stored copies of video and image files are not removed at the same moment and can remain afterwards.",
-  deleteAccountWhatRetention: "The deleted sign-in record is purged within {days} days. A few records are kept longer where the law or child-safety reporting requires it.",
+  deleteAccountWhatRetention: "The deleted sign-in record is purged after {days} days. A few records are kept longer where the law or child-safety reporting requires it.",
   deleteAccountSignedOutNote: "Sign in to the account you want to delete. You are asked to confirm before anything is removed.",
   deleteAccountSignInButton: "Sign in to delete your account",
   deleteAccountContinueButton: "Sign in to finish",
@@ -123,7 +123,7 @@ const en = {
   deleteAccountDoneBodyAccount: "Your Al Ummah Now account was deleted. You are signed out of all apps.",
   deleteAccountDoneBodyChannel: "Your Al Ummah Now account was deleted and your Videos content was erased, except for a channel we could not remove. It stays until our team removes it; they have been told.",
   deleteAccountDoneBodyOther: "Your Al Ummah Now account was deleted and your Videos content was erased, except for some records we could not remove automatically.",
-  deleteAccountDonePurge: "The deleted sign-in record is purged within {days} days. Stored copies of video and image files can remain.",
+  deleteAccountDonePurge: "The deleted sign-in record is purged after {days} days. Stored copies of video and image files can remain.",
   footer: "© {year} Al Ummah Now.",
 };
 
@@ -207,7 +207,7 @@ const ar: Messages = {
   deleteAccountWhatChannels: "القنوات التي تملكها تُحذف كاملةً بما أضافه إليها الأعضاء الآخرون، ولا تبقى لمشرفيها الآخرين.",
   deleteAccountWhatAnon: "تعليقاتك على مرئيات الآخرين ومنشوراتهم يُمحى نصها واسمك منها، وما أضفته إلى قناة شخص آخر والبلاغات التي قدّمتها تبقى دون اسمك.",
   deleteAccountWhatFiles: "النسخ المخزّنة من ملفات المرئيات والصور لا تُزال في اللحظة نفسها، وقد تبقى بعد ذلك.",
-  deleteAccountWhatRetention: "يُزال سجل تسجيل الدخول المحذوف نهائيًا خلال {days} يومًا، وتُحفظ سجلات قليلة مدةً أطول حيث يقتضي القانون أو تقارير سلامة الأطفال ذلك.",
+  deleteAccountWhatRetention: "يُزال سجل تسجيل الدخول المحذوف نهائيًا بعد {days} يومًا، وتُحفظ سجلات قليلة مدةً أطول حيث يقتضي القانون أو تقارير سلامة الأطفال ذلك.",
   deleteAccountSignedOutNote: "سجّل الدخول إلى الحساب الذي تريد حذفه، وسيُطلب منك التأكيد قبل إزالة أي شيء.",
   deleteAccountSignInButton: "سجّل الدخول لحذف حسابك",
   deleteAccountContinueButton: "سجّل الدخول لإكمال الحذف",
@@ -249,7 +249,7 @@ const ar: Messages = {
   deleteAccountDoneBodyAccount: "حُذف حسابك في الأمة الآن، وسُجّل خروجك من جميع التطبيقات.",
   deleteAccountDoneBodyChannel: "حُذف حسابك في الأمة الآن ومُحي محتواك في المرئيات، ما عدا قناة لم نتمكن من إزالتها، وتبقى حتى يزيلها فريقنا، وقد أُبلغ بها.",
   deleteAccountDoneBodyOther: "حُذف حسابك في الأمة الآن ومُحي محتواك في المرئيات، ما عدا بعض السجلات التي لم نتمكن من إزالتها تلقائيًا.",
-  deleteAccountDonePurge: "يُزال سجل تسجيل الدخول المحذوف نهائيًا خلال {days} يومًا، وقد تبقى نسخ مخزّنة من ملفات المرئيات والصور.",
+  deleteAccountDonePurge: "يُزال سجل تسجيل الدخول المحذوف نهائيًا بعد {days} يومًا، وقد تبقى نسخ مخزّنة من ملفات المرئيات والصور.",
   footer: "© {year} الأمة الآن.",
 };
 

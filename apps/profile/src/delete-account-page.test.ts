@@ -297,6 +297,14 @@ describe("the delete page's script", () => {
         expect(ui.location.reloads).toBe(0);
         ui.form.dispatch("submit");
         expect(ui.requests).toHaveLength(1);
+        // A second Esc closes the dialog natively, and the button behind it is never a fresh start
+        ui.location.href = "";
+        ui.dialog.close();
+        expect(ui.location.href).toContain("/logout");
+        ui.location.href = "";
+        ui.open.dispatch("click");
+        expect(ui.location.href).toContain("/logout");
+        expect(ui.dialog.open).toBe(false);
       }
     }
   });

@@ -923,6 +923,7 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
             }
 
             openBtn.addEventListener('click', function () {
+                if (finished) return leave();
                 if (typeof dlg.showModal !== 'function' || dlg.open) return;
                 input.value = '';
                 confirmLabel = CONFIRM_LABEL;
@@ -946,6 +947,7 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
             /* A second Esc closes a dialog whatever its cancel event answers */
             dlg.addEventListener('close', function () {
                 if (busy) dlg.showModal();
+                else if (finished) leave();
             });
 
             dlg.addEventListener('click', function (ev) {
