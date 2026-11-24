@@ -137,7 +137,7 @@ E2E_CODE_SINK_SECRET=... TEST_PROMOTE_SECRET=... \
 
 | Worker config | `LOG_LEVEL` var | `logs.head_sampling_rate` | `invocation_logs` | `logpush` |
 | --- | --- | --- | --- | --- |
-| QA (`wrangler.qa.json[c]`, admin: `scripts/patch-qa-config.js`) | `warn` | 1 | false | false |
+| QA (`wrangler.qa.json[c]`; the admin's deploy config is derived from it by `scripts/release/admin-config.ts`) | `warn` | 1 | false | false |
 | Stage (`env.stage`, admin: `scripts/release/admin-config.ts`) | `warn` | 1 | false | false |
 | Production | `debug` (everything) | 1 | default (on) | not set |
 

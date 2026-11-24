@@ -10,7 +10,7 @@
     "dev:wrangler": "wrangler dev -c wrangler.dev.json --port 5175 --local --persist-to=../../.wrangler/state",
     "predeploy": "npm run build",
     "deploy": "wrangler deploy",
-    "deploy:qa": "pnpm build && node scripts/patch-qa-config.js && wrangler deploy --config build/server/wrangler.json",
+    "deploy:qa": "pnpm build && node --experimental-strip-types --no-warnings ../../scripts/release/admin-config.ts qa && wrangler deploy --config build/server/wrangler.qa.json",
     "deploy:stage": "pnpm build && node --experimental-strip-types --no-warnings ../../scripts/release/admin-config.ts stage && wrangler deploy --config build/server/wrangler.stage.json",
     "typecheck": "react-router typegen && tsc",
     "type-check": "react-router typegen && tsc",
