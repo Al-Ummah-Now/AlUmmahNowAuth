@@ -31,7 +31,7 @@ describe('e2e-disposable', () => {
 	it('is a dry run unless asked to delete, and only ever talks to QA', async () => {
 		const h = harness([page({ next: 'u2', recentPrefixes: { 'new-user': 2 } }), page({ recentPrefixes: { 'new-user': 1 } })]);
 		const r = await run({ ...h.opts, delete: false });
-		expect(h.urls).toEqual([`${QA_AUTH}/test/run-users/disposable?dryRun=1&limit=10&after=`, `${QA_AUTH}/test/run-users/disposable?dryRun=1&limit=10&after=u2`]);
+		expect(h.urls).toEqual([`${QA_AUTH}/test/run-users/disposable?dryRun=1&limit=10&parallel=1&after=`, `${QA_AUTH}/test/run-users/disposable?dryRun=1&limit=10&parallel=1&after=u2`]);
 		expect(h.sleeps).toEqual([1000]);
 		expect(r).toMatchObject({ dryRun: true, finished: true, calls: 2, counts: { scanned: 4, eligible: 2, deleted: 0 } });
 		expect(report(r)).toContain('nothing was changed');
@@ -52,7 +52,8 @@ describe('e2e-disposable', () => {
 
 	it('never deletes more than the limit: the last call asks for the rest only', async () => {
 		const h = harness([page({ dryRun: false, deleted: 10, next: 'u1' }), page({ dryRun: false, deleted: 3, next: 'u2' })]);
-		const r = await run({ ...h.opts, delete: true, max: 13 });
+		const r = await run({ ...h.opts, delete: true, max: 13, parallel: 3 });
+		expect(h.urls.every((u) => u.includes('parallel=3'))).toBe(true);
 		expect(h.urls.map((u) => new URL(u).searchParams.get('limit'))).toEqual(['10', '3']);
 		expect(r.counts.deleted).toBe(13);
 	});

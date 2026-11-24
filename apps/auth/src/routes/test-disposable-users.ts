@@ -2,7 +2,7 @@
  * QA's cleanup of old test accounts (#312, AUTH-R6 R6-8). The owner approved it on 2026-11-23,
  * after a dry run.
  *
- *   POST /test/run-users/disposable?after=<user id>&dryRun=1|0&limit=<n>
+ *   POST /test/run-users/disposable?after=<user id>&dryRun=1|0&limit=<n>&parallel=<n>
  *
  * One call walks at most SCAN_PAGE accounts by primary key and, with dryRun=0, deletes at most
  * DELETE_PER_CALL of them (fewer with limit). It returns counts and the user id to go on from, never an address.
@@ -30,6 +30,8 @@ import { RUN_USER_MARKER } from '../utils/e2e-sink';
 
 export const SCAN_PAGE = 200;
 export const DELETE_PER_CALL = 10;
+/** Erases side by side within a call, at most */
+export const MAX_PARALLEL = 5;
 export const QA_DATABASE = 'al-ummah-now-d1-qa';
 export const DISPOSABLE_FLAG = 'enabled';
 const QA_HOST = 'auth.qa.alummahnow.net';
@@ -127,6 +129,9 @@ export async function disposableUsers(url: URL, env: DisposableEnv, now = Date.n
 	const asked = Number(url.searchParams.get('limit') ?? DELETE_PER_CALL);
 	if (!Number.isInteger(asked) || asked < 1) return json({ error: 'limit must be a whole number >= 1' }, 400);
 	const limit = Math.min(asked, DELETE_PER_CALL);
+	const side = Number(url.searchParams.get('parallel') ?? 1);
+	if (!Number.isInteger(side) || side < 1) return json({ error: 'parallel must be a whole number >= 1' }, 400);
+	const parallel = Math.min(side, MAX_PARALLEL);
 	const { results: rows } = await env.AUTH_DB.prepare(DISPOSABLE_SQL)
 		.bind(url.searchParams.get('after') ?? '', SCAN_PAGE)
 		.all<AccountRow>();
@@ -134,6 +139,7 @@ export async function disposableUsers(url: URL, env: DisposableEnv, now = Date.n
 	const counts = { scanned: 0, eligible: 0, eligibleAdmins: 0, deleted: 0, deletedAdmins: 0, skipped: 0, failed: 0 };
 	/** Where accounts made in the last day come from: the part of the address before the timestamp */
 	const recentPrefixes: Record<string, number> = {};
+	const todo: AccountRow[] = [];
 	let next: string | null = rows.length === SCAN_PAGE ? rows[rows.length - 1].id : null;
 	for (const row of rows) {
 		counts.scanned++;
@@ -145,19 +151,28 @@ export async function disposableUsers(url: URL, env: DisposableEnv, now = Date.n
 		counts.eligible++;
 		if (row.admin) counts.eligibleAdmins++;
 		if (dryRun) continue;
-		try {
-			if (await erase(env as unknown as DeletionEnv, row, now)) {
-				counts.deleted++;
-				if (row.admin) counts.deletedAdmins++;
-			} else counts.skipped++;
-		} catch (error) {
-			counts.failed++;
-			logger.error('QA account cleanup failed for one account', { userId: row.id, error: error instanceof Error ? error.message : String(error) });
-		}
-		if (counts.deleted + counts.skipped + counts.failed >= limit) {
+		todo.push(row);
+		if (todo.length >= limit) {
 			next = row.id;
 			break;
 		}
+	}
+	// Most of an erase is waiting for the database, so a few run side by side. Each one on its own:
+	// a failure never stops or undoes the others.
+	for (let i = 0; i < todo.length; i += parallel) {
+		await Promise.all(
+			todo.slice(i, i + parallel).map(async (row) => {
+				try {
+					if (await erase(env as unknown as DeletionEnv, row, now)) {
+						counts.deleted++;
+						if (row.admin) counts.deletedAdmins++;
+					} else counts.skipped++;
+				} catch (error) {
+					counts.failed++;
+					logger.error('QA account cleanup failed for one account', { userId: row.id, error: error instanceof Error ? error.message : String(error) });
+				}
+			})
+		);
 	}
 	if (counts.deleted > 0) {
 		// One event per call, not three per account: 47,000 accounts would bury QA's audit log
