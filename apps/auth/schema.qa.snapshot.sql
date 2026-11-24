@@ -46,6 +46,7 @@
 --   migrations-qa/0048_account_events.sql
 --   migrations-qa/0049_user_birth_dates.sql
 --   migrations-qa/0050_account_event_client_index.sql
+--   migrations-qa/0051_disable_unused_profile_client.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_event_deliveries (jti TEXT PRIMARY KEY, seq INTEGER NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')), attempts INTEGER NOT NULL DEFAULT 0, error TEXT, next_at INTEGER NOT NULL, created_at INTEGER NOT NULL, settled_at INTEGER);
