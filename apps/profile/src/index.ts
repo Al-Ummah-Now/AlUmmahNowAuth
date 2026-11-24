@@ -3,8 +3,9 @@ import { createSubjects } from "@al-ummah-now/openauth/subject";
 import { generatePKCE } from "@al-ummah-now/openauth/pkce";
 import * as v from "valibot";
 import { appsForUser, resolveAppEnv } from "./apps";
+import { orchestrateAccountDeletion, resolveVideosApiUrl } from "./delete-account";
 import { localeOf, pickLocale } from "./i18n";
-import { renderHomePage } from "./page";
+import { renderDeleteAccountPage, renderHomePage } from "./page";
 import {
   buildAuthorizeUrl,
   clearLoginCookie,
@@ -60,6 +61,7 @@ interface Env {
   AUTH_DB: D1Database;
   AUTH_SERVER_URL?: string;
   APP_URL?: string;
+  VIDEOS_API_URL?: string;
   /** "production" | "qa"; selects app launcher URLs (see apps.ts) */
   APP_ENV?: string;
   CF_WEB_ANALYTICS_TOKEN?: string;
@@ -155,7 +157,8 @@ function singleSignOutNext(url: URL, authServerUrl: string): string {
     }
   }
   const start = new URL("/logout", auth.origin);
-  start.searchParams.set("return", `${url.origin}/`);
+  const returnPath = safeReturnPath(url.searchParams.get("return"));
+  start.searchParams.set("return", `${url.origin}${returnPath}`);
   return start.toString();
 }
 
@@ -309,6 +312,77 @@ const worker = {
       if (request.method === 'PATCH') init.body = await request.text();
       const res = await fetch(upstream.toString(), init);
       return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+    }
+
+    // Self-service account deletion API (AlUmmahNowAuth#532): reuses Videos DELETE /api/privacy/data
+    // and Auth DELETE /account in order (step-up freshness checked before erasing any content).
+    if (url.pathname === '/api/account' && request.method === 'DELETE') {
+      const json = (body: unknown, status = 200, extraHeaders: Record<string, string> = {}) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extraHeaders },
+        });
+      // Changes only from this app's own page (CSRF)
+      if (request.headers.get('Origin') !== url.origin) return json({ error: 'forbidden' }, 403);
+      let body: { confirm?: unknown } = {};
+      try {
+        body = (await request.json()) as { confirm?: unknown };
+      } catch {
+        body = {};
+      }
+      if (body?.confirm !== 'DELETE') return json({ error: 'confirmation_required' }, 400);
+      const { session } = await getFreshSession(request, env, authServerUrl);
+      if (!session || !session.user?.id) return json({ error: 'not_authenticated' }, 401);
+      const appEnv = resolveAppEnv(env.APP_ENV, url.hostname);
+      const videosApiUrl = resolveVideosApiUrl(env.VIDEOS_API_URL, appEnv);
+      const result = await orchestrateAccountDeletion({
+        accessToken: session.tokens.access,
+        authServerUrl,
+        videosApiUrl,
+      });
+      if (!result.ok) {
+        return json(
+          {
+            error: result.error,
+            ...(result.maxAge !== undefined ? { max_age: result.maxAge } : {}),
+            ...(result.detail ? { error_description: result.detail } : {}),
+          },
+          result.status,
+        );
+      }
+      const sessionToken = sessionTokenOf(request);
+      if (sessionToken) await endSession(storesOf(env), sessionToken);
+      return json(
+        { deleted: true, userId: result.userId ?? session.user.id, deletedAt: result.deletedAt },
+        200,
+        { 'Set-Cookie': clearSessionCookie(isLocalhost) },
+      );
+    }
+
+    // Public web account deletion page (AlUmmahNowAuth#532; Google Play Data safety URL).
+    // Works signed out (explains what is deleted and asks to sign in) and signed in.
+    if ((url.pathname === '/delete-account' || url.pathname === '/delete-account/') && request.method === 'GET') {
+      const { session, lapsed } = await getFreshSession(request, env, authServerUrl);
+      const locale = pickLocale(request);
+      const html = renderDeleteAccountPage({
+        environment: env.APP_ENV,
+        theme: await fetchAuthTheme(authServerUrl, PROFILE_CLIENT_ID, url.searchParams.get('theme')),
+        locale,
+        user: session?.user ?? null,
+        authServerUrl,
+        street: true,
+        path: url.pathname + url.search,
+        deleted: url.searchParams.get('deleted') === '1',
+        reauth: url.searchParams.get('reauth') === '1',
+      });
+      const headers = new Headers({
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Language': locale,
+        'Cache-Control': 'no-store',
+        'Vary': 'Cookie',
+      });
+      if (lapsed) headers.append('Set-Cookie', clearSessionCookie(isLocalhost));
+      return new Response(html, { headers });
     }
 
     // API endpoint to get user info from session (roles come from JWT)

@@ -20,6 +20,7 @@
   "vars": {
     "AUTH_SERVER_URL": "https://auth.qa.alummahnow.net",
     "APP_URL": "https://profile.auth.qa.alummahnow.net",
+    "VIDEOS_API_URL": "https://videos.api.qa.alummahnow.net",
     "APP_ENV": "qa",
     "LOG_LEVEL": "warn",
     "CF_WEB_ANALYTICS_TOKEN": ""

@@ -20,6 +20,7 @@
   "vars": {
     "AUTH_SERVER_URL": "https://auth.alummahnow.net",
     "APP_URL": "https://profile.auth.alummahnow.net",
+    "VIDEOS_API_URL": "https://videos.api.alummahnow.net",
     "APP_ENV": "production",
     "LOG_LEVEL": "debug",
     "CF_WEB_ANALYTICS_TOKEN": ""
@@ -77,6 +78,7 @@
       "vars": {
         "AUTH_SERVER_URL": "https://auth.stage.alummahnow.net",
         "APP_URL": "https://profile.auth.stage.alummahnow.net",
+        "VIDEOS_API_URL": "https://videos.api.stage.alummahnow.net",
         "APP_ENV": "stage",
         "LOG_LEVEL": "warn",
         "CF_WEB_ANALYTICS_TOKEN": ""

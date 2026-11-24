@@ -190,6 +190,16 @@ const STYLES = `
         .confirm-actions .btn { padding: 0.6rem 1.1rem; font-size: 0.9rem; }
         .btn-danger { background: #dc2626; color: #fff; border: 1px solid #b91c1c; }
         .btn-danger:hover { background: #b91c1c; }
+        .btn-danger:disabled { opacity: 0.55; cursor: not-allowed; }
+        .delete-list { margin: 0 0 1.25rem; padding-inline-start: 1.25rem; display: flex; flex-direction: column; gap: 0.65rem; color: var(--fanous-color-text-secondary); line-height: 1.55; text-align: start; }
+        .delete-note { color: var(--fanous-color-text-secondary); font-size: 0.95rem; line-height: 1.55; margin-bottom: 1.25rem; text-align: start; }
+        .delete-confirm-label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.45rem; text-align: start; color: var(--fanous-color-text-primary); }
+        .delete-confirm-input { width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--fanous-color-outline, rgba(127,127,127,.5)); background: var(--fanous-color-background); color: var(--fanous-color-text-primary); font-size: 0.95rem; margin-bottom: 1.25rem; }
+        .delete-status { margin-top: 1rem; font-size: 0.9rem; min-height: 1.25rem; text-align: start; }
+        .delete-status:empty { display: none; }
+        .delete-status[data-tone="error"] { color: var(--fanous-color-error-text, #dc2626); }
+        .delete-stack { display: flex; flex-direction: column; gap: 1.5rem; max-width: 600px; margin: 0 auto; }
+        .delete-stack > .profile-card, .delete-stack > .welcome-message { margin: 0; width: 100%; }
 `;
 
 const ICON_SIGNIN = '<svg class="aun-menu-icon aun-flip" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>';
@@ -306,6 +316,14 @@ export function renderHomePage(o: HomePageOptions): string {
                 </div>
                 <div class="card-actions">
                     <a class="btn btn-primary" id="passkeyAdd" href="/passkeys/add${o.locale === "ar" ? "?lang=ar" : ""}">${e(t.passkeyAdd)}</a>
+                </div>
+            </section>
+
+            <section class="profile-card delete-account-card" id="delete-account" aria-labelledby="deleteAccountHeading">
+                <h2 id="deleteAccountHeading">${e(t.deleteAccountHeading)}</h2>
+                <p class="apps-section-sub">${e(t.deleteAccountCardIntro)}</p>
+                <div class="card-actions">
+                    <a class="btn btn-danger" id="deleteAccountLink" data-testid="profile-delete-account" href="/delete-account${o.locale === "ar" ? "?lang=ar" : ""}">${e(t.deleteAccountOpenPage)}</a>
                 </div>
             </section>
         </div>
@@ -704,6 +722,218 @@ export function renderHomePage(o: HomePageOptions): string {
         });
     </script>
     ${o.analyticsToken ? `<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='${e(JSON.stringify({ token: o.analyticsToken }))}'></script>` : ""}
+</body>
+</html>`;
+}
+
+export interface DeleteAccountPageOptions {
+  locale: Locale;
+  user: { id: string; email: string; roles: string[] } | null;
+  authServerUrl: string;
+  theme?: { id: string; css: string };
+  environment?: string;
+  street?: boolean;
+  path?: string;
+  deleted?: boolean;
+  reauth?: boolean;
+}
+
+/**
+ * Public web account deletion page (/delete-account, AlUmmahNowAuth#532).
+ * Works signed out (Google Play Data safety requirement: names the apps, explains
+ * what is deleted, and lets users sign in to finish deletion without the app) and
+ * signed in (accessible <dialog> confirmation, step-up re-auth, erases Videos data
+ * and deletes the Auth account via DELETE /api/account).
+ */
+export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
+  const theme = o.theme ?? { id: BUILTIN_DEFAULT_THEME, css: compileBuiltin(BUILTIN_DEFAULT_THEME, o.authServerUrl)!.tokensCss };
+  const t = MESSAGES[o.locale];
+  const e = escapeHtml;
+  const other: Locale = o.locale === "ar" ? "en" : "ar";
+  const here = new URL(sameSitePath(o.path ?? "/delete-account"), "https://profile.invalid");
+  here.searchParams.delete("error");
+  const returnPath = o.locale === "ar" ? "/delete-account?lang=ar" : "/delete-account";
+  const signInForDeleteHref = `/login?return=${encodeURIComponent(returnPath)}&prompt=login`;
+  const profileHref = o.locale === "ar" ? "/?lang=ar" : "/";
+  const retentionText = t.deleteAccountWhatRetention.replace("{days}", formatNumber(30, o.locale, { useGrouping: false }));
+
+  const header = pageHeaderHtml({
+    lang: o.locale,
+    brandHref: profileHref,
+    app: APP_NAMES.account[o.locale],
+    environment: o.environment,
+    langHref: langHref(here, other),
+    signInHref: o.user ? undefined : signInForDeleteHref,
+  });
+
+  const dialogBody = o.user ? t.deleteAccountDialogBody.replace("{email}", o.user.email) : "";
+  const confirmLabel = t.deleteAccountConfirmLabel.replace("{word}", t.deleteAccountConfirmWord);
+
+  return `<!DOCTYPE html>
+<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${e(t.deleteAccountPageTitle)}</title>
+    ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
+    <style>${theme.css}${NAV_CSS}${STYLES}${PAGE_HEADER_CSS}</style>
+    ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
+    <script>${PAGE_MODE_SCRIPT}</script>
+</head>
+<body>
+    ${header}
+
+    <main class="container" data-testid="delete-account-page">
+        <div class="delete-stack">
+            <div class="hero" style="margin-bottom: 0.5rem;">
+                <h1>${e(t.deleteAccountHeroTitle)}</h1>
+                <p>${e(t.deleteAccountHeroBody)}</p>
+            </div>
+
+            ${o.deleted ? `
+            <section class="welcome-message" role="status" data-testid="delete-account-done">
+                <h3>${e(t.deleteAccountDoneTitle)}</h3>
+                <p>${e(t.deleteAccountDoneBody)}</p>
+            </section>` : ""}
+
+            ${o.reauth && !o.deleted ? `
+            <div class="error-message" role="status" data-testid="delete-account-reauth">
+                ${e(t.deleteAccountReauthNotice)}
+            </div>` : ""}
+
+            <section class="profile-card" aria-labelledby="deleteWhatHeading">
+                <h2 id="deleteWhatHeading">${e(t.deleteAccountWhatHeading)}</h2>
+                <ul class="delete-list">
+                    <li>${e(t.deleteAccountWhatAuth)}</li>
+                    <li>${e(t.deleteAccountWhatVideos)}</li>
+                    <li>${e(t.deleteAccountWhatAnon)}</li>
+                    <li>${e(retentionText)}</li>
+                </ul>
+
+                ${o.user && !o.deleted ? `
+                <div class="profile-field">
+                    <label>${e(t.deleteAccountSignedInAs)}</label>
+                    <div class="value" dir="ltr" data-testid="delete-account-email">${e(o.user.email)}</div>
+                </div>
+                <p class="delete-status" id="deleteStatus" role="alert"></p>
+                <div class="card-actions">
+                    <a class="btn btn-secondary" href="${e(profileHref)}">${e(t.deleteAccountBackToProfile)}</a>
+                    <button type="button" class="btn btn-danger" id="deleteAccountBtn" data-testid="delete-account-open-dialog">${e(t.deleteAccountStartButton)}</button>
+                </div>` : (!o.deleted ? `
+                <p class="delete-note">${e(t.deleteAccountSignedOutNote)}</p>
+                <div class="card-actions">
+                    <a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-signin">${e(t.deleteAccountSignInButton)}</a>
+                </div>` : "")}
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>${e(t.footer.replace("{year}", formatNumber(new Date().getUTCFullYear(), o.locale, { useGrouping: false })))}</p>
+    </footer>
+
+    ${o.user && !o.deleted ? `
+    <dialog class="confirm-dialog" id="deleteAccountDialog" role="alertdialog" aria-labelledby="deleteDialogTitle" aria-describedby="deleteDialogBody" data-testid="delete-account-dialog">
+        <form method="dialog" id="deleteAccountForm">
+            <h2 id="deleteDialogTitle">${e(t.deleteAccountDialogTitle)}</h2>
+            <p id="deleteDialogBody">${e(dialogBody)}</p>
+            <label class="delete-confirm-label" for="deleteConfirmInput">${e(confirmLabel)}</label>
+            <input class="delete-confirm-input" id="deleteConfirmInput" data-testid="delete-account-confirm-input" type="text" autocomplete="off" spellcheck="false" />
+            <p class="delete-status" id="deleteDialogStatus" role="alert"></p>
+            <div class="confirm-actions">
+                <button type="button" class="btn btn-secondary" id="deleteDialogCancel">${e(t.confirmCancel)}</button>
+                <button type="submit" class="btn btn-danger" id="deleteDialogSubmit" data-testid="delete-account-confirm-submit" disabled>${e(t.deleteAccountConfirmAction)}</button>
+            </div>
+        </form>
+    </dialog>
+    <script>
+        (function () {
+            var CONFIRM_WORD = ${scriptJson(t.deleteAccountConfirmWord)};
+            var DELETING_LABEL = ${scriptJson(t.deleteAccountDeleting)};
+            var CONFIRM_LABEL = ${scriptJson(t.deleteAccountConfirmAction)};
+            var ERROR_MSG = ${scriptJson(t.deleteAccountError)};
+            var REAUTH_URL = ${scriptJson(signInForDeleteHref)};
+            var DONE_RETURN = ${scriptJson(o.locale === "ar" ? "/delete-account?deleted=1&lang=ar" : "/delete-account?deleted=1")};
+
+            var openBtn = document.getElementById('deleteAccountBtn');
+            var dlg = document.getElementById('deleteAccountDialog');
+            var form = document.getElementById('deleteAccountForm');
+            var input = document.getElementById('deleteConfirmInput');
+            var submitBtn = document.getElementById('deleteDialogSubmit');
+            var cancelBtn = document.getElementById('deleteDialogCancel');
+            var dialogStatus = document.getElementById('deleteDialogStatus');
+            var busy = false;
+
+            function setStatus(msg) {
+                dialogStatus.textContent = msg || '';
+                if (msg) dialogStatus.setAttribute('data-tone', 'error');
+                else dialogStatus.removeAttribute('data-tone');
+            }
+
+            function syncSubmit() {
+                submitBtn.disabled = busy || input.value.trim() !== CONFIRM_WORD;
+            }
+
+            openBtn.addEventListener('click', function () {
+                if (typeof dlg.showModal !== 'function' || dlg.open) return;
+                input.value = '';
+                setStatus('');
+                syncSubmit();
+                dlg.showModal();
+                input.focus();
+            });
+
+            cancelBtn.addEventListener('click', function () {
+                if (busy) return;
+                dlg.close('cancel');
+                openBtn.focus();
+            });
+
+            dlg.addEventListener('click', function (ev) {
+                if (ev.target === dlg && !busy) {
+                    dlg.close('cancel');
+                    openBtn.focus();
+                }
+            });
+
+            input.addEventListener('input', syncSubmit);
+
+            form.addEventListener('submit', function (ev) {
+                ev.preventDefault();
+                if (busy || input.value.trim() !== CONFIRM_WORD) return;
+                busy = true;
+                setStatus('');
+                submitBtn.disabled = true;
+                cancelBtn.disabled = true;
+                submitBtn.textContent = DELETING_LABEL;
+
+                fetch('/api/account', {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: 'DELETE' }),
+                }).then(function (res) {
+                    return res.json().catch(function () { return {}; }).then(function (data) {
+                        if (res.ok && data && data.deleted) {
+                            window.location.href = '/logout?return=' + encodeURIComponent(DONE_RETURN);
+                            return;
+                        }
+                        if (res.status === 401 && data && data.error === 'insufficient_user_authentication') {
+                            window.location.href = REAUTH_URL;
+                            return;
+                        }
+                        throw new Error((data && data.error) || 'delete_failed');
+                    });
+                }).catch(function () {
+                    busy = false;
+                    cancelBtn.disabled = false;
+                    submitBtn.textContent = CONFIRM_LABEL;
+                    syncSubmit();
+                    setStatus(ERROR_MSG);
+                });
+            });
+        })();
+    </script>` : ""}
 </body>
 </html>`;
 }
