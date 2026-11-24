@@ -52,6 +52,9 @@ declare global {
     AUDIT_QUEUE: Queue;
     /** Approved moderation requests' actions (moderation/queue.ts); consumed by this worker */
     MODERATION_QUEUE?: Queue;
+    /** Account events to subscribed clients (account-events/). "on" sends them; off by default. */
+    ACCOUNT_EVENTS?: string;
+    ACCOUNT_EVENTS_QUEUE?: Queue;
     AUTH_ANALYTICS?: AnalyticsEngineDataset;
     /** Bot protection (security/turnstile.ts, docs/BOT_PROTECTION.md): "off" | "monitor" | "enforce" */
     TURNSTILE_MODE?: string;

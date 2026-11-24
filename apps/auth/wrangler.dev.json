@@ -102,6 +102,10 @@
       {
         "binding": "MODERATION_QUEUE",
         "queue": "moderation-actions-dev"
+      },
+      {
+        "binding": "ACCOUNT_EVENTS_QUEUE",
+        "queue": "account-events-dev"
       }
     ],
     "consumers": [
@@ -115,6 +119,20 @@
       },
       {
         "queue": "moderation-actions-dev-dlq",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 3
+      },
+      {
+        "queue": "account-events-dev",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 6,
+        "retry_delay": 30,
+        "dead_letter_queue": "account-events-dev-dlq"
+      },
+      {
+        "queue": "account-events-dev-dlq",
         "max_batch_size": 5,
         "max_batch_timeout": 5,
         "max_retries": 3
@@ -132,6 +150,7 @@
     "PROFILE_CLIENT_ID": "109a1087-6626-40f7-8a7f-7f42f83f4f30",
     "ALLOWED_ORIGINS": "localhost,127.0.0.1",
     "OPENAUTH_ISSUER": "http://localhost:3301",
+    "ACCOUNT_EVENTS": "off",
     "AUDIT_WEBHOOK_URL": "",
     "AUDIT_WEBHOOK_SECRET": "",
     "SIGN_IN_FALLBACK_URL": "http://localhost:3302/",

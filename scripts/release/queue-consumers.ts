@@ -6,6 +6,9 @@
  *
  *   node --experimental-strip-types scripts/release/queue-consumers.ts --config apps/auth/wrangler.json --env production [--dry-run]
  *
+ * With --create-queues (before the deploy: a binding to a queue that does not exist
+ * fails it) it only creates the queues the config names, when they are missing.
+ *
  * --env names the config's env block (omit for the top level). Needs
  * CLOUDFLARE_API_TOKEN with Queues:Edit (locally, `wrangler login`).
  * Same file in AlUmmahNow and AlUmmahNowAuth.
@@ -33,7 +36,7 @@ interface ConsumerConfig {
 }
 interface Block {
 	name?: string;
-	queues?: { consumers?: ConsumerConfig[] };
+	queues?: { producers?: { queue: string }[]; consumers?: ConsumerConfig[] };
 	env?: Record<string, Block>;
 }
 
@@ -56,6 +59,14 @@ export function consumersOf(config: Block, env?: string): ConsumerSpec[] {
 	}));
 }
 
+/** Every queue the config's top level or one env block names: produced to, consumed, or dead-lettered to. */
+export function queuesOf(config: Block, env?: string): string[] {
+	const block = env ? config.env?.[env] : config;
+	if (!block) throw new Error(`No env "${env}" in the config`);
+	const names = [...(block.queues?.producers ?? []).map((p) => p.queue), ...(block.queues?.consumers ?? []).flatMap((c) => [c.queue, c.dead_letter_queue])];
+	return [...new Set(names.filter((n): n is string => !!n))];
+}
+
 interface QueueInfo {
 	queue_id: string;
 	queue_name: string;
@@ -64,6 +75,22 @@ interface QueueConsumer {
 	script?: string;
 	script_name?: string;
 	service?: string;
+}
+
+/** Creates the queues that are missing. Never changes or deletes one. */
+export async function ensureQueues(cf: CfClient, names: string[], dryRun = false): Promise<string[]> {
+	if (!names.length) return [];
+	const existing = new Set((await cf.request<QueueInfo[]>('GET', '/queues?per_page=1000')).map((q) => q.queue_name));
+	const lines: string[] = [];
+	for (const name of names) {
+		if (existing.has(name)) lines.push(`ok       ${name}`);
+		else if (dryRun) lines.push(`missing  ${name} (dry run)`);
+		else {
+			await cf.request('POST', '/queues', { queue_name: name });
+			lines.push(`created  ${name}`);
+		}
+	}
+	return lines;
 }
 
 export async function ensureConsumers(cf: CfClient, specs: ConsumerSpec[], dryRun = false): Promise<string[]> {
@@ -103,8 +130,12 @@ if (isMain) {
 	try {
 		const configPath = value('--config');
 		if (!configPath) throw new Error('--config is required');
-		const specs = consumersOf(parseJsonc(readFileSync(configPath, 'utf8')) as Block, value('--env'));
-		for (const line of await ensureConsumers(createCfClient(), specs, args.includes('--dry-run'))) console.log(line);
+		const config = parseJsonc(readFileSync(configPath, 'utf8')) as Block;
+		const dryRun = args.includes('--dry-run');
+		const lines = args.includes('--create-queues')
+			? await ensureQueues(createCfClient(), queuesOf(config, value('--env')), dryRun)
+			: await ensureConsumers(createCfClient(), consumersOf(config, value('--env')), dryRun);
+		for (const line of lines) console.log(line);
 	} catch (error) {
 		console.error(`queue-consumers: ${error instanceof Error ? error.message : String(error)}`);
 		process.exit(1);
