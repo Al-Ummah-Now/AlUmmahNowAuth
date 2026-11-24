@@ -37,6 +37,7 @@ const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET', 'E2E_RUN_USERS
 const AUTH_SECRETS: RequiredSecret[] = [
 	{ name: 'CLIENT_SECRET_SALT', purpose: 'Secrets Store; legacy, required by deep health but read by no code (client secrets use per-secret PBKDF2 salts)' },
 	{ name: 'KEY_ENCRYPTION_MASTER_KEY', purpose: 'Secrets Store; encrypts JWT signing keys at rest in D1' },
+	{ name: 'PROFILE_DATA_KEY', purpose: 'Secrets Store; base64 of 32 bytes, encrypts dates of birth in D1. Replace it with the old one bound as PROFILE_DATA_KEY_PREVIOUS; without it they can no longer be read' },
 	{ name: 'RESEND_API_KEY', purpose: 'Secrets Store; sends sign-in / verification email' },
 	{ name: 'INTERNAL_API_KEY', purpose: 'Secrets Store (internal-api-key[-stage|-qa], the same entries admin-api reads); reports unexpected errors to the videos admin Errors page (#341)' },
 	{ name: 'SESSION_SECRET', purpose: 'worker secret, 64 hex chars; encrypts the __session SSO cookie' },
