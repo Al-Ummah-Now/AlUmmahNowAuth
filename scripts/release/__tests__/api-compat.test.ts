@@ -173,6 +173,15 @@ describe('deprecation', () => {
 		expect(breakingChanges(old, next, NOW)).toEqual([]);
 	});
 
+	it('a field that points to a shared schema is announced beside its $ref', () => {
+		const old = spec();
+		Object.assign(old.components.schemas.Tokens.properties.next, { deprecated: true, 'x-sunset': '2026-11-30' });
+		const next = spec();
+		delete next.components.schemas.Tokens.properties.next;
+		expect(breakingChanges(old, next, NOW)).toEqual([]);
+		expect(breakingChanges(spec(), next, NOW).map((c) => c.id)).toEqual(['POST /token 200: field "next" removed']);
+	});
+
 	it('a new deprecation gives the notice its audience is owed', () => {
 		expect(shortNotice(spec(), withSunset('2027-06-02'), NOW)).toEqual([]);
 		expect(shortNotice(spec(), withSunset('2027-03-01'), NOW)[0]).toContain('less than 182 days');
@@ -225,30 +234,37 @@ describe('on the real openapi.json', () => {
 		expect(breakingChanges(real(), real(), NOW)).toEqual([]);
 	});
 
+	/** The spec with one path only: each change is compared on its own path, not on all 140. */
+	const only = (base: Any, path: string, item: Any) => ({ ...base, paths: { [path]: item } });
+	const eachOperation = (base: Any, fn: (path: string, method: string, op: Any, item: Any) => void) => {
+		for (const [path, item] of Object.entries(base.paths as Record<string, Record<string, Any>>)) for (const [method, op] of Object.entries(item)) fn(path, method, op, item);
+	};
+
 	it('notices every operation that goes away, except pages', () => {
 		const base = real();
-		for (const [path, item] of Object.entries(base.paths as Record<string, Record<string, Any>>)) {
-			for (const [method, op] of Object.entries(item)) {
-				const next = clone(base);
-				delete next.paths[path][method];
-				const expected = op['x-audience'] === 'page' ? [] : [`${method.toUpperCase()} ${path}: removed`];
-				expect(breakingChanges(base, next, NOW).map((c) => c.id)).toEqual(expected);
-			}
-		}
+		let seen = 0;
+		eachOperation(base, (path, method, op, item) => {
+			const { [method]: _gone, ...rest } = item;
+			const expected = op['x-audience'] === 'page' ? [] : [`${method.toUpperCase()} ${path}: removed`];
+			expect(breakingChanges(only(base, path, item), only(base, path, rest), NOW).map((c) => c.id)).toEqual(expected);
+			seen++;
+		});
+		expect(seen).toBeGreaterThan(150);
 	});
 
 	it('notices every answer that goes away', () => {
 		const base = real();
-		for (const [path, item] of Object.entries(base.paths as Record<string, Record<string, Any>>)) {
-			for (const [method, op] of Object.entries(item)) {
-				if (op['x-audience'] === 'page') continue;
-				for (const status of Object.keys(op.responses ?? {})) {
-					const next = clone(base);
-					delete next.paths[path][method].responses[status];
-					expect(breakingChanges(base, next, NOW).map((c) => c.id)).toContain(`${method.toUpperCase()} ${path}: answer ${status} removed`);
-				}
+		let seen = 0;
+		eachOperation(base, (path, method, op, item) => {
+			if (op['x-audience'] === 'page') return;
+			for (const status of Object.keys(op.responses ?? {})) {
+				const { [status]: _gone, ...responses } = op.responses;
+				const next = only(base, path, { ...item, [method]: { ...op, responses } });
+				expect(breakingChanges(only(base, path, item), next, NOW).map((c) => c.id)).toEqual([`${method.toUpperCase()} ${path}: answer ${status} removed`]);
+				seen++;
 			}
-		}
+		});
+		expect(seen).toBeGreaterThan(500);
 	});
 });
 

@@ -120,7 +120,7 @@ class Comparison {
 		const [oldReq, curReq] = [new Set(arr(old.required).map(String)), new Set(arr(cur.required).map(String))];
 		for (const [name, prop] of Object.entries(oldProps)) {
 			if (!(name in curProps)) {
-				if (!expired(deref(this.before, prop), this.now)) this.add(where, `field "${name}" removed`);
+				if (!expired(obj(prop), this.now) && !expired(deref(this.before, prop), this.now)) this.add(where, `field "${name}" removed`);
 				continue;
 			}
 			this.schema(prop, curProps[name], `${where} ${name}`, sent);
