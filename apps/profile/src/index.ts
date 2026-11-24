@@ -3,11 +3,18 @@ import { createSubjects } from "@al-ummah-now/openauth/subject";
 import { generatePKCE } from "@al-ummah-now/openauth/pkce";
 import * as v from "valibot";
 import { appsForUser, resolveAppEnv } from "./apps";
+import { orchestrateAccountDeletion, resolveVideosApiUrl } from "./delete-account";
 import {
-  orchestrateAccountDeletion,
-  resolveVideosApiUrl,
-  type DeleteProgressState,
-} from "./delete-account";
+  accountDeleted,
+  accountDeletionOn,
+  putDoneProof,
+  readDeleteProgress,
+  removeDeleteProgress,
+  takeDoneProof,
+  writeDeleteProgress,
+  type DeleteProgress,
+  type DoneProof,
+} from "./delete-progress";
 import { localeOf, pickLocale } from "./i18n";
 import { renderDeleteAccountPage, renderHomePage } from "./page";
 import {
@@ -30,6 +37,7 @@ import {
   endSession,
   ensureFreshTokens,
   getSession as getStoredSession,
+  sessionOwner,
   type SessionStores,
   type StoredSession,
 } from "./session-store";
@@ -119,10 +127,7 @@ function clearSessionCookie(isLocalhost: boolean) {
 }
 
 const DELETE_DONE_COOKIE = "delete_account_done";
-const DELETE_DONE_KV_PREFIX = "delete_done:";
-const DELETE_DONE_TTL_SECONDS = 120;
-const DELETE_PROGRESS_KV_PREFIX = "delete_progress:";
-const DELETE_PROGRESS_TTL_SECONDS = 24 * 60 * 60;
+const DELETE_DONE_TTL_SECONDS = 600;
 
 function createDeleteDoneCookie(nonce: string, isLocalhost: boolean) {
   const secure = isLocalhost ? "" : "Secure; ";
@@ -134,31 +139,22 @@ function clearDeleteDoneCookie(isLocalhost: boolean) {
   return `${DELETE_DONE_COOKIE}=; Path=/delete-account; HttpOnly; ${secure}SameSite=Lax; Max-Age=0`;
 }
 
-async function readDeleteProgress(env: Env, userId: string): Promise<DeleteProgressState | null> {
-  const raw = await env.AUTH_STORAGE.get(`${DELETE_PROGRESS_KV_PREFIX}${userId}`);
-  if (!raw) return null;
+/** Cleanup after a committed deletion: a failure is logged and never turns the success into an error. */
+async function bestEffort(what: string, run: () => Promise<unknown>): Promise<boolean> {
   try {
-    const parsed = JSON.parse(raw) as Partial<DeleteProgressState>;
-    if (parsed.stage !== "in_progress" && parsed.stage !== "content_erased") return null;
-    return {
-      stage: parsed.stage,
-      ...(typeof parsed.resumeToken === "string" && parsed.resumeToken.length > 0 ? { resumeToken: parsed.resumeToken } : {}),
-      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-    };
-  } catch {
-    return null;
+    await run();
+    return true;
+  } catch (error) {
+    console.error(`Account deleted, but: ${what}`, error instanceof Error ? error.message : String(error));
+    return false;
   }
 }
 
-async function writeDeleteProgress(env: Env, userId: string, state: DeleteProgressState): Promise<void> {
-  await env.AUTH_STORAGE.put(`${DELETE_PROGRESS_KV_PREFIX}${userId}`, JSON.stringify(state), {
-    expirationTtl: DELETE_PROGRESS_TTL_SECONDS,
-  });
-}
-
-async function clearDeleteProgress(env: Env, userId: string): Promise<void> {
-  await env.AUTH_STORAGE.delete(`${DELETE_PROGRESS_KV_PREFIX}${userId}`);
-}
+/** What may be said once the account is gone: about Videos content only if this app erased it. */
+const doneProofOf = (p: DeleteProgress | null): DoneProof =>
+  p?.stage === "content_erased" || p?.stage === "deleted"
+    ? { erased: true, ...(p.leftover ? { leftover: p.leftover } : {}) }
+    : { erased: false };
 
 // One OpenAuth client per isolate: the client caches discovery and JWKS
 // inside itself, so a client per request fetched both on every verify.
@@ -360,126 +356,145 @@ const worker = {
       return new Response(res.body, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
     }
 
-    // Self-service account deletion API (AlUmmahNowAuth#532): reuses Videos DELETE /api/privacy/data
-    // (one bounded pass per request) and Auth DELETE /account in order (step-up freshness & account
-    // identity checked before erasing any content).
+    // Self-service account deletion API (AlUmmahNowAuth#532): one bounded step per request (delete-account.ts)
     if (url.pathname === '/api/account' && request.method === 'DELETE') {
-      const json = (body: unknown, status = 200, cookiesToSet: string[] = []) => {
-        const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      const json = (body: unknown, status = 200, extra: Record<string, string> = {}, cookiesToSet: string[] = []) => {
+        const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extra });
         for (const c of cookiesToSet) headers.append('Set-Cookie', c);
         return new Response(JSON.stringify(body), { status, headers });
       };
       // Changes only from this app's own page (CSRF)
       if (request.headers.get('Origin') !== url.origin) return json({ error: 'forbidden' }, 403);
-      let body: { confirm?: unknown; userId?: unknown; resumeToken?: unknown };
-      try {
-        body = (await request.json()) as { confirm?: unknown; userId?: unknown; resumeToken?: unknown };
-      } catch {
-        body = {};
-      }
+      if (!(await accountDeletionOn(env.AUTH_DB))) return json({ error: 'feature_off' }, 404);
+      const body = (await request.json().catch(() => null)) as { confirm?: unknown; userId?: unknown; acceptLeftover?: unknown } | null;
       if (body?.confirm !== 'DELETE') return json({ error: 'confirmation_required' }, 400);
-      const expectedUserId = typeof body?.userId === 'string' && body.userId.trim().length > 0 ? body.userId.trim() : null;
-      if (!expectedUserId) return json({ error: 'account_mismatch' }, 409);
-      // Compare stored session user id BEFORE refreshing tokens so a cross-tab mismatch never hits Auth.
+      const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+      if (!userId) return json({ error: 'account_mismatch' }, 409);
+
+      const stores = storesOf(env);
+      const sessionToken = sessionTokenOf(request);
+      const state = {
+        read: () => readDeleteProgress(env.AUTH_DB, userId),
+        write: (p: DeleteProgress) => writeDeleteProgress(env.AUTH_DB, userId, p),
+        remove: (p: DeleteProgress) => removeDeleteProgress(env.AUTH_DB, userId, p),
+        accountDeleted: () => accountDeleted(env.AUTH_DB, userId),
+      };
+      /** The account is gone: from here on nothing may turn the answer into a failure. */
+      const deleted = async (proof: DoneProof, deletedAt?: number) => {
+        const now = Date.now();
+        if (proof.erased) {
+          await bestEffort('its progress record stays', () =>
+            state.write({ stage: 'deleted', ...(proof.leftover ? { leftover: proof.leftover } : {}), startedAt: now, updatedAt: now }),
+          );
+        }
+        if (sessionToken) await bestEffort('the profile session could not be ended', () => endSession(stores, sessionToken));
+        const nonce = crypto.randomUUID();
+        const proved = await bestEffort('the confirmation could not be stored', () => putDoneProof(env.AUTH_DB, nonce, proof));
+        return json(
+          { deleted: true, complete: true, ...proof, ...(proved ? {} : { confirmed: false }), ...(deletedAt !== undefined ? { deletedAt } : {}) },
+          200,
+          {},
+          // Without the stored proof the page confirms from this answer instead
+          proved ? [clearSessionCookie(isLocalhost), createDeleteDoneCookie(nonce, isLocalhost)] : [clearSessionCookie(isLocalhost)],
+        );
+      };
+
+      // Compared before any token refresh, so an account switch in another tab reaches no other service
+      let owner: string | null;
+      try {
+        owner = await sessionOwner(stores, sessionToken);
+      } catch {
+        return json({ error: 'progress_unavailable', started: false }, 503);
+      }
+      if (owner !== null && owner !== userId) return json({ error: 'account_mismatch' }, 409);
+      // A deletion whose last answer was lost (its session has ended with it): done, not "sign in again"
+      if (owner !== null) {
+        try {
+          if (await state.accountDeleted()) return await deleted(doneProofOf(await state.read()));
+        } catch {
+          return json({ error: 'progress_unavailable', started: false }, 503);
+        }
+      }
       const storedSession = await getSession(request, env);
       if (!storedSession || !storedSession.user?.id) return json({ error: 'not_authenticated' }, 401);
-      if (storedSession.user.id !== expectedUserId) return json({ error: 'account_mismatch' }, 409);
+      if (storedSession.user.id !== userId) return json({ error: 'account_mismatch' }, 409);
       const { session } = await getFreshSession(request, env, authServerUrl);
       if (!session || !session.user?.id) return json({ error: 'not_authenticated' }, 401);
-      if (session.user.id !== expectedUserId) return json({ error: 'account_mismatch' }, 409);
+      if (session.user.id !== userId) return json({ error: 'account_mismatch' }, 409);
 
-      const savedProgress = await readDeleteProgress(env, expectedUserId);
-      const clientResumeToken = typeof body?.resumeToken === 'string' && body.resumeToken.length > 0 ? body.resumeToken : undefined;
-      const effectiveResumeToken = clientResumeToken ?? savedProgress?.resumeToken;
-      const skipVideosErasure = savedProgress?.stage === 'content_erased';
-
-      const appEnv = resolveAppEnv(env.APP_ENV, url.hostname);
-      const videosApiUrl = resolveVideosApiUrl(env.VIDEOS_API_URL, appEnv);
       const result = await orchestrateAccountDeletion({
         accessToken: session.tokens.access,
-        expectedUserId,
+        expectedUserId: userId,
         authServerUrl,
-        videosApiUrl,
-        resumeToken: effectiveResumeToken,
-        skipVideosErasure,
-        erasureStarted: savedProgress !== null,
+        videosApiUrl: resolveVideosApiUrl(env.VIDEOS_API_URL, resolveAppEnv(env.APP_ENV, url.hostname)),
+        state,
+        ...(body.acceptLeftover === 'channel' || body.acceptLeftover === 'other' ? { acceptLeftover: body.acceptLeftover } : {}),
       });
       if (!result.ok) {
-        if (result.contentErased) {
-          await writeDeleteProgress(env, expectedUserId, { stage: 'content_erased', updatedAt: Date.now() });
-        } else if (result.resumeToken) {
-          await writeDeleteProgress(env, expectedUserId, {
-            stage: 'in_progress',
-            resumeToken: result.resumeToken,
-            updatedAt: Date.now(),
-          });
-        }
         return json(
           {
             error: result.error,
+            started: result.started,
             ...(result.maxAge !== undefined ? { max_age: result.maxAge } : {}),
-            ...(result.detail ? { error_description: result.detail } : {}),
+            ...(result.retryAfter !== undefined ? { retryAfter: result.retryAfter } : {}),
             ...(result.contentErased ? { contentErased: true } : {}),
-            ...(result.resumeToken ? { resumeToken: result.resumeToken } : {}),
           },
           result.status,
+          result.retryAfter !== undefined ? { 'Retry-After': String(result.retryAfter) } : {},
         );
       }
+      // The resume token stays on the server
       if (!result.complete) {
-        await writeDeleteProgress(env, expectedUserId, {
-          stage: 'in_progress',
-          resumeToken: result.resumeToken,
-          updatedAt: Date.now(),
-        });
-        return json({ deleted: false, complete: false, resumeToken: result.resumeToken }, 200);
+        return json({ deleted: false, complete: false, ...('leftover' in result ? { leftover: result.leftover } : result.restarted ? { restarted: true } : {}) });
       }
-      await clearDeleteProgress(env, expectedUserId);
-      const sessionToken = sessionTokenOf(request);
-      if (sessionToken) await endSession(storesOf(env), sessionToken);
-      const doneNonce = crypto.randomUUID();
-      await env.AUTH_STORAGE.put(`${DELETE_DONE_KV_PREFIX}${doneNonce}`, expectedUserId, {
-        expirationTtl: DELETE_DONE_TTL_SECONDS,
-      });
-      return json(
-        { deleted: true, complete: true, userId: result.userId ?? session.user.id, deletedAt: result.deletedAt },
-        200,
-        [clearSessionCookie(isLocalhost), createDeleteDoneCookie(doneNonce, isLocalhost)],
-      );
+      return await deleted({ erased: true, ...(result.leftover ? { leftover: result.leftover } : {}) }, result.deletedAt);
     }
 
-    // Public web account deletion page (AlUmmahNowAuth#532; Google Play Data safety URL).
-    // Works signed out (explains what is deleted and asks to sign in) and signed in.
-    // The "account deleted" state is shown ONLY when signed out AND backed by a one-time
-    // server-stored nonce in KV (never spoofable via query params or a fixed cookie value).
-    // Half-finished / content-erased notices come ONLY from server-side KV state bound to session.user.id.
+    // Public web account deletion page (AlUmmahNowAuth#532; Google Play Data safety URL): signed out it says what is
+    // deleted and asks to sign in. "Deleted" and the notices about an unfinished deletion come only from the database,
+    // for this browser's own session or one-time proof, never from the query.
     if ((url.pathname === '/delete-account' || url.pathname === '/delete-account/') && request.method === 'GET') {
-      const { session, lapsed } = await getFreshSession(request, env, authServerUrl);
+      if (!(await accountDeletionOn(env.AUTH_DB))) return new Response('Not Found', { status: 404 });
       const locale = pickLocale(request);
+      const sessionToken = sessionTokenOf(request);
+      const { session, lapsed } = await getFreshSession(request, env, authServerUrl);
       const doneNonce = readCookie(request.headers.get('Cookie'), DELETE_DONE_COOKIE);
-      let deleted = false;
-      let shouldClearDoneCookie = false;
-      if (!session && doneNonce) {
-        const stored = await env.AUTH_STORAGE.get(`${DELETE_DONE_KV_PREFIX}${doneNonce}`);
-        if (stored) {
-          deleted = true;
-          await env.AUTH_STORAGE.delete(`${DELETE_DONE_KV_PREFIX}${doneNonce}`);
+      let done: DoneProof | null = null;
+      let progress: DeleteProgress | null = null;
+      let endedHere = lapsed;
+      let unavailable = false;
+      try {
+        const owner = session?.user?.id ?? (await sessionOwner(storesOf(env), sessionToken));
+        if (owner) {
+          progress = await readDeleteProgress(env.AUTH_DB, owner);
+          // Gone although this browser still holds its session, or held one: a lost answer
+          if ((!session || progress) && (await accountDeleted(env.AUTH_DB, owner))) {
+            done = doneProofOf(progress);
+            endedHere = true;
+            if (session && sessionToken) await bestEffort('the profile session could not be ended', () => endSession(storesOf(env), sessionToken));
+          }
+          // Restored by staff after a finished deletion: nothing is under way
+          if (progress?.stage === 'deleted') progress = null;
         }
-        shouldClearDoneCookie = true;
-      } else if (session && doneNonce) {
-        shouldClearDoneCookie = true;
+        if (!done && !session && doneNonce) done = await takeDoneProof(env.AUTH_DB, doneNonce);
+      } catch (error) {
+        // Not knowing must not look like "nothing has happened"
+        console.error('Account deletion state could not be read', error instanceof Error ? error.message : String(error));
+        unavailable = true;
       }
-      const progress = session?.user?.id ? await readDeleteProgress(env, session.user.id) : null;
       const html = renderDeleteAccountPage({
         environment: env.APP_ENV,
         theme: await fetchAuthTheme(authServerUrl, PROFILE_CLIENT_ID, url.searchParams.get('theme')),
         locale,
-        user: session?.user ?? null,
+        user: done ? null : (session?.user ?? null),
         authServerUrl,
         street: true,
         path: url.pathname + url.search,
-        deleted,
-        reauth: !deleted && url.searchParams.get('reauth') === '1',
-        erasureStage: !deleted && session ? (progress?.stage ?? null) : null,
+        done,
+        reauth: url.searchParams.get('reauth') === '1',
+        // Erased except for something: not "erased"
+        stage: done || !progress || progress.stage === 'deleted' ? null : progress.leftover ? 'started' : progress.stage,
+        unavailable,
       });
       const headers = new Headers({
         'Content-Type': 'text/html; charset=utf-8',
@@ -487,9 +502,10 @@ const worker = {
         'Cache-Control': 'no-store',
         'Vary': 'Cookie',
       });
-      if (lapsed) headers.append('Set-Cookie', clearSessionCookie(isLocalhost));
-      if (shouldClearDoneCookie) headers.append('Set-Cookie', clearDeleteDoneCookie(isLocalhost));
-      return new Response(html, { headers });
+      if (endedHere) headers.append('Set-Cookie', clearSessionCookie(isLocalhost));
+      if (doneNonce && !unavailable) headers.append('Set-Cookie', clearDeleteDoneCookie(isLocalhost));
+      if (unavailable) headers.set('Retry-After', '60');
+      return new Response(html, { status: unavailable ? 503 : 200, headers });
     }
 
     // API endpoint to get user info from session (roles come from JWT)
@@ -663,6 +679,7 @@ const worker = {
         analyticsToken: env.CF_WEB_ANALYTICS_TOKEN,
         street: true,
         path: url.pathname + url.search,
+        accountDeletion: await accountDeletionOn(env.AUTH_DB),
       });
 
       const headers = new Headers({
