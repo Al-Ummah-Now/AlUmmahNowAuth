@@ -231,6 +231,9 @@ describe('GET /test/run-users/census (dry run, #312)', () => {
 		await addUser('c-new', 'test-single-1794124057313@e2e.alummahnow.net', { marked: false });
 		await addUser('c-person', 'someone@example.com', { createdAt: old, marked: false });
 		await ENV.AUTH_DB.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').bind(Date.now(), 'c-old').run();
+		await ENV.AUTH_DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(Date.now() - 60_000, 'c-new').run();
+		await ENV.AUTH_DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(old - 40 * 86_400_000, 'c-seed').run();
+		await ENV.AUTH_DB.prepare(`INSERT OR REPLACE INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by) VALUES ('c-old', 'role_admin', 'default', 1, 'test')`).run();
 		const before = await ENV.AUTH_DB.prepare('SELECT * FROM users ORDER BY id').all();
 
 		const res = await census();
@@ -240,9 +243,9 @@ describe('GET /test/run-users/census (dry run, #312)', () => {
 		const body = JSON.parse(text) as { counts: Record<string, unknown>; next: string | null };
 		expect(body.next).toBeNull();
 		expect(body.counts).toMatchObject({
-			run: { total: 1, old: 1, marked: 1 },
-			kept: { total: 1, old: 1, marked: 0 },
-			disposable: { total: 2, old: 1, deleted: 1, marked: 0 },
+			run: { total: 1, old: 1, marked: 1, admin: 0 },
+			kept: { total: 1, old: 1, marked: 0, active: 0 },
+			disposable: { total: 2, old: 1, deleted: 1, marked: 0, admin: 1, active: 1 },
 		});
 		expect((await ENV.AUTH_DB.prepare('SELECT * FROM users ORDER BY id').all()).results).toEqual(before.results);
 	});
@@ -254,6 +257,21 @@ describe('GET /test/run-users/census (dry run, #312)', () => {
 		expect(body.counts.kept.total).toBe(1);
 	});
 
+	it.each([
+		['stage', { ...varsOf(prodConfig, 'stage'), E2E_RUN_USERS: RUN_USERS_FLAG }, 'auth.stage.alummahnow.net'],
+		['production', { ...varsOf(prodConfig, 'production'), E2E_RUN_USERS: RUN_USERS_FLAG }, 'auth.alummahnow.net'],
+		['a local worker', { ENVIRONMENT: 'development', OPENAUTH_ISSUER: 'http://localhost:3301', E2E_RUN_USERS: RUN_USERS_FLAG }, 'localhost'],
+		['QA vars with the stage issuer', { ENVIRONMENT: 'qa', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net', E2E_RUN_USERS: RUN_USERS_FLAG }, 'auth.stage.alummahnow.net'],
+		['the stage environment with the QA issuer', { ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.qa.alummahnow.net', E2E_RUN_USERS: RUN_USERS_FLAG }, 'auth.qa.alummahnow.net'],
+	])('neither census nor stale exists on %s, with every secret bound', async (_name, vars, host) => {
+		await addUser('c-q', 'qa-admin@e2e.alummahnow.net', { marked: false });
+		const there = { ...ENV, ...vars, E2E_CODE_SINK_SECRET: { get: async () => SINK }, TEST_PROMOTE_SECRET: PROMOTE, ADMIN_LIMITER: fakeLimiter(100) as unknown as RateLimit };
+		for (const path of ['/test/run-users/census', '/test/run-users/stale?hours=24']) {
+			const res = await routeTestEndpoints(req(path, { method: 'GET', host }), there as never, ctx, false);
+			expect(res === null || res.status === 404).toBe(true);
+		}
+	});
+
 	it('needs the CI secret and does not exist in production', async () => {
 		expect((await census('', { testSecret: 'nope' }))?.status).toBe(401);
 		const prod = { ...ENV, ...varsOf(prodConfig, 'production'), E2E_CODE_SINK_SECRET: { get: async () => SINK }, TEST_PROMOTE_SECRET: PROMOTE };
@@ -261,7 +279,7 @@ describe('GET /test/run-users/census (dry run, #312)', () => {
 		expect((await census('', { env: prod }))?.status).toBe(404);
 	});
 
-	it('an address it does not recognise is kept, never disposable', () => {
+	it('an address it does not recognise is counted apart, never as disposable', () => {
 		expect(e2eAccountKind('QA-Admin@e2e.alummahnow.net')).toBe('kept');
 		expect(e2eAccountKind('test-single-1795000000001@e2e.alummahnow.net')).toBe('kept');
 		expect(e2eAccountKind('test-single-1795000000006@e2e.alummahnow.net')).toBe('disposable');

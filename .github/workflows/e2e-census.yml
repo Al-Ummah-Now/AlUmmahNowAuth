@@ -30,8 +30,7 @@ jobs:
       - name: Count
         env:
           E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
-          # QA's value, as qa-e2e.yml sets it; E2E_CODE_SINK_SECRET is the gate
-          TEST_PROMOTE_SECRET: test-secret-for-e2e
+          TEST_PROMOTE_SECRET: ${{ secrets.TEST_PROMOTE_SECRET_QA }}
         run: |
           set -o pipefail
           node --experimental-strip-types --no-warnings scripts/users/e2e-census.ts | tee -a "$GITHUB_STEP_SUMMARY"
