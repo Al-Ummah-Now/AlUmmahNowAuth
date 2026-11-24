@@ -12,6 +12,9 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
+/** At most this many deletions per call (the server's own limit is the same) */
+const PER_CALL = 10;
+
 /** QA only: there is no option for another host. */
 export const QA_AUTH = 'https://auth.qa.alummahnow.net';
 const COUNTS = ['scanned', 'eligible', 'eligibleAdmins', 'deleted', 'deletedAdmins', 'skipped', 'failed'] as const;
@@ -56,7 +59,7 @@ export async function run(opts: Options): Promise<Result> {
 	const call = async (after: string): Promise<Page> => {
 		for (let attempt = 1; ; attempt++) {
 			try {
-				const res = await doFetch(`${QA_AUTH}/test/run-users/disposable?dryRun=${opts.delete ? 0 : 1}&after=${encodeURIComponent(after)}`, {
+				const res = await doFetch(`${QA_AUTH}/test/run-users/disposable?dryRun=${opts.delete ? 0 : 1}&limit=${Math.min(PER_CALL, Math.max(1, opts.max - counts.deleted))}&after=${encodeURIComponent(after)}`, {
 					method: 'POST',
 					headers: { 'X-E2E-Secret': opts.sinkSecret, 'X-Test-Secret': opts.testSecret },
 				});

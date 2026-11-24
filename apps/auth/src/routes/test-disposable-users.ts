@@ -2,10 +2,10 @@
  * QA's cleanup of old test accounts (#312, AUTH-R6 R6-8). The owner approved it on 2026-11-23,
  * after a dry run.
  *
- *   POST /test/run-users/disposable?after=<user id>&dryRun=1|0
+ *   POST /test/run-users/disposable?after=<user id>&dryRun=1|0&limit=<n>
  *
  * One call walks at most SCAN_PAGE accounts by primary key and, with dryRun=0, deletes at most
- * DELETE_PER_CALL of them. It returns counts and the user id to go on from, never an address.
+ * DELETE_PER_CALL of them (fewer with limit). It returns counts and the user id to go on from, never an address.
  * Deleted accounts are gone, so starting again from the beginning is always safe.
  *
  * Deletes an account only when ALL of these hold (disposable()), read from the row and checked
@@ -68,8 +68,11 @@ export interface AccountRow {
 	admin: number;
 }
 
+/** The run marker; metadata that cannot be read counts as marked, so the account is kept. */
+const MARKED = `(CASE WHEN metadata IS NULL THEN 0 WHEN json_valid(metadata) THEN json_extract(metadata, '$.${RUN_USER_MARKER}') IS NOT NULL ELSE 1 END)`;
+
 export const DISPOSABLE_SQL = `SELECT id, email, tenant_id, created_at, deleted_at, last_login_at,
-	(json_extract(metadata, '$.${RUN_USER_MARKER}') IS NOT NULL) AS marked,
+	${MARKED} AS marked,
 	EXISTS (SELECT 1 FROM rbac_user_roles ur JOIN rbac_roles r ON r.id = ur.role_id
 		WHERE ur.user_id = users.id AND lower(r.name) IN ('admin', 'super admin', 'super_admin')) AS admin
 	FROM users WHERE id > ? ORDER BY id LIMIT ?`;
@@ -86,7 +89,7 @@ export function disposable(row: AccountRow, now: number): boolean {
 /** The same rules at the moment of writing: an account used since it was read is left alone. */
 export const MARK_DELETED_SQL = `UPDATE users SET status = 'deleted', deleted_at = COALESCE(deleted_at, ?2), updated_at = ?2
 	WHERE id = ?1 AND email = ?3 AND created_at < ?4 AND (last_login_at IS NULL OR last_login_at < ?5)
-	AND json_extract(metadata, '$.${RUN_USER_MARKER}') IS NULL`;
+	AND ${MARKED} = 0`;
 
 async function erase(env: DeletionEnv, row: AccountRow, now: number): Promise<boolean> {
 	const marked = await env.AUTH_DB.prepare(MARK_DELETED_SQL)
@@ -121,6 +124,9 @@ const json = (body: unknown, status: number) =>
 export async function disposableUsers(url: URL, env: DisposableEnv, now = Date.now()): Promise<Response | null> {
 	if (!(await isQaDatabase(env, url.hostname))) return null;
 	const dryRun = url.searchParams.get('dryRun') !== '0'; // anything else is a dry run
+	const asked = Number(url.searchParams.get('limit') ?? DELETE_PER_CALL);
+	if (!Number.isInteger(asked) || asked < 1) return json({ error: 'limit must be a whole number >= 1' }, 400);
+	const limit = Math.min(asked, DELETE_PER_CALL);
 	const { results: rows } = await env.AUTH_DB.prepare(DISPOSABLE_SQL)
 		.bind(url.searchParams.get('after') ?? '', SCAN_PAGE)
 		.all<AccountRow>();
@@ -148,7 +154,7 @@ export async function disposableUsers(url: URL, env: DisposableEnv, now = Date.n
 			counts.failed++;
 			logger.error('QA account cleanup failed for one account', { userId: row.id, error: error instanceof Error ? error.message : String(error) });
 		}
-		if (counts.deleted + counts.skipped + counts.failed >= DELETE_PER_CALL) {
+		if (counts.deleted + counts.skipped + counts.failed >= limit) {
 			next = row.id;
 			break;
 		}

@@ -141,6 +141,21 @@ describe('bounded and resumable', () => {
 		expect(second).toMatchObject({ deleted: 5, next: null });
 	});
 
+	it('takes a smaller limit, never a larger one, and refuses nonsense', async () => {
+		for (let i = 0; i < DELETE_PER_CALL + 5; i++) await addUser(`u${String(i).padStart(2, '0')}`, DISPOSABLE(i));
+		for (const bad of ['0', '-1', '1.5', 'x', 'NaN']) expect((await call(`?dryRun=0&limit=${bad}`))?.status).toBe(400);
+		expect(await body(await call('?dryRun=0&limit=3'))).toMatchObject({ deleted: 3, next: 'u02' });
+		expect(await body(await call('?dryRun=0&limit=9999'))).toMatchObject({ deleted: DELETE_PER_CALL });
+	});
+
+	it('an account whose metadata cannot be read is kept, and stops nothing', async () => {
+		await addUser('a-broken', DISPOSABLE(1));
+		await ENV.AUTH_DB.prepare(`UPDATE users SET metadata = '{not json' WHERE id = 'a-broken'`).run();
+		await addUser('b-fine', DISPOSABLE(2));
+		expect(await body(await call('?dryRun=0'))).toMatchObject({ eligible: 1, deleted: 1, failed: 0 });
+		expect(await exists('a-broken')).toBe(true);
+	});
+
 	it('starting again after an interruption finishes a half-deleted account', async () => {
 		await addUser('half', DISPOSABLE(1), { deleted: true });
 		await ENV.AUTH_DB.prepare(`UPDATE users SET status = 'deleted' WHERE id = 'half'`).run();
