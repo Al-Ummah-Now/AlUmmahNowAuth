@@ -17,6 +17,10 @@ on:
         description: Delete at most this many accounts in this run
         type: string
         default: '5000'
+      parallel:
+        description: Erase this many accounts side by side (1 to 5)
+        type: string
+        default: '1'
       confirm:
         description: To delete, type delete-qa-test-accounts
         type: string
@@ -51,11 +55,12 @@ jobs:
           MODE: ${{ inputs.mode }}
           MAX: ${{ inputs.max }}
           CONFIRM: ${{ inputs.confirm }}
+          PARALLEL: ${{ inputs.parallel }}
         run: |
           set -euo pipefail
           args=()
           if [ "$MODE" = delete ]; then
             [ "$CONFIRM" = delete-qa-test-accounts ] || { echo "::error::Not confirmed; nothing was deleted"; exit 1; }
-            args=(--delete --max "$MAX")
+            args=(--delete --max "$MAX" --parallel "$PARALLEL")
           fi
           node --experimental-strip-types --no-warnings scripts/users/e2e-disposable.ts "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

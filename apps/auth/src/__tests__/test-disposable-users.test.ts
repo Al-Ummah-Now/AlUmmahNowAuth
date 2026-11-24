@@ -148,6 +148,29 @@ describe('bounded and resumable', () => {
 		expect(await body(await call('?dryRun=0&limit=9999'))).toMatchObject({ deleted: DELETE_PER_CALL });
 	});
 
+	it.each([1, 3, 5, 99])('side by side (%i) deletes the same accounts, keeps the same ones and the same limit', async (parallel) => {
+		for (let i = 0; i < DELETE_PER_CALL + 5; i++) await addUser(`u${String(i).padStart(2, '0')}`, DISPOSABLE(i), { admin: i % 5 === 0 });
+		await addUser('a-kept', 'qa-admin@e2e.alummahnow.net');
+		await addUser('u03x-active', DISPOSABLE('3x'), { login: Date.now() - HOUR });
+		const first = await body(await call(`?dryRun=0&parallel=${parallel}`));
+		expect(first).toMatchObject({ eligible: DELETE_PER_CALL, deleted: DELETE_PER_CALL, deletedAdmins: 2, failed: 0, next: 'u09' });
+		expect(await body(await call(`?dryRun=0&parallel=${parallel}&after=${first.next}`))).toMatchObject({ deleted: 5, deletedAdmins: 1, next: null });
+		const { results } = await ENV.AUTH_DB.prepare('SELECT id FROM users ORDER BY id').all<{ id: string }>();
+		expect(results.map((r) => r.id)).toEqual(['a-kept', 'u03x-active']);
+	});
+
+	it('one failure among several side by side is counted and stops none of the others', async () => {
+		for (let i = 0; i < 5; i++) await addUser(`u${i}`, DISPOSABLE(i));
+		await ENV.AUTH_DB.prepare(`CREATE TRIGGER stop_one BEFORE DELETE ON users WHEN OLD.id = 'u2' BEGIN SELECT RAISE(ABORT, 'no'); END`).run();
+		try {
+			expect(await body(await call('?dryRun=0&parallel=5'))).toMatchObject({ deleted: 4, failed: 1 });
+		} finally {
+			await ENV.AUTH_DB.prepare('DROP TRIGGER stop_one').run();
+		}
+		expect(await body(await call('?dryRun=0&parallel=5'))).toMatchObject({ deleted: 1, failed: 0 });
+		for (const bad of ['0', 'x', '2.5']) expect((await call(`?parallel=${bad}`))?.status).toBe(400);
+	});
+
 	it('an account whose metadata cannot be read is kept, and stops nothing', async () => {
 		await addUser('a-broken', DISPOSABLE(1));
 		await ENV.AUTH_DB.prepare(`UPDATE users SET metadata = '{not json' WHERE id = 'a-broken'`).run();

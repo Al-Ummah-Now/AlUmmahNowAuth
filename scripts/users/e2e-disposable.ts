@@ -4,7 +4,7 @@
  * database, is decided by the server (apps/auth/src/routes/test-disposable-users.ts).
  *
  *   node --experimental-strip-types scripts/users/e2e-disposable.ts                    # dry run
- *   node --experimental-strip-types scripts/users/e2e-disposable.ts --delete --max 5000
+ *   node --experimental-strip-types scripts/users/e2e-disposable.ts --delete --max 5000 --parallel 5
  *
  * Needs E2E_CODE_SINK_SECRET and TEST_PROMOTE_SECRET (QA's). Stopping it at any point is safe:
  * deleted accounts are gone, so the next run starts from the beginning and goes on.
@@ -32,6 +32,8 @@ export interface Options {
 	delete: boolean;
 	/** Stop after this many deletions */
 	max: number;
+	/** Accounts erased side by side within a call (the server allows 5) */
+	parallel?: number;
 	/** Stop when more accounts than this failed */
 	maxFailed?: number;
 	pauseMs?: number;
@@ -59,7 +61,7 @@ export async function run(opts: Options): Promise<Result> {
 	const call = async (after: string): Promise<Page> => {
 		for (let attempt = 1; ; attempt++) {
 			try {
-				const res = await doFetch(`${QA_AUTH}/test/run-users/disposable?dryRun=${opts.delete ? 0 : 1}&limit=${Math.min(PER_CALL, Math.max(1, opts.max - counts.deleted))}&after=${encodeURIComponent(after)}`, {
+				const res = await doFetch(`${QA_AUTH}/test/run-users/disposable?dryRun=${opts.delete ? 0 : 1}&limit=${Math.min(PER_CALL, Math.max(1, opts.max - counts.deleted))}&parallel=${opts.parallel ?? 1}&after=${encodeURIComponent(after)}`, {
 					method: 'POST',
 					headers: { 'X-E2E-Secret': opts.sinkSecret, 'X-Test-Secret': opts.testSecret },
 				});
@@ -117,9 +119,10 @@ if (isMain) {
 	const sinkSecret = process.env.E2E_CODE_SINK_SECRET;
 	const testSecret = process.env.TEST_PROMOTE_SECRET;
 	const max = argv.includes('--max') ? Number(argv[argv.indexOf('--max') + 1]) : 5000;
-	if (!sinkSecret || !testSecret || !Number.isInteger(max) || max < 1) {
-		process.stderr.write('E2E_CODE_SINK_SECRET and TEST_PROMOTE_SECRET are required; --max is a whole number\n');
+	const parallel = argv.includes('--parallel') ? Number(argv[argv.indexOf('--parallel') + 1]) : 1;
+	if (!sinkSecret || !testSecret || !Number.isInteger(max) || max < 1 || !Number.isInteger(parallel) || parallel < 1) {
+		process.stderr.write('E2E_CODE_SINK_SECRET and TEST_PROMOTE_SECRET are required; --max and --parallel are whole numbers\n');
 		process.exit(2);
 	}
-	process.stdout.write(report(await run({ sinkSecret, testSecret, delete: argv.includes('--delete'), max, log: (l) => process.stderr.write(`${l}\n`) })));
+	process.stdout.write(report(await run({ sinkSecret, testSecret, delete: argv.includes('--delete'), max, parallel, log: (l) => process.stderr.write(`${l}\n`) })));
 }
