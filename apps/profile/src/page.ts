@@ -785,6 +785,9 @@ export interface DeleteAccountPageOptions {
   unavailable?: boolean;
 }
 
+/** How long the page waits for one step: longer than the edge lets a request run. */
+export const REQUEST_TIMEOUT_MS = 130_000;
+
 /** Passes one confirmation runs before the person is asked again. */
 export const MAX_PASSES_PER_CONFIRMATION = 50;
 
@@ -803,6 +806,8 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
             ${clientFormatScript(locale)}
             var EXPECTED_USER_ID = ${scriptJson(userId)};
             var STARTED_BEFORE = ${startedBefore ? "true" : "false"};
+            var REQUEST_TIMEOUT_MS = ${REQUEST_TIMEOUT_MS};
+            var STILL_HERE_MS = 8000;
             var MAX_PASSES = ${MAX_PASSES_PER_CONFIRMATION};
             /* Either word in either language: a keyboard may have only one of them */
             var CONFIRM_WORDS = ${scriptJson([MESSAGES.en.deleteAccountConfirmWord.toLowerCase(), MESSAGES.ar.deleteAccountConfirmWord])};
@@ -826,9 +831,10 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
               anyway: t.deleteAccountAnyway,
               doneTitle: t.deleteAccountDoneTitle,
               done: withDays(`${t.deleteAccountDoneBody} ${t.deleteAccountDonePurge}`),
-              doneAccount: t.deleteAccountDoneBodyAccount,
-              doneChannel: t.deleteAccountDoneBodyChannel,
-              doneOther: t.deleteAccountDoneBodyOther,
+              doneAccount: withDays(`${t.deleteAccountDoneBodyAccount} ${t.deleteAccountDonePurge}`),
+              doneChannel: withDays(`${t.deleteAccountDoneBodyChannel} ${t.deleteAccountDonePurge}`),
+              doneOther: withDays(`${t.deleteAccountDoneBodyOther} ${t.deleteAccountDonePurge}`),
+              doneButton: t.deleteAccountDoneButton,
             })};
             var REAUTH_URL = ${scriptJson(reauthPageHref)};
             var DONE_RETURN = ${scriptJson(returnPath)};
@@ -841,6 +847,7 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
             var cancelBtn = document.getElementById('deleteDialogCancel');
             var dialogStatus = document.getElementById('deleteDialogStatus');
             var busy = false;
+            var finished = false;
             var waiting = false;
             var confirmLabel = CONFIRM_LABEL;
             var acceptLeftover = null;
@@ -882,8 +889,34 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
                 setStatus(msg, 'error');
             }
 
+            /* It is done and this page says so, until the person leaves (Done, Esc) */
+            function showDone(data) {
+                busy = false;
+                finished = true;
+                document.getElementById('deleteDialogTitle').textContent = T.doneTitle;
+                ['deleteDialogBody', 'deleteConfirmLabel', 'deleteConfirmInput', 'deleteDialogSubmit'].forEach(function (id) {
+                    document.getElementById(id).style.display = 'none';
+                });
+                setStatus(!data.erased ? T.doneAccount : data.leftover === 'channel' ? T.doneChannel : data.leftover === 'other' ? T.doneOther : T.done);
+                cancelBtn.textContent = T.doneButton;
+                cancelBtn.disabled = false;
+                cancelBtn.focus();
+            }
+
+            /* On the way to another page: Cancel works in case that takes long */
+            function moveOn(go) {
+                waiting = true;
+                setBusy(false);
+                go();
+            }
+
+            function leave() {
+                window.location.href = '/logout?return=' + encodeURIComponent(DONE_RETURN);
+            }
+
             /* Closed after something may have been removed: the page behind must say so */
             function closeDialog() {
+                if (finished) return leave();
                 dlg.close('cancel');
                 if (sent && !STARTED_BEFORE) window.location.reload();
                 else openBtn.focus();
@@ -934,14 +967,27 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
                 passCount += 1;
                 setBusy(true, passCount > 1 ? DELETING_PASS.replace('{n}', aunNum(passCount)) : DELETING_LABEL);
 
+                /* A request that never answers must not keep the person here */
+                var gaveUp = false;
+                var timer = setTimeout(function () {
+                    gaveUp = true;
+                    sent = true;
+                    stopWith(T.unknown);
+                }, REQUEST_TIMEOUT_MS);
+
                 fetch('/api/account', {
                     method: 'DELETE',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(acceptLeftover ? { confirm: 'DELETE', userId: EXPECTED_USER_ID, acceptLeftover: acceptLeftover } : { confirm: 'DELETE', userId: EXPECTED_USER_ID }),
                 }).then(function (res) {
-                    return res.json().then(function (data) { handle(res, data || {}); });
+                    return res.json().then(function (data) {
+                        clearTimeout(timer);
+                        if (!gaveUp) handle(res, data || {});
+                    });
                 }).catch(function () {
+                    clearTimeout(timer);
+                    if (gaveUp) return;
                     /* No answer, or not one of ours: it may have worked */
                     sent = true;
                     stopWith(T.unknown);
@@ -950,15 +996,13 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
 
             function handle(res, data) {
                 if (res.ok && data.deleted === true) {
-                    var leave = function () { window.location.href = '/logout?return=' + encodeURIComponent(DONE_RETURN); };
-                    if (data.confirmed !== false) return leave();
-                    /* The page after sign-out could not be told: say it here first */
-                    document.getElementById('deleteDialogTitle').textContent = T.doneTitle;
-                    ['deleteDialogBody', 'deleteConfirmLabel', 'deleteConfirmInput', 'deleteDialogCancel', 'deleteDialogSubmit'].forEach(function (id) {
-                        document.getElementById(id).style.display = 'none';
-                    });
-                    setStatus(!data.erased ? T.doneAccount : data.leftover === 'channel' ? T.doneChannel : data.leftover === 'other' ? T.doneOther : T.done);
-                    setTimeout(leave, 10000);
+                    if (data.confirmed !== false) {
+                        leave();
+                        /* Still here: nobody stays behind a dialog that does not move on */
+                        setTimeout(function () { showDone(data); }, STILL_HERE_MS);
+                    } else {
+                        showDone(data);
+                    }
                     return;
                 }
                 if (res.ok && data.complete === false) {
@@ -983,11 +1027,11 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
                 }
                 /* The page says how far it got, also for someone signed out meanwhile */
                 if (data.error === 'content_erased_reauth_required' || data.error === 'insufficient_user_authentication' || data.error === 'not_authenticated') {
-                    window.location.href = REAUTH_URL;
+                    moveOn(function () { window.location.href = REAUTH_URL; });
                     return;
                 }
                 if (data.error === 'feature_off') {
-                    window.location.reload();
+                    moveOn(function () { window.location.reload(); });
                     return;
                 }
                 if (data.retryAfter) {
@@ -1001,7 +1045,7 @@ export function deleteAccountScript({ locale, userId, startedBefore }: { locale:
 
             form.addEventListener('submit', function (ev) {
                 ev.preventDefault();
-                if (busy || waiting || !typed()) return;
+                if (busy || waiting || finished || !typed()) return;
                 passCount = 0;
                 setStatus(T.keepOpen);
                 runPass();
