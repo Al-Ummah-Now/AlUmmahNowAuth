@@ -15,6 +15,7 @@ import { addSecurityHeaders } from "./utils/security-headers";
 import { renderErrorPage } from "./ui/error-page";
 import { reportAuthError } from "./errors/report";
 import { flagSystemAccountAttempt } from './security/system-accounts';
+import { markCreatedRunUser } from './custom/run-user-marker';
 import { systemAccountGuard } from './custom/system-account-guard';
 import { signInFallbackUrl, clientRegistryMode } from "./utils/sign-in-restart";
 import { withAddedRedirect, withPreviewRedirects } from "./utils/preview-redirects";
@@ -317,6 +318,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     adminUserApp.use('*', revokeOnAdminUserAction(env.TOKEN_REVOCATIONS, env.AUTH_DB));
     // A deleted role can't be assigned; DELETE /:id is a soft delete (deletions/), ahead of OpenAuth's
     adminUserApp.use('*', refuseDeletedRoleAssignment());
+    // E2E run accounts made in the admin get the run marker (QA and stage only)
+    adminUserApp.use('/', markCreatedRunUser(env as unknown as Parameters<typeof markCreatedRunUser>[0]));
     adminUserApp.delete('/:id', softDeleteRoute('user', 'id'));
     // Mount custom user listing route FIRST - provides users with RBAC roles
     adminUserApp.route('/', userListRoutes(env.AUTH_DB));
