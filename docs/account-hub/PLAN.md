@@ -15,9 +15,14 @@ Implements [SPEC.md](./SPEC.md). Nothing starts until the owner has reviewed the
 | B4b | auth | Launcher and privacy links from the client registry (`/account/launcher`, migration 0017), `apps.ts` removed | B1 |
 | B5 | auth | Hub pages for B1–B4b, step-up flow | B1–B4b |
 | B6 | AlUmmahNow | Privacy page link to `<account>/data`. #444 read-only email explanation and link to `<account>/personal-info#email` | B5 live on prod |
-| C1 | auth | Account events: `account-events` queue, signed SETs to subscribed clients, retry and DLQ | B5 |
-| C2 | auth | Deletion in the hub: auth `DELETE /account` plus the `account.deleted` event | C1 (Q3 decided: apps delete everything) |
-| C3 | AlUmmahNow | Videos receiver: verify the SET, erase on `account.deleted` with its own queue. Then auth migration 0018 subscribes Videos | C1 on QA |
+| C1a | auth | Account events: tables, recording, signed SETs, `account-events` queue, retry, DLQ, `verification`. Off | 0 |
+| C1b | auth | Emit: deletion, restore, purge. Off | C1a |
+| C1c | auth | Auth admin: deliveries, failures and Send again | C1a |
+| C2 | auth | Deletion in the hub: the confirmation page and auth `DELETE /account` (its events are C1b) | C1b, B5 (Q3 decided: apps delete everything) |
+| C3a | AlUmmahNow | Videos receiver: verify the SET, `jti` and `seq`, own queue, retry and DLQ, last verified event. Off | C1a |
+| C3b | AlUmmahNow | Erase on `account-purged` | C3a |
+| C3c | AlUmmahNow | Hide and restore on `account-disabled` and `account-enabled` | C3a |
+| C4 | auth | Migration that subscribes Videos, per environment | C1b, C3c released |
 | T1 | auth | QA-only migration removing the theme demo redirect URIs from #249 | Theme demos torn down (any time, independent of the hub) |
 
 ---
@@ -113,21 +118,25 @@ Acceptance: E2E for each flow in en and ar, axe, screenshots approved.
 
 ## C1: account events
 
-Scope (SPEC §5.4): an `account-events` queue (`-qa`, `-stage`) and a producer binding in auth, with the same name in every env. A consumer in auth reads `oauth_clients.metadata.events`, builds a SET (RFC 8417) signed with the active JWKS key, and POSTs it (RFC 8935) through the existing webhook sink with retry and the `webhook_dlq`. Event types: RISC `account-purged` for `account.deleted`, no other types for now. The payload carries only the subject. The queue is added to the config check and to `release.yml` like the audit consumer.
+For [#507](https://github.com/Al-Ummah-Now/AlUmmahNowAuth/issues/507); SPEC §5.4; E20 §5.3 in the wiki. `ageRules` can't be turned on in an environment before it exists there. It needs nothing from B5.
 
-Acceptance: unit tests (signature verifies with the JWKS, no email in the payload, unsubscribed clients get nothing, a 5xx endpoint retries and then lands in the DLQ, DLQ replay works). On QA, a test receiver subscribed through a QA-only migration row gets the event.
+- **C1a:** migration with the two tables (both directories; next free numbers), `ACCOUNT_EVENTS` (`off` everywhere), queues `account-events[-qa|-stage]` and `-dlq` in the Wrangler configs, the config check and the release's consumer step, recording (`recordAccountEvent`, statements to add to a caller's batch), signing, delivery, dead letters, the cron that queues due rows, sends `verification` and removes old rows. Nothing calls it yet but `verification`.
+- **C1b:** `account-disabled` in `DELETE /account` and an admin's delete, `account-enabled` in restore, `account-purged` in `purge.ts`, each in the same batch as the change. `account-disabled` for age and `account-export-requested` are written by E20-P4 and P5 with the same function.
+- **C1c:** Auth admin page: per client the last delivered event, pending and failed deliveries, Send again (audited). English and Arabic; frames.
+
+Acceptance: the signature verifies with the JWKS; no email, name, date or band in a payload; a SET is refused as an access token; unsubscribed and disabled clients get nothing; `ACCOUNT_EVENTS` off records nothing; a 5xx retries and lands in the DLQ, and Send again delivers it; a failed enqueue is sent by the cron; a rolled-back change records nothing; a later event waits for an earlier one; redirects and non-https addresses are refused; every query uses an index; a slow or down app never delays `DELETE /account`.
 
 ## C2: deletion in the hub
 
-Scope: the confirmation page (type the confirmation word, step-up), then auth `DELETE /account`, which now also enqueues `account.deleted`. Then sign out and the confirmation page from SPEC §3.1. The hub calls nothing but auth.
+Scope: the confirmation page (type the confirmation word, step-up), then auth `DELETE /account`, whose events are C1b's. Then sign out and the confirmation page from SPEC §3.1. The hub calls nothing but auth.
 
-Acceptance: QA E2E: a throwaway account is deleted, signing in with it fails, and the QA test receiver gets `account-purged` for its subject. A unit test checks that `DELETE /account` returns before delivery and still succeeds when every subscriber is down.
+Acceptance: QA E2E: a throwaway account is deleted, signing in with it fails, and the QA test receiver gets `account-disabled` for its subject. A unit test checks that `DELETE /account` returns before delivery and still succeeds when every subscriber is down.
 
 ## C3: Videos receiver (AlUmmahNow)
 
-Scope (Q3: Videos deletes all of the user's data): an endpoint in api-videos that verifies the SET against auth's JWKS (issuer and audience = Videos' client id), is idempotent on `jti`, and enqueues erasure on Videos' own queue. A worker runs the existing resumable `eraseUserData` to completion and sends `UserDataErased`. Then auth migration `0018_client_event_subscriptions.sql` subscribes Videos per env.
+Scope (Q3: Videos deletes all of the user's data): an endpoint in api-videos, behind a switch that is off, verifies the SET against auth's JWKS (issuer, `aud` = Videos' client id, `typ`, one known event), stores `jti` and `seq`, queues the action on Videos' own queue with retry and DLQ, and answers `202`. A worker runs it: erase (the existing resumable `eraseUserData`, then `UserDataErased`), hide, restore. Each event moves `last_verified_event_at`, which admin-api reads for the `ageRules` check (48 hours). The export job is E20-B6.
 
-Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data, a replayed `jti` is a no-op, a bad signature is refused. QA E2E across both repos: delete in the hub, and the channel is gone on Videos QA shortly after.
+Acceptance (AlUmmahNow tests): a signed fixture event erases a seeded user's data; a replayed `jti` is a no-op; an old `seq` is ignored; a bad signature, issuer, audience or `typ` is refused, and so is an access token; retries end in the DLQ and can be replayed; hide then restore leaves every record as it was. After C4, QA shows a `verification` event within a day.
 
 ## T1: remove the theme demo redirect URIs
 

@@ -243,20 +243,35 @@ New endpoints go in `account-routes.ts` next to the existing ones and reuse `ver
 
 1. Step-up (fresh sign-in) on the hub's confirmation page.
 2. The hub calls auth `DELETE /account` (exists). Auth soft-deletes the user, removes the password and refresh tokens, adds the user to the revocation list, and emits `user.deleted` to the audit queue, as it already does.
-3. Auth publishes the event `account.deleted` (below).
+3. Auth records `account-disabled` (`reason: deleted`) for its subscribers, and `account-purged` when it purges the account 30 days later (below).
 4. The hub signs out and shows a confirmation page: your account is deleted, and the apps you used have been told to delete their data.
 
-Auth does not wait for apps and does not know whether they have finished. Each app's handling is that app's own concern. For Videos: a handler in api-videos receives `account.deleted`, then runs its existing resumable erasure (`eraseUserData`) as a background job on its own queue, and sends `UserDataErased` to its processor as it does today. That work is planned in the AlUmmahNow repo, not here.
+Auth does not wait for apps and does not know whether they have finished. Each app's handling is that app's own concern. For Videos: a handler in api-videos receives the events; on `account-purged` it runs its existing resumable erasure (`eraseUserData`) as a background job on its own queue, and sends `UserDataErased` to its processor as it does today. That work is planned in the AlUmmahNow repo, not here.
 
 The revocation list already makes every token of the deleted user fail at the APIs that check it (api-videos does), so nothing can act for the user while the apps clean up.
 
 **Account events: how auth tells apps, without depending on them.**
 
-- **Subscription is registry data.** A client opts in with `oauth_clients.metadata.events = { "uri": "https://…", "types": ["account.deleted"] }`. Auth has no list of apps in its code. An unsubscribed or missing app changes nothing for auth.
-- **Format:** a Security Event Token (RFC 8417), signed with auth's own keys (JWKS), so the app verifies it the same way it verifies access tokens. Deletion uses the RISC `account-purged` event type, with the subject as `iss_sub`. More types can be added later the same way. The payload carries only the user id, never an email or a name.
-- **Delivery:** push by `POST` (RFC 8935) from a new auth queue, `account-events`, using the existing webhook sink with retry and dead-letter queue (`webhook_dlq`, ADR-001), which the admin DLQ routes can replay. The delete request only enqueues, so a slow or down app never blocks or breaks auth.
+- **Off by default.** Nothing is recorded or sent until the variable `ACCOUNT_EVENTS` is `on` in that environment **and** a client subscribes. Events that happen while it is off are not sent later.
+- **Subscription is registry data.** A client opts in with `oauth_clients.metadata.events = { "uri": "https://…", "types": ["account-purged", …] }`. Auth has no list of apps in its code. An unsubscribed, disabled or missing client changes nothing for auth. `uri` must be `https`, with a host name (no address, port or credentials); redirects are not followed.
+- **Format:** a Security Event Token (RFC 8417), one per subscribed client: header `typ: secevent+jwt` and the active key's `kid`; claims `iss`, `aud` (the client id), `iat`, `jti`, `toe`, `sub_id` (`iss_sub`: the user id) and one event in `events`. There is no `sub`, `exp`, `mode` or `type`, so no access-token check can take it for one (tested). The receiver verifies it with the JWKS, as it does access tokens. **Never an email, a name, a date of birth or an age band.**
+- **Events** (E20 §5.3):
+
+| Type | Event URI | When | The subscriber |
+|---|---|---|---|
+| `account-disabled` | RISC `account-disabled`, `reason: "age"` or `"deleted"` | `age_disabled` is set (E20-P4); or the account is deleted and can still be restored | hides the account's content; stops push, email, scheduled posts and payouts |
+| `account-enabled` | RISC `account-enabled` | staff lift or restore it | puts back exactly what it hid |
+| `account-purged` | RISC `account-purged` | the account is purged: 30 days after deletion or disabling, or at once when a permanent deletion is asked for | erases everything |
+| `account-export-requested` | `https://alummahnow.dev/events/account-export-requested`, with a random `export_id` | the person asks for their data on the disabled page (E20-P5) | builds the export and uploads it to Auth |
+| `verification` | SSF `verification` (no user: `sub_id` is the client) | daily, per subscriber | records that delivery works |
+
+  **Why deletion is two events.** Deleting an account, by its owner or an admin, is undone by an admin for 30 days (`deletions/`). Erasing the apps' data at once would make that restore an empty account. So the apps hide at once and erase when Auth does.
+- **Recorded before it is sent.** The event is a row in `account_events`, written in the same D1 batch as the change that causes it, with one `account_event_deliveries` row per subscribed client. The request then queues the deliveries on `account-events`; a failed enqueue loses nothing, because the hourly cron queues due rows again (by index, in pages). The request never waits for an app.
+- **Delivery:** `POST` (RFC 8935), `Content-Type: application/secevent+jwt`, 10 seconds. `202` is delivered. `400` with a SET error is a permanent failure. Anything else is retried by the queue (30 s doubling to 15 min, 6 retries), then goes to `account-events-dlq`, which marks the row `failed` with the status and error, emits an audit event, and shows it to auth admins, who can **send it again**. Failed rows are kept; delivered ones go after 30 days. The old `webhook_dlq` is not used: its code and table don't match ([#509](https://github.com/Al-Ummah-Now/AlUmmahNowAuth/issues/509)).
+- **Order.** `seq` grows with every event and is in the SET. A client gets a user's events in order: while an earlier one is undelivered, a later one waits. The receiver also ignores an event whose `seq` is not above the last it applied for that user, and nothing follows `account-purged`.
+- **At least once.** A delivery can repeat with the same `jti`; receivers keep the `jti` and do nothing the second time.
 - **Why not the audit queue directly:** `audit_events` is auth's internal log, and its schema is not a contract. Apps must not consume it. The audit queue still records the event.
-- **Why not Videos' `UserDataErased`:** that is a message on Videos' own queue. Auth sending to it would be auth depending on Videos. Videos turns `account.deleted` into its own `UserDataErased`.
+- **Why not Videos' `UserDataErased`:** that is a message on Videos' own queue. Auth sending to it would be auth depending on Videos. Videos turns `account-purged` into its own `UserDataErased`.
 
 ### 5.5 Security model
 
@@ -272,7 +287,7 @@ The revocation list already makes every token of the deleted user fail at the AP
 
 ### 6.1 Schema
 
-- **No new tables.** Language goes in `users.metadata` (JSON) as `locale`. Launcher entries, `privacy_url` and event subscriptions go in `oauth_clients.metadata` (JSON). The current clients are filled in by migration, per environment.
+- **New tables** (phase C): `account_events` (`seq` INTEGER PRIMARY KEY AUTOINCREMENT, `id`, `type`, `user_id`, `reason`, `export_id`, `created_at`) and `account_event_deliveries` (`jti` PRIMARY KEY, `seq`, `client_id`, `status`, `attempts`, `error`, `next_at`, `delivered_at`), with indexes for the due rows, a client's and user's earlier rows, and clean-up. No email, name or age. Otherwise none. Language goes in `users.metadata` (JSON) as `locale`. Launcher entries, `privacy_url` and event subscriptions go in `oauth_clients.metadata` (JSON). The current clients are filled in by migration, per environment.
 - **No photo column or storage** (§2.3).
 - New queue `account-events` (and `-qa`, `-stage`) for event delivery (§5.4), with the same binding name in every env, as the config check requires.
 - **Index** `idx_audit_events_user_time ON audit_events(user_id, timestamp)` for the activity query. This is expand-only.
@@ -286,7 +301,7 @@ Numbering: AlUmmahNowAuth #249 already took `migrations-qa/0014_theme_demo_redir
 | `0015_account_hub_client_name.sql` | `UPDATE oauth_clients SET name = 'Al Ummah Now Account', updated_at = … WHERE id = '109a1087-…'`. Name only: `redirect_uris` are not touched. | same |
 | `0016_audit_events_user_time.sql` | the index | the index |
 | `0017_client_registry_metadata.sql` (phase B) | `metadata.launcher` and `privacy_url` for the current first-party clients, prod URLs | same, with QA URLs |
-| `0018_client_event_subscriptions.sql` (phase C, once an app has an endpoint) | `metadata.events` for subscribing clients | same |
+| `NNNN_client_event_subscriptions.sql` (C4, once Videos' receiver is released; next free number) | `metadata.events` for subscribing clients | same |
 | `NNNN_drop_theme_demo_redirect_uris.sql` (when the theme demos are torn down; next number free in both directories) | none (prod skips the number) | removes the `theme-demo-*` URIs that `0014_theme_demo_redirect_uris.sql` added to the QA web client, keeping every other URI |
 
 **No migration touches hosts.** The hub client keeps its existing `profile.auth` redirect URIs, and `account.*` gets none (§4). Stage replays `migrations/`, and `scripts/stage/seed.ts` needs no new mapping. Regenerate `schema.snapshot.sql` and `schema.qa.snapshot.sql` when a migration changes the schema (CI fails if stale).
@@ -327,7 +342,7 @@ How tokens reach this repo depends on how the theme package ships (THEMES §"Acr
 |---|---|---|
 | **A: alias and rename** (first release) | `account.*` 301 redirect to the unchanged `profile.auth.*`, naming and copy, the client name migration, state and PKCE, token refresh, the theme and light/dark rebuild of the existing pages, the initials avatar. Home (who you are, switch, add, sign out one/all), Devices (list, remove, sign out of all devices), Change password (link to the existing flow), Download account data, Your apps. Personal info read-only, with the permanent-email explanation and "Create a new account" (§5.3). | None. Only config, the name migration and the `//callback` fix. |
 | **B: manage** | Name and language editing, Recent activity, Connected apps, the launcher and privacy links from the client registry (`apps.ts` removed). #444 follow-up links. | `/account/profile`, `/account/activity`, `/account/apps`, `/account/launcher` |
-| **C: deletion and events** | Account events (`account-events` queue, SETs to subscribed clients), deletion in the hub (auth data plus an event), migration 0018. In AlUmmahNow: the Videos receiver that erases on `account.deleted`. | Event delivery. No new public endpoint. |
+| **C: deletion and events** | Account events (`account-events` queue, SETs to subscribed clients), deletion in the hub (auth data plus an event), the migration that subscribes Videos. In AlUmmahNow: the Videos receiver that hides, restores and erases. | Event delivery. No new public endpoint. |
 
 Phase A changes no auth behaviour, so it can ship as soon as it is reviewed. Each later phase is a separate PR series.
 
@@ -352,3 +367,5 @@ All four questions are answered (2026-11-08): photo A (no photo in auth), email 
 - **Email is permanent (Q2):** email change is removed everywhere: the `/account/email/*` APIs, its flow, rate limits, KV state, copy, tests and the `identifier-changed` event. Personal info shows the email read-only with "create a new account and move your channels" and the generic add-account flow. Losing the old mailbox is recovered in the app that holds the data (Videos: super admin channel transfer, AlUmmahNow #460), never by auth.
 - **Deletion scope (Q3):** decided as everywhere. Every subscribed app deletes all of the user's data when it receives `account.deleted`. Subscribing to the event commits an app to that. The event model is unchanged.
 - **Hosting (Q4):** reversed from the first draft. `profile.auth.*` stays the hub host, unchanged. `account.*` is only a 301 to the same path on `profile.auth.*`, served by a minimal custom-domain route on the hub Worker (or a Cloudflare redirect rule). This drops the `ACCOUNT_APP_URL` var, the link renames in AlUmmahNow and AlUmmahNowUI, the extra redirect URIs, CORS and front-channel entries, the stage seed mapping, and the redirect-URI removal (former 0019).
+
+**2026-11-23 (E20, [#507](https://github.com/Al-Ummah-Now/AlUmmahNowAuth/issues/507)):** §5.4 has five event types instead of one, because accounts are now disabled for age, restored and exported, and deletion can be undone for 30 days. `account.deleted` above is `account-disabled` at once and `account-purged` at the purge; Q3's answer (apps erase everything) is unchanged. Delivery no longer uses `webhook_dlq`. C1 no longer waits for B5.
