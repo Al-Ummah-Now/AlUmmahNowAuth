@@ -323,6 +323,41 @@ describe('openapi.json is sound', () => {
 		}
 	});
 
+	it('openapi.ar.json has the Arabic of every other string the reference shows, and nothing more', () => {
+		const ar = JSON.parse(read('openapi.ar.json')) as Record<string, string>;
+		const doc = spec as unknown as { components: Record<'schemas' | 'responses', Record<string, unknown>> };
+		const shown = new Set<string>();
+		const add = (text: unknown) => typeof text === 'string' && shown.add(text);
+		type Node = { $ref?: string; description?: string; properties?: Record<string, Node>; oneOf?: Node[]; content?: Record<string, { schema?: Node }> };
+		const follow = (node: Node | undefined): Node | undefined => (node?.$ref ? (node.$ref.slice(2).split('/').reduce<unknown>((at, k) => (at as Record<string, unknown>)[k], doc) as Node) : node);
+		const schema = (raw: Node | undefined): void => {
+			const node = follow(raw);
+			add(node?.description);
+			for (const field of Object.values(node?.properties ?? {})) add(field.description);
+			node?.oneOf?.forEach(schema);
+		};
+		const content = (node: Node | undefined) => Object.values(node?.content ?? {}).forEach((c) => schema(c.schema));
+		for (const { op } of operations.filter(({ op }) => op['x-audience'] === 'public' || op['x-audience'] === 'app')) {
+			const o = op as unknown as Node & { tags: string[]; parameters?: Node[]; requestBody?: Node; responses: Record<string, Node> };
+			add(o.description);
+			o.tags.forEach(add);
+			o.parameters?.forEach((p) => add(p.description));
+			content(o.requestBody);
+			for (const raw of Object.values(o.responses)) {
+				const response = follow(raw)!;
+				add(response.description);
+				content(response);
+			}
+		}
+		expect(Object.keys(ar).sort()).toEqual([...shown].sort());
+		for (const [en, text] of Object.entries(ar)) {
+			// Numbers are {N…} or {N=…}, formatted in the reader's numerals; a status or a name stays as it is
+			const plain = text.replace(/\{N=?\d+\}/g, '').replace(/[A-Za-z][\w./:()-]*/g, '').replace(/\b[245]\d\d\b/g, '');
+			expect(plain, en).not.toMatch(/[0-9]/);
+			expect(text, en).not.toMatch(/,(?=\s)|;(?=\s)/);
+		}
+	});
+
 	it('path parameters match the path', () => {
 		for (const { key, path, op } of operations) {
 			const named = [...path.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
