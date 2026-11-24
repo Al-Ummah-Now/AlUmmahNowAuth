@@ -53,7 +53,7 @@ describe("English and Arabic have the same keys", () => {
   });
 
   it("no Arabic text is left empty", () => {
-    for (const text of texts(ADMIN_COPY.ar, [3])) expect(text.trim().length).toBeGreaterThan(0);
+    for (const text of [...texts(ADMIN_COPY.ar, [3]), ...texts(accountEventsCopy("ar"), [3])]) expect(text.trim().length).toBeGreaterThan(0);
   });
 });
 
@@ -68,7 +68,8 @@ describe("Arabic numbers", () => {
     ar.themes.defaultFor, ar.theme.problems, ar.theme.contrastProblems, ar.theme.size, ar.theme.previewFailed, ar.theme.stopColour,
     ar.theme.stopPosition, ar.theme.removeStop, ar.security.intro, (n) => ar.security.staffCount(n, false, n), ar.security.confirmOnBody,
   ];
-  const arabic = [...texts(ar, []), ...numeric.flatMap((f) => samples.map((n) => f(n)))];
+  const events = accountEventsCopy("ar");
+  const arabic = [...texts(ar, []), ...texts(events, []), ...samples.flatMap((n) => [events.attempts(n), events.count(n, 1000)]), ...numeric.flatMap((f) => samples.map((n) => f(n)))];
 
   it("are written in ٠–٩, never 0–9", () => {
     // Code and names stay as they are: D1, v1 (format), WCAG AA, CSS lengths and placeholders
