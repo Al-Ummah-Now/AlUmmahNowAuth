@@ -195,6 +195,7 @@ const SHARED: { file: string; fn: string; with?: string[]; keys: string[] }[] = 
 		with: [`${SRC}/invites/service.ts`, `${SRC}/moderation/client-routes.ts`],
 		keys: ['POST /provisioning/invites', 'GET /provisioning/invites', ...['resend', 'link', 'revoke', 'restore', 'purge'].map((a) => `POST /provisioning/invites/{id}/${a}`)],
 	},
+	{ file: `${SRC}/account-events/admin.ts`, fn: 'handleAccountEvents', keys: ['GET /admin/settings/account-events', 'POST /admin/settings/account-events'] },
 	{ file: `${SRC}/signing-keys/routes.ts`, fn: 'handleSigningKeys', keys: ['GET /admin/settings/signing-keys', 'POST /admin/settings/signing-keys'] },
 	{
 		file: `${SRC}/moderation/client-routes.ts`,

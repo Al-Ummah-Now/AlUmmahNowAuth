@@ -216,6 +216,7 @@ const LITERALS: Record<string, Record<string, string[]>> = {
 		'/sign-in/link': ops('GET /sign-in/link', 'POST /sign-in/link'),
 		'/sign-in/method': ops('POST /sign-in/method'),
 	},
+	'account-events/admin.ts': { '/admin/settings/account-events': ops('GET /admin/settings/account-events', 'POST /admin/settings/account-events') },
 	'signing-keys/routes.ts': { '/admin/settings/signing-keys': ops('GET /admin/settings/signing-keys', 'POST /admin/settings/signing-keys') },
 	'utils/email-availability.ts': { '/^\\/password\\/(register|change)(\\/|$)/': DISPATCH },
 	'utils/preview-redirects.ts': { '/authorize': DISPATCH },

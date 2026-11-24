@@ -45,6 +45,7 @@
 --   migrations-qa/0047_database_identity.sql
 --   migrations-qa/0048_account_events.sql
 --   migrations-qa/0049_user_birth_dates.sql
+--   migrations-qa/0050_account_event_client_index.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_event_deliveries (jti TEXT PRIMARY KEY, seq INTEGER NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')), attempts INTEGER NOT NULL DEFAULT 0, error TEXT, next_at INTEGER NOT NULL, created_at INTEGER NOT NULL, settled_at INTEGER);
@@ -89,6 +90,7 @@ CREATE TABLE webauthn_credentials (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, p
 CREATE TABLE webauthn_prompts (user_id TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL);
 CREATE TABLE webhook_dlq (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', webhook_url TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, error_message TEXT, retry_count INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, next_retry_at INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE INDEX idx_migrations_applied ON _openauth_migrations(applied_at);
+CREATE INDEX idx_account_event_deliveries_client ON account_event_deliveries(client_id, status, settled_at);
 CREATE INDEX idx_account_event_deliveries_due ON account_event_deliveries(next_at) WHERE status = 'pending';
 CREATE INDEX idx_account_event_deliveries_order ON account_event_deliveries(client_id, user_id, seq);
 CREATE INDEX idx_account_event_deliveries_seq ON account_event_deliveries(seq);
