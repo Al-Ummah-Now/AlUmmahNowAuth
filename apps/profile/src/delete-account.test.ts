@@ -398,7 +398,7 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
     expect(en).toContain("prompt=login");
     expect(en).toContain("30 days");
     expect(en).toContain("Their other admins do not keep them");
-    expect(en).toContain("Stored copies of video and image files are not all removed at the same moment");
+    expect(en).toContain("Stored copies of video and image files are not removed at the same moment");
     expect(en).not.toContain('data-testid="delete-account-dialog"');
 
     const ar = await pageText(undefined, "/delete-account?lang=ar");
@@ -526,7 +526,7 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
 
   it("what could not be removed is said on the done page, in both languages", async () => {
     for (const [errors, en, ar] of [
-      [["channel_unreadable:c1"], "except for a channel we could not remove automatically", "ما عدا قناة لم نتمكن من إزالتها"],
+      [["channel_unreadable:c1"], "except for a channel we could not remove. It stays until our team removes it", "ما عدا قناة لم نتمكن من إزالتها، وتبقى حتى يزيلها فريقنا"],
       [["admin_backups_unbound"], "except for some records", "ما عدا بعض السجلات"],
     ] as const) {
       for (const lang of ["en", "ar"]) {
@@ -611,6 +611,31 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
     expect((await (await del(cookie)).json())).toEqual({ error: "not_authenticated" });
   });
 
+  it("coming back from the asked sign-in as someone else says so once, offers no delete, and touches neither account", async () => {
+    const mine = await seedSession(signedInAgo(450));
+    const asked = await page(mine, "/delete-account?reauth=1");
+    const set = cookiesOf(asked).find((c) => c.startsWith("delete_account_for="))!;
+    expect(set).toMatch(/^delete_account_for=[0-9a-f]{64}; Path=\/delete-account; HttpOnly; Secure; SameSite=Lax; Max-Age=600$/);
+    expect(set).not.toContain(USER.id);
+    const asCookie = set.split(";")[0];
+    const other = await seedSession(jwtWithClaims(NOW_S + 900, NOW_S, "u-2"), "sid-2", { ...USER, id: "u-2" });
+    for (const [lang, text] of [["en", "for a different account than this one"], ["ar", "لحساب آخر غير هذا الحساب"]]) {
+      const res = await page(`${other}; ${asCookie}`, `/delete-account?lang=${lang}`);
+      expect(cookiesOf(res).join("\n")).toContain("delete_account_for=; Path=/delete-account");
+      const html = await res.text();
+      expect(html).toContain(text);
+      expect(html).toContain('data-testid="delete-account-wrong-account"');
+      expect(html).not.toContain('data-testid="delete-account-open-dialog"');
+    }
+    // Without the cookie: their own page. Back as the same account: the dialog, and the cookie goes
+    expect(await pageText(other)).toContain('data-testid="delete-account-open-dialog"');
+    const back = await page(`${mine}; ${asCookie}`);
+    expect(cookiesOf(back).join("\n")).toContain("delete_account_for=; Path=/delete-account");
+    expect(await back.text()).toContain('data-testid="delete-account-open-dialog"');
+    expect(await progress()).toBeNull();
+    expect(await readDeleteProgress(db, "u-2", NOW_MS)).toBeNull();
+  });
+
   it("Auth fails after the erase: said as it is, and the retry erases again before the account goes", async () => {
     const cookie = await seedSession(signedInAgo(20));
     const up = upstream([reply({ complete: true }), reply({ complete: true })], [reply({}, 500), reply(DELETED)]);
@@ -672,7 +697,7 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
     const view = await page(cookie);
     expect(cookiesOf(view).join("\n")).toContain("profile_session=;");
     const html = await view.text();
-    expect(html).toContain("except for a channel we could not remove automatically");
+    expect(html).toContain("except for a channel we could not remove. It stays until our team removes it");
     expect(html).not.toContain(USER.email);
     expect(await getSession({ db, kv: kv.asKV() }, "sid-del", NOW_MS)).toBeNull();
     const none = upstream([]);

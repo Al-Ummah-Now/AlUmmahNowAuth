@@ -779,6 +779,8 @@ export interface DeleteAccountPageOptions {
   reauth?: boolean;
   /** An unfinished deletion of this browser's account (from the database, never from the query). */
   stage?: "started" | "content_erased" | null;
+  /** Signed in as someone else than the account whose deletion asked for this sign-in. */
+  wrongAccount?: boolean;
   /** Whether a deletion is under way could not be read: say so and offer nothing to press. */
   unavailable?: boolean;
 }
@@ -786,151 +788,24 @@ export interface DeleteAccountPageOptions {
 /** Passes one confirmation runs before the person is asked again. */
 export const MAX_PASSES_PER_CONFIRMATION = 50;
 
-/**
- * Public web account deletion page (/delete-account, AlUmmahNowAuth#532). Signed out it names the apps, says what
- * is deleted and asks to sign in (Google Play's Data safety link); signed in, an accessible <dialog> confirms and
- * the script repeats DELETE /api/account, one bounded step at a time, until the account is gone.
- */
-export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
-  const theme = o.theme ?? { id: BUILTIN_DEFAULT_THEME, css: compileBuiltin(BUILTIN_DEFAULT_THEME, o.authServerUrl)!.tokensCss };
-  const t = MESSAGES[o.locale];
-  const e = escapeHtml;
-  const other: Locale = o.locale === "ar" ? "en" : "ar";
-  const here = new URL(sameSitePath(o.path ?? "/delete-account"), "https://profile.invalid");
-  here.searchParams.delete("error");
-  const returnPath = o.locale === "ar" ? "/delete-account?lang=ar" : "/delete-account";
-  const signInForDeleteHref = `/login?return=${encodeURIComponent(returnPath)}&prompt=login`;
-  const reauthPageHref = o.locale === "ar" ? "/delete-account?reauth=1&lang=ar" : "/delete-account?reauth=1";
-  const profileHref = o.locale === "ar" ? "/?lang=ar" : "/";
-  const withDays = (text: string) => text.replace("{days}", formatNumber(30, o.locale, { useGrouping: false }));
-  const doneText = (p: DoneProof) =>
-    !p.erased
-      ? t.deleteAccountDoneBodyAccount
-      : p.leftover === "channel"
-        ? t.deleteAccountDoneBodyChannel
-        : p.leftover === "other"
-          ? t.deleteAccountDoneBodyOther
-          : t.deleteAccountDoneBody;
-  const done = o.user ? null : (o.done ?? null);
-  const stage = done ? null : (o.stage ?? null);
-  // The button can only finish for someone signed in, recently enough
-  const mustSignIn = !o.user || Boolean(o.reauth);
-  const noticeText = o.unavailable
-    ? t.deleteAccountUnavailable
-    : stage === "content_erased"
-      ? mustSignIn
-        ? t.deleteAccountContentErasedReauth
-        : t.deleteAccountContentErasedNotice
-      : stage === "started"
-        ? mustSignIn
-          ? t.deleteAccountInProgressReauth
-          : t.deleteAccountInProgressNotice
-        : o.reauth
-          ? t.deleteAccountReauthNotice
-          : null;
+/** The page's address in a language: where a sign-in returns to, and with a sign-in asked for. */
+const deletePagePath = (locale: Locale) => (locale === "ar" ? "/delete-account?lang=ar" : "/delete-account");
+const deleteReauthPath = (locale: Locale) => (locale === "ar" ? "/delete-account?reauth=1&lang=ar" : "/delete-account?reauth=1");
+const withPurgeDays = (text: string, locale: Locale) => text.replace("{days}", formatNumber(30, locale, { useGrouping: false }));
 
-  const header = pageHeaderHtml({
-    lang: o.locale,
-    brandHref: profileHref,
-    app: APP_NAMES.account[o.locale],
-    environment: o.environment,
-    langHref: langHref(here, other),
-    signInHref: o.user ? undefined : signInForDeleteHref,
-  });
-
-  const dialogBody = o.user ? t.deleteAccountDialogBody.replace("{email}", () => o.user!.email) : "";
-  const confirmLabel = t.deleteAccountConfirmLabel.replace("{word}", t.deleteAccountConfirmWord);
-  const signInLabel = stage ? t.deleteAccountContinueButton : t.deleteAccountSignInButton;
-  const whatItems = [
-    t.deleteAccountWhatAuth,
-    t.deleteAccountWhatVideos,
-    t.deleteAccountWhatChannels,
-    t.deleteAccountWhatAnon,
-    t.deleteAccountWhatFiles,
-    withDays(t.deleteAccountWhatRetention),
-  ];
-
-  return `<!DOCTYPE html>
-<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${e(t.deleteAccountPageTitle)}</title>
-    ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
-    <style>${theme.css}${NAV_CSS}${STYLES}${PAGE_HEADER_CSS}</style>
-    ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
-    <script>${PAGE_MODE_SCRIPT}</script>
-</head>
-<body>
-    ${header}
-
-    <main class="container" data-testid="delete-account-page">
-        <div class="delete-stack">
-            <div class="hero" style="margin-bottom: 0.5rem;">
-                <h1>${e(done ? t.deleteAccountDoneTitle : t.deleteAccountHeroTitle)}</h1>
-                ${done ? "" : `<p>${e(t.deleteAccountHeroBody)}</p>`}
-            </div>
-
-            ${done ? `
-            <section class="profile-card" role="status" data-testid="delete-account-done">
-                <p class="delete-note">${e(doneText(done))}</p>
-                <p class="delete-note" style="margin-bottom: 0;">${e(withDays(t.deleteAccountDonePurge))}</p>
-            </section>` : `
-            ${noticeText ? `
-            <div class="error-message" role="status" data-testid="${o.unavailable ? "delete-account-unavailable" : o.reauth ? "delete-account-reauth" : "delete-account-progress-notice"}">
-                ${e(noticeText)}
-            </div>` : ""}
-            ${o.unavailable ? "" : `<section class="profile-card" data-testid="delete-account-actions">
-                ${o.user ? `
-                <div class="profile-field">
-                    <label>${e(t.deleteAccountSignedInAs)}</label>
-                    <div class="value" data-testid="delete-account-email"><bdi dir="ltr">${e(o.user.email)}</bdi></div>
-                </div>
-                <div class="card-actions">
-                    <a class="btn btn-secondary" href="${e(profileHref)}">${e(t.deleteAccountBackToProfile)}</a>
-                    ${mustSignIn
-                      ? `<a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-reauth-signin">${e(signInLabel)}</a>`
-                      : `<button type="button" class="btn btn-danger" id="deleteAccountBtn" data-testid="delete-account-open-dialog">${e(stage ? t.deleteAccountFinishButton : t.deleteAccountStartButton)}</button>`}
-                </div>` : `
-                ${noticeText ? "" : `<p class="delete-note">${e(t.deleteAccountSignedOutNote)}</p>`}
-                <div class="card-actions"${noticeText ? ' style="margin-top: 0;"' : ""}>
-                    <a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-signin">${e(signInLabel)}</a>
-                </div>`}
-            </section>`}
-            <section class="profile-card" aria-labelledby="deleteWhatHeading">
-                <h2 id="deleteWhatHeading">${e(t.deleteAccountWhatHeading)}</h2>
-                <ul class="delete-list" style="margin-bottom: 0;">
-                    ${whatItems.map((item) => `<li>${e(item)}</li>`).join("\n                    ")}
-                </ul>
-            </section>`}
-        </div>
-    </main>
-
-    <footer class="footer">
-        <p>${e(t.footer.replace("{year}", formatNumber(new Date().getUTCFullYear(), o.locale, { useGrouping: false })))}</p>
-    </footer>
-
-    ${o.user && !mustSignIn && !o.unavailable ? `
-    <dialog class="confirm-dialog" id="deleteAccountDialog" role="alertdialog" aria-labelledby="deleteDialogTitle" aria-describedby="deleteDialogBody" data-testid="delete-account-dialog">
-        <form method="dialog" id="deleteAccountForm">
-            <h2 id="deleteDialogTitle">${e(t.deleteAccountDialogTitle)}</h2>
-            <p id="deleteDialogBody">${e(dialogBody)}</p>
-            <label class="delete-confirm-label" id="deleteConfirmLabel" for="deleteConfirmInput">${e(confirmLabel)}</label>
-            <input class="delete-confirm-input" id="deleteConfirmInput" data-testid="delete-account-confirm-input" type="text" autocomplete="off" spellcheck="false" />
-            <p class="delete-status" id="deleteDialogStatus" role="alert"></p>
-            <div class="confirm-actions">
-                <button type="button" class="btn btn-secondary" id="deleteDialogCancel">${e(t.confirmCancel)}</button>
-                <button type="submit" class="btn btn-danger" id="deleteDialogSubmit" data-testid="delete-account-confirm-submit" disabled>${e(t.deleteAccountConfirmAction)}</button>
-            </div>
-        </form>
-    </dialog>
-    <script>
-        (function () {
-            ${clientFormatScript(o.locale)}
-            var EXPECTED_USER_ID = ${scriptJson(o.user.id)};
-            var STARTED_BEFORE = ${stage ? "true" : "false"};
+/** The deletion dialog's script: the source that goes into the page's <script> (its own tests run it). */
+export function deleteAccountScript({ locale, userId, startedBefore }: { locale: Locale; userId: string; startedBefore: boolean }): string {
+  const t = MESSAGES[locale];
+  const withDays = (text: string) => withPurgeDays(text, locale);
+  const returnPath = deletePagePath(locale);
+  const reauthPageHref = deleteReauthPath(locale);
+  return `        (function () {
+            ${clientFormatScript(locale)}
+            var EXPECTED_USER_ID = ${scriptJson(userId)};
+            var STARTED_BEFORE = ${startedBefore ? "true" : "false"};
             var MAX_PASSES = ${MAX_PASSES_PER_CONFIRMATION};
-            var CONFIRM_WORD = ${scriptJson(t.deleteAccountConfirmWord)};
+            /* Either word in either language: a keyboard may have only one of them */
+            var CONFIRM_WORDS = ${scriptJson([MESSAGES.en.deleteAccountConfirmWord.toLowerCase(), MESSAGES.ar.deleteAccountConfirmWord])};
             var DELETING_LABEL = ${scriptJson(t.deleteAccountDeleting)};
             var DELETING_PASS = ${scriptJson(t.deleteAccountDeletingPass)};
             var CONFIRM_LABEL = ${scriptJson(t.deleteAccountConfirmAction)};
@@ -980,7 +855,7 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
 
             /* Case, spaces around it, Arabic marks, tatweel and direction marks do not matter */
             function typed() {
-                return input.value.replace(/[\\u0640\\u064B-\\u065F\\u0670\\u061C\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069]/g, '').trim().toLowerCase() === CONFIRM_WORD.toLowerCase();
+                return CONFIRM_WORDS.indexOf(input.value.replace(/[\\u0640\\u064B-\\u065F\\u0670\\u061C\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069]/g, '').trim().toLowerCase()) !== -1;
             }
 
             function syncSubmit() {
@@ -1131,7 +1006,150 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                 setStatus(T.keepOpen);
                 runPass();
             });
-        })();
+        })();`;
+}
+
+/**
+ * Public web account deletion page (/delete-account, AlUmmahNowAuth#532). Signed out it names the apps, says what
+ * is deleted and asks to sign in (Google Play's Data safety link); signed in, an accessible <dialog> confirms and
+ * the script repeats DELETE /api/account, one bounded step at a time, until the account is gone.
+ */
+export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
+  const theme = o.theme ?? { id: BUILTIN_DEFAULT_THEME, css: compileBuiltin(BUILTIN_DEFAULT_THEME, o.authServerUrl)!.tokensCss };
+  const t = MESSAGES[o.locale];
+  const e = escapeHtml;
+  const other: Locale = o.locale === "ar" ? "en" : "ar";
+  const here = new URL(sameSitePath(o.path ?? "/delete-account"), "https://profile.invalid");
+  here.searchParams.delete("error");
+  const returnPath = deletePagePath(o.locale);
+  const signInForDeleteHref = `/login?return=${encodeURIComponent(returnPath)}&prompt=login`;
+  const profileHref = o.locale === "ar" ? "/?lang=ar" : "/";
+  const withDays = (text: string) => withPurgeDays(text, o.locale);
+  const doneText = (p: DoneProof) =>
+    !p.erased
+      ? t.deleteAccountDoneBodyAccount
+      : p.leftover === "channel"
+        ? t.deleteAccountDoneBodyChannel
+        : p.leftover === "other"
+          ? t.deleteAccountDoneBodyOther
+          : t.deleteAccountDoneBody;
+  const done = o.user ? null : (o.done ?? null);
+  const stage = done ? null : (o.stage ?? null);
+  // The button can only finish for someone signed in, recently enough
+  const mustSignIn = !o.user || Boolean(o.reauth) || Boolean(o.wrongAccount);
+  const noticeText = o.unavailable
+    ? t.deleteAccountUnavailable
+    : o.wrongAccount
+    ? t.deleteAccountWrongAccount
+    : stage === "content_erased"
+      ? mustSignIn
+        ? t.deleteAccountContentErasedReauth
+        : t.deleteAccountContentErasedNotice
+      : stage === "started"
+        ? mustSignIn
+          ? t.deleteAccountInProgressReauth
+          : t.deleteAccountInProgressNotice
+        : o.reauth
+          ? t.deleteAccountReauthNotice
+          : null;
+
+  const header = pageHeaderHtml({
+    lang: o.locale,
+    brandHref: profileHref,
+    app: APP_NAMES.account[o.locale],
+    environment: o.environment,
+    langHref: langHref(here, other),
+    signInHref: o.user ? undefined : signInForDeleteHref,
+  });
+
+  const dialogBody = o.user ? t.deleteAccountDialogBody.replace("{email}", () => o.user!.email) : "";
+  const confirmLabel = t.deleteAccountConfirmLabel.replace("{word}", t.deleteAccountConfirmWord);
+  const signInLabel = stage || o.wrongAccount ? t.deleteAccountContinueButton : t.deleteAccountSignInButton;
+  const whatItems = [
+    t.deleteAccountWhatAuth,
+    t.deleteAccountWhatVideos,
+    t.deleteAccountWhatChannels,
+    t.deleteAccountWhatAnon,
+    t.deleteAccountWhatFiles,
+    withDays(t.deleteAccountWhatRetention),
+  ];
+
+  return `<!DOCTYPE html>
+<html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${e(t.deleteAccountPageTitle)}</title>
+    ${iconLinks(o.environment, { manifest: true, themeColor: PROFILE_THEME_COLOR })}
+    <style>${theme.css}${NAV_CSS}${STYLES}${PAGE_HEADER_CSS}</style>
+    ${o.street && streetOn(theme.css) ? streetHeadTags() : ''}
+    <script>${PAGE_MODE_SCRIPT}</script>
+</head>
+<body>
+    ${header}
+
+    <main class="container" data-testid="delete-account-page">
+        <div class="delete-stack">
+            <div class="hero" style="margin-bottom: 0.5rem;">
+                <h1>${e(done ? t.deleteAccountDoneTitle : t.deleteAccountHeroTitle)}</h1>
+                ${done ? "" : `<p>${e(t.deleteAccountHeroBody)}</p>`}
+            </div>
+
+            ${done ? `
+            <section class="profile-card" role="status" data-testid="delete-account-done">
+                <p class="delete-note">${e(doneText(done))}</p>
+                <p class="delete-note" style="margin-bottom: 0;">${e(withDays(t.deleteAccountDonePurge))}</p>
+            </section>` : `
+            ${noticeText ? `
+            <div class="error-message" role="status" data-testid="${o.unavailable ? "delete-account-unavailable" : o.wrongAccount ? "delete-account-wrong-account" : o.reauth ? "delete-account-reauth" : "delete-account-progress-notice"}">
+                ${e(noticeText)}
+            </div>` : ""}
+            ${o.unavailable ? "" : `<section class="profile-card" data-testid="delete-account-actions">
+                ${o.user ? `
+                <div class="profile-field">
+                    <label>${e(t.deleteAccountSignedInAs)}</label>
+                    <div class="value" data-testid="delete-account-email"><bdi dir="ltr">${e(o.user.email)}</bdi></div>
+                </div>
+                <div class="card-actions">
+                    <a class="btn btn-secondary" href="${e(profileHref)}">${e(t.deleteAccountBackToProfile)}</a>
+                    ${mustSignIn
+                      ? `<a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-reauth-signin">${e(signInLabel)}</a>`
+                      : `<button type="button" class="btn btn-danger" id="deleteAccountBtn" data-testid="delete-account-open-dialog">${e(stage ? t.deleteAccountFinishButton : t.deleteAccountStartButton)}</button>`}
+                </div>` : `
+                ${noticeText ? "" : `<p class="delete-note">${e(t.deleteAccountSignedOutNote)}</p>`}
+                <div class="card-actions"${noticeText ? ' style="margin-top: 0;"' : ""}>
+                    <a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-signin">${e(signInLabel)}</a>
+                </div>`}
+            </section>`}
+            <section class="profile-card" aria-labelledby="deleteWhatHeading">
+                <h2 id="deleteWhatHeading">${e(t.deleteAccountWhatHeading)}</h2>
+                <ul class="delete-list" style="margin-bottom: 0;">
+                    ${whatItems.map((item) => `<li>${e(item)}</li>`).join("\n                    ")}
+                </ul>
+            </section>`}
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>${e(t.footer.replace("{year}", formatNumber(new Date().getUTCFullYear(), o.locale, { useGrouping: false })))}</p>
+    </footer>
+
+    ${o.user && !mustSignIn && !o.unavailable ? `
+    <dialog class="confirm-dialog" id="deleteAccountDialog" role="alertdialog" aria-labelledby="deleteDialogTitle" aria-describedby="deleteDialogBody" data-testid="delete-account-dialog">
+        <form method="dialog" id="deleteAccountForm">
+            <h2 id="deleteDialogTitle">${e(t.deleteAccountDialogTitle)}</h2>
+            <p id="deleteDialogBody">${e(dialogBody)}</p>
+            <label class="delete-confirm-label" id="deleteConfirmLabel" for="deleteConfirmInput">${e(confirmLabel)}</label>
+            <input class="delete-confirm-input" id="deleteConfirmInput" data-testid="delete-account-confirm-input" type="text" autocomplete="off" spellcheck="false" />
+            <p class="delete-status" id="deleteDialogStatus" role="alert"></p>
+            <div class="confirm-actions">
+                <button type="button" class="btn btn-secondary" id="deleteDialogCancel">${e(t.confirmCancel)}</button>
+                <button type="submit" class="btn btn-danger" id="deleteDialogSubmit" data-testid="delete-account-confirm-submit" disabled>${e(t.deleteAccountConfirmAction)}</button>
+            </div>
+        </form>
+    </dialog>
+    <script>
+${deleteAccountScript({ locale: o.locale, userId: o.user.id, startedBefore: stage !== null })}
     </script>` : ""}
 </body>
 </html>`;

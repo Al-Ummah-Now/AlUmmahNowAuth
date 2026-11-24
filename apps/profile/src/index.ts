@@ -37,6 +37,7 @@ import {
   endSession,
   ensureFreshTokens,
   getSession as getStoredSession,
+  sessionId,
   sessionOwner,
   type SessionStores,
   type StoredSession,
@@ -128,6 +129,15 @@ function clearSessionCookie(isLocalhost: boolean) {
 
 const DELETE_DONE_COOKIE = "delete_account_done";
 const DELETE_DONE_TTL_SECONDS = 600;
+
+/** Which account's deletion sent this browser to sign in again (a hash of its id; only compared). */
+const DELETE_FOR_COOKIE = "delete_account_for";
+const DELETE_FOR_TTL_SECONDS = 600;
+
+function deleteForCookie(value: string, isLocalhost: boolean) {
+  const secure = isLocalhost ? "" : "Secure; ";
+  return `${DELETE_FOR_COOKIE}=${value}; Path=/delete-account; HttpOnly; ${secure}SameSite=Lax; Max-Age=${value ? DELETE_FOR_TTL_SECONDS : 0}`;
+}
 
 function createDeleteDoneCookie(nonce: string, isLocalhost: boolean) {
   const secure = isLocalhost ? "" : "Secure; ";
@@ -462,10 +472,12 @@ const worker = {
       let done: DoneProof | null = null;
       let progress: DeleteProgress | null = null;
       let endedHere = lapsed;
+      let accountHere: string | null = null;
       let unavailable = false;
       try {
         const owner = session?.user?.id ?? (await sessionOwner(storesOf(env), sessionToken));
         if (owner) {
+          accountHere = await sessionId(owner);
           progress = await readDeleteProgress(env.AUTH_DB, owner);
           // Gone although this browser still holds its session, or held one: a lost answer
           if ((!session || progress) && (await accountDeleted(env.AUTH_DB, owner))) {
@@ -482,6 +494,10 @@ const worker = {
         console.error('Account deletion state could not be read', error instanceof Error ? error.message : String(error));
         unavailable = true;
       }
+      const reauth = url.searchParams.get('reauth') === '1';
+      // The sign-in this page asked for came back as someone else
+      const deletionFor = readCookie(request.headers.get('Cookie'), DELETE_FOR_COOKIE);
+      const wrongAccount = !done && !unavailable && !reauth && session !== null && deletionFor !== null && deletionFor !== '' && deletionFor !== accountHere;
       const html = renderDeleteAccountPage({
         environment: env.APP_ENV,
         theme: await fetchAuthTheme(authServerUrl, PROFILE_CLIENT_ID, url.searchParams.get('theme')),
@@ -491,7 +507,8 @@ const worker = {
         street: true,
         path: url.pathname + url.search,
         done,
-        reauth: url.searchParams.get('reauth') === '1',
+        reauth,
+        wrongAccount,
         // Erased except for something: not "erased"
         stage: done || !progress || progress.stage === 'deleted' ? null : progress.leftover ? 'started' : progress.stage,
         unavailable,
@@ -504,6 +521,9 @@ const worker = {
       });
       if (endedHere) headers.append('Set-Cookie', clearSessionCookie(isLocalhost));
       if (doneNonce && !unavailable) headers.append('Set-Cookie', clearDeleteDoneCookie(isLocalhost));
+      if (reauth && accountHere && !done && !unavailable) headers.append('Set-Cookie', deleteForCookie(accountHere, isLocalhost));
+      // Said or settled once
+      else if (deletionFor && session && !unavailable) headers.append('Set-Cookie', deleteForCookie('', isLocalhost));
       if (unavailable) headers.set('Retry-After', '60');
       return new Response(html, { status: unavailable ? 503 : 200, headers });
     }
