@@ -170,7 +170,7 @@ const ar: Messages = {
   deleteAccountPageTitle: "حذف الحساب - الأمة الآن",
   deleteAccountCardIntro: "احذف حسابك في الأمة الآن وبيانات تسجيل الدخول وبيانات المرئيات المرتبطة به نهائيًا.",
   deleteAccountOpenPage: "حذف الحساب",
-  deleteAccountHeroTitle: "حذف حسابك في الأمة الآن",
+  deleteAccountHeroTitle: "حذف حسابك في الأمة\u00A0الآن",
   deleteAccountHeroBody: "تتيح لك هذه الصفحة حذف حسابك في الأمة الآن وأستوديو الأمة الآن نهائيًا دون الحاجة إلى التطبيق.",
   deleteAccountWhatHeading: "ما الذي سيُحذف",
   deleteAccountWhatAuth: "حساب تسجيل الدخول في الأمة الآن وبيانات الدخول بالبريد الإلكتروني ومفاتيح المرور وجميع الجلسات النشطة في كل التطبيقات.",

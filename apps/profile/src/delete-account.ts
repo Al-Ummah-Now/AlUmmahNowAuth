@@ -21,7 +21,7 @@ export const VIDEOS_API_URLS: Record<AppEnv, string | null> = {
   production: "https://videos.api.alummahnow.net",
   qa: "https://videos.api.qa.alummahnow.net",
   stage: "https://videos.api.stage.alummahnow.net",
-  local: "http://localhost:8787",
+  local: "http://localhost:3086",
 };
 
 export function resolveVideosApiUrl(configured: string | undefined, appEnv: AppEnv | null): string | null {
@@ -47,7 +47,7 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | null 
   }
 }
 
-/** True when the access token's `auth_time` is within `maxAgeSeconds` of `nowMs`. */
+/** True when the access token's `auth_time` is within `maxAgeSeconds` of `nowMs` and not implausibly in the future. */
 export function isRecentSignIn(
   accessToken: string,
   nowMs = Date.now(),
@@ -56,7 +56,8 @@ export function isRecentSignIn(
   const payload = decodeJwtPayload(accessToken);
   const authTime = payload?.auth_time;
   if (typeof authTime !== "number" || !Number.isFinite(authTime)) return false;
-  return nowMs / 1000 - authTime <= maxAgeSeconds;
+  const ageSeconds = nowMs / 1000 - authTime;
+  return ageSeconds >= -60 && ageSeconds <= maxAgeSeconds;
 }
 
 export type EraseAccountOutcome =
@@ -85,7 +86,11 @@ export async function orchestrateAccountDeletion(opts: {
   }
 
   // Step 1: Erase Videos data while the user's access token is still valid.
-  if (opts.videosApiUrl) {
+  // Fail closed when Videos API is unconfigured so Auth is never deleted while Videos data stays behind.
+  if (!opts.videosApiUrl) {
+    return { ok: false, status: 503, error: "videos_api_unconfigured" };
+  }
+  {
     let complete = false;
     let resumeToken: string | undefined;
     for (let pass = 0; pass < MAX_ERASURE_PASSES && !complete; pass++) {
@@ -104,12 +109,16 @@ export async function orchestrateAccountDeletion(opts: {
       }
 
       if (res.status === 401) {
-        return {
-          ok: false,
-          status: 401,
-          error: "insufficient_user_authentication",
-          maxAge: REAUTH_MAX_AGE_SECONDS,
-        };
+        const errBody = (await res.json().catch(() => null)) as { error?: unknown } | null;
+        if (errBody?.error === "insufficient_user_authentication") {
+          return {
+            ok: false,
+            status: 401,
+            error: "insufficient_user_authentication",
+            maxAge: REAUTH_MAX_AGE_SECONDS,
+          };
+        }
+        return { ok: false, status: 502, error: "videos_erasure_failed" };
       }
       if (!res.ok) {
         return { ok: false, status: 502, error: "videos_erasure_failed" };
