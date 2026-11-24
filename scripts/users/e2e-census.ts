@@ -12,7 +12,9 @@ import { resolve } from 'node:path';
 /** QA only: there is no option for another host. */
 export const QA_AUTH = 'https://auth.qa.alummahnow.net';
 const KINDS = ['run', 'kept', 'disposable', 'other', 'outside'] as const;
-type Count = { total: number; old: number; deleted: number; marked: number };
+const FIELDS = ['total', 'old', 'deleted', 'marked', 'admin', 'active'] as const;
+type Count = Record<(typeof FIELDS)[number], number>;
+const zero = (): Count => ({ total: 0, old: 0, deleted: 0, marked: 0, admin: 0, active: 0 });
 export type Totals = Record<string, Count>;
 
 export async function census(opts: {
@@ -34,8 +36,8 @@ export async function census(opts: {
 		const body = (await res.json()) as { scanned: number; counts: Totals; next: string | null };
 		scanned += body.scanned;
 		for (const [kind, c] of Object.entries(body.counts)) {
-			const t = (totals[kind] ??= { total: 0, old: 0, deleted: 0, marked: 0 });
-			for (const key of ['total', 'old', 'deleted', 'marked'] as const) t[key] += c[key];
+			const t = (totals[kind] ??= zero());
+			for (const key of FIELDS) t[key] += c[key];
 		}
 		if (body.next === null) return { pages, scanned, totals };
 		if (body.next <= after) throw new Error('census did not move forward');
@@ -47,10 +49,10 @@ export async function census(opts: {
 }
 
 export function report(r: { pages: number; scanned: number; totals: Totals }): string {
-	const lines = [`${r.scanned} accounts read in ${r.pages} pages. Nothing was changed.`, '', '| Kind | Accounts | Older than 24 h | Already soft-deleted | Has the run marker |', '|---|---|---|---|---|'];
+	const lines = [`${r.scanned} accounts read in ${r.pages} pages. Nothing was changed.`, '', '| Kind | Accounts | Older than 24 h | Already soft-deleted | Has the run marker | Admins | Signed in within 30 days |', '|---|---|---|---|---|---|---|'];
 	for (const kind of KINDS) {
-		const c = r.totals[kind] ?? { total: 0, old: 0, deleted: 0, marked: 0 };
-		lines.push(`| ${kind} | ${c.total} | ${c.old} | ${c.deleted} | ${c.marked} |`);
+		const c = r.totals[kind] ?? zero();
+		lines.push(`| ${kind} | ${FIELDS.map((f) => c[f]).join(' | ')} |`);
 	}
 	return `${lines.join('\n')}\n`;
 }

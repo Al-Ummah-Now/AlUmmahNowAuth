@@ -23,6 +23,7 @@
  * - X-Test-Secret must equal TEST_PROMOTE_SECRET (constant-time compare);
  * - the address must match RUN_USER_EMAIL and the account must carry the marker;
  *   anything else is refused, whatever secret is sent;
+ * - stale and census exist on QA only (isQa): never on stage, production or a local worker;
  * - ADMIN_LIMITER counts the calls per client IP.
  * Secrets are never logged.
  */
@@ -47,6 +48,11 @@ export interface RunUserRoutesEnv extends RunUsersEnv {
 	ADMIN_LIMITER?: RateLimit;
 }
 
+/** QA by all three names it goes by: the environment var, the issuer, and not production or stage. */
+export function isQa(env: Pick<RunUsersEnv, 'ENVIRONMENT' | 'OPENAUTH_ISSUER'>): boolean {
+	return env.ENVIRONMENT === 'qa' && env.OPENAUTH_ISSUER === 'https://auth.qa.alummahnow.net';
+}
+
 const json = (body: unknown, status: number, headers: Record<string, string> = {}) =>
 	new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 
@@ -59,6 +65,9 @@ export async function routeRunUsers(url: URL, request: Request, env: RunUserRout
 	const isCensus = url.pathname === '/test/run-users/census' && request.method === 'GET';
 	if (!isDelete && !isStale && !isCensus) return null;
 	if (!(await runUsersEnabled(env))) return null;
+	// Stage runs only the delete, for the release E2E teardown. Looking for accounts across the
+	// database is for QA alone: elsewhere these routes do not exist.
+	if ((isStale || isCensus) && !isQa(env)) return null;
 
 	if (!constantTimeEqual(request.headers.get('X-Test-Secret') ?? '', env.TEST_PROMOTE_SECRET ?? '')) {
 		logger.warn('Rejected /test/run-users request: wrong X-Test-Secret', { path: url.pathname });
@@ -148,7 +157,10 @@ async function stale(url: URL, env: RunUserRoutesEnv): Promise<Response> {
 }
 
 /** One page of accounts after a user id (primary key), oldest id first. */
-export const CENSUS_SQL = `SELECT id, email, created_at, deleted_at, (${MARKED}) AS marked FROM users WHERE id > ? ORDER BY id LIMIT ?`;
+export const CENSUS_SQL = `SELECT id, email, created_at, deleted_at, last_login_at, (${MARKED}) AS marked,
+	EXISTS (SELECT 1 FROM rbac_user_roles ur JOIN rbac_roles r ON r.id = ur.role_id
+		WHERE ur.user_id = users.id AND lower(r.name) IN ('admin', 'super admin', 'super_admin')) AS admin
+	FROM users WHERE id > ? ORDER BY id LIMIT ?`;
 
 export interface CensusCount {
 	total: number;
@@ -158,6 +170,10 @@ export interface CensusCount {
 	deleted: number;
 	/** Carries the run marker, so the run routes could delete it today */
 	marked: number;
+	/** Holds an admin or super admin role */
+	admin: number;
+	/** Signed in during the last 30 days */
+	active: number;
 }
 
 /**
@@ -165,17 +181,21 @@ export interface CensusCount {
  * caller walks the pages with `next`, a user id. No address leaves the server and nothing is written.
  */
 async function census(url: URL, env: RunUserRoutesEnv): Promise<Response> {
-	const before = Date.now() - 24 * 60 * 60 * 1000;
+	const day = 24 * 60 * 60 * 1000;
+	const before = Date.now() - day;
+	const activeSince = Date.now() - 30 * day;
 	const { results } = await env.AUTH_DB.prepare(CENSUS_SQL)
 		.bind(url.searchParams.get('after') ?? '', CENSUS_PAGE)
-		.all<{ id: string; email: string; created_at: number; deleted_at: number | null; marked: number }>();
+		.all<{ id: string; email: string; created_at: number; deleted_at: number | null; last_login_at: number | null; marked: number; admin: number }>();
 	const counts: Partial<Record<E2EAccountKind, CensusCount>> = {};
 	for (const r of results) {
-		const c = (counts[e2eAccountKind(r.email)] ??= { total: 0, old: 0, deleted: 0, marked: 0 });
+		const c = (counts[e2eAccountKind(r.email)] ??= { total: 0, old: 0, deleted: 0, marked: 0, admin: 0, active: 0 });
 		c.total++;
 		if (r.created_at < before) c.old++;
 		if (r.deleted_at !== null) c.deleted++;
 		if (r.marked) c.marked++;
+		if (r.admin) c.admin++;
+		if (r.last_login_at !== null && r.last_login_at >= activeSince) c.active++;
 	}
 	return json({ scanned: results.length, counts, next: results.length === CENSUS_PAGE ? results[results.length - 1].id : null }, 200, { 'Cache-Control': 'no-store' });
 }
