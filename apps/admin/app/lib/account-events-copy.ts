@@ -50,7 +50,7 @@ export interface AccountEventsCopy {
   confirm: string;
   cancel: string;
   queued: string;
-  errors: Record<"not_failed" | "rate_limited" | "generic", string>;
+  errors: Record<"not_failed" | "not_subscribed" | "rate_limited" | "generic", string>;
   newest: string;
   older: string;
   pages: string;
@@ -112,6 +112,7 @@ const en: AccountEventsCopy = {
   queued: "Queued. It shows under Waiting until the app answers.",
   errors: {
     not_failed: "This delivery is no longer failed. Somebody may have sent it again.",
+    not_subscribed: "The app no longer receives this event, so it was not sent.",
     rate_limited: "Too many requests. Wait a minute and try again.",
     generic: "Something went wrong. Try again.",
   },
@@ -176,6 +177,7 @@ const ar: AccountEventsCopy = {
   queued: "أُضيف إلى قائمة الإرسال. يظهر ضمن «بالانتظار» حتى يردّ التطبيق.",
   errors: {
     not_failed: "لم يعد هذا التسليم فاشلًا. ربما أعاد شخص آخر إرساله.",
+    not_subscribed: "لم يعد التطبيق يتلقى هذا الحدث، فلم يُرسَل.",
     rate_limited: "طلبات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.",
     generic: "حدث خطأ. حاول مرة أخرى.",
   },

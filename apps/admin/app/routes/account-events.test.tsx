@@ -104,6 +104,13 @@ describe("the page", () => {
     expect((await screen.findByTestId("account-events-result")).textContent).toContain("Queued");
     expect(submitted).toHaveBeenCalledTimes(1);
   });
+  it("says why it was not sent", async () => {
+    show({}, "/account-events", vi.fn(async () => ({ ok: false, error: "not_subscribed" })) as never);
+    fireEvent.click(table().getByRole("button", { name: /Send again/ }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Send again" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("The app no longer receives this event, so it was not sent.");
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Apps", "Deliveries"]);
+  });
   it("Send again only on failed ones", () => {
     show({ status: "delivered", view: view({ status: "delivered", deliveries: [delivery({ status: "delivered", error: null })] }) });
     expect(screen.queryByRole("button", { name: /Send again/ })).toBeNull();

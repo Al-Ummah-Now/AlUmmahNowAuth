@@ -163,7 +163,7 @@ export default function AccountEvents() {
           <>
             <Card>
               <CardHeader>
-                <CardTitle>{t.appsTitle}</CardTitle>
+                <CardTitle><h2>{t.appsTitle}</h2></CardTitle>
                 <CardDescription>{apps.length ? t.appsIntro : t.noApps}</CardDescription>
               </CardHeader>
               {apps.length > 0 && (
@@ -220,7 +220,7 @@ export default function AccountEvents() {
 
             <Card>
               <CardHeader>
-                <CardTitle>{t.deliveriesTitle}</CardTitle>
+                <CardTitle><h2>{t.deliveriesTitle}</h2></CardTitle>
                 <CardDescription>{t.deliveriesIntro}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
