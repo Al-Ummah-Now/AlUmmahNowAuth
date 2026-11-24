@@ -1,3 +1,4 @@
+import { ageBandClaims, ageBandClaimsSupported } from './birth-date/band';
 import { Hono } from "hono";
 import { roleAdminRoutes } from './custom/role-admin-routes';
 import { isWellKnownRequest, serveWellKnown } from './well-known-cache';
@@ -519,6 +520,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       clientRegistry: clientRegistryMode(env),
       // service_documentation in both discovery documents: how to use the sign-in (AUTH-R4)
       documentation: "https://alummahnow.dev/en/auth/",
+      // age_band on first-party access tokens, and in claims_supported, while the birth_date setting is on (wiki E20 §5.1)
+      accessTokenClaims: (token) => ageBandClaims(env as never, token),
+      extraClaimsSupported: () => ageBandClaimsSupported(env as never),
       // Device authorization grant (RFC 8628, Epic 9.2) for TV apps: codes live
       // 10 min, polling every 5 s (slow_down on faster), /activate is the en/ar
       // page where the user enters the code. Only clients registered with the

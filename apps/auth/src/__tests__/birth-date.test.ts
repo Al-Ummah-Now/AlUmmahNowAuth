@@ -12,6 +12,7 @@ import { decrypt, encrypt } from '../services/encryption';
 import { ageOf, bandOf, isOlderBand, isPlausible, parseBirthDate } from '../birth-date/date';
 import { keyIdOf } from '../birth-date/key';
 import { readBirthDate, writeBirthDate, type BirthDateEnv } from '../birth-date/store';
+import { ageBandClaims, ageBandClaimsSupported } from '../birth-date/band';
 import { clearBirthDateSettingCache, writeBirthDateSetting } from '../birth-date/setting';
 import { HANDLERS, type DeletionEnv } from '../deletions/kinds';
 import { redactLogValue } from '../logger';
@@ -330,6 +331,29 @@ describe('/account/birth-date', () => {
 		expect(await row('bd1')).toBeNull();
 		expect((await put('bd1', '1990-01-02')).status).toBe(401);
 		expect(await writeBirthDate(E as unknown as BirthDateEnv, 'bd1', '1990-01-02', null)).toBe(false);
+	});
+
+	it('age_band: only our apps’ user tokens, only while the setting is on, and it follows birthdays', async () => {
+		const env = E as unknown as BirthDateEnv;
+		const client = 'f0de3c30-0304-4ac4-86d6-1e185dec0439';
+		const claims = (over: object = {}, now?: number) => ageBandClaims(env, { type: 'user', clientID: client, properties: { id: 'bd9' }, ...over }, now);
+		await seedUser('bd9');
+		expect(await claims()).toBeUndefined();
+		await put('bd9', '2010-06-15');
+		const at = (iso: string) => claims({}, Date.parse(iso));
+		expect([await at('2023-06-15T12:00:00Z'), await at('2026-06-15T11:59:59Z'), await at('2026-06-15T12:00:00Z'), await at('2028-06-15T12:00:00Z')]).toEqual([{ age_band: '13_15' }, { age_band: '13_15' }, { age_band: '16_17' }, { age_band: '18_plus' }]);
+		expect(await at('2020-01-01T00:00:00Z')).toBeUndefined();
+		for (const over of [{ clientID: PROFILE }, { clientID: 'third-party' }, { type: 'admin' }, { properties: {} }, { properties: undefined }]) expect(await claims(over)).toBeUndefined();
+		// A missing key or a broken row: no claim, never an error that stops a sign-in
+		E.PROFILE_DATA_KEY = undefined;
+		expect(await claims()).toBeUndefined();
+		E.PROFILE_DATA_KEY = KEY_A;
+		await E.AUTH_DB.prepare("UPDATE user_birth_dates SET birth_date_enc = 'broken' WHERE user_id = 'bd9'").run();
+		expect(await claims()).toBeUndefined();
+		await writeBirthDateSetting(E.AUTH_DB, false, 'test');
+		expect([await claims(), await ageBandClaimsSupported(env)]).toEqual([undefined, []]);
+		await writeBirthDateSetting(E.AUTH_DB, true, 'test');
+		expect(await ageBandClaimsSupported(env)).toEqual(['age_band']);
 	});
 
 	it('a retried DELETE /account still erases it', async () => {
