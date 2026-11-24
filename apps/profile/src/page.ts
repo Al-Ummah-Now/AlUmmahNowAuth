@@ -126,7 +126,13 @@ const STYLES = `
             border: 1px solid var(--fanous-c-button-secondary-border, var(--fanous-color-outline));
         }
         .btn-secondary:hover { background: var(--fanous-c-button-secondary-hover, var(--fanous-color-surface-raised)); }
-        .btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+        /* Solid high-contrast disabled secondary button (>= 7:1 in both light and dark; never opacity-dimmed) */
+        .btn-secondary:disabled {
+            opacity: 1; cursor: not-allowed;
+            background: light-dark(#e2e8f0, #1e293b);
+            color: light-dark(#334155, #cbd5e1);
+            border-color: light-dark(#94a3b8, #475569);
+        }
 
         .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; flex: 1; }
         .hero { text-align: center; margin-bottom: 3rem; }
@@ -171,10 +177,18 @@ const STYLES = `
         }
 
         @media (max-width: 640px) {
-            .container { padding: 1.5rem 1rem; }
-            .hero h1 { font-size: 2rem; }
+            .container { padding: 1rem 0.9rem; }
+            .hero { margin-bottom: 1rem; }
+            .hero h1 { font-size: 1.65rem; margin-bottom: 0.5rem; }
+            .hero p { font-size: 0.95rem; line-height: 1.45; }
             .apps-cards { grid-template-columns: 1fr; }
-            .profile-card { padding: 1.25rem; }
+            .profile-card { padding: 1rem; }
+            .profile-card h2 { margin-bottom: 0.75rem; font-size: 1.2rem; }
+            .delete-stack { gap: 0.85rem; }
+            .delete-list { gap: 0.4rem; margin-bottom: 0.85rem; font-size: 0.88rem; line-height: 1.42; }
+            .delete-note { font-size: 0.88rem; margin-bottom: 0.75rem; }
+            .profile-field { padding: 0.65rem 0.8rem; margin-bottom: 0.65rem; }
+            .card-actions { margin-top: 0.85rem; }
         }
 
         /* Confirmation dialog (never a browser prompt) */
@@ -197,7 +211,13 @@ const STYLES = `
         .delete-note { color: var(--fanous-color-text-secondary); font-size: 0.95rem; line-height: 1.55; margin-bottom: 1.25rem; text-align: start; }
         .delete-confirm-label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.45rem; text-align: start; color: var(--fanous-color-text-primary); }
         .delete-confirm-input { width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--fanous-color-outline, rgba(127,127,127,.5)); background: var(--fanous-color-background); color: var(--fanous-color-text-primary); font-family: inherit; font-size: 0.95rem; margin-bottom: 0.75rem; }
-        .delete-confirm-input:disabled { opacity: 0.6; cursor: not-allowed; }
+        /* Solid high-contrast disabled input (>= 10:1 in both light and dark; never opacity-dimmed) */
+        .delete-confirm-input:disabled {
+            opacity: 1; cursor: not-allowed;
+            background: light-dark(#f1f5f9, #0f172a);
+            color: light-dark(#0f172a, #e2e8f0);
+            border-color: light-dark(#64748b, #64748b);
+        }
         .delete-status { margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.45; min-height: 1.25rem; text-align: start; color: var(--fanous-color-text-primary); }
         .delete-status:empty { display: none; }
         .delete-status[data-tone="error"] { color: var(--fanous-color-error-text, #dc2626); }
@@ -741,7 +761,8 @@ export interface DeleteAccountPageOptions {
   path?: string;
   deleted?: boolean;
   reauth?: boolean;
-  contentErased?: boolean;
+  /** Server-side per-user erasure progress bound to session.user.id (never from query params). */
+  erasureStage?: "in_progress" | "content_erased" | null;
 }
 
 /**
@@ -761,12 +782,23 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
   const returnPath = o.locale === "ar" ? "/delete-account?lang=ar" : "/delete-account";
   const signInForDeleteHref = `/login?return=${encodeURIComponent(returnPath)}&prompt=login`;
   const reauthPageHref = o.locale === "ar" ? "/delete-account?reauth=1&lang=ar" : "/delete-account?reauth=1";
-  const erasedReauthPageHref = o.locale === "ar" ? "/delete-account?reauth=1&erased=1&lang=ar" : "/delete-account?reauth=1&erased=1";
   const profileHref = o.locale === "ar" ? "/?lang=ar" : "/";
   const daysText = formatNumber(30, o.locale, { useGrouping: false });
   const retentionText = t.deleteAccountWhatRetention.replace("{days}", daysText);
   const doneBodyText = t.deleteAccountDoneBody.replace("{days}", daysText);
   const isDeleted = Boolean(o.deleted && !o.user);
+  const stage = !isDeleted && o.user ? (o.erasureStage ?? null) : null;
+  const noticeText = o.reauth
+    ? stage === "content_erased"
+      ? t.deleteAccountContentErasedReauth
+      : stage === "in_progress"
+        ? t.deleteAccountInProgressReauth
+        : t.deleteAccountReauthNotice
+    : stage === "content_erased"
+      ? t.deleteAccountContentErasedNotice
+      : stage === "in_progress"
+        ? t.deleteAccountInProgressNotice
+        : null;
 
   const header = pageHeaderHtml({
     lang: o.locale,
@@ -807,9 +839,9 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                 <p>${e(doneBodyText)}</p>
             </section>` : ""}
 
-            ${o.reauth && !isDeleted ? `
-            <div class="error-message" role="status" data-testid="delete-account-reauth">
-                ${e(o.contentErased ? t.deleteAccountContentErasedReauth : t.deleteAccountReauthNotice)}
+            ${noticeText && !isDeleted ? `
+            <div class="error-message" role="status" data-testid="${o.reauth ? "delete-account-reauth" : "delete-account-progress-notice"}">
+                ${e(noticeText)}
             </div>` : ""}
 
             ${!isDeleted ? `
@@ -870,11 +902,10 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
             var CONFIRM_LABEL = ${scriptJson(t.deleteAccountConfirmAction)};
             var MISMATCH_MSG = ${scriptJson(t.deleteAccountMismatch)};
             var ERROR_MSG = ${scriptJson(t.deleteAccountError)};
+            var CONTENT_ERASED_ERROR_MSG = ${scriptJson(t.deleteAccountContentErasedError)};
             var SIGN_IN_URL = ${scriptJson(signInForDeleteHref)};
             var REAUTH_URL = ${scriptJson(reauthPageHref)};
-            var ERASED_REAUTH_URL = ${scriptJson(erasedReauthPageHref)};
             var DONE_RETURN = ${scriptJson(returnPath)};
-            var MAX_PASSES = 50;
 
             var openBtn = document.getElementById('deleteAccountBtn');
             var dlg = document.getElementById('deleteAccountDialog');
@@ -947,11 +978,6 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
             input.addEventListener('input', syncSubmit);
 
             function runPass() {
-                if (passCount >= MAX_PASSES) {
-                    setBusy(false);
-                    setStatus(ERROR_MSG, 'error');
-                    return;
-                }
                 passCount += 1;
                 var label = passCount > 1 ? DELETING_PASS.replace('{n}', aunNum(passCount)) : DELETING_LABEL;
                 setBusy(true, label);
@@ -985,7 +1011,7 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                             return;
                         }
                         if (res.status === 409 && data && data.error === 'content_erased_reauth_required') {
-                            window.location.href = ERASED_REAUTH_URL;
+                            window.location.href = REAUTH_URL;
                             return;
                         }
                         if (res.status === 401 && data && data.error === 'insufficient_user_authentication') {
@@ -994,6 +1020,11 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                         }
                         if (res.status === 401 && data && data.error === 'not_authenticated') {
                             window.location.href = SIGN_IN_URL;
+                            return;
+                        }
+                        if (data && data.contentErased) {
+                            setBusy(false);
+                            setStatus(CONTENT_ERASED_ERROR_MSG, 'error');
                             return;
                         }
                         throw new Error((data && data.error) || 'delete_failed');
