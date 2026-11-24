@@ -1,5 +1,7 @@
 # Client Migration Guide: Multi-Account Sessions
 
+> **History.** This is a plan, kept for the record. The package it describes, `@alummahnow/auth-client`, was never built. To sign in from an app today, read [SDK_USAGE.md](../../SDK_USAGE.md) and [AUTHENTICATION_FLOWS.md](../../AUTHENTICATION_FLOWS.md).
+
 ## Overview
 
 This guide helps migrate existing client applications from **client-managed multi-account tokens** (HTTP-only cookies per user) to the new **server-managed browser sessions** architecture.

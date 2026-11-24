@@ -1,4 +1,4 @@
 # Local development environment variables for E2E testing
 # Copy this file to .dev.vars and wrangler will use it automatically
-AUTH_SERVER_URL=http://localhost:8787
-APP_URL=http://localhost:8788
+AUTH_SERVER_URL=http://localhost:3301
+APP_URL=http://localhost:3302

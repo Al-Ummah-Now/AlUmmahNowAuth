@@ -1,6 +1,6 @@
 # Local development environment variables for E2E testing
 # Copy this file to .dev.vars and wrangler will use it automatically
-AUTH_SERVER_URL=http://localhost:8787
+AUTH_SERVER_URL=http://localhost:3301
 APP_URL=http://localhost:5175
 
 # Secret (placeholder only; real value goes in .dev.vars, which is gitignored).

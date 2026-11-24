@@ -1,5 +1,7 @@
 # SDK Plan: @alummahnow/auth-client
 
+> **History.** This is a plan, kept for the record. The package it describes, `@alummahnow/auth-client`, was never built. To sign in from an app today, read [SDK_USAGE.md](../../SDK_USAGE.md) and [AUTHENTICATION_FLOWS.md](../../AUTHENTICATION_FLOWS.md).
+
 ## Overview
 
 A TypeScript SDK for client applications to integrate with AlUmmahNow Auth. Built on top of OpenAuth's official client library, adding multi-account session management for our platform.
