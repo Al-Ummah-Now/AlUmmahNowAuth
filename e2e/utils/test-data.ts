@@ -66,11 +66,12 @@ export function generateTestEmail(prefix: string = 'test'): string {
 }
 
 /**
- * A unique address for a user the admin dashboard creates (never signed up through
- * the form). Such users never get the run marker, so they keep the legacy format.
+ * A unique address for a user the admin dashboard creates or renames (never signed up through
+ * the form). In CI a run account like the others: auth marks it when the admin creates it
+ * (apps/auth/src/custom/run-user-marker.ts), so the run teardown deletes it.
  */
 export function generateAdminCreatedEmail(prefix: string = 'test'): string {
-  return legacyTestEmail(prefix);
+  return generateTestEmail(prefix);
 }
 
 /**

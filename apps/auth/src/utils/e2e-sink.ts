@@ -130,14 +130,14 @@ export async function runUsersEnabled(env: RunUsersEnv): Promise<boolean> {
 export const RUN_USER_MARKER = 'e2eRun';
 
 /**
- * Called right after a registration (or an invite) creates an account: a run
+ * Called right after a registration (or an invite, or an admin) creates an account: a run
  * address on a deployment with run-account support gets the marker. Never throws.
  */
 export async function markRunUser(
 	env: RunUsersEnv,
 	db: D1Database | undefined,
 	user: { id: string; email: string },
-	via: 'e2e-sink-registration' | 'invite' = 'e2e-sink-registration'
+	via: 'e2e-sink-registration' | 'invite' | 'admin-create' = 'e2e-sink-registration'
 ): Promise<boolean> {
 	try {
 		if (!db || !isRunUserEmail(user.email.toLowerCase()) || !(await runUsersEnabled(env))) return false;
