@@ -53,6 +53,7 @@ describe('discovery (worker)', () => {
 			expect(doc).not.toHaveProperty('registration_endpoint');
 			expect(doc.response_types_supported).toEqual(['code', 'token']);
 			expect(doc.code_challenge_methods_supported).toEqual(['S256']);
+			expect(doc.service_documentation).toBe('https://alummahnow.dev/en/auth/');
 		});
 	}
 
