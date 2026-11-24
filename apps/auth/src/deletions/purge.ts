@@ -7,7 +7,7 @@
  */
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { logger } from '../logger';
-import { HANDLERS, type DeletionEnv } from './kinds';
+import { HANDLERS, type DeletionEnv, type PurgeOptions } from './kinds';
 import { auditDeletion } from './service';
 import { DeletionStore, type DeletionKind } from './store';
 
@@ -25,12 +25,13 @@ const zero = (): Record<DeletionKind, number> => ({ user: 0, client: 0, role: 0,
  * it is not in the list (restored meanwhile). Throws when the kind's purge
  * fails; the caller records the failure. Audit-logged like every purge.
  */
-export async function purgeItem(env: DeletionEnv, kind: DeletionKind, itemId: string): Promise<boolean> {
+export async function purgeItem(env: DeletionEnv, kind: DeletionKind, itemId: string, opts?: PurgeOptions): Promise<boolean> {
 	const store = new DeletionStore(env.AUTH_DB);
 	// Restored meanwhile: the row is gone, so there is nothing to purge
 	const current = await store.get(kind, itemId);
 	if (!current) return false;
-	await HANDLERS[kind].purge(env, current);
+	const outcome = await HANDLERS[kind].purge(env, current, opts);
+	if (outcome === 'deferred') return false;
 	await store.removeStatement(kind, itemId).run();
 	await auditDeletion(
 		AuditEventType.ADMIN_ITEM_PURGED,
@@ -49,14 +50,19 @@ export async function purgeItem(env: DeletionEnv, kind: DeletionKind, itemId: st
 	return true;
 }
 
-export async function purgeDeleted(env: DeletionEnv, opts: { now?: number; limit?: number } = {}): Promise<PurgeResult> {
+export async function purgeDeleted(
+	env: DeletionEnv,
+	opts: { now?: number; limit?: number; auditRedaction?: PurgeOptions['auditRedaction'] } = {}
+): Promise<PurgeResult> {
 	const now = opts.now ?? Date.now();
 	const store = new DeletionStore(env.AUTH_DB);
 	const result: PurgeResult = { purged: zero(), failed: zero() };
 	const due = await store.due(now, opts.limit ?? PURGE_BATCH);
 	for (const row of due) {
 		try {
-			if (await purgeItem(env, row.kind, row.item_id)) result.purged[row.kind]++;
+			if (await purgeItem(env, row.kind, row.item_id, opts.auditRedaction ? { auditRedaction: opts.auditRedaction } : undefined)) {
+				result.purged[row.kind]++;
+			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			result.failed[row.kind]++;

@@ -33,6 +33,7 @@ import { invalidateThemeSettings } from '../themes/runtime';
 import { deleteBirthDate } from '../birth-date/store';
 import { logger } from '../logger';
 import { enqueue, recordAccountEvent } from '../account-events/record';
+import { redactUserAuditEvents, type AuditRedactionOptions } from './audit-redaction';
 import type { DeletionKind, DeletionRow } from './store';
 
 
@@ -49,6 +50,13 @@ export class DeletionError extends Error {
 
 export type DeletionEnv = Pick<Env, 'AUTH_DB' | 'AUTH_STORAGE' | 'TOKEN_REVOCATIONS' | 'AUTH_THEMES' | 'ACCOUNT_EVENTS' | 'ACCOUNT_EVENTS_QUEUE'>;
 
+export interface PurgeOptions {
+	/** Overrides for batched audit_events redaction (tests / tuning). */
+	auditRedaction?: Omit<AuditRedactionOptions, 'erasedSubject'>;
+}
+
+export type PurgeOutcome = 'done' | 'deferred' | void;
+
 /** The item as it is before deletion: its label and what restore needs. */
 export interface Prepared {
 	label: string | null;
@@ -63,8 +71,11 @@ export interface KindHandler {
 	prepare(env: DeletionEnv, itemId: string, ctx: { tenantId: string; actorId: string; now: number }): Promise<Prepared>;
 	/** Statements that un-hide the item, run in one batch with the admin_deletions delete. */
 	restore(env: DeletionEnv, row: DeletionRow, now: number): Promise<{ statements: D1PreparedStatement[]; after?: () => Promise<void> }>;
-	/** Removes the item for good. Idempotent: a retry after a partial run finishes the job. */
-	purge(env: DeletionEnv, row: DeletionRow): Promise<void>;
+	/**
+	 * Removes the item for good. Idempotent: a retry after a partial run finishes the job.
+	 * Returns `'deferred'` when bounded batch work needs another run (not a failure).
+	 */
+	purge(env: DeletionEnv, row: DeletionRow, opts?: PurgeOptions): Promise<PurgeOutcome>;
 }
 
 const snapshotOf = <T>(row: DeletionRow): Partial<T> => {
@@ -90,6 +101,8 @@ async function run(stmt: D1PreparedStatement): Promise<number> {
 interface UserSnapshot {
 	status: string;
 	email: string;
+	/** Temporary random erased subject held only while a multi-run redaction resumes; deleted with admin_deletions. */
+	erased_audit_id?: string;
 }
 
 const user: KindHandler = {
@@ -144,7 +157,7 @@ const user: KindHandler = {
 		};
 	},
 
-	async purge(env, row) {
+	async purge(env, row, opts) {
 		const db = env.AUTH_DB;
 		const userId = row.item_id;
 		const found = await db.prepare('SELECT email, tenant_id, deleted_at FROM users WHERE id = ?').bind(userId).first<{ email: string; tenant_id: string; deleted_at: number | null }>();
@@ -242,11 +255,36 @@ const user: KindHandler = {
 		statements.push(db.prepare('DELETE FROM passkey_setup_tickets WHERE user_id = ?').bind(userId));
 		statements.push(deleteBirthDate(db, userId));
 		for (const stmt of statements) await run(stmt);
+		// Redact the user's audit_events rows in indexed batches before deleting the user row
+		// or emitting account-purged (#515). If a large history hits the per-run batch or time
+		// cap, persist the random erased subject temporarily on admin_deletions.snapshot so the
+		// next cleanup run reuses it; the snapshot row is deleted once redaction completes.
+		const snap = snapshotOf<UserSnapshot>(row);
+		const auditRedaction = await redactUserAuditEvents(db, userId, {
+			...opts?.auditRedaction,
+			erasedSubject: snap.erased_audit_id,
+		});
+		if (auditRedaction.remaining) {
+			if (auditRedaction.erasedSubject && snap.erased_audit_id !== auditRedaction.erasedSubject) {
+				await db
+					.prepare('UPDATE admin_deletions SET snapshot = ?1 WHERE kind = ?2 AND item_id = ?3')
+					.bind(JSON.stringify({ ...snap, erased_audit_id: auditRedaction.erasedSubject }), row.kind, row.item_id)
+					.run();
+			}
+			logger.info('[deletions] Audit event redaction deferred to next run', {
+				userId,
+				redacted: auditRedaction.redacted,
+				batches: auditRedaction.batches,
+			});
+			return 'deferred';
+		}
+
 		// Apps erase the account's data, told exactly when the row goes: not for a retry that finds it
 		// gone, nor for an account restored meanwhile
 		const event = await recordAccountEvent(env, { type: 'account-purged', userId }, { onlyIf: 'deleted' });
 		await db.batch([...event.statements, db.prepare('DELETE FROM users WHERE id = ? AND deleted_at IS NOT NULL').bind(userId)]);
 		await enqueue(env, event.jtis);
+		return 'done';
 		// user_revocations / TOKEN_REVOCATIONS stay: they hold only the id, a time and a reason
 		// code (never the email) and keep any token still in flight dead until the entry expires
 	},
