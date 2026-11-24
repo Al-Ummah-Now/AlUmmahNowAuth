@@ -2,7 +2,7 @@ import { requireAuth } from "./auth.server";
 import type { ActingUser } from "./admin-api.server";
 import type { PasskeyClaims } from "../../../../packages/ui/src/passkey-policy.ts";
 
-export type AdminEnv = { AUTH_DB?: D1Database; AUTH_STORAGE: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string; ADMIN_CLIENT_ID?: string; ADMIN_CLIENT_SECRET?: string };
+export type AdminEnv = { AUTH_DB?: D1Database; AUTH_STORAGE: KVNamespace; AUTH_SERVER_URL?: string; APP_URL?: string; ADMIN_CLIENT_ID?: string; ADMIN_CLIENT_SECRET?: string; ACCOUNT_EVENTS?: string };
 
 export interface AdminSessionUser extends ActingUser {
   claims?: PasskeyClaims;

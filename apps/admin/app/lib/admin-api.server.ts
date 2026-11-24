@@ -1202,3 +1202,55 @@ export async function setStaffPasskeyEnforcement(env: ApiEnv, actingUser: Acting
     body: JSON.stringify({ enforced }),
   });
 }
+
+// ============================================================================
+// Account events (#507)
+// ============================================================================
+
+export type AccountEventStatus = 'failed' | 'pending' | 'delivered';
+
+export interface AccountEventSubscriber {
+  clientId: string;
+  name: string;
+  uri: string;
+  types: string[];
+  lastDeliveredAt: number | null;
+  pending: number;
+  failed: number;
+}
+
+export interface AccountEventDelivery {
+  jti: string;
+  seq: number;
+  clientId: string;
+  type: string;
+  reason: string | null;
+  /** Empty for a verification, which is about no account. */
+  userId: string;
+  status: AccountEventStatus;
+  attempts: number;
+  error: string | null;
+  createdAt: number;
+  settledAt: number | null;
+}
+
+export interface AccountEventsView {
+  clients: AccountEventSubscriber[];
+  status: AccountEventStatus;
+  deliveries: AccountEventDelivery[];
+  next: string | null;
+  countLimit: number;
+}
+
+/** GET /admin/settings/account-events: subscribers, and the deliveries of one status */
+export async function getAccountEvents(env: ApiEnv, actingUser: ActingUser, params: { status: AccountEventStatus; client?: string; before?: string }, request?: Request) {
+  const query = new URLSearchParams({ status: params.status });
+  if (params.client) query.set('client', params.client);
+  if (params.before) query.set('before', params.before);
+  return m2mRequest<AccountEventsView>(env, `/admin/settings/account-events?${query}`, actingUser, { method: 'GET' }, request);
+}
+
+/** POST /admin/settings/account-events: send a failed delivery again */
+export async function resendAccountEvent(env: ApiEnv, actingUser: ActingUser, jti: string) {
+  return m2mRequest<{ queued: true }>(env, `/admin/settings/account-events`, actingUser, { method: 'POST', body: JSON.stringify({ action: 'resend', jti }) });
+}

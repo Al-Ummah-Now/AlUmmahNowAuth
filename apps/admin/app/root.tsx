@@ -41,13 +41,14 @@ export const links: LinksFunction = () => [
 
 /** The admin shell's look from Auth's theme for this app (empty keeps the admin's own). */
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = getCloudflare(context).env as { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_ID?: string } | undefined;
+  const env = getCloudflare(context).env as { AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; OAUTH_CLIENT_ID?: string; ACCOUNT_EVENTS?: string } | undefined;
   return {
     shellCss: await fetchShellTheme(getAuthServerUrl(request, env), getOAuthClientId(env), fetch, new URL(request.url).searchParams.get("theme")),
     // QA and stage tabs get a corner dot (SVG) and the header a QA / STAGE badge; production the
     // ICO and exact-size PNGs. One build serves stage and production, so read the host
     tabIcons: tabIconLinks(environmentOfHost(new URL(request.url).hostname)),
     environment: environmentOfHost(new URL(request.url).hostname),
+    accountEvents: env?.ACCOUNT_EVENTS === "on",
   };
 }
 

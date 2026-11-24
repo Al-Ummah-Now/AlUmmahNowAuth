@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { APPS } from '../apps.ts';
-import { runCheck } from '../check-wrangler-config.ts';
+import { checkAccountEvents, runCheck } from '../check-wrangler-config.ts';
 import { checkDeployCommands, scanPackageScripts, scanWorkflow } from '../deploy-commands.ts';
 import { parseJsonc } from '../jsonc.ts';
 import { checkApp, type WranglerConfig } from '../wrangler-config.ts';
@@ -14,6 +14,11 @@ const authConfig = () => parseJsonc(readFileSync(join(ROOT, authRule.configPath)
 describe('repository config', () => {
 	it('passes the check as committed', () => {
 		expect(runCheck(ROOT)).toEqual([]);
+	});
+
+	it('the admin shows account events exactly where auth sends them', () => {
+		const onlyAuth = (path: string) => readFileSync(join(ROOT, path), 'utf8').replaceAll('"ACCOUNT_EVENTS": "off"', path.startsWith('apps/auth') ? '"ACCOUNT_EVENTS": "on"' : '"ACCOUNT_EVENTS": "off"');
+		expect(checkAccountEvents(ROOT, onlyAuth).map((e) => e.split(':')[0])).toEqual(['production', 'stage', 'qa', 'dev']);
 	});
 });
 

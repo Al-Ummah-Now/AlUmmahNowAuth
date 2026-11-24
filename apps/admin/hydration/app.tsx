@@ -20,19 +20,20 @@ import Themes from "../app/routes/themes._index";
 import ThemeBuilder from "../app/routes/themes.$id";
 import Security from "../app/routes/security";
 import SigningKeys from "../app/routes/signing-keys";
+import AccountEvents from "../app/routes/account-events";
 import { BUILTIN_IDS, builtinPackage } from "../../../packages/ui/src/auth-theme/builtin.ts";
 import type { AuthThemeJson } from "../../../packages/ui/src/auth-theme/types.ts";
 import { swatchesOf } from "../app/lib/theme-builder";
 
 export type PageName =
   | "deleted" | "users" | "passkeys" | "audit" | "sessions" | "clients"
-  | "dashboard" | "roles" | "role" | "moderation" | "moderation-request" | "themes" | "theme" | "security" | "signing-keys";
+  | "dashboard" | "roles" | "role" | "moderation" | "moderation-request" | "themes" | "theme" | "security" | "signing-keys" | "account-events" | "account-events-delivered" | "account-events-empty";
 
 /** Every page's path in the admin (with ?lang= added by the server). */
 export const PAGE_PATHS: Record<PageName, string> = {
   deleted: "/deleted", users: "/users", passkeys: "/users/u-10/passkeys", audit: "/audit", sessions: "/sessions", clients: "/clients",
   dashboard: "/", roles: "/roles", role: "/roles/r-2", moderation: "/moderation", "moderation-request": "/moderation/mr-1",
-  themes: "/themes", theme: "/themes/fawanees", security: "/security", "signing-keys": "/signing-keys",
+  themes: "/themes", theme: "/themes/fawanees", security: "/security", "signing-keys": "/signing-keys", "account-events": "/account-events", "account-events-delivered": "/account-events", "account-events-empty": "/account-events",
 };
 
 const PAGES = {
@@ -51,6 +52,9 @@ const PAGES = {
   theme: { path: "themes/:id", Component: ThemeBuilder },
   security: { path: "security", Component: Security },
   "signing-keys": { path: "signing-keys", Component: SigningKeys },
+  "account-events": { path: "account-events", Component: AccountEvents },
+  "account-events-delivered": { path: "account-events", Component: AccountEvents },
+  "account-events-empty": { path: "account-events", Component: AccountEvents },
 } as const;
 
 /** Stored text in the page's language (what an Arabic admin or app would have written): resolved by PageApp. */
@@ -69,6 +73,12 @@ const NOW = Date.UTC(2026, 10, 15, 9, 30);
 const DAY = 86_400_000;
 /** An instant before NOW, at irregular times like real data: ago(3, 2, 17, 43) is 3 days 2h 17m 43s ago */
 const ago = (days: number, hours = 0, minutes = 0, seconds = 0) => NOW - (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000;
+
+// Admin > Account events: the apps that receive them
+const ACCOUNT_EVENT_APPS = [
+  { clientId: "api-videos", name: T("API Videos", "واجهة المرئيات"), uri: "https://videos-api.example.com/internal/account-events", types: ["account-disabled", "account-enabled", "account-purged", "verification"], lastDeliveredAt: ago(0, 0, 12, 8), pending: 2, failed: 4 },
+  { clientId: "api-cms", name: T("CMS", "إدارة المحتوى"), uri: "https://cms.example.com/account-events", types: ["account-purged", "verification"], lastDeliveredAt: null, pending: 0, failed: 0 },
+];
 
 // Sessions page 1 of 25 (1,250 sessions, 50 a page): rows made by a fixed generator, so the
 // server render and the browser agree, newest activity first, the active ones used in the last hour.
@@ -307,6 +317,36 @@ Object.assign(FIXTURES, {
       canRotate: true,
     },
   },
+  "account-events": {
+    user: ADMIN, authServerUrl: "", passkeyGraceUntil: undefined, loadError: undefined, status: "failed", client: undefined, before: undefined,
+    names: { "u-13": T("Ibrahim Saeed", "إبراهيم سعيد"), "u-16": T("Aisha Karim", "عائشة كريم"), "u-19": T("Tariq Aziz", "طارق عزيز") },
+    view: {
+      clients: ACCOUNT_EVENT_APPS,
+      status: "failed", next: `${ago(6, 3)}_0f6f4f0e-5b0b-4d1c-9a51-000000000004`, countLimit: 1000,
+      deliveries: [
+        { jti: "0f6f4f0e-5b0b-4d1c-9a51-000000000001", seq: 118, clientId: "api-videos", type: "account-purged", reason: null, userId: "usr_7c1d0b52e9f34a", status: "failed", attempts: 7, error: "503", createdAt: ago(0, 3, 41, 9), settledAt: ago(0, 3, 10, 52) },
+        { jti: "0f6f4f0e-5b0b-4d1c-9a51-000000000002", seq: 112, clientId: "api-videos", type: "account-disabled", reason: "deleted", userId: "u-13", status: "failed", attempts: 1, error: "400 invalid_key", createdAt: ago(1, 5, 22, 40), settledAt: ago(1, 5, 22, 37) },
+        { jti: "0f6f4f0e-5b0b-4d1c-9a51-000000000003", seq: 97, clientId: "api-videos", type: "account-disabled", reason: "age", userId: "u-16", status: "failed", attempts: 7, error: "timeout", createdAt: ago(4, 8, 2, 11), settledAt: ago(4, 7, 30, 20) },
+        { jti: "0f6f4f0e-5b0b-4d1c-9a51-000000000004", seq: 71, clientId: "api-videos", type: "verification", reason: null, userId: "", status: "failed", attempts: 7, error: "network error", createdAt: ago(6, 3, 33), settledAt: ago(6, 3) },
+      ],
+    },
+  },
+  "account-events-delivered": {
+    user: ADMIN, authServerUrl: "", passkeyGraceUntil: undefined, loadError: undefined, status: "delivered", client: "api-videos", before: `${ago(0, 1)}_0f6f4f0e-5b0b-4d1c-9a51-000000000004`,
+    names: { "u-13": T("Ibrahim Saeed", "إبراهيم سعيد"), "u-19": T("Tariq Aziz", "طارق عزيز") },
+    view: {
+      clients: ACCOUNT_EVENT_APPS,
+      status: "delivered", next: null, countLimit: 1000,
+      deliveries: [
+        { jti: "0f6f4f0e-5b0b-4d1c-9a51-000000000011", seq: 121, clientId: "api-videos", type: "account-enabled", reason: null, userId: "u-19", status: "delivered", attempts: 1, error: null, createdAt: ago(1, 2, 6, 31), settledAt: ago(1, 2, 6, 29) },
+        { jti: "0f6f4f0e-5b0b-4d1c-9a51-000000000012", seq: 120, clientId: "api-videos", type: "account-disabled", reason: "deleted", userId: "u-13", status: "delivered", attempts: 3, error: null, createdAt: ago(2, 7, 48, 12), settledAt: ago(2, 7, 46, 40) },
+      ],
+    },
+  },
+  "account-events-empty": {
+    user: ADMIN, authServerUrl: "", passkeyGraceUntil: undefined, loadError: undefined, status: "failed", client: undefined, before: undefined, names: {},
+    view: { clients: [], status: "failed", next: null, countLimit: 1000, deliveries: [] },
+  },
 });
 
 const STUBS = Object.fromEntries(
@@ -325,5 +365,5 @@ export function PageApp({ page, url, authServerUrl }: { page: PageName; url: str
   const lang = new URLSearchParams(url.split("?")[1] ?? "").get("lang") === "ar" ? "ar" : "en";
   const fixture = inLang(FIXTURES[page], lang) as object;
   const data = authServerUrl ? { ...fixture, authServerUrl } : fixture;
-  return <Stub initialEntries={[url]} hydrationData={{ loaderData: { root: null, page: data } }} />;
+  return <Stub initialEntries={[url]} hydrationData={{ loaderData: { root: page.startsWith("account-events") ? { accountEvents: true } : null, page: data } }} />;
 }
