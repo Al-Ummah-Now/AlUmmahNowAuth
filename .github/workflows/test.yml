@@ -160,6 +160,10 @@ jobs:
       - name: Migrations are append-only
         run: pnpm check:migrations "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
 
+      # docs/API_VERSIONING.md: nothing a client uses goes away without a deprecation
+      - name: API keeps the last release's promises
+        run: pnpm check:api
+
       - name: D1 schema snapshot is current
         run: pnpm check:schema
 

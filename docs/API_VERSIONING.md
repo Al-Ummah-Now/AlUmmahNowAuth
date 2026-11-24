@@ -12,7 +12,7 @@ How the auth server's HTTP interface changes without breaking the apps that use 
 | `app` | Routes our own apps and servers call: `/account*`, `/session/*`, `/passkeys/*`, `/provisioning/*`, `/moderation/*`, revocation, `/themes*` | Installed native apps: a person may not update for months |
 | `admin` | `/admin/*` | The admin dashboard, deployed together with the server, and other admin tools |
 
-`openapi.yaml` marks each operation with its audience (AUTH-R4).
+`openapi.json` marks each operation with its audience. The fourth one, `page`, is for pages this server shows in a browser: they are not an interface, and the check below leaves them out.
 
 ## What breaks a client
 
@@ -40,7 +40,7 @@ Clients must ignore fields and claims they don't know.
 ## Deprecating something
 
 1. **Add the replacement** and move every client we own to it.
-2. **Announce it** in the release notes and the [wiki changelog](https://github.com/Al-Ummah-Now/AlUmmahNowWiki/blob/main/guides/changelog.md), and mark the operation `deprecated: true` in `openapi.yaml` with a pointer to the replacement.
+2. **Announce it** in the release notes and the [wiki changelog](https://github.com/Al-Ummah-Now/AlUmmahNowWiki/blob/main/guides/changelog.md), and mark the operation, parameter or field `deprecated: true` in `openapi.json`, with the removal date as `x-sunset: YYYY-MM-DD` and a pointer to the replacement in its description.
 3. **Send the headers** on every answer of the old route:
 
    ```
@@ -68,4 +68,14 @@ Every release serves traffic next to the previous one for a moment, and can be r
 
 ## In review
 
-A pull request that removes or narrows something a client uses says which audience it affects, where it was announced and what still calls it. Once `openapi.yaml` covers every route (AUTH-R4, R4-4), CI compares it with the last release and fails on such a change without a deprecation.
+A pull request that removes or narrows something a client uses says which audience it affects, where it was announced and what still calls it.
+
+**CI checks it.** `pnpm check:api` (in the Release Checks of every pull request) compares `openapi.json` with the one in the newest production release record (`vYYYY.MM.DD[.N]`). It fails when:
+
+- something a client uses was removed or narrowed, unless that release already had it marked `deprecated` with an `x-sunset` that has passed;
+- a new deprecation has no `x-sunset`, or less notice than its audience is owed: 182 days for `public`, 30 for `app`, none beyond one release for `admin`;
+- an announced `x-sunset` moved earlier.
+
+It cannot know which `app` routes installed native apps use, so the 6 months they are owed is for the reviewer to check.
+
+Two things may go ahead at once: closing a security hole, and correcting a spec that was wrong while the server did not change. Put the exact change the check prints into `docs/api-exceptions.json` with a `kind` (`security` or `correction`) and a reason. An entry matches one change only, and can be deleted after the next release.
