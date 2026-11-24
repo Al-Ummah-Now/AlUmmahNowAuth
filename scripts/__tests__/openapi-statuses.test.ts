@@ -27,14 +27,15 @@ function source(file: string): ts.SourceFile {
 	return found;
 }
 
-/** Functions, methods and const arrows of a file, by name. */
-function functionsOf(file: string): Map<string, ts.Node> {
-	const out = new Map<string, ts.Node>();
+/** Functions, methods and const arrows of a file, by name: every one, when objects share a method name. */
+function functionsOf(file: string): Map<string, ts.Node[]> {
+	const out = new Map<string, ts.Node[]>();
+	const add = (name: string, node: ts.Node) => out.set(name, [...(out.get(name) ?? []), node]);
 	const visit = (node: ts.Node): void => {
-		if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) && node.name && node.body) out.set(node.name.getText(), node);
+		if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) && node.name && node.body) add(node.name.getText(), node);
 		if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer) || ts.isCallExpression(node.initializer) || ts.isObjectLiteralExpression(node.initializer)))
-			out.set(node.name.text, node.initializer);
-		if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && (ts.isCallExpression(node.initializer) || ts.isArrowFunction(node.initializer))) out.set(node.name.text, node.initializer);
+			add(node.name.text, node.initializer);
+		if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && (ts.isCallExpression(node.initializer) || ts.isArrowFunction(node.initializer))) add(node.name.text, node.initializer);
 		ts.forEachChild(node, visit);
 	};
 	visit(source(file));
@@ -79,8 +80,9 @@ function read(node: ts.Node): { statuses: Set<number>; calls: Set<string> } {
 }
 
 function statusesFrom(root: ts.Node, files: string[]): Set<number> {
-	const known = new Map<string, ts.Node>();
-	for (const file of [...files].reverse()) for (const [name, node] of functionsOf(file)) known.set(name, node);
+	// The handler's own file first: a companion's function of the same name is another one
+	const known = new Map<string, ts.Node[]>();
+	for (const file of [...files].reverse()) for (const [name, nodes] of functionsOf(file)) known.set(name, nodes);
 	const all = new Set<number>();
 	const seen = new Set<ts.Node>();
 	const queue = [root];
@@ -90,8 +92,7 @@ function statusesFrom(root: ts.Node, files: string[]): Set<number> {
 		const { statuses, calls } = read(node);
 		statuses.forEach((s) => all.add(s));
 		for (const call of calls) {
-			const target = known.get(call);
-			if (target) queue.push(target);
+			queue.push(...(known.get(call) ?? []));
 		}
 	}
 	return all;
@@ -118,6 +119,8 @@ const HONO: Mount[] = [
 	{ file: `${SRC}/routes/admin-stats-routes.ts`, prefix: '/admin', with: [LIMIT] },
 	{ file: `${SRC}/custom/role-admin-routes.ts`, prefix: '/admin' },
 	{ file: `${OPENAUTH}/session/routes.ts`, prefix: '/session', shadowed: ['GET /session/accounts'] },
+	// The same file's second router
+	{ file: `${OPENAUTH}/session/routes.ts`, prefix: '/admin/sessions' },
 	{ file: `${SRC}/themes/routes.ts`, prefix: '/admin/themes', with: [`${SRC}/themes/service.ts`, ...DELETE] },
 	{ file: `${SRC}/routes/admin-session-routes.ts`, prefix: '/admin', with: [LIMIT] },
 	// Deletes are Auth's soft deletes (deletions/), registered ahead of these
@@ -200,6 +203,8 @@ const SHARED: { file: string; fn: string; with?: string[]; keys: string[] }[] = 
 
 /** Found by name but not reachable for that operation, and why. */
 const UNREACHED: Record<string, number[]> = {
+	// D1's db.prepare() reads as the kinds' own prepare()
+	'GET /admin/deletions': [404, 409],
 	// For a path with no id, which is another path
 	'DELETE /session/accounts/{userId}': [400],
 	// One helper registers the decisions; only these two queue an action
@@ -234,8 +239,6 @@ const BY_HAND: Record<string, string> = {
 	'DELETE /admin/users/{}': 'soft delete, registered in index.ts',
 	'DELETE /admin/roles/{}': 'soft delete, registered in index.ts',
 	'DELETE /admin/clients/{}': 'soft delete, registered in index.ts',
-	'POST /admin/sessions/revoke': 'openauth session/routes.ts, second router',
-	'POST /admin/sessions/revoke-user': 'openauth session/routes.ts, second router',
 };
 const checked = new Set<string>();
 
@@ -264,7 +267,7 @@ describe('openapi.json lists every status the handlers answer', () => {
 				if (ts.isCallExpression(node) && node.expression.getText() === 'decisionRoute') {
 					const key = `POST ${prefix}/{id}/${(node.arguments[0] as ts.StringLiteral).text}`;
 					checked.add(key);
-					const gap = missing(statusesFrom(functionsOf(file).get('decisionRoute')!, [file, ...companions]), responsesOf(key) ?? [], key);
+					const gap = missing(statusesFrom(functionsOf(file).get('decisionRoute')![0]!, [file, ...companions]), responsesOf(key) ?? [], key);
 					if (gap.length) gaps[key] = gap;
 				}
 				ts.forEachChild(node, visit);
@@ -278,7 +281,7 @@ describe('openapi.json lists every status the handlers answer', () => {
 		const gaps: Record<string, number[]> = {};
 		for (const [key, { file, fn, with: companions = [] }] of Object.entries(HAND)) {
 			checked.add(key);
-			const root = functionsOf(file).get(fn);
+			const root = functionsOf(file).get(fn)?.[0];
 			expect(root, `${fn} in ${file}`).toBeDefined();
 			const listed = responsesOf(key);
 			expect(listed, key).toBeDefined();
@@ -291,7 +294,7 @@ describe('openapi.json lists every status the handlers answer', () => {
 	it('handlers several operations share', () => {
 		const gaps: Record<string, number[]> = {};
 		for (const { file, fn, with: companions = [], keys } of SHARED) {
-			const root = functionsOf(file).get(fn);
+			const root = functionsOf(file).get(fn)?.[0];
 			expect(root, `${fn} in ${file}`).toBeDefined();
 			const listed = keys.flatMap((key) => {
 				checked.add(key);
