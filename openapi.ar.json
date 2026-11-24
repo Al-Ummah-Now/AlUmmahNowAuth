@@ -35,7 +35,7 @@
   "For clients registered with the device grant, like the TV apps. Show user_code and verification_uri, then poll /token every interval seconds. Codes live 10 minutes.": "للعملاء المسجّلين بمسار الجهاز، كتطبيقات التلفاز. اعرض user_code وverification_uri، ثم اسأل /token كل interval من الثواني. وتدوم الرموز {N10} دقائق.",
   "For confidential clients, and only for tokens issued to the calling client: any other token answers active: false.": "للعملاء السرّيين، ولرموز العميل المُستدعي وحده: وأي رمز آخر يجيب active: false.",
   "For the developer, not the user": "للمطوّر لا للمستخدم",
-  "Four grants, chosen by grant_type. A confidential client sends its secret with HTTP Basic (recommended) or as client_secret. Each code works once; using it again revokes what it was exchanged for. Each refresh returns a new refresh token: keep the new one. CORS is open, so browser apps can call it.": "أربعة مسارات يحدّدها grant_type. يرسل العميل السرّي سرّه عبر HTTP Basic (وهو الأفضل) أو في client_secret. يعمل كل رمز مرة واحدة، وإعادة استعماله تُبطل ما استُبدل به. ويعيد كل تحديث رمز تحديث جديدًا: احتفظ بالجديد. وCORS مفتوح، فتستطيع تطبيقات المتصفح استدعاءه.",
+  "Four grants, chosen by grant_type. A confidential client sends its secret with HTTP Basic (recommended) or as client_secret. Each code works once; using it again revokes what it was exchanged for. Each refresh returns a new refresh token: keep the new one. CORS is open, so browser apps can call it.": "أربعة مسارات يحدّدها grant_type. يرسل العميل السرّي سرّه عبر HTTP Basic، وهو الأفضل، أو في client_secret. يعمل كل رمز مرة واحدة، وإعادة استعماله تُبطل ما استُبدل به. ويعيد كل تحديث رمز تحديث جديدًا: احتفظ بالجديد. وCORS مفتوح، فتستطيع تطبيقات المتصفح استدعاءه.",
   "Hash of the token in the app’s own link": "بصمة الرمز في رابط التطبيق",
   "Lists only endpoints, grants and methods this server supports. Cached for 5 minutes.": "لا يسرد إلا ما يدعمه هذا الخادم من عناوين ومسارات وطرق. يُخزَّن مؤقتًا {N5} دقائق.",
   "Milliseconds since 1970": "بالميلي ثانية منذ {N=1970}",
@@ -105,7 +105,7 @@
   "The stable id of the user: key your data by it": "معرّف المستخدم الثابت: اربط بياناتك به",
   "The theme and its CSS": "السمة وملف CSS لها",
   "The themes": "السمات",
-  "The tokens. client_credentials has no refresh_token": "الرموز. ولا refresh_token مع client_credentials",
+  "The tokens. With client_credentials there is no refresh_token": "الرموز. ولا refresh_token مع client_credentials",
   "The user": "المستخدم",
   "The user’s fields from the token. To check a token on every request, verify it with the published keys instead.": "حقول المستخدم من الرمز. وللتحقق من الرمز مع كل طلب استعمل المفاتيح المنشورة بدلًا من هذا.",
   "The “Sign out?” page": "صفحة «تسجيل الخروج؟»",
@@ -122,7 +122,7 @@
   "Your client id": "معرّف عميلك",
   "client_credentials only": "مع client_credentials فقط",
   "inv_ and 32 hex digits": "inv_ مع {N32} رقمًا ست عشريًا",
-  "none: no page, fails with login_required. login: always sign in again. select_account: choose an account": "none: بلا صفحة، ويفشل بالخطأ login_required. login: دخول جديد دائمًا. select_account: اختيار حساب",
+  "With none there is no page: it fails with login_required. With login the person always signs in again. With select_account they choose an account": "مع none لا صفحة، ويفشل بالخطأ login_required. ومع login يسجّل الشخص دخوله من جديد دائمًا. ومع select_account يختار حسابًا",
   "true unless set to false": "قيمته true ما لم تُجعل false",
   "usr_ and 32 hex digits": "usr_ مع {N32} رقمًا ست عشريًا"
 }

@@ -253,7 +253,7 @@
             "name": "prompt",
             "in": "query",
             "required": false,
-            "description": "none: no page, fails with login_required. login: always sign in again. select_account: choose an account",
+            "description": "With none there is no page: it fails with login_required. With login the person always signs in again. With select_account they choose an account",
             "schema": {
               "type": "string",
               "enum": [
@@ -362,7 +362,7 @@
         },
         "responses": {
           "200": {
-            "description": "The tokens. client_credentials has no refresh_token",
+            "description": "The tokens. With client_credentials there is no refresh_token",
             "content": {
               "application/json": {
                 "schema": {
