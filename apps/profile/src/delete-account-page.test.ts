@@ -1,7 +1,7 @@
 /** Runs the delete page's own script (the source the page embeds) against a small document. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MESSAGES } from "./i18n";
-import { deleteAccountScript, MAX_PASSES_PER_CONFIRMATION, renderDeleteAccountPage } from "./page";
+import { deleteAccountScript, MAX_PASSES_PER_CONFIRMATION, renderDeleteAccountPage, REQUEST_TIMEOUT_MS } from "./page";
 
 const AUTH = "https://auth.qa.alummahnow.net";
 const USER = { id: "u-del-1", email: "delete-me@example.com", roles: ["Member"] };
@@ -48,28 +48,37 @@ function load(o: { locale?: "en" | "ar"; stage?: "started" | "content_erased" } 
   els.deleteDialogSubmit.disabled = true;
   const location = { href: "", reloads: 0, reload() { this.reloads++; } };
   const requests: { url: string; init: RequestInit; body: unknown }[] = [];
-  const answers: (Answer | "network" | "hang")[] = [];
+  const answers: (Answer | "network" | "hang" | "held")[] = [];
+  let held: Promise<Response> | null = null;
   const fetchFn = vi.fn(async (url: string, init: RequestInit) => {
     requests.push({ url, init, body: JSON.parse(String(init.body)) });
     const a = answers.shift() ?? "hang";
     if (a === "network") throw new TypeError("Failed to fetch");
+    if (a === "held") return held!;
     if (a === "hang") return new Promise<Response>(() => {});
     return new Response(a.raw ?? JSON.stringify(a.body), { status: a.status ?? 200 });
   });
+  // The pending request's own timeout is kept apart from the page's other timers
   const timers: { fn: () => void; ms: number }[] = [];
-  new Function("document", "window", "fetch", "setTimeout", script)(
+  const timeouts: { fn: () => void; id: number; cleared: boolean }[] = [];
+  new Function("document", "window", "fetch", "setTimeout", "clearTimeout", script)(
     { getElementById: (id: string) => els[id] ?? null },
     { location },
     fetchFn,
-    (fn: () => void, ms: number) => timers.push({ fn, ms }),
+    (fn: () => void, ms: number) => {
+      if (ms === REQUEST_TIMEOUT_MS) return timeouts.push({ fn, id: timeouts.length + 1, cleared: false });
+      return timers.push({ fn, ms });
+    },
+    (id: number) => { timeouts[id - 1].cleared = true; },
   );
   const t = MESSAGES[locale];
   const ui = {
-    t, els, location, requests, answers, timers,
+    t, els, location, requests, answers, timers, timeouts,
     open: els.deleteAccountBtn, dialog: els.deleteAccountDialog, input: els.deleteConfirmInput, submit: els.deleteDialogSubmit,
     cancel: els.deleteDialogCancel, status: els.deleteDialogStatus, form: els.deleteAccountForm,
     type(word: string) { els.deleteConfirmInput.value = word; els.deleteConfirmInput.dispatch("input"); },
-    confirm(...a: (Answer | "network" | "hang")[]) {
+    hold(p: Promise<Response>) { held = p; },
+    confirm(...a: (Answer | "network" | "hang" | "held")[]) {
       answers.push(...a);
       if (!els.deleteAccountDialog.open) els.deleteAccountBtn.dispatch("click");
       ui.type(t.deleteAccountConfirmWord);
@@ -210,6 +219,8 @@ describe("the delete page's script", () => {
       ui.confirm({ status, body: { error, started: true } });
       await ui.settle();
       expect(ui.location.href).toBe("/delete-account?reauth=1&lang=ar");
+      // Should that page not come: not stuck, and nothing can be sent again
+      expect([ui.cancel.disabled, ui.submit.disabled]).toEqual([false, true]);
     }
   });
 
@@ -259,16 +270,90 @@ describe("the delete page's script", () => {
     expect(ui.submit.disabled).toBe(false);
   });
 
-  it("confirms in the dialog when the page after sign-out could not be told", async () => {
+  it("confirms in the dialog when the page after sign-out could not be told, with a focused Done and Esc to leave", async () => {
+    for (const [answer, body] of [
+      [{ erased: true }, "deleteAccountDoneBody"],
+      [{ erased: false }, "deleteAccountDoneBodyAccount"],
+      [{ erased: true, leftover: "channel" }, "deleteAccountDoneBodyChannel"],
+      [{ erased: true, leftover: "other" }, "deleteAccountDoneBodyOther"],
+    ] as const) {
+      for (const way of ["button", "Esc", "backdrop"]) {
+        const ui = load();
+        ui.confirm({ body: { deleted: true, complete: true, ...answer, confirmed: false } });
+        const focusedBefore = ui.cancel.focused;
+        await ui.settle();
+        expect(ui.status.textContent).toBe(`${ui.t[body]} ${ui.t.deleteAccountDonePurge.replace("{days}", "30")}`);
+        expect(ui.els.deleteDialogTitle.textContent).toBe(ui.t.deleteAccountDoneTitle);
+        for (const el of [ui.submit, ui.input]) expect(el.style.display).toBe("none");
+        expect([ui.cancel.textContent, ui.cancel.disabled, ui.cancel.style.display]).toEqual([ui.t.deleteAccountDoneButton, false, undefined]);
+        expect(ui.cancel.focused).toBe(focusedBefore + 1);
+        // It stays until they leave
+        expect(ui.timers).toEqual([]);
+        expect(ui.location.href).toBe("");
+        if (way === "button") ui.cancel.dispatch("click");
+        else if (way === "Esc") ui.dialog.dispatch("cancel");
+        else ui.dialog.dispatch("click");
+        expect(ui.location.href).toBe(`/logout?return=${encodeURIComponent("/delete-account")}`);
+        expect(ui.location.reloads).toBe(0);
+        ui.form.dispatch("submit");
+        expect(ui.requests).toHaveLength(1);
+      }
+    }
+  });
+
+  it("sign-out that does not come after a deletion: the dialog says it is done, with Done and Esc", async () => {
     const ui = load();
-    ui.confirm({ body: { deleted: true, complete: true, erased: true, leftover: "channel", confirmed: false } });
+    ui.confirm({ body: { deleted: true, complete: true, erased: true } });
     await ui.settle();
-    expect(ui.status.textContent).toBe(ui.t.deleteAccountDoneBodyChannel);
-    expect(ui.els.deleteDialogTitle.textContent).toBe(ui.t.deleteAccountDoneTitle);
-    for (const el of [ui.submit, ui.cancel, ui.input]) expect(el.style.display).toBe("none");
-    expect(ui.location.href).toBe("");
-    ui.timers[0].fn();
     expect(ui.location.href).toContain("/logout");
+    ui.location.href = "";
+    expect(ui.timers).toHaveLength(1);
+    ui.timers[0].fn();
+    expect(ui.els.deleteDialogTitle.textContent).toBe(ui.t.deleteAccountDoneTitle);
+    expect([ui.cancel.textContent, ui.cancel.disabled]).toEqual([ui.t.deleteAccountDoneButton, false]);
+    ui.dialog.dispatch("cancel");
+    expect(ui.location.href).toContain("/logout");
+  });
+
+  it("a request that never answers gives the dialog back; its late answer changes nothing", async () => {
+    const ui = load();
+    let answer: (r: Response) => void = () => {};
+    ui.hold(new Promise<Response>((r) => { answer = r; }));
+    ui.confirm("held");
+    expect(ui.cancel.disabled).toBe(true);
+    ui.timeouts[0].fn();
+    expect(ui.status.textContent).toBe(ui.t.deleteAccountErrorUnknown);
+    expect([ui.cancel.disabled, ui.submit.disabled]).toEqual([false, false]);
+    answer(new Response(JSON.stringify({ deleted: false, complete: false })));
+    await ui.settle();
+    expect(ui.requests).toHaveLength(1);
+    expect(ui.status.textContent).toBe(ui.t.deleteAccountErrorUnknown);
+    ui.cancel.dispatch("click");
+    expect(ui.location.reloads).toBe(1);
+
+    const quick = load();
+    quick.confirm({ status: 502, body: { error: "videos_erasure_failed", started: true } });
+    await quick.settle();
+    expect(quick.timeouts[0].cleared).toBe(true);
+  });
+
+  it("every state the dialog can stop in has an enabled way out", async () => {
+    for (const a of [
+      { status: 502, body: { error: "x", started: false } }, { status: 502, body: { error: "x", started: true } },
+      { status: 502, body: { error: "x", started: true, contentErased: true } }, "network",
+      { status: 503, body: { error: "resume_unavailable", started: true, retryAfter: 300 } },
+      { status: 503, body: { error: "videos_busy", started: false, retryAfter: 60 } },
+      { status: 409, body: { error: "account_mismatch" } },
+      { body: { deleted: false, complete: false, leftover: "channel" } }, { body: { deleted: false, complete: false, leftover: "other" } },
+      { body: { deleted: true, complete: true, erased: true, confirmed: false } },
+    ] as (Answer | "network")[]) {
+      const ui = load();
+      ui.confirm(a);
+      await ui.settle();
+      expect(ui.cancel.disabled, JSON.stringify(a)).toBe(false);
+      ui.dialog.dispatch("cancel");
+      expect(ui.dialog.open && ui.location.href === "", JSON.stringify(a)).toBe(false);
+    }
   });
 
   it("an unfinished deletion offers to finish, and closing its dialog does not reload", () => {
