@@ -332,6 +332,19 @@ describe('/account/birth-date', () => {
 		expect(await writeBirthDate(E as unknown as BirthDateEnv, 'bd1', '1990-01-02', null)).toBe(false);
 	});
 
+	it('a retried DELETE /account still erases it', async () => {
+		await seedUser('bd8');
+		await put('bd8', '1990-01-02');
+		const left = (await row('bd8'))!;
+		const t = await token('bd8');
+		expect((await call('/account', 'DELETE', t)).status).toBe(200);
+		// As if the first attempt had stopped before it got to the date
+		await E.AUTH_DB.prepare('INSERT INTO user_birth_dates (user_id, birth_date_enc, key_id, changed_at) VALUES (?, ?, ?, ?)').bind('bd8', left.birth_date_enc, left.key_id, left.changed_at).run();
+		const retry = await call('/account', 'DELETE', t);
+		expect([retry.status, retry.body.deleted]).toEqual([200, true]);
+		expect(await row('bd8')).toBeNull();
+	});
+
 	it('the admin purge removes it', async () => {
 		await seedUser('bd7');
 		await put('bd7', '1990-01-02');

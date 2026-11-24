@@ -185,6 +185,7 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	const storage = authStorage(env);
 	if (row.status === 'deleted') {
 		// Idempotent retry; also cleans refresh tokens of accounts deleted before this was fixed
+		await deleteBirthDate(env.AUTH_DB, row.id).run();
 		const removed = await removeRefreshTokens(storage, user.subject);
 		await revokeUser({ kv: env.TOKEN_REVOCATIONS, db: env.AUTH_DB }, row.id, 'account_deleted');
 		if (removed > 0) logger.info('[account] Removed refresh tokens of a deleted account', { userId: row.id, removed });
