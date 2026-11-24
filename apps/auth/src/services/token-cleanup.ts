@@ -19,8 +19,11 @@
 import { CODE_RANGE, CODE_USED_RANGE, DEVICE_RANGE, NATIVE_PASSKEY_RANGE } from '../storage/atomic-ranges';
 /** Rows deleted per statement */
 export const CLEANUP_BATCH_SIZE = 1000;
-/** Keep token usage analytics for 90 days */
-export const ANALYTICS_RETENTION_DAYS = 90;
+/**
+ * Keep token usage analytics for 30 days (wiki AUN-D1-SCALING D1-4: they grew the sign-in database
+ * by about 4 GB per 100k monthly users at 90 days; the admin token list only needs recent activity).
+ */
+export const ANALYTICS_RETENTION_DAYS = 30;
 /** Browser sessions inactive for longer than this are deleted (matches 7-day session lifetime) */
 export const BROWSER_SESSION_MAX_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
 /** Time box for the whole cleanup run */

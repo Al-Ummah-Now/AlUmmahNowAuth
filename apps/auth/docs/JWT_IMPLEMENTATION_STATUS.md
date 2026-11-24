@@ -73,7 +73,7 @@ Implementation of JWT access tokens with refresh token rotation for the Al Ummah
 2. **`/apps/auth/src/services/token-cleanup.ts`** (NEW)
    - `runCleanup()` - Main cron handler for periodic cleanup
    - `cleanupExpiredTokens()` - Batch deletion of expired tokens
-   - `cleanupOldAnalytics()` - Removes analytics older than 90 days
+   - `cleanupOldAnalytics()` - Removes analytics older than 30 days (AUN-D1-SCALING D1-4)
    - `revokeAllUserTokens()` - Security function for user logout/password reset
    - `getTokenStats()` - Analytics for monitoring token health
 
