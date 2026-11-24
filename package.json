@@ -97,7 +97,7 @@
     "typescript": "6.0.3",
     "typescript-eslint": "^8.73.0",
     "vitest": "^5.1.1",
-    "wrangler": "~4.164.0"
+    "wrangler": "~4.166.0"
   },
   "dependencies": {
     "@al-ummah-now/openauth": "1.2.2"
