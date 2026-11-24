@@ -233,6 +233,7 @@ describe('GET /test/run-users/census (dry run, #312)', () => {
 		await ENV.AUTH_DB.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').bind(Date.now(), 'c-old').run();
 		await ENV.AUTH_DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(Date.now() - 60_000, 'c-new').run();
 		await ENV.AUTH_DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(old - 40 * 86_400_000, 'c-seed').run();
+		await ENV.AUTH_DB.prepare(`INSERT OR IGNORE INTO rbac_roles (id, name, tenant_id) VALUES ('role_admin', 'Admin', 'default')`).run();
 		await ENV.AUTH_DB.prepare(`INSERT OR REPLACE INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by) VALUES ('c-old', 'role_admin', 'default', 1, 'test')`).run();
 		const before = await ENV.AUTH_DB.prepare('SELECT * FROM users ORDER BY id').all();
 
