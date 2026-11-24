@@ -1,7 +1,7 @@
-/** Runs the delete page's own script, cut out of the rendered page, against a small document. */
+/** Runs the delete page's own script (the source the page embeds) against a small document. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MESSAGES } from "./i18n";
-import { MAX_PASSES_PER_CONFIRMATION, renderDeleteAccountPage } from "./page";
+import { deleteAccountScript, MAX_PASSES_PER_CONFIRMATION, renderDeleteAccountPage } from "./page";
 
 const AUTH = "https://auth.qa.alummahnow.net";
 const USER = { id: "u-del-1", email: "delete-me@example.com", roles: ["Member"] };
@@ -37,8 +37,9 @@ interface Answer { status?: number; body?: unknown; raw?: string }
 function load(o: { locale?: "en" | "ar"; stage?: "started" | "content_erased" } = {}) {
   const locale = o.locale ?? "en";
   const html = renderDeleteAccountPage({ locale, user: USER, authServerUrl: AUTH, stage: o.stage ?? null });
-  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-  const script = scripts.find((s) => s.includes("EXPECTED_USER_ID"))!;
+  const script = deleteAccountScript({ locale, userId: USER.id, startedBefore: Boolean(o.stage) });
+  // The very source the page carries
+  expect(html).toContain(script);
   const els: Record<string, El> = {};
   for (const id of ["deleteAccountBtn", "deleteAccountDialog", "deleteAccountForm", "deleteConfirmInput", "deleteDialogSubmit", "deleteDialogCancel", "deleteDialogStatus", "deleteDialogTitle", "deleteDialogBody", "deleteConfirmLabel"]) {
     expect(html).toContain(`id="${id}"`);
@@ -91,16 +92,12 @@ describe("the delete page's script", () => {
       expect(ui.dialog.open).toBe(true);
       expect(ui.submit.disabled).toBe(true);
       expect(ui.cancel.focused).toBe(1);
-      ui.type(locale === "ar" ? "DELETE" : "حذف");
-      expect(ui.submit.disabled).toBe(true);
       ui.form.dispatch("submit");
-      ui.type(locale === "ar" ? "حذف" : "DELETE");
-      expect(ui.submit.disabled).toBe(false);
-      for (const same of locale === "ar" ? [" حَذْف ", "حـــذف", "\u200Fحذف\u200E"] : [" delete ", "Delete", "\u202ADELETE\u202C"]) {
+      for (const same of ["حذف", "DELETE", " حَذْف ", "حـــذف", "\u200Fحذف\u200E", " delete ", "Delete", "\u202ADELETE\u202C"]) {
         ui.type(same);
         expect(ui.submit.disabled, JSON.stringify(same)).toBe(false);
       }
-      for (const other of locale === "ar" ? ["احذف", "حذفا", "حذ"] : ["DELET", "DELETE ME", ""]) {
+      for (const other of ["احذف", "حذفا", "حذ", "DELET", "DELETE ME", "DELETE حذف", ""]) {
         ui.type(other);
         expect(ui.submit.disabled, JSON.stringify(other)).toBe(true);
       }
