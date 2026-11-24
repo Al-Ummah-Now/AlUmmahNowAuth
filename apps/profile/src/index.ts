@@ -114,6 +114,18 @@ function clearSessionCookie(isLocalhost: boolean) {
   return `profile_session=; Path=/; HttpOnly; ${secure}SameSite=Lax; Max-Age=0`;
 }
 
+const DELETE_DONE_COOKIE = "delete_account_done";
+
+function createDeleteDoneCookie(isLocalhost: boolean) {
+  const secure = isLocalhost ? "" : "Secure; ";
+  return `${DELETE_DONE_COOKIE}=1; Path=/delete-account; HttpOnly; ${secure}SameSite=Lax; Max-Age=120`;
+}
+
+function clearDeleteDoneCookie(isLocalhost: boolean) {
+  const secure = isLocalhost ? "" : "Secure; ";
+  return `${DELETE_DONE_COOKIE}=; Path=/delete-account; HttpOnly; ${secure}SameSite=Lax; Max-Age=0`;
+}
+
 // One OpenAuth client per isolate: the client caches discovery and JWKS
 // inside itself, so a client per request fetched both on every verify.
 // Rebuilt every 10 minutes so a rotated signing key is picked up.
@@ -315,30 +327,37 @@ const worker = {
     }
 
     // Self-service account deletion API (AlUmmahNowAuth#532): reuses Videos DELETE /api/privacy/data
-    // and Auth DELETE /account in order (step-up freshness checked before erasing any content).
+    // (one bounded pass per request) and Auth DELETE /account in order (step-up freshness & account
+    // identity checked before erasing any content).
     if (url.pathname === '/api/account' && request.method === 'DELETE') {
-      const json = (body: unknown, status = 200, extraHeaders: Record<string, string> = {}) =>
-        new Response(JSON.stringify(body), {
-          status,
-          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extraHeaders },
-        });
+      const json = (body: unknown, status = 200, cookiesToSet: string[] = []) => {
+        const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        for (const c of cookiesToSet) headers.append('Set-Cookie', c);
+        return new Response(JSON.stringify(body), { status, headers });
+      };
       // Changes only from this app's own page (CSRF)
       if (request.headers.get('Origin') !== url.origin) return json({ error: 'forbidden' }, 403);
-      let body: { confirm?: unknown };
+      let body: { confirm?: unknown; userId?: unknown; resumeToken?: unknown };
       try {
-        body = (await request.json()) as { confirm?: unknown };
+        body = (await request.json()) as { confirm?: unknown; userId?: unknown; resumeToken?: unknown };
       } catch {
         body = {};
       }
       if (body?.confirm !== 'DELETE') return json({ error: 'confirmation_required' }, 400);
+      const expectedUserId = typeof body?.userId === 'string' && body.userId.trim().length > 0 ? body.userId.trim() : null;
+      if (!expectedUserId) return json({ error: 'account_mismatch' }, 409);
+      const resumeToken = typeof body?.resumeToken === 'string' && body.resumeToken.length > 0 ? body.resumeToken : undefined;
       const { session } = await getFreshSession(request, env, authServerUrl);
       if (!session || !session.user?.id) return json({ error: 'not_authenticated' }, 401);
+      if (session.user.id !== expectedUserId) return json({ error: 'account_mismatch' }, 409);
       const appEnv = resolveAppEnv(env.APP_ENV, url.hostname);
       const videosApiUrl = resolveVideosApiUrl(env.VIDEOS_API_URL, appEnv);
       const result = await orchestrateAccountDeletion({
         accessToken: session.tokens.access,
+        expectedUserId,
         authServerUrl,
         videosApiUrl,
+        resumeToken,
       });
       if (!result.ok) {
         return json(
@@ -346,24 +365,33 @@ const worker = {
             error: result.error,
             ...(result.maxAge !== undefined ? { max_age: result.maxAge } : {}),
             ...(result.detail ? { error_description: result.detail } : {}),
+            ...(result.contentErased ? { contentErased: true } : {}),
+            ...(result.resumeToken ? { resumeToken: result.resumeToken } : {}),
           },
           result.status,
         );
       }
+      if (!result.complete) {
+        return json({ deleted: false, complete: false, resumeToken: result.resumeToken }, 200);
+      }
       const sessionToken = sessionTokenOf(request);
       if (sessionToken) await endSession(storesOf(env), sessionToken);
       return json(
-        { deleted: true, userId: result.userId ?? session.user.id, deletedAt: result.deletedAt },
+        { deleted: true, complete: true, userId: result.userId ?? session.user.id, deletedAt: result.deletedAt },
         200,
-        { 'Set-Cookie': clearSessionCookie(isLocalhost) },
+        [clearSessionCookie(isLocalhost), createDeleteDoneCookie(isLocalhost)],
       );
     }
 
     // Public web account deletion page (AlUmmahNowAuth#532; Google Play Data safety URL).
     // Works signed out (explains what is deleted and asks to sign in) and signed in.
+    // The "account deleted" state is shown ONLY when signed out AND backed by the short-lived
+    // HttpOnly proof cookie set by a completed DELETE /api/account (never spoofable via ?deleted=1).
     if ((url.pathname === '/delete-account' || url.pathname === '/delete-account/') && request.method === 'GET') {
       const { session, lapsed } = await getFreshSession(request, env, authServerUrl);
       const locale = pickLocale(request);
+      const hasDoneProof = readCookie(request.headers.get('Cookie'), DELETE_DONE_COOKIE) === '1';
+      const deleted = !session && hasDoneProof;
       const html = renderDeleteAccountPage({
         environment: env.APP_ENV,
         theme: await fetchAuthTheme(authServerUrl, PROFILE_CLIENT_ID, url.searchParams.get('theme')),
@@ -372,8 +400,9 @@ const worker = {
         authServerUrl,
         street: true,
         path: url.pathname + url.search,
-        deleted: url.searchParams.get('deleted') === '1',
-        reauth: url.searchParams.get('reauth') === '1',
+        deleted,
+        reauth: !deleted && url.searchParams.get('reauth') === '1',
+        contentErased: !deleted && url.searchParams.get('erased') === '1',
       });
       const headers = new Headers({
         'Content-Type': 'text/html; charset=utf-8',
@@ -382,6 +411,7 @@ const worker = {
         'Vary': 'Cookie',
       });
       if (lapsed) headers.append('Set-Cookie', clearSessionCookie(isLocalhost));
+      if (session && hasDoneProof) headers.append('Set-Cookie', clearDeleteDoneCookie(isLocalhost));
       return new Response(html, { headers });
     }
 
@@ -515,7 +545,7 @@ const worker = {
           tokens: { access: tokens.access, refresh: tokens.refresh },
         });
 
-        return redirectWith(returnTo, createSessionCookie(sessionToken, isLocalhost));
+        return redirectWith(returnTo, createSessionCookie(sessionToken, isLocalhost), clearDeleteDoneCookie(isLocalhost));
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error('OAuth callback error:', errorMessage);

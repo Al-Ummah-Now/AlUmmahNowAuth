@@ -126,6 +126,7 @@ const STYLES = `
             border: 1px solid var(--fanous-c-button-secondary-border, var(--fanous-color-outline));
         }
         .btn-secondary:hover { background: var(--fanous-c-button-secondary-hover, var(--fanous-color-surface-raised)); }
+        .btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
 
         .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 3rem 2rem; flex: 1; }
         .hero { text-align: center; margin-bottom: 3rem; }
@@ -190,12 +191,14 @@ const STYLES = `
         .confirm-actions .btn { padding: 0.6rem 1.1rem; font-size: 0.9rem; }
         .btn-danger { background: #dc2626; color: #fff; border: 1px solid #b91c1c; }
         .btn-danger:hover { background: #b91c1c; }
-        .btn-danger:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-danger:disabled { background: #64748b; border-color: #475569; color: #ffffff; opacity: 1; cursor: not-allowed; }
+        .btn-danger[data-busy="true"]:disabled { background: #991b1b; border-color: #7f1d1d; color: #ffffff; opacity: 1; cursor: wait; }
         .delete-list { margin: 0 0 1.25rem; padding-inline-start: 1.25rem; display: flex; flex-direction: column; gap: 0.65rem; color: var(--fanous-color-text-secondary); line-height: 1.55; text-align: start; }
         .delete-note { color: var(--fanous-color-text-secondary); font-size: 0.95rem; line-height: 1.55; margin-bottom: 1.25rem; text-align: start; }
         .delete-confirm-label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.45rem; text-align: start; color: var(--fanous-color-text-primary); }
-        .delete-confirm-input { width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--fanous-color-outline, rgba(127,127,127,.5)); background: var(--fanous-color-background); color: var(--fanous-color-text-primary); font-size: 0.95rem; margin-bottom: 1.25rem; }
-        .delete-status { margin-top: 1rem; font-size: 0.9rem; min-height: 1.25rem; text-align: start; }
+        .delete-confirm-input { width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--fanous-color-outline, rgba(127,127,127,.5)); background: var(--fanous-color-background); color: var(--fanous-color-text-primary); font-family: inherit; font-size: 0.95rem; margin-bottom: 0.75rem; }
+        .delete-confirm-input:disabled { opacity: 0.6; cursor: not-allowed; }
+        .delete-status { margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.45; min-height: 1.25rem; text-align: start; color: var(--fanous-color-text-primary); }
         .delete-status:empty { display: none; }
         .delete-status[data-tone="error"] { color: var(--fanous-color-error-text, #dc2626); }
         .delete-stack { display: flex; flex-direction: column; gap: 1.5rem; max-width: 600px; margin: 0 auto; }
@@ -738,6 +741,7 @@ export interface DeleteAccountPageOptions {
   path?: string;
   deleted?: boolean;
   reauth?: boolean;
+  contentErased?: boolean;
 }
 
 /**
@@ -757,8 +761,12 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
   const returnPath = o.locale === "ar" ? "/delete-account?lang=ar" : "/delete-account";
   const signInForDeleteHref = `/login?return=${encodeURIComponent(returnPath)}&prompt=login`;
   const reauthPageHref = o.locale === "ar" ? "/delete-account?reauth=1&lang=ar" : "/delete-account?reauth=1";
+  const erasedReauthPageHref = o.locale === "ar" ? "/delete-account?reauth=1&erased=1&lang=ar" : "/delete-account?reauth=1&erased=1";
   const profileHref = o.locale === "ar" ? "/?lang=ar" : "/";
-  const retentionText = t.deleteAccountWhatRetention.replace("{days}", formatNumber(30, o.locale, { useGrouping: false }));
+  const daysText = formatNumber(30, o.locale, { useGrouping: false });
+  const retentionText = t.deleteAccountWhatRetention.replace("{days}", daysText);
+  const doneBodyText = t.deleteAccountDoneBody.replace("{days}", daysText);
+  const isDeleted = Boolean(o.deleted && !o.user);
 
   const header = pageHeaderHtml({
     lang: o.locale,
@@ -789,21 +797,22 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
     <main class="container" data-testid="delete-account-page">
         <div class="delete-stack">
             <div class="hero" style="margin-bottom: 0.5rem;">
-                <h1>${e(t.deleteAccountHeroTitle)}</h1>
-                <p>${e(t.deleteAccountHeroBody)}</p>
+                <h1>${e(isDeleted ? t.deleteAccountDoneTitle : t.deleteAccountHeroTitle)}</h1>
+                <p>${e(isDeleted ? t.deleteAccountDoneHeroBody : t.deleteAccountHeroBody)}</p>
             </div>
 
-            ${o.deleted ? `
+            ${isDeleted ? `
             <section class="welcome-message" role="status" data-testid="delete-account-done">
                 <h3>${e(t.deleteAccountDoneTitle)}</h3>
-                <p>${e(t.deleteAccountDoneBody)}</p>
+                <p>${e(doneBodyText)}</p>
             </section>` : ""}
 
-            ${o.reauth && !o.deleted ? `
+            ${o.reauth && !isDeleted ? `
             <div class="error-message" role="status" data-testid="delete-account-reauth">
-                ${e(t.deleteAccountReauthNotice)}
+                ${e(o.contentErased ? t.deleteAccountContentErasedReauth : t.deleteAccountReauthNotice)}
             </div>` : ""}
 
+            ${!isDeleted ? `
             <section class="profile-card" aria-labelledby="deleteWhatHeading">
                 <h2 id="deleteWhatHeading">${e(t.deleteAccountWhatHeading)}</h2>
                 <ul class="delete-list">
@@ -813,22 +822,23 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                     <li>${e(retentionText)}</li>
                 </ul>
 
-                ${o.user && !o.deleted ? `
+                ${o.user ? `
                 <div class="profile-field">
                     <label>${e(t.deleteAccountSignedInAs)}</label>
-                    <div class="value" dir="ltr" data-testid="delete-account-email">${e(o.user.email)}</div>
+                    <div class="value" data-testid="delete-account-email"><bdi dir="ltr">${e(o.user.email)}</bdi></div>
                 </div>
                 <p class="delete-status" id="deleteStatus" role="alert"></p>
                 <div class="card-actions">
                     <a class="btn btn-secondary" href="${e(profileHref)}">${e(t.deleteAccountBackToProfile)}</a>
-                    ${o.reauth ? `<a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-reauth-signin">${e(t.deleteAccountSignInButton)}</a>` : ""}
-                    <button type="button" class="btn btn-danger" id="deleteAccountBtn" data-testid="delete-account-open-dialog">${e(t.deleteAccountStartButton)}</button>
-                </div>` : (!o.deleted ? `
+                    ${o.reauth
+                      ? `<a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-reauth-signin">${e(t.deleteAccountSignInButton)}</a>`
+                      : `<button type="button" class="btn btn-danger" id="deleteAccountBtn" data-testid="delete-account-open-dialog">${e(t.deleteAccountStartButton)}</button>`}
+                </div>` : `
                 <p class="delete-note">${e(t.deleteAccountSignedOutNote)}</p>
                 <div class="card-actions">
                     <a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-signin">${e(t.deleteAccountSignInButton)}</a>
-                </div>` : "")}
-            </section>
+                </div>`}
+            </section>` : ""}
         </div>
     </main>
 
@@ -836,7 +846,7 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
         <p>${e(t.footer.replace("{year}", formatNumber(new Date().getUTCFullYear(), o.locale, { useGrouping: false })))}</p>
     </footer>
 
-    ${o.user && !o.deleted ? `
+    ${o.user && !isDeleted && !o.reauth ? `
     <dialog class="confirm-dialog" id="deleteAccountDialog" role="alertdialog" aria-labelledby="deleteDialogTitle" aria-describedby="deleteDialogBody" data-testid="delete-account-dialog">
         <form method="dialog" id="deleteAccountForm">
             <h2 id="deleteDialogTitle">${e(t.deleteAccountDialogTitle)}</h2>
@@ -852,12 +862,19 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
     </dialog>
     <script>
         (function () {
+            ${clientFormatScript(o.locale)}
+            var EXPECTED_USER_ID = ${scriptJson(o.user.id)};
             var CONFIRM_WORD = ${scriptJson(t.deleteAccountConfirmWord)};
             var DELETING_LABEL = ${scriptJson(t.deleteAccountDeleting)};
+            var DELETING_PASS = ${scriptJson(t.deleteAccountDeletingPass)};
             var CONFIRM_LABEL = ${scriptJson(t.deleteAccountConfirmAction)};
+            var MISMATCH_MSG = ${scriptJson(t.deleteAccountMismatch)};
             var ERROR_MSG = ${scriptJson(t.deleteAccountError)};
+            var SIGN_IN_URL = ${scriptJson(signInForDeleteHref)};
             var REAUTH_URL = ${scriptJson(reauthPageHref)};
-            var DONE_RETURN = ${scriptJson(o.locale === "ar" ? "/delete-account?deleted=1&lang=ar" : "/delete-account?deleted=1")};
+            var ERASED_REAUTH_URL = ${scriptJson(erasedReauthPageHref)};
+            var DONE_RETURN = ${scriptJson(returnPath)};
+            var MAX_PASSES = 50;
 
             var openBtn = document.getElementById('deleteAccountBtn');
             var dlg = document.getElementById('deleteAccountDialog');
@@ -867,10 +884,12 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
             var cancelBtn = document.getElementById('deleteDialogCancel');
             var dialogStatus = document.getElementById('deleteDialogStatus');
             var busy = false;
+            var savedResumeToken = null;
+            var passCount = 0;
 
-            function setStatus(msg) {
+            function setStatus(msg, tone) {
                 dialogStatus.textContent = msg || '';
-                if (msg) dialogStatus.setAttribute('data-tone', 'error');
+                if (msg && tone) dialogStatus.setAttribute('data-tone', tone);
                 else dialogStatus.removeAttribute('data-tone');
             }
 
@@ -878,11 +897,28 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                 submitBtn.disabled = busy || input.value.trim() !== CONFIRM_WORD;
             }
 
+            function setBusy(on, label) {
+                busy = on;
+                input.disabled = on;
+                cancelBtn.disabled = on;
+                if (on) {
+                    submitBtn.setAttribute('data-busy', 'true');
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = label || DELETING_LABEL;
+                } else {
+                    submitBtn.removeAttribute('data-busy');
+                    submitBtn.textContent = CONFIRM_LABEL;
+                    syncSubmit();
+                }
+            }
+
             openBtn.addEventListener('click', function () {
                 if (typeof dlg.showModal !== 'function' || dlg.open) return;
                 input.value = '';
+                savedResumeToken = null;
+                passCount = 0;
                 setStatus('');
-                syncSubmit();
+                setBusy(false);
                 dlg.showModal();
                 input.focus();
             });
@@ -910,39 +946,69 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
 
             input.addEventListener('input', syncSubmit);
 
-            form.addEventListener('submit', function (ev) {
-                ev.preventDefault();
-                if (busy || input.value.trim() !== CONFIRM_WORD) return;
-                busy = true;
-                setStatus('');
-                submitBtn.disabled = true;
-                cancelBtn.disabled = true;
-                submitBtn.textContent = DELETING_LABEL;
+            function runPass() {
+                if (passCount >= MAX_PASSES) {
+                    setBusy(false);
+                    setStatus(ERROR_MSG, 'error');
+                    return;
+                }
+                passCount += 1;
+                var label = passCount > 1 ? DELETING_PASS.replace('{n}', aunNum(passCount)) : DELETING_LABEL;
+                setBusy(true, label);
+
+                var payload = { confirm: 'DELETE', userId: EXPECTED_USER_ID };
+                if (savedResumeToken) payload.resumeToken = savedResumeToken;
 
                 fetch('/api/account', {
                     method: 'DELETE',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ confirm: 'DELETE' }),
+                    body: JSON.stringify(payload),
                 }).then(function (res) {
                     return res.json().catch(function () { return {}; }).then(function (data) {
                         if (res.ok && data && data.deleted) {
+                            savedResumeToken = null;
                             window.location.href = '/logout?return=' + encodeURIComponent(DONE_RETURN);
+                            return;
+                        }
+                        if (res.ok && data && data.complete === false && data.resumeToken) {
+                            savedResumeToken = data.resumeToken;
+                            runPass();
+                            return;
+                        }
+                        if (data && data.resumeToken) {
+                            savedResumeToken = data.resumeToken;
+                        }
+                        if (res.status === 409 && data && data.error === 'account_mismatch') {
+                            setStatus(MISMATCH_MSG, 'error');
+                            setTimeout(function () { window.location.reload(); }, 800);
+                            return;
+                        }
+                        if (res.status === 409 && data && data.error === 'content_erased_reauth_required') {
+                            window.location.href = ERASED_REAUTH_URL;
                             return;
                         }
                         if (res.status === 401 && data && data.error === 'insufficient_user_authentication') {
                             window.location.href = REAUTH_URL;
                             return;
                         }
+                        if (res.status === 401 && data && data.error === 'not_authenticated') {
+                            window.location.href = SIGN_IN_URL;
+                            return;
+                        }
                         throw new Error((data && data.error) || 'delete_failed');
                     });
                 }).catch(function () {
-                    busy = false;
-                    cancelBtn.disabled = false;
-                    submitBtn.textContent = CONFIRM_LABEL;
-                    syncSubmit();
-                    setStatus(ERROR_MSG);
+                    setBusy(false);
+                    setStatus(ERROR_MSG, 'error');
                 });
+            }
+
+            form.addEventListener('submit', function (ev) {
+                ev.preventDefault();
+                if (busy || input.value.trim() !== CONFIRM_WORD) return;
+                setStatus('');
+                runPass();
             });
         })();
     </script>` : ""}
