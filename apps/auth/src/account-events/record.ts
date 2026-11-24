@@ -61,9 +61,10 @@ export async function recordAccountEvent(env: AccountEventsEnv, event: AccountEv
 	);
 }
 
-/** Queues deliveries. Never throws: what is not queued stays due for the cron. */
-export async function enqueue(env: AccountEventsEnv, jtis: string[], now = Date.now()): Promise<void> {
-	if (!jtis.length || !accountEventsOn(env)) return;
+/** Queues deliveries and says how many. Never throws: what is not queued stays due for the cron. */
+export async function enqueue(env: AccountEventsEnv, jtis: string[], now = Date.now()): Promise<number> {
+	let queued = 0;
+	if (!jtis.length || !accountEventsOn(env)) return queued;
 	try {
 		if (!env.ACCOUNT_EVENTS_QUEUE) throw new Error('ACCOUNT_EVENTS_QUEUE is not configured');
 		for (let i = 0; i < jtis.length; i += PAGE) {
@@ -73,8 +74,10 @@ export async function enqueue(env: AccountEventsEnv, jtis: string[], now = Date.
 			await env.AUTH_DB.prepare(`UPDATE account_event_deliveries SET next_at = ?1 WHERE status = 'pending' AND jti IN (${page.map((_, k) => `?${k + 2}`).join(', ')})`)
 				.bind(now + REQUEUE_AFTER_MS, ...page)
 				.run();
+			queued += page.length;
 		}
 	} catch (error) {
-		logger.error('[account-events] Could not queue deliveries; the cron will', { count: jtis.length, error: error instanceof Error ? error.message : String(error) });
+		logger.error('[account-events] Could not queue deliveries; the cron will', { count: jtis.length - queued, error: error instanceof Error ? error.message : String(error) });
 	}
+	return queued;
 }

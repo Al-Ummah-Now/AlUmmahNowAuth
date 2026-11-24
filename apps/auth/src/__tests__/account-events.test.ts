@@ -206,7 +206,9 @@ describe('recording', () => {
 		await client({ metadata: { events: { uri: URI, types: ['account-purged'] } } });
 		await record(EVENTS[4]!);
 		const down = on({ ACCOUNT_EVENTS_QUEUE: undefined });
-		await accountEventsCron(down);
+		expect(await accountEventsCron(down)).toMatchObject({ queued: 0 });
+		queue.sendBatch.mockRejectedValueOnce(new Error('queue down'));
+		expect(await accountEventsCron(on())).toMatchObject({ queued: 0 });
 		expect(await DB().prepare(`SELECT COUNT(*) AS n FROM account_event_deliveries WHERE status = 'pending' AND next_at <= ?`).bind(Date.now()).first()).toEqual({ n: 1 });
 	});
 });
