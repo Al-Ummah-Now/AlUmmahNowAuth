@@ -275,7 +275,6 @@ Tenant: "alummahnow" (default)
 - `GET /admin/users/:userId/sessions` - List user's sessions
 - `DELETE /admin/users/:userId/sessions/:sessionId` - Terminate specific session
 - `DELETE /admin/users/:userId/sessions` - Terminate all user sessions
-- `POST /admin/users/:userId/force-logout` - Force logout everywhere
 
 ### Tenant APIs (for SaaS)
 - `POST /tenants` - Create tenant

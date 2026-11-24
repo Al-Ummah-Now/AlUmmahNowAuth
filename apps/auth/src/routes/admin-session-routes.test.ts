@@ -52,6 +52,13 @@ describe('DELETE /admin/users/:userId/sessions', () => {
 	});
 });
 
+describe('POST /admin/users/:userId/force-logout', () => {
+	it('is gone: ending all sessions does the same, and the router never reached it', async () => {
+		const res = await adminSessionRoutes.fetch(new Request('https://auth.test/admin/users/usr_target/force-logout', { method: 'POST' }), env as unknown as Env, ctx);
+		expect(res.status).toBe(404);
+	});
+});
+
 describe('DELETE /admin/users/:userId/sessions/:sessionId (#277)', () => {
 	beforeAll(async () => {
 		const db = DB();
