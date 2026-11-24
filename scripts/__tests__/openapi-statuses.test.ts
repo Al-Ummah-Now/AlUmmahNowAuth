@@ -80,9 +80,9 @@ function read(node: ts.Node): { statuses: Set<number>; calls: Set<string> } {
 }
 
 function statusesFrom(root: ts.Node, files: string[]): Set<number> {
-	// The handler's own file first: a companion's function of the same name is another one
+	// A name a file and its companion both use could be either: both are read
 	const known = new Map<string, ts.Node[]>();
-	for (const file of [...files].reverse()) for (const [name, nodes] of functionsOf(file)) known.set(name, nodes);
+	for (const file of files) for (const [name, nodes] of functionsOf(file)) known.set(name, [...(known.get(name) ?? []), ...nodes]);
 	const all = new Set<number>();
 	const seen = new Set<ts.Node>();
 	const queue = [root];
