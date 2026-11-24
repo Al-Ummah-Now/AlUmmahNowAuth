@@ -43,8 +43,11 @@
 --   migrations-qa/0045_admin_tools_desktop_client.sql
 --   migrations-qa/0046_tenant_invitations_invited_by.sql
 --   migrations-qa/0047_database_identity.sql
+--   migrations-qa/0048_account_events.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
+CREATE TABLE account_event_deliveries (jti TEXT PRIMARY KEY, seq INTEGER NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')), attempts INTEGER NOT NULL DEFAULT 0, error TEXT, next_at INTEGER NOT NULL, created_at INTEGER NOT NULL, settled_at INTEGER);
+CREATE TABLE account_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, type TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '', reason TEXT, export_id TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
 CREATE TABLE admin_deletions (kind TEXT NOT NULL, item_id TEXT NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'default', label TEXT, deleted_at INTEGER NOT NULL, deleted_by TEXT NOT NULL, deleted_by_email TEXT, reason TEXT, purge_requested_at INTEGER, purge_requested_by TEXT, snapshot TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, PRIMARY KEY (kind, item_id));
 CREATE TABLE app_sessions (id TEXT PRIMARY KEY, app TEXT NOT NULL, user_json TEXT NOT NULL, access_token TEXT NOT NULL, refresh_token TEXT, expires_at INTEGER NOT NULL, revoked_at INTEGER, refresh_lock TEXT, refresh_lock_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -84,6 +87,11 @@ CREATE TABLE webauthn_credentials (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, p
 CREATE TABLE webauthn_prompts (user_id TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL);
 CREATE TABLE webhook_dlq (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', webhook_url TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, error_message TEXT, retry_count INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, next_retry_at INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE INDEX idx_migrations_applied ON _openauth_migrations(applied_at);
+CREATE INDEX idx_account_event_deliveries_due ON account_event_deliveries(next_at) WHERE status = 'pending';
+CREATE INDEX idx_account_event_deliveries_order ON account_event_deliveries(client_id, user_id, seq);
+CREATE INDEX idx_account_event_deliveries_seq ON account_event_deliveries(seq);
+CREATE INDEX idx_account_event_deliveries_settled ON account_event_deliveries(status, settled_at);
+CREATE INDEX idx_account_events_created ON account_events(created_at);
 CREATE INDEX idx_account_sessions_active ON account_sessions(browser_session_id, is_active);
 CREATE INDEX idx_account_sessions_auth ON account_sessions(authenticated_at);
 CREATE INDEX idx_account_sessions_browser ON account_sessions(browser_session_id);
@@ -122,6 +130,7 @@ CREATE INDEX idx_moderation_requests_status ON moderation_requests(status, creat
 CREATE INDEX idx_moderation_requests_subject ON moderation_requests(subject_user_id, created_at);
 CREATE INDEX idx_oauth_clients_created ON oauth_clients(created_at);
 CREATE INDEX idx_oauth_clients_enabled ON oauth_clients(enabled);
+CREATE INDEX idx_oauth_clients_events ON oauth_clients(id) WHERE instr(metadata, '"events"') > 0;
 CREATE INDEX idx_oauth_clients_tenant ON oauth_clients(tenant_id);
 CREATE UNIQUE INDEX idx_oauth_clients_tenant_name ON oauth_clients(tenant_id, name);
 CREATE INDEX idx_openauth_atomic_expires_at ON openauth_atomic(expires_at);

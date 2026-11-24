@@ -17,6 +17,8 @@ const AUTH_BINDINGS: Binding[] = [
 	// Auth's theme packages and files (theme admin, sign-in pages)
 	{ kind: 'kv_namespaces', name: 'AUTH_THEMES' },
 	{ kind: 'queue_producer', name: 'AUDIT_QUEUE' },
+	// Account events to subscribed clients (#507)
+	{ kind: 'queue_producer', name: 'ACCOUNT_EVENTS_QUEUE' },
 	{ kind: 'secrets_store_secrets', name: 'CLIENT_SECRET_SALT' },
 	{ kind: 'secrets_store_secrets', name: 'KEY_ENCRYPTION_MASTER_KEY' },
 	{ kind: 'secrets_store_secrets', name: 'RESEND_API_KEY' },

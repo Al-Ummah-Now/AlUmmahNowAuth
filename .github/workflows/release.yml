@@ -192,6 +192,13 @@ jobs:
         working-directory: apps/audit-consumer
         run: npx wrangler deploy ../../dist/audit-consumer/index.js --no-bundle -c wrangler.jsonc --env stage
 
+      # A binding to a queue that does not exist fails the deploy
+      - name: Queues (stage)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types --no-warnings scripts/release/queue-consumers.ts --create-queues --config apps/auth/wrangler.json --env stage
+
       # Same mechanics as production, so every release also rehearses the promote
       - name: Deploy candidates to stage
         env:
@@ -340,6 +347,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: apps/audit-consumer
         run: npx wrangler deploy ../../dist/audit-consumer/index.js --no-bundle -c wrangler.jsonc
+
+      # A binding to a queue that does not exist fails the upload
+      - name: Queues (production)
+        if: steps.head.outputs.current == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types --no-warnings scripts/release/queue-consumers.ts --create-queues --config apps/auth/wrangler.json --env production
 
       - name: Promote (0% + override smoke → 100% → smoke, auto-rollback)
         id: promote

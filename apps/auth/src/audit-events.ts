@@ -134,6 +134,8 @@ export enum AuditEventType {
   SIGNING_KEY_ADDED = 'signing_key.added',
   SIGNING_KEY_RETIRED = 'signing_key.retired',
   SIGNING_KEY_ROTATION_FAILED = 'signing_key.rotation_failed',
+  // Account events (account-events/, #507)
+  ACCOUNT_EVENT_DELIVERY_FAILED = 'account_event.delivery_failed',
 }
 
 /**

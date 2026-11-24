@@ -48,15 +48,19 @@
         "binding": "AUDIT_QUEUE",
         "queue": "audit-events"
       },
-      { "binding": "MODERATION_QUEUE", "queue": "moderation-actions-dev" }
+      { "binding": "MODERATION_QUEUE", "queue": "moderation-actions-dev" },
+      { "binding": "ACCOUNT_EVENTS_QUEUE", "queue": "account-events-dev" }
     ],
     "consumers": [
       { "queue": "moderation-actions-dev", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "moderation-actions-dev-dlq" },
-      { "queue": "moderation-actions-dev-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
+      { "queue": "moderation-actions-dev-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 },
+      { "queue": "account-events-dev", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "account-events-dev-dlq" },
+      { "queue": "account-events-dev-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
     ]
   },
   "vars": {
     "SIGNING_KEY_ROTATION_SCHEDULE": "on",
+    "ACCOUNT_EVENTS": "off",
     "ENVIRONMENT": "development",
     "PASSKEY_PROMPT": "off",
     "TURNSTILE_MODE": "off",
@@ -133,15 +137,19 @@
             "binding": "AUDIT_QUEUE",
             "queue": "audit-events"
           },
-          { "binding": "MODERATION_QUEUE", "queue": "moderation-actions" }
+          { "binding": "MODERATION_QUEUE", "queue": "moderation-actions" },
+          { "binding": "ACCOUNT_EVENTS_QUEUE", "queue": "account-events" }
         ],
         "consumers": [
           { "queue": "moderation-actions", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "moderation-actions-dlq" },
-          { "queue": "moderation-actions-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
+          { "queue": "moderation-actions-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 },
+          { "queue": "account-events", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "account-events-dlq" },
+          { "queue": "account-events-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
         ]
       },
       "vars": {
         "ERRORS_INGEST_URL": "https://admin.api.alummahnow.net/internal/errors",
+        "ACCOUNT_EVENTS": "off",
         "ENVIRONMENT": "production",
         "PASSKEY_PROMPT": "on",
         "ANDROID_APP_CERTS": "{}",
@@ -253,15 +261,19 @@
             "binding": "AUDIT_QUEUE",
             "queue": "audit-events-stage"
           },
-          { "binding": "MODERATION_QUEUE", "queue": "moderation-actions-stage" }
+          { "binding": "MODERATION_QUEUE", "queue": "moderation-actions-stage" },
+          { "binding": "ACCOUNT_EVENTS_QUEUE", "queue": "account-events-stage" }
         ],
         "consumers": [
           { "queue": "moderation-actions-stage", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "moderation-actions-stage-dlq" },
-          { "queue": "moderation-actions-stage-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
+          { "queue": "moderation-actions-stage-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 },
+          { "queue": "account-events-stage", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 6, "retry_delay": 30, "dead_letter_queue": "account-events-stage-dlq" },
+          { "queue": "account-events-stage-dlq", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 3 }
         ]
       },
       "vars": {
         "ERRORS_INGEST_URL": "https://admin.api.stage.alummahnow.net/internal/errors",
+        "ACCOUNT_EVENTS": "off",
         "ENVIRONMENT": "stage",
         "PASSKEY_PROMPT": "on",
         "ANDROID_APP_CERTS": "{\"net.alummahnow.studio\": [\"5A:1B:3D:2B:57:6E:9A:2D:F0:BF:1B:E3:F1:8C:40:20:13:F9:5C:09:EA:EE:7C:F7:31:10:C4:2F:B5:69:DD:C0\"]}",

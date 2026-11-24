@@ -108,6 +108,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # A binding to a queue that does not exist fails the deploy
+      - name: Queues (QA)
+        run: node --experimental-strip-types --no-warnings scripts/release/queue-consumers.ts --create-queues --config apps/auth/wrangler.qa.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       # Call wrangler directly so the predeploy:qa hook (migrations + bootstrap-secrets,
       # which prints secrets) does not run a second time with unredacted output.
       - name: Deploy Auth Server to QA
