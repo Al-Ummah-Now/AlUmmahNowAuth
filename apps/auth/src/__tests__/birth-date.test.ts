@@ -271,6 +271,11 @@ describe('/account/birth-date', () => {
 		for (const r of [await get('bd1'), await put('bd1', '1991-01-02')]) expect([r.status, r.body.error]).toEqual([503, 'temporarily_unavailable']);
 		const exported = await call('/account/export', 'GET', await token('bd1'));
 		expect(exported.status).toBe(503);
+		// A key that is not base64 of exactly 32 bytes is no key
+		for (const bad of ['not base64!', btoa('short'), btoa('x'.repeat(33))]) {
+			E.PROFILE_DATA_KEY = bad;
+			for (const r of [await get('bd1'), await put('bd1', '1991-01-02')]) expect([r.status, r.body.error]).toEqual([503, 'temporarily_unavailable']);
+		}
 		E.PROFILE_DATA_KEY = KEY_B;
 		expect((await get('bd1')).status).toBe(503);
 		// Replacing the key: the old one reads, the new one writes
