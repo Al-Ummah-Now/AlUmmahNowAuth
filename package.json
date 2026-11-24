@@ -64,6 +64,7 @@
     "check:dev-config": "node --experimental-strip-types --no-warnings scripts/release/check-dev-config.ts",
     "check:migrations": "node --experimental-strip-types --no-warnings scripts/release/migration-guard.ts",
     "schema:snapshot": "node --experimental-strip-types --no-warnings scripts/release/schema-snapshot.ts --write",
+    "check:api": "node --experimental-strip-types --no-warnings scripts/release/api-compat.ts",
     "check:schema": "node --experimental-strip-types --no-warnings scripts/release/schema-snapshot.ts --check",
     "themes:build": "node --experimental-strip-types --no-warnings scripts/themes/build.ts",
     "themes:check": "node --experimental-strip-types --no-warnings scripts/themes/build.ts --check && node --experimental-strip-types --no-warnings scripts/themes/sync-fanous-street.ts --check",
