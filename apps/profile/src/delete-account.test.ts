@@ -22,13 +22,13 @@ const AUTH = "https://auth.qa.alummahnow.net";
 const VIDEOS_API = "https://videos.api.qa.alummahnow.net";
 const USER = { id: "u-del-1", email: "delete-me@example.com", roles: ["Member"] };
 
-function jwtWithClaims(exp: number, authTime?: number, userId: string | undefined = USER.id): string {
+function jwtWithClaims(exp: number, authTime?: number, userId: string | null = USER.id): string {
   const b64 = (v: unknown) => btoa(JSON.stringify(v)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return `${b64({ alg: "ES256", typ: "JWT" })}.${b64({
     mode: "access",
     exp,
     ...(authTime === undefined ? {} : { auth_time: authTime }),
-    ...(userId === undefined ? {} : { properties: { id: userId, email: USER.email, roles: USER.roles } }),
+    ...(userId === null ? {} : { properties: { id: userId, email: USER.email, roles: USER.roles } }),
   })}.sig`;
 }
 
@@ -43,7 +43,7 @@ describe("delete-account orchestration (AlUmmahNowAuth#532)", () => {
 
   it("extracts token properties.id and fails closed on missing or mismatched id before any upstream call", async () => {
     const tokenForB = jwtWithClaims(NOW_S + 900, NOW_S - 20, "u-other-b");
-    const tokenMissingId = jwtWithClaims(NOW_S + 900, NOW_S - 20, undefined);
+    const tokenMissingId = jwtWithClaims(NOW_S + 900, NOW_S - 20, null);
     expect(tokenUserIdOf(tokenForB)).toBe("u-other-b");
     expect(tokenUserIdOf(tokenMissingId)).toBeNull();
     const fetchSpy = vi.fn();
