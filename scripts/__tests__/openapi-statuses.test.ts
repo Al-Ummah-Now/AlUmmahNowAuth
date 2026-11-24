@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(import.meta.dirname, '../..');
 const SRC = 'apps/auth/src';
 const OPENAUTH = 'apps/auth/node_modules/@al-ummah-now/openauth/src';
-const spec = JSON.parse(readFileSync(join(ROOT, 'openapi.json'), 'utf8')) as { paths: Record<string, Record<string, { responses: Record<string, unknown> }>> };
+const spec = JSON.parse(readFileSync(join(ROOT, 'openapi.json'), 'utf8')) as { paths: Record<string, Record<string, { 'x-audience'?: string; responses: Record<string, unknown> }>> };
 
 const parsed = new Map<string, ts.SourceFile>();
 function source(file: string): ts.SourceFile {
@@ -109,11 +109,15 @@ interface Mount {
 }
 const LIMIT = `${SRC}/middleware/rate-limit.ts`;
 const DELETE = [`${SRC}/deletions/routes.ts`, `${SRC}/deletions/service.ts`];
+const KINDS = `${SRC}/deletions/kinds.ts`;
 const HONO: Mount[] = [
 	{ file: `${SRC}/custom/user-list-routes.ts`, prefix: '/admin/users' },
 	{ file: `${SRC}/custom/user-role-routes.ts`, prefix: '/admin/users' },
-	{ file: `${SRC}/deletions/routes.ts`, prefix: '/admin/deletions', with: [`${SRC}/deletions/service.ts`] },
-	{ file: `${SRC}/moderation/admin-routes.ts`, prefix: '/admin/moderation-requests' },
+	{ file: `${SRC}/deletions/routes.ts`, prefix: '/admin/deletions', with: [`${SRC}/deletions/service.ts`, KINDS] },
+	{ file: `${SRC}/moderation/admin-routes.ts`, prefix: '/admin/moderation-requests', with: [LIMIT] },
+	{ file: `${SRC}/routes/admin-stats-routes.ts`, prefix: '/admin', with: [LIMIT] },
+	{ file: `${SRC}/custom/role-admin-routes.ts`, prefix: '/admin' },
+	{ file: `${OPENAUTH}/session/routes.ts`, prefix: '/session', shadowed: ['GET /session/accounts'] },
 	{ file: `${SRC}/themes/routes.ts`, prefix: '/admin/themes', with: [`${SRC}/themes/service.ts`, ...DELETE] },
 	{ file: `${SRC}/routes/admin-session-routes.ts`, prefix: '/admin', with: [LIMIT] },
 	// Deletes are Auth's soft deletes (deletions/), registered ahead of these
@@ -169,7 +173,10 @@ const HAND: Record<string, { file: string; fn: string; with?: string[] }> = {
 	'POST /native/passkey/register/verify': { file: `${SRC}/passkeys/native.ts`, fn: 'handleNativeRegisterVerify' },
 	'POST /internal/token-revocations': { file: `${SRC}/revocation/install-routes.ts`, fn: 'routeTokenRevocations', with: [`${SRC}/moderation/client-routes.ts`] },
 };
-/** One function serves them all: together they must list everything it answers. */
+/**
+ * One function serves them all: together they must list everything it answers. Which of
+ * them answers which is not checked; split a function to have its operations checked apart.
+ */
 const SHARED: { file: string; fn: string; with?: string[]; keys: string[] }[] = [
 	{ file: K, fn: 'handleAccountPasskeys', with: [ACC], keys: ['GET /account/passkeys', 'PATCH /account/passkeys/{id}', 'DELETE /account/passkeys/{id}', 'POST /account/passkeys/{id}/restore'] },
 	{
@@ -193,6 +200,10 @@ const SHARED: { file: string; fn: string; with?: string[]; keys: string[] }[] = 
 
 /** Found by name but not reachable for that operation, and why. */
 const UNREACHED: Record<string, number[]> = {
+	// For a path with no id, which is another path
+	'DELETE /session/accounts/{userId}': [400],
+	// One helper registers the decisions; only these two queue an action
+	...Object.fromEntries(['reject', 'request-info', 'mark-actioned'].map((d) => [`POST /admin/moderation-requests/{id}/${d}`, [202]])),
 	// One error helper serves every client route: these can't happen to a create or a rotate
 	'POST /admin/clients': [404],
 	'POST /admin/clients/{clientId}/rotate': [400, 409],
@@ -214,37 +225,59 @@ const responsesOf = (key: string): number[] | undefined => {
 /** 405 is for a method the spec doesn't list at all. */
 const missing = (found: Set<number>, listed: number[], key: string) => [...found].filter((s) => s !== 405 && !listed.includes(s) && !(UNREACHED[key] ?? []).includes(s)).sort();
 
+/** Answered from several places, or by a handler with no statuses of its own to follow; read by hand. */
+const BY_HAND: Record<string, string> = {
+	'GET /session/accounts': 'the issuer answers, index.ts turns its 401 into an empty list',
+	'GET /themes': 'always 200',
+	'GET /themes/resolve': 'always 200',
+	'GET /themes/assets/{}': 'themes/routes.ts handleThemeAsset: 200 or 404',
+	'DELETE /admin/users/{}': 'soft delete, registered in index.ts',
+	'DELETE /admin/roles/{}': 'soft delete, registered in index.ts',
+	'DELETE /admin/clients/{}': 'soft delete, registered in index.ts',
+	'POST /admin/sessions/revoke': 'openauth session/routes.ts, second router',
+	'POST /admin/sessions/revoke-user': 'openauth session/routes.ts, second router',
+};
+const checked = new Set<string>();
+
 describe('openapi.json lists every status the handlers answer', () => {
 	it('Hono routes', () => {
 		const gaps: Record<string, number[]> = {};
-		let checked = 0;
 		for (const { file, prefix, with: companions = [], shadowed = [] } of HONO) {
 			expect(existsSync(join(ROOT, file)), file).toBe(true);
 			const visit = (node: ts.Node): void => {
 				if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ['get', 'post', 'put', 'patch', 'delete'].includes(node.expression.name.text)) {
 					const path = node.arguments[0];
+					// A template here is moderation's decisionRoute, read below
+					if (path && ts.isTemplateExpression(path) && path.head.text.startsWith('/') && node.arguments.length > 1) expect(`${file}: ${path.getText()}`).toBe(`${SRC}/moderation/admin-routes.ts: \`/:id/\${path}\``);
 					if (path && ts.isStringLiteralLike(path) && path.text.startsWith('/') && node.arguments.length > 1) {
 						const full = `${prefix}${path.text === '/' && prefix ? '' : path.text}`.replace(/:(\w+)/g, '{$1}');
 						const key = `${node.expression.name.text.toUpperCase()} ${full}`;
 						const listed = responsesOf(key);
 						if (listed && !shadowed.includes(key)) {
-							checked++;
+							checked.add(key);
 							const gap = missing(statusesFrom(node, [file, ...companions]), listed, key);
 							if (gap.length) gaps[key] = gap;
 						}
 					}
 				}
+				// moderation/admin-routes.ts registers the decisions through one helper
+				if (ts.isCallExpression(node) && node.expression.getText() === 'decisionRoute') {
+					const key = `POST ${prefix}/{id}/${(node.arguments[0] as ts.StringLiteral).text}`;
+					checked.add(key);
+					const gap = missing(statusesFrom(functionsOf(file).get('decisionRoute')!, [file, ...companions]), responsesOf(key) ?? [], key);
+					if (gap.length) gaps[key] = gap;
+				}
 				ts.forEachChild(node, visit);
 			};
 			visit(source(file));
 		}
-		expect(checked).toBeGreaterThan(60);
 		expect(gaps).toEqual({});
 	});
 
 	it('hand-written handlers', () => {
 		const gaps: Record<string, number[]> = {};
 		for (const [key, { file, fn, with: companions = [] }] of Object.entries(HAND)) {
+			checked.add(key);
 			const root = functionsOf(file).get(fn);
 			expect(root, `${fn} in ${file}`).toBeDefined();
 			const listed = responsesOf(key);
@@ -261,6 +294,7 @@ describe('openapi.json lists every status the handlers answer', () => {
 			const root = functionsOf(file).get(fn);
 			expect(root, `${fn} in ${file}`).toBeDefined();
 			const listed = keys.flatMap((key) => {
+				checked.add(key);
 				const of = responsesOf(key);
 				expect(of, key).toBeDefined();
 				return of!;
@@ -269,5 +303,17 @@ describe('openapi.json lists every status the handlers answer', () => {
 			if (gap.length) gaps[fn] = gap;
 		}
 		expect(gaps).toEqual({});
+	});
+
+	// Last: it reads what the checks above covered
+	it('no app or staff operation is skipped', () => {
+		const shape = (key: string) => key.replace(/\{[^}]+\}/g, '{}');
+		const covered = new Set([...checked].map(shape));
+		const skipped = Object.entries(spec.paths)
+			.flatMap(([path, item]) => Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, audience: op['x-audience'] })))
+			.filter(({ audience }) => audience === 'app' || audience === 'admin')
+			.map(({ key }) => shape(key))
+			.filter((key) => !covered.has(key));
+		expect(skipped.sort()).toEqual(Object.keys(BY_HAND).sort());
 	});
 });
