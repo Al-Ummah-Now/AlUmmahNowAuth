@@ -95,7 +95,8 @@ describe('GET', () => {
 		expect(json.deliveries[0]).toEqual({ jti: expect.any(String), seq: expect.any(Number), clientId: expect.any(String), type: 'account-disabled', reason: 'deleted', userId: 'usr_2', status: 'failed', attempts: 1, error: '400', createdAt: 2000, settledAt: 2000 });
 		expect(JSON.stringify(json)).not.toMatch(/@|hash|secret/);
 		expect((await call('GET', '?status=delivered&client=aea-b')).json.deliveries).toMatchObject([{ userId: 'usr_1', clientId: 'aea-b' }]);
-		expect((await call('GET', '?status=pending')).json.deliveries).toHaveLength(2);
+		const pending = (await call('GET', '?status=pending')).json.deliveries;
+		expect(pending.map((d: { userId: string }) => d.userId)).toEqual(['usr_3', 'usr_3']);
 		expect((await call('GET', '?status=pending&client=aea-a')).json.deliveries).toMatchObject([{ userId: 'usr_3', settledAt: null }]);
 	});
 	it('a client that never received anything', async () => {
@@ -141,6 +142,23 @@ describe('POST resend', () => {
 		expect(row!.status).toBe('pending');
 		expect(row!.next_at).toBeLessThanOrEqual(Date.now());
 	});
+	it.each([
+		['lost the scope', `scopes = '[]'`],
+		['was disabled', 'enabled = 0'],
+		['no longer takes this event', `metadata = '{"events":{"uri":"https://aea-a.example.com/events","types":["account-purged"]}}'`],
+		['is gone', null],
+	])('refuses when the client %s, and changes nothing', async (_, change) => {
+		await client('aea-a');
+		const [jti] = await event('usr_1', 400, 1000);
+		const row = () => DB().prepare('SELECT * FROM account_event_deliveries WHERE jti = ?').bind(jti).first();
+		const before = await row();
+		await DB().prepare(change ? `UPDATE oauth_clients SET ${change} WHERE id = 'aea-a'` : `DELETE FROM oauth_clients WHERE id = 'aea-a'`).run();
+		expect(await call('POST', '', { action: 'resend', jti })).toMatchObject({ status: 409, json: { error: 'not_subscribed' } });
+		expect(await row()).toEqual(before);
+		await Promise.all(pendingWork);
+		expect(queued).toEqual([]);
+		expect(vi.mocked(emitAuditEvent)).not.toHaveBeenCalledWith(expect.objectContaining({ eventType: 'account_event.resent' }));
+	});
 	it('only a failed one, only by its id, and rate limited', async () => {
 		await client('aea-a');
 		const [pending] = await event('usr_1', 0, 1000);
@@ -157,7 +175,7 @@ it('no query scans a table', async () => {
 	for (const [name, sql] of Object.entries(ADMIN_QUERIES)) {
 		const binds = [...new Set(sql.match(/\?\d/g) ?? [])].map(() => 1);
 		const { results } = await DB().prepare(`EXPLAIN QUERY PLAN ${sql}`).bind(...binds).all<{ detail: string }>();
-		for (const { detail } of results) expect(detail, name).not.toMatch(/^SCAN (?!.*USING (?:COVERING )?INDEX|\(subquery)/);
+		for (const { detail } of results) expect(detail, name).not.toMatch(/^SCAN (?!.*USING (?:COVERING )?INDEX|\(subquery)|TEMP B-TREE(?!.*LAST TERM)/);
 	}
 	// the cursor is a range in the index, not a filter over it
 	const { results } = await DB().prepare(`EXPLAIN QUERY PLAN ${ADMIN_QUERIES.LIST_SQL}`).bind('failed', 1, '', 1).all<{ detail: string }>();
