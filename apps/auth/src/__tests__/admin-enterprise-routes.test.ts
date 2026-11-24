@@ -67,6 +67,8 @@ describe('AdminEnterpriseRoutes', () => {
 
     // Clean up tables before each test (with error handling for tables that might not exist)
     try { await env.AUTH_DB.prepare('DELETE FROM audit_events').run(); } catch (e) { /* ignore */ }
+    try { await env.AUTH_DB.prepare('DELETE FROM audit_daily_counts').run(); } catch { /* ignore */ }
+    try { await env.AUTH_DB.prepare('DELETE FROM audit_hourly_counts').run(); } catch { /* ignore */ }
     try { await env.AUTH_DB.prepare('DELETE FROM oauth_clients').run(); } catch (e) { /* ignore */ }
     try { await env.AUTH_DB.prepare('DELETE FROM refresh_tokens').run(); } catch (e) { /* ignore */ }
     try { await env.AUTH_DB.prepare('DELETE FROM token_usage').run(); } catch (e) { /* ignore */ }
@@ -268,7 +270,12 @@ describe('AdminEnterpriseRoutes', () => {
       expect(response.status).toBe(200);
       const data = await response.json() as any;
       expect(data.data).toHaveLength(2);
-      expect(data.pagination.total).toBe(2);
+      expect(data.pagination).toEqual({
+        limit: 50,
+        hasMore: false,
+        nextCursor: null,
+        nextBefore: null,
+      });
     });
   });
 
