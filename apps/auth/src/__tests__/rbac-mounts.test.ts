@@ -27,9 +27,11 @@ const ROUTES: [string, string][] = [
 	['GET', '/rbac/admin/clients/web/permissions'],
 	['POST', '/rbac/admin/clients/web/permissions'],
 	['POST', '/rbac/check'],
+	['POST', '/rbac/check/batch'],
 	['GET', '/rbac/permissions'],
 	['GET', '/rbac/roles'],
 	['POST', '/api/permissions/check'],
+	['POST', '/api/permissions/check/batch'],
 	['GET', '/api/permissions/roles'],
 ];
 
@@ -42,7 +44,7 @@ describe('permission routes outside /admin act for nobody', () => {
 		for (const [method, path] of ROUTES) {
 			it(`${method} ${path}, ${who}: 401`, async () => {
 				const ctx = createExecutionContext();
-				const body = method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify({ roleId: 'admin', name: 'x', permission: 'users:write', permissionId: 'p' });
+				const body = method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify({ roleId: 'admin', name: 'x', permission: 'users:write', permissionId: 'p', permissions: ['users:write'] });
 				const res = await worker.fetch(new Request(`${ORIGIN}${path}`, { method, body, headers: { host: 'localhost:3301', 'content-type': 'application/json', ...headers } }), env as unknown as Env, ctx);
 				await waitOnExecutionContext(ctx);
 				expect(res.status).toBe(401);
