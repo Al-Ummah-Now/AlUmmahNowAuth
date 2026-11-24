@@ -399,13 +399,31 @@ describe('openapi.json is sound', () => {
 		const revoke = body('post', '/internal/token-revocations');
 		expect(revoke.oneOf).toEqual([{ required: ['install_id'] }, { required: ['client_id'] }]);
 		for (const name of ['user_id', 'install_id', 'client_id']) expect(read('apps/auth/src/revocation/install-routes.ts')).toContain(`const ID = /${revoke.properties[name]!.pattern}/;`);
-		for (const path of ['/native/passkey/verify', '/native/passkey/register/verify']) {
+		// Sign-in is openauth's, adding a passkey is Auth's
+		for (const [path, text, pattern] of [
+			['/native/passkey/verify', code(readFileSync(openauth('native-passkey.ts'), 'utf8')), (p: string) => `const ID = /${p}/`],
+			['/native/passkey/register/verify', read('apps/auth/src/passkeys/native.ts'), (p: string) => `!/${p}/.test(challengeId)`],
+		] as const) {
 			const b = body('post', path);
-			expect(b.properties.credential!.required, path).toEqual(['id', 'type', 'response']);
-			expect(read('apps/auth/src/passkeys/native.ts')).toContain(`!/${b.properties.challenge_id!.pattern}/.test(challengeId)`);
+			expect(text, path).toContain(pattern(b.properties.challenge_id!.pattern!));
+			const credential = b.properties.credential!;
+			expect(credential.required, path).toEqual(['id', 'type', 'response']);
+			for (const name of credential.required!) expect(text, path).toContain(`credential.${name}`);
+			expect(text, path).toContain("credential.type !== ");
 		}
+		const request = (spec as unknown as { components: { schemas: Record<string, Body> } }).components.schemas.ModerationRequestInput!;
+		expect(read('apps/auth/src/moderation/model.ts')).toContain(`v.regex(/${request.properties.subject_user_id!.pattern}/, 'subject_user_id`);
 		expect(body('put', '/account/name').minProperties).toBe(1);
 		expect(body('post', '/provisioning/invites/{id}/purge').required).toEqual(['confirm']);
+		// a body with something the handler needs is not an optional body
+		const optional = operations.flatMap(({ key, op }) => {
+			const request = (op as unknown as { requestBody?: { required?: boolean; content: Record<string, { schema: Body & { $ref?: string } }> } }).requestBody;
+			return Object.values(request?.content ?? {}).flatMap(({ schema }) => {
+				const at = schema.$ref ? (spec as unknown as { components: { schemas: Record<string, Body> } }).components.schemas[schema.$ref.split('/').pop()!]! : schema;
+				return (at.required?.length || at.minProperties || at.oneOf) && !request?.required ? [key] : [];
+			});
+		});
+		expect(optional).toEqual([]);
 		// an example is one the handler would take
 		const check = (node: unknown): void => {
 			if (!node || typeof node !== 'object') return;
