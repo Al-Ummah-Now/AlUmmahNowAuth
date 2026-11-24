@@ -188,19 +188,11 @@ test.describe('Admin Audit View', () => {
     // Wait for events to appear
     await waitForAuditEvents(page, 1);
 
-    // Get a user ID from the first row to search for
-    const firstRow = page.locator('tbody tr').first();
-    // The User column shows a name; the id is on the cell (people are never shown by id)
-    const userIdCell = firstRow.locator('td').nth(3);
-    const userId = await userIdCell.getAttribute('data-user-id');
-
-    // Skip test if no user ID (some events may not have user_id)
-    if (!userId || userId.trim() === '') {
-      test.skip();
-      return;
-    }
-
-    const trimmedUserId = userId.trim();
+    // A person's event: this test signed in, so there is one. Other suites write to the same log
+    // at the same time, and the newest row can be a client's action (m2m:<client id>), which the
+    // people picker does not list. The User column shows a name; the id is on the cell.
+    const userIdCell = page.locator('tbody tr td:nth-child(4)[data-user-id^="usr_"]').first();
+    const trimmedUserId = (await userIdCell.getAttribute('data-user-id', { timeout: 10_000 }))!.trim();
 
     // Show filters
     await page.click('button:has-text("Show Filters")');
