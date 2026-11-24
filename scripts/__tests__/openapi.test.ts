@@ -65,11 +65,7 @@ const HONO: Mount[] = [
 	{ file: `${SRC}/moderation/admin-routes.ts`, prefix: '/admin/moderation-requests' },
 	{ file: `${SRC}/themes/routes.ts`, prefix: '/admin/themes' },
 	{ file: `${SRC}/routes/admin-stats-routes.ts`, prefix: '/admin' },
-	{
-		file: `${SRC}/routes/admin-session-routes.ts`,
-		prefix: '/admin',
-		unreachable: { 'POST /admin/users/{}/force-logout': 'the router sends /admin/users/* without /sessions to the user routes' },
-	},
+	{ file: `${SRC}/routes/admin-session-routes.ts`, prefix: '/admin' },
 	{
 		file: openauth('user/api.ts'),
 		prefix: '/admin/users',

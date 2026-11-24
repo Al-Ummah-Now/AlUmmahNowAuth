@@ -16,8 +16,6 @@
 
 import { Hono } from 'hono';
 import * as v from 'valibot';
-import { revokeUserTokens } from '../custom/token-revocation';
-import { revokeUser } from '../revocation/revocation-list';
 import { endAllSessions, endOneSession } from '../revocation/lifecycle';
 import { requireAdmin, requirePermission } from '../middleware/admin-auth';
 import { emitAuditEvent } from '../audit-emitter';
@@ -255,112 +253,6 @@ adminSessionRoutes.delete(
 			success: true,
 			sessionsTerminated: sessionCount,
 			tokensRevoked: totalTokensRevoked,
-		});
-	}
-);
-
-/**
- * POST /admin/users/:userId/force-logout
- * Force logout user everywhere - terminates all sessions and revokes all tokens
- */
-adminSessionRoutes.post(
-	'/users/:userId/force-logout',
-	adminRateLimit.terminate,
-	requirePermission('users:manage'),
-	async (c) => {
-		const userId = c.req.param('userId');
-		const adminUser = c.get('adminUser');
-
-		let reason: string | undefined;
-		try {
-			const body = await c.req.json<{ reason?: string }>();
-			reason = body.reason;
-		} catch {
-			// No body or invalid JSON - use default reason
-		}
-
-		// Get user info
-		const user = await c.env.AUTH_DB.prepare(`
-			SELECT id, email FROM users WHERE id = ?
-		`)
-			.bind(userId)
-			.first<{ id: string; email: string }>();
-
-		if (!user) {
-			return c.json({ error: 'User not found' }, 404);
-		}
-
-		// Clear active user from all browser sessions for this user
-		const browserSessions = await c.env.AUTH_DB.prepare(`
-			SELECT DISTINCT b.id
-			FROM browser_sessions b
-			JOIN account_sessions a ON b.id = a.browser_session_id
-			WHERE a.user_id = ?
-		`)
-			.bind(userId)
-			.all<{ id: string }>();
-
-		for (const bs of browserSessions.results || []) {
-			await c.env.AUTH_DB.prepare(`
-				UPDATE browser_sessions SET active_user_id = NULL WHERE id = ?
-			`)
-				.bind(bs.id)
-				.run();
-		}
-
-		// Revoke all account sessions
-		const accountSessionsResult = await c.env.AUTH_DB.prepare(`
-			UPDATE account_sessions SET is_active = 0 WHERE user_id = ?
-		`)
-			.bind(userId)
-			.run();
-
-		// Revoke all refresh tokens
-		const refreshResult = await c.env.AUTH_DB.prepare(`
-			UPDATE refresh_tokens
-			SET revoked = 1, revoked_at = ?, revoked_reason = 'admin_force_logout'
-			WHERE user_id = ? AND revoked = 0
-		`)
-			.bind(Math.floor(Date.now() / 1000), userId)
-			.run();
-
-		// Revoke all app tokens via user tokens method
-		const tokenResult = await revokeUserTokens(userId, c.env.AUTH_DB);
-		// OpenAuth refresh tokens and access tokens already out (#437)
-		await revokeUser({ kv: c.env.TOKEN_REVOCATIONS, db: c.env.AUTH_DB }, userId, 'admin_force_logout');
-
-		// Emit critical audit event
-		await emitAuditEvent({
-			timestamp: new Date().toISOString(),
-			eventType: AuditEventType.ADMIN_FORCE_LOGOUT,
-			severity: AuditEventSeverity.CRITICAL,
-			userId: adminUser?.userId || null,
-			ipAddress: c.req.header('CF-Connecting-IP') || null,
-			userAgent: c.req.header('User-Agent') || null,
-			requestId: null,
-			metadata: {
-				action: 'admin.force_logout',
-				targetUserId: userId,
-				targetEmail: user.email,
-				reason: reason || 'Admin initiated',
-				browserSessionsRevoked: browserSessions.results?.length || 0,
-				accountSessionsRevoked: accountSessionsResult.meta?.changes || 0,
-				refreshTokensRevoked: refreshResult.meta?.changes || 0,
-				appTokensRevoked: tokenResult.revoked,
-			},
-			success: true,
-			errorMessage: null,
-		});
-
-		return c.json({
-			success: true,
-			message: `User ${user.email} has been logged out from all devices`,
-			stats: {
-				browserSessionsRevoked: browserSessions.results?.length || 0,
-				accountSessionsRevoked: accountSessionsResult.meta?.changes || 0,
-				refreshTokensRevoked: refreshResult.meta?.changes || 0,
-				appTokensRevoked: tokenResult.revoked,
-			},
 		});
 	}
 );
