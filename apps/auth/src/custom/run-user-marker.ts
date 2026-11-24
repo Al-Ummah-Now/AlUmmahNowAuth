@@ -6,10 +6,11 @@
 import type { MiddlewareHandler } from 'hono';
 import { isRunUserEmail, markRunUser, type RunUsersEnv } from '../utils/e2e-sink';
 
+/** Mount on the collection's own path: only creating a user answers 201 with an id and an email. */
 export function markCreatedRunUser(env: RunUsersEnv & { AUTH_DB: D1Database }): MiddlewareHandler {
 	return async (c, next) => {
 		await next();
-		if (c.req.method !== 'POST' || c.req.path !== '/' || c.res.status !== 201) return;
+		if (c.req.method !== 'POST' || c.res.status !== 201) return;
 		const user = (await c.res
 			.clone()
 			.json()

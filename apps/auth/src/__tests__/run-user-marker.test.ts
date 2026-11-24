@@ -58,6 +58,15 @@ describe('markCreatedRunUser', () => {
 		expect((await create(e, email)).via).toBeNull();
 	});
 
+	it('is mounted on creating only: a deeper path is not its business', async () => {
+		await ENV.AUTH_DB.prepare(`INSERT INTO users (id, tenant_id, email, status, created_at, updated_at, password_reset_required) VALUES ('u1', 'default', ?, 'active', 1, 1, 0)`).bind(RUN).run();
+		const app = new Hono();
+		app.use('/', markCreatedRunUser(qa as never));
+		app.post('/:id/roles', (c) => c.json({ id: 'u1', email: RUN }, 201));
+		expect((await app.request('/u1/roles', { method: 'POST' })).status).toBe(201);
+		expect(await ENV.AUTH_DB.prepare(`SELECT metadata FROM users WHERE id = 'u1'`).first()).toEqual({ metadata: null });
+	});
+
 	it('does nothing when the create fails', async () => {
 		const { res, body } = await create(qa, RUN, 409);
 		expect(res.status).toBe(409);
