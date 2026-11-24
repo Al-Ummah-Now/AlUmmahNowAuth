@@ -36,6 +36,7 @@
 --   migrations/0042_scoped_revocations.sql
 --   migrations/0043_invite_superseded_tokens.sql
 --   migrations/0044_admin_tools_desktop_client.sql
+--   migrations/0045_tenant_invitations_invited_by.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
@@ -141,6 +142,7 @@ CREATE INDEX idx_tenant_admins_tenant_id ON tenant_admins(tenant_id);
 CREATE INDEX idx_tenant_admins_user_id ON tenant_admins(user_id);
 CREATE INDEX idx_tenant_invitations_email ON tenant_invitations(email);
 CREATE INDEX idx_tenant_invitations_expires ON tenant_invitations(expires_at);
+CREATE INDEX idx_tenant_invitations_invited_by ON tenant_invitations(invited_by);
 CREATE INDEX idx_tenant_invitations_tenant_id ON tenant_invitations(tenant_id);
 CREATE INDEX idx_tenant_invitations_token_hash ON tenant_invitations(token_hash);
 CREATE INDEX idx_tenants_created ON tenants(created_at);
