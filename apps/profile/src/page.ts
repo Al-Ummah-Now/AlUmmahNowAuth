@@ -200,6 +200,8 @@ const STYLES = `
         .delete-status[data-tone="error"] { color: var(--fanous-color-error-text, #dc2626); }
         .delete-stack { display: flex; flex-direction: column; gap: 1.5rem; max-width: 600px; margin: 0 auto; }
         .delete-stack > .profile-card, .delete-stack > .welcome-message { margin: 0; width: 100%; }
+        /* Solid heading ink on /delete-account so light mode has full contrast on cream surfaces */
+        .delete-stack .hero h1 { background: none; -webkit-background-clip: border-box; -webkit-text-fill-color: currentColor; background-clip: border-box; color: var(--auth-profile-heading-text, var(--fanous-color-text-primary)); }
 `;
 
 const ICON_SIGNIN = '<svg class="aun-menu-icon aun-flip" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>';
@@ -754,6 +756,7 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
   here.searchParams.delete("error");
   const returnPath = o.locale === "ar" ? "/delete-account?lang=ar" : "/delete-account";
   const signInForDeleteHref = `/login?return=${encodeURIComponent(returnPath)}&prompt=login`;
+  const reauthPageHref = o.locale === "ar" ? "/delete-account?reauth=1&lang=ar" : "/delete-account?reauth=1";
   const profileHref = o.locale === "ar" ? "/?lang=ar" : "/";
   const retentionText = t.deleteAccountWhatRetention.replace("{days}", formatNumber(30, o.locale, { useGrouping: false }));
 
@@ -818,6 +821,7 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                 <p class="delete-status" id="deleteStatus" role="alert"></p>
                 <div class="card-actions">
                     <a class="btn btn-secondary" href="${e(profileHref)}">${e(t.deleteAccountBackToProfile)}</a>
+                    ${o.reauth ? `<a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-reauth-signin">${e(t.deleteAccountSignInButton)}</a>` : ""}
                     <button type="button" class="btn btn-danger" id="deleteAccountBtn" data-testid="delete-account-open-dialog">${e(t.deleteAccountStartButton)}</button>
                 </div>` : (!o.deleted ? `
                 <p class="delete-note">${e(t.deleteAccountSignedOutNote)}</p>
@@ -852,7 +856,7 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
             var DELETING_LABEL = ${scriptJson(t.deleteAccountDeleting)};
             var CONFIRM_LABEL = ${scriptJson(t.deleteAccountConfirmAction)};
             var ERROR_MSG = ${scriptJson(t.deleteAccountError)};
-            var REAUTH_URL = ${scriptJson(signInForDeleteHref)};
+            var REAUTH_URL = ${scriptJson(reauthPageHref)};
             var DONE_RETURN = ${scriptJson(o.locale === "ar" ? "/delete-account?deleted=1&lang=ar" : "/delete-account?deleted=1")};
 
             var openBtn = document.getElementById('deleteAccountBtn');
@@ -886,6 +890,14 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
             cancelBtn.addEventListener('click', function () {
                 if (busy) return;
                 dlg.close('cancel');
+                openBtn.focus();
+            });
+
+            dlg.addEventListener('cancel', function (ev) {
+                if (busy) {
+                    ev.preventDefault();
+                    return;
+                }
                 openBtn.focus();
             });
 

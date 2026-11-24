@@ -33,6 +33,7 @@ describe("delete-account orchestration (AlUmmahNowAuth#532)", () => {
     expect(resolveVideosApiUrl("https://custom.videos.test/", "qa")).toBe("https://custom.videos.test");
     expect(resolveVideosApiUrl(undefined, "production")).toBe("https://videos.api.alummahnow.net");
     expect(resolveVideosApiUrl(undefined, "qa")).toBe("https://videos.api.qa.alummahnow.net");
+    expect(resolveVideosApiUrl(undefined, "local")).toBe("http://localhost:3086");
     expect(resolveVideosApiUrl(undefined, null)).toBeNull();
   });
 
@@ -40,6 +41,7 @@ describe("delete-account orchestration (AlUmmahNowAuth#532)", () => {
     const staleToken = jwtWithAuthTime(NOW_S + 900, NOW_S - REAUTH_MAX_AGE_SECONDS - 10);
     expect(isRecentSignIn(staleToken, NOW_MS)).toBe(false);
     expect(isRecentSignIn(jwtWithAuthTime(NOW_S + 900, NOW_S - 60), NOW_MS)).toBe(true);
+    expect(isRecentSignIn(jwtWithAuthTime(NOW_S + 900, NOW_S + 120), NOW_MS)).toBe(false);
     expect(isRecentSignIn(jwtWithAuthTime(NOW_S + 900), NOW_MS)).toBe(false);
 
     const fetchSpy = vi.fn();
@@ -103,6 +105,54 @@ describe("delete-account orchestration (AlUmmahNowAuth#532)", () => {
     });
     expect(outcome).toEqual({ ok: false, status: 502, error: "videos_erasure_failed" });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed (503) when videosApiUrl is unconfigured so Auth is never deleted alone", async () => {
+    const freshToken = jwtWithAuthTime(NOW_S + 900, NOW_S - 30);
+    const fetchSpy = vi.fn();
+    const outcome = await orchestrateAccountDeletion({
+      accessToken: freshToken,
+      authServerUrl: AUTH,
+      videosApiUrl: null,
+      nowMs: NOW_MS,
+      fetchFn: fetchSpy as unknown as typeof fetch,
+    });
+    expect(outcome).toEqual({ ok: false, status: 503, error: "videos_api_unconfigured" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 (not a re-login loop 401) when Videos returns a non-step-up 401 (e.g. audience mismatch)", async () => {
+    const freshToken = jwtWithAuthTime(NOW_S + 900, NOW_S - 30);
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }));
+    const outcome = await orchestrateAccountDeletion({
+      accessToken: freshToken,
+      authServerUrl: AUTH,
+      videosApiUrl: VIDEOS_API,
+      nowMs: NOW_MS,
+      fetchFn: fetchSpy as unknown as typeof fetch,
+    });
+    expect(outcome).toEqual({ ok: false, status: 502, error: "videos_erasure_failed" });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 401 step-up only when Videos explicitly asks for insufficient_user_authentication", async () => {
+    const freshToken = jwtWithAuthTime(NOW_S + 900, NOW_S - 30);
+    const fetchSpy = vi.fn(
+      async () => new Response(JSON.stringify({ error: "insufficient_user_authentication" }), { status: 401 }),
+    );
+    const outcome = await orchestrateAccountDeletion({
+      accessToken: freshToken,
+      authServerUrl: AUTH,
+      videosApiUrl: VIDEOS_API,
+      nowMs: NOW_MS,
+      fetchFn: fetchSpy as unknown as typeof fetch,
+    });
+    expect(outcome).toEqual({
+      ok: false,
+      status: 401,
+      error: "insufficient_user_authentication",
+      maxAge: REAUTH_MAX_AGE_SECONDS,
+    });
   });
 });
 
@@ -245,15 +295,29 @@ describe("profile worker /delete-account and DELETE /api/account", () => {
     expect(ok.headers.get("Set-Cookie")).toContain("profile_session=;");
   });
 
-  it("/logout keeps a safe same-origin ?return=/delete-account?deleted=1", async () => {
+  it("/logout keeps a safe same-origin ?return=/delete-account?deleted=1&lang=ar", async () => {
     const res = await worker.fetch(
-      new Request(`${APP}/logout?return=${encodeURIComponent("/delete-account?deleted=1")}`, { redirect: "manual" }),
+      new Request(`${APP}/logout?return=${encodeURIComponent("/delete-account?deleted=1&lang=ar")}`, { redirect: "manual" }),
       env() as never,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(302);
     const loc = new URL(res.headers.get("Location")!);
     expect(loc.origin + loc.pathname).toBe(`${AUTH}/logout`);
-    expect(loc.searchParams.get("return")).toBe(`${APP}/delete-account?deleted=1`);
+    expect(loc.searchParams.get("return")).toBe(`${APP}/delete-account?deleted=1&lang=ar`);
+  });
+
+  it("renders ?reauth=1 with the re-auth banner and sign-in CTA", async () => {
+    const cookie = await seedSession(jwtWithAuthTime(NOW_S + 900, NOW_S - 30));
+    const res = await worker.fetch(
+      new Request(`${APP}/delete-account?reauth=1`, { headers: { Cookie: cookie } }),
+      env() as never,
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('data-testid="delete-account-reauth"');
+    expect(html).toContain('data-testid="delete-account-reauth-signin"');
+    expect(html).toContain("/delete-account?reauth=1");
   });
 });
