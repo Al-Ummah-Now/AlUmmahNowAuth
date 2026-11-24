@@ -44,6 +44,7 @@
 --   migrations-qa/0046_tenant_invitations_invited_by.sql
 --   migrations-qa/0047_database_identity.sql
 --   migrations-qa/0048_account_events.sql
+--   migrations-qa/0049_user_birth_dates.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_event_deliveries (jti TEXT PRIMARY KEY, seq INTEGER NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')), attempts INTEGER NOT NULL DEFAULT 0, error TEXT, next_at INTEGER NOT NULL, created_at INTEGER NOT NULL, settled_at INTEGER);
@@ -78,6 +79,7 @@ CREATE TABLE tenant_admins (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16
 CREATE TABLE tenant_invitations (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'admin', invited_by TEXT NOT NULL, token_hash TEXT UNIQUE NOT NULL, expires_at INTEGER NOT NULL, accepted_at INTEGER, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE, FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE);
 CREATE TABLE tenants (id TEXT PRIMARY KEY, domain TEXT UNIQUE, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'pending', 'deleted')), branding TEXT, settings TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE token_usage (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', client_id TEXT NOT NULL, user_id TEXT, token_type TEXT NOT NULL, ip_address TEXT, user_agent TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+CREATE TABLE user_birth_dates (user_id TEXT PRIMARY KEY, birth_date_enc TEXT NOT NULL, key_id TEXT NOT NULL, changed_at INTEGER NOT NULL);
 CREATE TABLE user_identities (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, provider TEXT NOT NULL, provider_user_id TEXT NOT NULL, provider_data TEXT, created_at INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
 CREATE TABLE user_invite_superseded_tokens (token_hash TEXT PRIMARY KEY, invite_id TEXT NOT NULL, user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, reason TEXT NOT NULL DEFAULT 'email', superseded_at INTEGER NOT NULL);
 CREATE TABLE user_invites (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'default', user_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT, locale TEXT NOT NULL DEFAULT 'en', note TEXT, client_id TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}', continue_url TEXT, token_hash TEXT, token_used_at INTEGER, invited_by TEXT NOT NULL, invited_by_email TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, last_sent_at INTEGER, send_count INTEGER NOT NULL DEFAULT 0, accepted_at INTEGER, deleted_at INTEGER, deleted_by TEXT, deleted_by_email TEXT, deleted_reason TEXT, purge_requested_at INTEGER, purge_requested_by TEXT);

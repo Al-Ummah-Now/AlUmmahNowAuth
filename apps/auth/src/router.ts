@@ -4,6 +4,7 @@
  * Handles all pathname-based routing logic, delegating to appropriate handlers.
  */
 
+import { handleGetBirthDate, handlePutBirthDate } from './birth-date/routes';
 import { STUB_SCRIPT_PATH, stubScriptResponse } from './security/turnstile';
 import { Hono } from 'hono';
 import { STREET_BASE, streetResponse } from '../../../packages/ui/src/fanous-street/index.ts';
@@ -665,6 +666,12 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 		case '/account/name':
 			if (request.method !== 'PUT') return methodNotAllowed('PUT');
 			return handleSetAccountName(request, rctx.env);
+
+		// The caller's own date of birth, through the Profile app (wiki E20 §5.1)
+		case '/account/birth-date':
+			if (request.method === 'GET') return handleGetBirthDate(request, rctx.env);
+			if (request.method !== 'PUT') return methodNotAllowed('GET, PUT');
+			return handlePutBirthDate(request, rctx.env, rctx.ctx, rctx.requestId);
 
 		// Sign out of all devices (#437): revokes every sign-in of the caller
 		case '/account/sign-out-all':

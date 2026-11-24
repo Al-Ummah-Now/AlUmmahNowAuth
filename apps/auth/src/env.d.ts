@@ -98,6 +98,11 @@ declare global {
     ANDROID_APP_CERTS?: string;
     /** Workers Rate Limiting: /native/passkey/* per route, client IP and client id */
     NATIVE_PASSKEY_LIMITER?: RateLimit;
+    /** PUT /account/birth-date per person */
+    BIRTH_DATE_LIMITER?: RateLimit;
+    /** Encrypts dates of birth (birth-date/key.ts); the previous key while one is replaced */
+    PROFILE_DATA_KEY?: SecretBinding;
+    PROFILE_DATA_KEY_PREVIOUS?: SecretBinding;
     /** Workers Rate Limiting: POST /password/* per client IP (AU-2) */
     PASSWORD_IP_LIMITER?: RateLimit;
     /** Workers Rate Limiting: POST /password/* per email (AU-2) */

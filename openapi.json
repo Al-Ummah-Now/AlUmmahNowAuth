@@ -1350,7 +1350,7 @@
         "x-audience": "app",
         "responses": {
           "200": {
-            "description": "Account, roles, identities, sessions, tokens (no secrets), passkeys and audit events",
+            "description": "Account, roles, identities, sessions, tokens (no secrets), passkeys, audit events and the date of birth",
             "content": {
               "application/json": {
                 "schema": {
@@ -1364,6 +1364,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
           }
         },
         "security": [
@@ -1433,6 +1436,135 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ]
+      }
+    },
+    "/account/birth-date": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "operationId": "getBirthDate",
+        "summary": "The user’s own date of birth",
+        "x-summary-ar": "تاريخ ميلاد المستخدم",
+        "x-audience": "app",
+        "description": "With a token issued to the Profile app only. 404 feature_off while the birth_date setting is off.",
+        "responses": {
+          "200": {
+            "description": "The date, or null when there is none",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "birthDate"
+                  ],
+                  "properties": {
+                    "birthDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Account"
+        ],
+        "operationId": "setBirthDate",
+        "summary": "Set the user’s own date of birth",
+        "x-summary-ar": "تعيين المستخدم تاريخ ميلاده",
+        "x-audience": "app",
+        "description": "With a token issued to the Profile app only, and a sign-in at most 10 minutes old (otherwise 401 insufficient_user_authentication). A later change keeps the age band or makes it younger; an older one is 409 older_age_refused.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "birthDate"
+                ],
+                "properties": {
+                  "birthDate": {
+                    "type": "string",
+                    "format": "date"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "birthDate"
+                  ],
+                  "properties": {
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
           }
         },
         "security": [

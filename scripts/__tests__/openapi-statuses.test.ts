@@ -171,6 +171,8 @@ const HAND: Record<string, { file: string; fn: string; with?: string[] }> = {
 	'DELETE /account': { file: ACC, fn: 'handleDeleteAccount' },
 	'GET /account/export': { file: ACC, fn: 'handleAccountExport' },
 	'PUT /account/name': { file: ACC, fn: 'handleSetAccountName' },
+	'GET /account/birth-date': { file: `${SRC}/birth-date/routes.ts`, fn: 'handleGetBirthDate', with: [ACC] },
+	'PUT /account/birth-date': { file: `${SRC}/birth-date/routes.ts`, fn: 'handlePutBirthDate', with: [ACC] },
 	'POST /account/sign-out-all': { file: ACC, fn: 'handleSignOutAll' },
 	'POST /native/passkey/register/options': { file: `${SRC}/passkeys/native.ts`, fn: 'handleNativeRegisterOptions' },
 	'POST /native/passkey/register/verify': { file: `${SRC}/passkeys/native.ts`, fn: 'handleNativeRegisterVerify' },

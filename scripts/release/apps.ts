@@ -35,6 +35,8 @@ const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'ratelimits', name: 'ADMIN_SENSITIVE_LIMITER' },
 	// Native passkey sign-in and registration (AUTH-PASSKEYS "Native apps")
 	{ kind: 'ratelimits', name: 'NATIVE_PASSKEY_LIMITER' },
+	// PUT /account/birth-date per person (wiki E20)
+	{ kind: 'ratelimits', name: 'BIRTH_DATE_LIMITER' },
 	// Turnstile on sign-up, reset and sign-in (src/security/turnstile.ts) and the abuse counters
 	{ kind: 'secrets_store_secrets', name: 'TURNSTILE_SECRET' },
 	{ kind: 'analytics_engine_datasets', name: 'ABUSE_EVENTS' },

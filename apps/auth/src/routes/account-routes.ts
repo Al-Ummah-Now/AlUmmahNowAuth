@@ -27,6 +27,7 @@ import { AuditEventSeverity, AuditEventType, createAuditEvent } from '../audit-e
 import { logger } from '../logger';
 import { revokeUser } from '../revocation/revocation-list';
 import { parseAccessTtl } from '../revocation/token-gate';
+import { deleteBirthDate, readBirthDate, type BirthDateEnv, type StoredBirthDate } from '../birth-date/store';
 
 export const REAUTH_MAX_AGE_SECONDS = 600;
 const AUDIT_EXPORT_LIMIT = 1000;
@@ -116,12 +117,12 @@ export function exceedsAccessTtl(claims: { iat?: unknown; exp?: unknown }, acces
 }
 
 /** Null when the sign-in is recent enough; otherwise the step-up challenge (RFC 9470). */
-export function requireRecentSignIn(user: VerifiedUser, now = Date.now()): Response | null {
+export function requireRecentSignIn(user: VerifiedUser, now = Date.now(), description = 'Sign in again to delete your account'): Response | null {
 	if (user.authTime !== undefined && now / 1000 - user.authTime <= REAUTH_MAX_AGE_SECONDS) return null;
 	return json(
 		{
 			error: 'insufficient_user_authentication',
-			error_description: 'Sign in again to delete your account',
+			error_description: description,
 			max_age: REAUTH_MAX_AGE_SECONDS,
 		},
 		401,
@@ -197,6 +198,8 @@ export async function handleDeleteAccount(request: Request, env: Env, ctx: Execu
 	await userAdapter.softDeleteUser(row.tenant_id, row.id, Date.now());
 	// The hourly cleanup removes the account's data 30 days from now (deletions/purge.ts)
 	await recordSelfDeletion(env.AUTH_DB, row);
+	// The date of birth goes at once (wiki E20 §5.1); a restored account is asked again
+	await deleteBirthDate(env.AUTH_DB, row.id).run();
 	await userAdapter.revokeAllUserSessions(row.tenant_id, row.id);
 	// The password credential: the deleted account can't be signed in to again
 	for (const email of new Set([row.email, row.email.toLowerCase()])) {
@@ -302,6 +305,15 @@ export async function handleAccountExport(request: Request, env: Env): Promise<R
 			.all(),
 	]);
 
+	let birthDate: StoredBirthDate | null;
+	try {
+		birthDate = await readBirthDate(env as BirthDateEnv, row.id);
+	} catch {
+		// Never an export that silently leaves something out
+		logger.error('[account] Export refused: the date of birth could not be read');
+		return json({ error: 'temporarily_unavailable', error_description: 'Try again in a moment.' }, 503);
+	}
+
 	const body = {
 		exportedAt: new Date().toISOString(),
 		source: 'auth',
@@ -320,6 +332,7 @@ export async function handleAccountExport(request: Request, env: Env): Promise<R
 		refreshTokens: refreshTokens.results,
 		auditEvents: audit.results,
 		passkeys: passkeys.results,
+		birthDate: birthDate?.birthDate ?? null,
 	};
 	return json(body, 200, { 'Content-Disposition': 'attachment; filename="alummahnow-account.json"' });
 }

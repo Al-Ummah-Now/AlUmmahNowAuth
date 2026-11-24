@@ -14,6 +14,7 @@ import appSessionsUserIndexSql from "../migrations/0032_app_sessions_user_index.
 import webauthnSql from "../migrations/0038_webauthn_credentials.sql?raw";
 import systemAccountsSql from "../migrations/0041_system_accounts.sql?raw";
 import accountEventsSql from "../migrations/0048_account_events.sql?raw";
+import birthDatesSql from "../migrations/0049_user_birth_dates.sql?raw";
 
 /** Statements of a migration file (comments stripped; a CREATE TRIGGER ... END stays one statement). */
 export function sqlStatements(sql: string): string[] {
@@ -355,6 +356,7 @@ export async function setupDatabase() {
   // System accounts (0041): never a role (triggers); rbac_user_roles was rebuilt above
   for (const stmt of sqlStatements(systemAccountsSql)) await env.AUTH_DB.prepare(stmt).run();
   for (const stmt of sqlStatements(accountEventsSql)) await env.AUTH_DB.prepare(stmt).run();
+  for (const stmt of sqlStatements(birthDatesSql)) await env.AUTH_DB.prepare(stmt).run();
   await env.AUTH_DB.prepare(`DELETE FROM admin_deletions`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_codes`).run();
   await env.AUTH_DB.prepare(`DELETE FROM password_login_attempts`).run();
