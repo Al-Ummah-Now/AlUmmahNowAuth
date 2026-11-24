@@ -41,6 +41,8 @@
 --   migrations-qa/0043_scoped_revocations.sql
 --   migrations-qa/0044_invite_superseded_tokens.sql
 --   migrations-qa/0045_admin_tools_desktop_client.sql
+--   migrations-qa/0046_tenant_invitations_invited_by.sql
+--   migrations-qa/0047_database_identity.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
@@ -53,6 +55,7 @@ CREATE TABLE auth_theme_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, upd
 CREATE TABLE auth_themes (id TEXT PRIMARY KEY, name_en TEXT NOT NULL, name_ar TEXT NOT NULL, draft_key TEXT, draft_version TEXT, published_key TEXT, published_version TEXT, published_at INTEGER, created_at INTEGER NOT NULL, created_by TEXT, updated_at INTEGER NOT NULL, updated_by TEXT);
 CREATE TABLE authorization_codes (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), code_hash TEXT UNIQUE NOT NULL, user_id TEXT NOT NULL, client_id TEXT NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'default', redirect_uri TEXT NOT NULL, scope TEXT, code_challenge TEXT, code_challenge_method TEXT, expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0, used_at INTEGER, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE browser_sessions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, created_at INTEGER NOT NULL, last_activity INTEGER NOT NULL, user_agent TEXT, ip_address TEXT, version INTEGER NOT NULL DEFAULT 1, active_user_id TEXT, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+CREATE TABLE database_identity (name TEXT PRIMARY KEY);
 CREATE TABLE identity_providers (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL, display_name TEXT NOT NULL, client_id TEXT, client_secret_encrypted TEXT, client_secret_iv TEXT, config TEXT DEFAULT '{}', enabled INTEGER DEFAULT 1, display_order INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(tenant_id, name), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE jwt_keys (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', algorithm TEXT NOT NULL DEFAULT 'RS256', public_key TEXT NOT NULL, private_key TEXT NOT NULL, kid TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), expires_at INTEGER, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE moderation_request_events (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, type TEXT NOT NULL, actor_type TEXT NOT NULL, actor_id TEXT NOT NULL, actor_name TEXT, note TEXT, metadata TEXT, created_at INTEGER NOT NULL, FOREIGN KEY (request_id) REFERENCES moderation_requests(id) ON DELETE CASCADE);
@@ -146,6 +149,7 @@ CREATE INDEX idx_tenant_admins_tenant_id ON tenant_admins(tenant_id);
 CREATE INDEX idx_tenant_admins_user_id ON tenant_admins(user_id);
 CREATE INDEX idx_tenant_invitations_email ON tenant_invitations(email);
 CREATE INDEX idx_tenant_invitations_expires ON tenant_invitations(expires_at);
+CREATE INDEX idx_tenant_invitations_invited_by ON tenant_invitations(invited_by);
 CREATE INDEX idx_tenant_invitations_tenant_id ON tenant_invitations(tenant_id);
 CREATE INDEX idx_tenant_invitations_token_hash ON tenant_invitations(token_hash);
 CREATE INDEX idx_tenants_created ON tenants(created_at);

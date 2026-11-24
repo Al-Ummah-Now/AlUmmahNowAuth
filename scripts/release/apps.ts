@@ -5,8 +5,9 @@
 import type { AppRule, Binding } from './wrangler-config.ts';
 
 // E2E_RUN_USERS: the flag that enables the E2E run-account routes (QA/stage only)
+// E2E_DISPOSABLE_DELETE: QA's cleanup of old test accounts (QA only)
 // BOT_BYPASS_SECRET: signs the E2E Turnstile bypass header; production never has a bypass
-const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET', 'E2E_RUN_USERS', 'BOT_BYPASS_SECRET'];
+const TEST_ONLY = ['E2E_CODE_SINK_SECRET', 'TEST_PROMOTE_SECRET', 'E2E_RUN_USERS', 'BOT_BYPASS_SECRET', 'E2E_DISPOSABLE_DELETE'];
 
 const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'd1_databases', name: 'AUTH_DB' },
@@ -64,6 +65,8 @@ export const APPS: AppRule[] = [
 			requiredBindings: AUTH_BINDINGS,
 			allowedHosts: ['*.stage.alummahnow.net'],
 			testOnlyNames: TEST_ONLY,
+			// QA's account cleanup: never on stage either
+			forbiddenNames: ['E2E_DISPOSABLE_DELETE'],
 		},
 	},
 	{

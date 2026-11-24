@@ -1,0 +1,61 @@
+name: QA test account cleanup
+
+# Old E2E accounts on QA (#312). A dry run unless "delete" is chosen AND confirmed. QA only: the
+# runner has no other host, and the server checks the environment, the issuer, the host and the
+# database's own name before it reads anything (apps/auth/src/routes/test-disposable-users.ts).
+# Prints counts, never an address. Safe to stop and run again.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Count only, or delete
+        type: choice
+        options: [dry-run, delete]
+        default: dry-run
+      max:
+        description: Delete at most this many accounts in this run
+        type: string
+        default: '5000'
+      confirm:
+        description: To delete, type delete-qa-test-accounts
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-disposable
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: ${{ inputs.mode == 'delete' && 'Delete old test accounts (QA)' || 'Count old test accounts (QA, reads only)' }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Run
+        env:
+          E2E_CODE_SINK_SECRET: ${{ secrets.E2E_CODE_SINK_SECRET_QA }}
+          TEST_PROMOTE_SECRET: ${{ secrets.TEST_PROMOTE_SECRET_QA }}
+          MODE: ${{ inputs.mode }}
+          MAX: ${{ inputs.max }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$MODE" = delete ]; then
+            [ "$CONFIRM" = delete-qa-test-accounts ] || { echo "::error::Not confirmed; nothing was deleted"; exit 1; }
+            args=(--delete --max "$MAX")
+          fi
+          node --experimental-strip-types --no-warnings scripts/users/e2e-disposable.ts "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

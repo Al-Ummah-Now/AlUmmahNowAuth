@@ -6,6 +6,7 @@
  *                                        for crashed runs), at most STALE_LIMIT
  *   GET  /test/run-users/census?after=   dry run (#312): counts by kind, one page at a
  *                                        time. Reads only, returns no address
+ *   POST /test/run-users/disposable      QA's cleanup of old test accounts (test-disposable-users.ts)
  *
  * Every CI E2E run registers its own accounts, e2e+<run id>-<attempt>-<name>@e2e.alummahnow.net,
  * and deletes them when it ends. Registration of such an address on a deployment
@@ -32,6 +33,7 @@ import { getClientIP, RATE_LIMIT_PERIOD_SECONDS, withinRateLimit } from '../rate
 import type { DeletionEnv } from '../deletions/kinds';
 import { purgeItem } from '../deletions/purge';
 import { DeletionError, requestPurge, softDelete, type DeletionActor } from '../deletions/service';
+import { disposableUsers } from './test-disposable-users';
 import { e2eAccountKind, type E2EAccountKind } from '../utils/e2e-accounts';
 import { constantTimeEqual, isRunUserEmail, RUN_USER_MARKER, runUsersEnabled, type RunUsersEnv } from '../utils/e2e-sink';
 
@@ -63,11 +65,12 @@ export async function routeRunUsers(url: URL, request: Request, env: RunUserRout
 	const isDelete = url.pathname.startsWith('/test/run-users/delete/') && request.method === 'POST';
 	const isStale = url.pathname === '/test/run-users/stale' && request.method === 'GET';
 	const isCensus = url.pathname === '/test/run-users/census' && request.method === 'GET';
-	if (!isDelete && !isStale && !isCensus) return null;
+	const isDisposable = url.pathname === '/test/run-users/disposable' && request.method === 'POST';
+	if (!isDelete && !isStale && !isCensus && !isDisposable) return null;
 	if (!(await runUsersEnabled(env))) return null;
 	// Stage runs only the delete, for the release E2E teardown. Looking for accounts across the
 	// database is for QA alone: elsewhere these routes do not exist.
-	if ((isStale || isCensus) && !isQa(env)) return null;
+	if ((isStale || isCensus || isDisposable) && !isQa(env)) return null;
 
 	if (!constantTimeEqual(request.headers.get('X-Test-Secret') ?? '', env.TEST_PROMOTE_SECRET ?? '')) {
 		logger.warn('Rejected /test/run-users request: wrong X-Test-Secret', { path: url.pathname });
@@ -79,6 +82,7 @@ export async function routeRunUsers(url: URL, request: Request, env: RunUserRout
 	}
 	if (isStale) return stale(url, env);
 	if (isCensus) return census(url, env);
+	if (isDisposable) return disposableUsers(url, env);
 
 	let email: string;
 	try {
