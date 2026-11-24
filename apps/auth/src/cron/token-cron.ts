@@ -18,6 +18,7 @@ import { D1AtomicStorage } from '../storage/d1-atomic';
 import { adoptLegacyRefreshTokens } from '../storage/legacy-refresh';
 import { enqueueRotation } from '../signing-keys/rotation';
 import { accountEventsCron } from '../account-events/deliver';
+import { backfillAuditCounts, pruneAuditDailyCounts, pruneAuditHourlyCounts } from '../services/audit-counts-backfill';
 
 export type CronJobName = 'token-cleanup' | 'code-sweep';
 
@@ -110,6 +111,17 @@ export async function handleTokenCron(env: Env, cron: string): Promise<CronJobNa
 					await enqueueRotation(env, 'schedule');
 				} catch (error) {
 					logger.error('Signing-key rotation could not be queued', { error: error instanceof Error ? error.message : String(error) });
+				}
+				// Audit counts: bounded historical backfill + prune hourly (>48h) and daily (>90d) buckets (#514)
+				try {
+					const backfill = await backfillAuditCounts(env.AUTH_DB);
+					const prunedHourly = await pruneAuditHourlyCounts(env.AUTH_DB);
+					const prunedDaily = await pruneAuditDailyCounts(env.AUTH_DB);
+					if (backfill.processed || prunedHourly || prunedDaily) {
+						logger.info('Audit counts maintained', { ...backfill, prunedHourly, prunedDaily });
+					}
+				} catch (error) {
+					logger.error('Audit counts maintenance failed', { error: error instanceof Error ? error.message : String(error) });
 				}
 				break;
 			}

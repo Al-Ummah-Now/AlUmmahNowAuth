@@ -17,7 +17,93 @@ import { emitAuditEvent } from './audit-emitter';
 import { adminErrorResponse } from './utils/error-response';
 import { AuditEventType, AuditEventSeverity, createSecurityAlertEvent } from './audit-events';
 import { getClientIP, withinRateLimit } from './rate-limit';
+import {
+  AUDIT_COUNTS_BACKFILL_KEY,
+  AUDIT_STATS_RETENTION_DAYS,
+  isAuditCountsBackfillPending,
+  utcDay,
+  utcHour,
+} from './services/audit-counts-backfill';
 import * as v from 'valibot';
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * Exact SQL statements used by getAuditStats and getUserAuditTrail.
+ * Exported so unit tests assert EXPLAIN QUERY PLAN directly against the
+ * production queries (AlUmmahNowAuth#514).
+ */
+export const AUDIT_ADMIN_QUERIES = {
+  statsHourly: `
+    SELECT hour, event_type, severity, n
+    FROM audit_hourly_counts
+    WHERE hour >= ?1
+  `,
+  statsDaily: `
+    SELECT
+      COALESCE(SUM(CASE WHEN day >= ?1 THEN n ELSE 0 END), 0) AS last_7d,
+      COALESCE(SUM(n), 0) AS total
+    FROM audit_daily_counts
+    WHERE day >= ?2
+  `,
+  statsBackfillStatus: `
+    SELECT value FROM auth_settings WHERE key = ?1
+  `,
+  userTrailFirst: `
+    SELECT * FROM audit_events
+    WHERE user_id = ?1
+    ORDER BY timestamp DESC, id DESC
+    LIMIT ?2
+  `,
+  userTrailCursor: `
+    SELECT * FROM audit_events
+    WHERE user_id = ?1 AND (timestamp, id) < (?2, ?3)
+    ORDER BY timestamp DESC, id DESC
+    LIMIT ?4
+  `,
+  userTrailBefore: `
+    SELECT * FROM audit_events
+    WHERE user_id = ?1 AND timestamp < ?2
+    ORDER BY timestamp DESC, id DESC
+    LIMIT ?3
+  `,
+} as const;
+
+interface UserTrailCursor {
+  t: string;
+  i: string | number;
+}
+
+function encodeTrailCursor(timestamp: string, id: string | number): string {
+  const json = JSON.stringify({ t: timestamp, i: id } satisfies UserTrailCursor);
+  const bytes = new TextEncoder().encode(json);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeTrailCursor(raw: string): UserTrailCursor | null {
+  try {
+    if (!raw || raw.length > 512) return null;
+    const padded = raw.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (raw.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<UserTrailCursor>;
+    if (
+      typeof parsed.t !== 'string' ||
+      parsed.t.length === 0 ||
+      (typeof parsed.i !== 'string' && typeof parsed.i !== 'number') ||
+      (typeof parsed.i === 'string' && parsed.i.length === 0)
+    ) {
+      return null;
+    }
+    return { t: parsed.t, i: parsed.i };
+  } catch {
+    return null;
+  }
+}
 
 // ============================================================================
 // Validation Schemas
@@ -54,7 +140,7 @@ const RevokeUserTokensSchema = v.object({
 // ============================================================================
 
 interface AuditEvent {
-  id: number;
+  id: string | number;
   timestamp: string;
   event_type: string;
   severity: string;
@@ -158,7 +244,13 @@ export class AdminEnterpriseRoutes {
       return this.addCorsHeaders(response, env, request);
     }
     if (path.match(/^\/admin\/audit-logs\/user\/[^/]+$/) && method === 'GET') {
-      const userId = path.split('/').pop()!;
+      const rawUserId = path.split('/').pop()!;
+      let userId: string;
+      try {
+        userId = decodeURIComponent(rawUserId);
+      } catch {
+        return this.addCorsHeaders(createAuthErrorResponse('Invalid userId encoding', 400), env, request);
+      }
       const response = await this.getUserAuditTrail(userId, request, url, env);
       return this.addCorsHeaders(response, env, request);
     }
@@ -396,42 +488,74 @@ export class AdminEnterpriseRoutes {
 
   /**
    * GET /admin/audit-logs/stats - Get audit log statistics
+   *
+   * Reads only the pre-aggregated audit_hourly_counts (last 1h / 24h) and
+   * audit_daily_counts (last 7d / 90d total) tables in one D1 batch, avoiding
+   * full-table and timestamp-range scans over audit_events (AlUmmahNowAuth#514).
    */
   private async getAuditStats(request: Request, env: Env): Promise<Response> {
     try {
       await verifyAdminRequest(request, env, 'admin:audit');
 
-      // Get counts by severity
-      const severityCounts = await this.db.prepare(`
-        SELECT severity, COUNT(*) as count
-        FROM audit_events
-        WHERE timestamp >= datetime('now', '-24 hours')
-        GROUP BY severity
-      `).all<{ severity: string; count: number }>();
+      const now = Date.now();
+      const hour1Cutoff = utcHour(now - HOUR_MS);
+      const hour24Cutoff = utcHour(now - 24 * HOUR_MS);
+      const day7Cutoff = utcDay(now - 7 * DAY_MS);
+      const day90Cutoff = utcDay(now - (AUDIT_STATS_RETENTION_DAYS - 1) * DAY_MS);
 
-      // Get counts by event type (top 10)
-      const eventTypeCounts = await this.db.prepare(`
-        SELECT event_type, COUNT(*) as count
-        FROM audit_events
-        WHERE timestamp >= datetime('now', '-24 hours')
-        GROUP BY event_type
-        ORDER BY count DESC
-        LIMIT 10
-      `).all<{ event_type: string; count: number }>();
+      const [hourlyResult, dailyResult, backfillResult] = await this.db.batch([
+        this.db.prepare(AUDIT_ADMIN_QUERIES.statsHourly).bind(hour24Cutoff),
+        this.db.prepare(AUDIT_ADMIN_QUERIES.statsDaily).bind(day7Cutoff, day90Cutoff),
+        this.db.prepare(AUDIT_ADMIN_QUERIES.statsBackfillStatus).bind(AUDIT_COUNTS_BACKFILL_KEY),
+      ]);
 
-      // Get total events in different time periods
-      const totalEvents = await this.db.prepare(`
-        SELECT
-          (SELECT COUNT(*) FROM audit_events WHERE timestamp >= datetime('now', '-1 hour')) as last_hour,
-          (SELECT COUNT(*) FROM audit_events WHERE timestamp >= datetime('now', '-24 hours')) as last_24h,
-          (SELECT COUNT(*) FROM audit_events WHERE timestamp >= datetime('now', '-7 days')) as last_7d,
-          (SELECT COUNT(*) FROM audit_events) as total
-      `).first<{ last_hour: number; last_24h: number; last_7d: number; total: number }>();
+      const hourlyRows = (hourlyResult?.results || []) as Array<{
+        hour: string;
+        event_type: string;
+        severity: string;
+        n: number;
+      }>;
+      const dailyRow = (dailyResult?.results?.[0] || null) as {
+        last_7d: number;
+        total: number;
+      } | null;
+      const backfillRow = (backfillResult?.results?.[0] || null) as { value: string } | null;
+      const partial = isAuditCountsBackfillPending(backfillRow?.value);
+
+      const severityMap = new Map<string, number>();
+      const eventTypeMap = new Map<string, number>();
+      let lastHour = 0;
+      let last24h = 0;
+
+      for (const row of hourlyRows) {
+        const count = Number(row.n) || 0;
+        last24h += count;
+        if (row.hour >= hour1Cutoff) {
+          lastHour += count;
+        }
+        severityMap.set(row.severity, (severityMap.get(row.severity) || 0) + count);
+        eventTypeMap.set(row.event_type, (eventTypeMap.get(row.event_type) || 0) + count);
+      }
+
+      const bySeverity = Array.from(severityMap.entries())
+        .map(([severity, count]) => ({ severity, count }))
+        .sort((a, b) => b.count - a.count || a.severity.localeCompare(b.severity));
+
+      const byEventType = Array.from(eventTypeMap.entries())
+        .map(([event_type, count]) => ({ event_type, count }))
+        .sort((a, b) => b.count - a.count || a.event_type.localeCompare(b.event_type))
+        .slice(0, 10);
 
       return new Response(JSON.stringify({
-        by_severity: severityCounts.results || [],
-        by_event_type: eventTypeCounts.results || [],
-        totals: totalEvents || { last_hour: 0, last_24h: 0, last_7d: 0, total: 0 },
+        by_severity: bySeverity,
+        by_event_type: byEventType,
+        totals: {
+          last_hour: lastHour,
+          last_24h: last24h,
+          last_7d: Number(dailyRow?.last_7d) || 0,
+          total: Number(dailyRow?.total) || 0,
+        },
+        partial,
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -447,36 +571,77 @@ export class AdminEnterpriseRoutes {
 
   /**
    * GET /admin/audit-logs/user/:userId - Get audit trail for specific user
+   *
+   * Uses idx_audit_events_user_timestamp(user_id, timestamp, id) with keyset
+   * pagination (`cursor` or `before`) and returns `hasMore` instead of a
+   * total COUNT(*) scan (AlUmmahNowAuth#514).
    */
   private async getUserAuditTrail(userId: string, request: Request, url: URL, env: Env): Promise<Response> {
     try {
       await verifyAdminRequest(request, env, 'admin:audit');
 
-      const page = parseInt(url.searchParams.get('page') || '1');
-      const limit = parseInt(url.searchParams.get('limit') || '50');
-      const offset = (page - 1) * limit;
+      const rawLimit = url.searchParams.get('limit');
+      const limit = rawLimit === null ? 50 : Number(rawLimit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return createAuthErrorResponse('Invalid query parameters: limit must be an integer between 1 and 100', 400);
+      }
 
-      // Count total for this user
-      const countResult = await this.db.prepare(
-        'SELECT COUNT(*) as total FROM audit_events WHERE user_id = ?'
-      ).bind(userId).first<{ total: number }>();
-      const total = countResult?.total || 0;
+      const rawCursor = url.searchParams.get('cursor');
+      const rawBefore = url.searchParams.get('before');
+      const rawPage = url.searchParams.get('page');
 
-      // Fetch user's audit events
-      const result = await this.db.prepare(`
-        SELECT * FROM audit_events
-        WHERE user_id = ?
-        ORDER BY timestamp DESC
-        LIMIT ? OFFSET ?
-      `).bind(userId, limit, offset).all<AuditEvent>();
+      if (rawCursor !== null && rawBefore !== null) {
+        return createAuthErrorResponse('Invalid query parameters: provide either cursor or before, not both', 400);
+      }
+
+      if (rawPage !== null && rawCursor === null && rawBefore === null) {
+        const pageNum = Number(rawPage);
+        if (!Number.isInteger(pageNum) || pageNum !== 1) {
+          return createAuthErrorResponse('Invalid query parameters: use cursor or before for keyset pagination', 400);
+        }
+      }
+
+      const fetchLimit = limit + 1;
+      let result: D1Result<AuditEvent>;
+
+      if (rawCursor !== null) {
+        const parsedCursor = decodeTrailCursor(rawCursor);
+        if (!parsedCursor) {
+          return createAuthErrorResponse('Invalid query parameters: malformed cursor', 400);
+        }
+        result = await this.db
+          .prepare(AUDIT_ADMIN_QUERIES.userTrailCursor)
+          .bind(userId, parsedCursor.t, parsedCursor.i, fetchLimit)
+          .all<AuditEvent>();
+      } else if (rawBefore !== null) {
+        const beforeMs = Date.parse(rawBefore);
+        if (!rawBefore || Number.isNaN(beforeMs)) {
+          return createAuthErrorResponse('Invalid query parameters: before must be an ISO timestamp', 400);
+        }
+        const normalizedBefore = new Date(beforeMs).toISOString();
+        result = await this.db
+          .prepare(AUDIT_ADMIN_QUERIES.userTrailBefore)
+          .bind(userId, normalizedBefore, fetchLimit)
+          .all<AuditEvent>();
+      } else {
+        result = await this.db
+          .prepare(AUDIT_ADMIN_QUERIES.userTrailFirst)
+          .bind(userId, fetchLimit)
+          .all<AuditEvent>();
+      }
+
+      const rows = result.results || [];
+      const hasMore = rows.length > limit;
+      const data = hasMore ? rows.slice(0, limit) : rows;
+      const lastRow = hasMore ? data[data.length - 1] : undefined;
 
       return new Response(JSON.stringify({
-        data: result.results || [],
+        data,
         pagination: {
-          page,
           limit,
-          total,
-          pages: Math.ceil(total / limit),
+          hasMore,
+          nextCursor: lastRow ? encodeTrailCursor(lastRow.timestamp, lastRow.id) : null,
+          nextBefore: lastRow ? lastRow.timestamp : null,
         },
       }), {
         status: 200,

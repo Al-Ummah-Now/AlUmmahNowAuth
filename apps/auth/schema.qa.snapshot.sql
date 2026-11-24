@@ -47,6 +47,7 @@
 --   migrations-qa/0049_user_birth_dates.sql
 --   migrations-qa/0050_account_event_client_index.sql
 --   migrations-qa/0051_disable_unused_profile_client.sql
+--   migrations-qa/0052_audit_daily_counts_and_user_index.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_event_deliveries (jti TEXT PRIMARY KEY, seq INTEGER NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')), attempts INTEGER NOT NULL DEFAULT 0, error TEXT, next_at INTEGER NOT NULL, created_at INTEGER NOT NULL, settled_at INTEGER);
@@ -54,7 +55,9 @@ CREATE TABLE account_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT 
 CREATE TABLE account_sessions (id TEXT PRIMARY KEY, browser_session_id TEXT NOT NULL, user_id TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, authenticated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, subject_type TEXT NOT NULL, subject_properties TEXT, refresh_token TEXT NOT NULL, client_id TEXT NOT NULL, FOREIGN KEY (browser_session_id) REFERENCES browser_sessions(id) ON DELETE CASCADE);
 CREATE TABLE admin_deletions (kind TEXT NOT NULL, item_id TEXT NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'default', label TEXT, deleted_at INTEGER NOT NULL, deleted_by TEXT NOT NULL, deleted_by_email TEXT, reason TEXT, purge_requested_at INTEGER, purge_requested_by TEXT, snapshot TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, PRIMARY KEY (kind, item_id));
 CREATE TABLE app_sessions (id TEXT PRIMARY KEY, app TEXT NOT NULL, user_json TEXT NOT NULL, access_token TEXT NOT NULL, refresh_token TEXT, expires_at INTEGER NOT NULL, revoked_at INTEGER, refresh_lock TEXT, refresh_lock_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE audit_daily_counts (day TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, event_type, severity));
 CREATE TABLE audit_events (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), timestamp TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info', user_id TEXT, ip_address TEXT, user_agent TEXT, request_id TEXT, metadata TEXT, success INTEGER NOT NULL DEFAULT 1, error_message TEXT, tenant_id TEXT NOT NULL DEFAULT 'default', FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+CREATE TABLE audit_hourly_counts (hour TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (hour, event_type, severity));
 CREATE TABLE auth_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by TEXT);
 CREATE TABLE auth_theme_client_defaults (client_id TEXT PRIMARY KEY, theme_id TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by TEXT);
 CREATE TABLE auth_theme_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by TEXT);
@@ -112,7 +115,7 @@ CREATE INDEX idx_audit_events_event_type ON audit_events(event_type);
 CREATE INDEX idx_audit_events_severity ON audit_events(severity);
 CREATE INDEX idx_audit_events_tenant_id ON audit_events(tenant_id);
 CREATE INDEX idx_audit_events_timestamp ON audit_events(timestamp);
-CREATE INDEX idx_audit_events_user_id ON audit_events(user_id);
+CREATE INDEX idx_audit_events_user_timestamp ON audit_events(user_id, timestamp, id);
 CREATE INDEX idx_authorization_codes_client_id ON authorization_codes(client_id);
 CREATE INDEX idx_authorization_codes_code_hash ON authorization_codes(code_hash);
 CREATE INDEX idx_authorization_codes_expires ON authorization_codes(expires_at);
@@ -198,5 +201,6 @@ CREATE INDEX idx_webhook_dlq_status ON webhook_dlq(status);
 CREATE INDEX idx_webhook_dlq_tenant_id ON webhook_dlq(tenant_id);
 CREATE VIEW expired_sessions AS SELECT bs.id AS browser_session_id, bs.tenant_id, bs.last_activity, bs.created_at, COUNT(acs.id) AS account_count FROM browser_sessions bs LEFT JOIN account_sessions acs ON bs.id = acs.browser_session_id WHERE bs.last_activity < (strftime('%s', 'now') * 1000 - 7 * 24 * 60 * 60 * 1000) GROUP BY bs.id;
 CREATE VIEW user_permissions AS SELECT DISTINCT ur.user_id, ur.tenant_id, p.client_id, p.name AS permission_name, p.resource, p.action, r.name AS role_name, r.is_system_role, ur.expires_at FROM rbac_user_roles ur INNER JOIN rbac_roles r ON ur.role_id = r.id INNER JOIN rbac_role_permissions rp ON r.id = rp.role_id INNER JOIN rbac_permissions p ON rp.permission_id = p.id WHERE (ur.expires_at IS NULL OR ur.expires_at > strftime('%s', 'now') * 1000);
+CREATE TRIGGER audit_events_counts_insert AFTER INSERT ON audit_events BEGIN INSERT INTO audit_daily_counts (day, event_type, severity, n) VALUES (substr(NEW.timestamp, 1, 10), NEW.event_type, NEW.severity, 1) ON CONFLICT(day, event_type, severity) DO UPDATE SET n = n + 1; INSERT INTO audit_hourly_counts (hour, event_type, severity, n) VALUES (replace(substr(NEW.timestamp, 1, 13), ' ', 'T'), NEW.event_type, NEW.severity, 1) ON CONFLICT(hour, event_type, severity) DO UPDATE SET n = n + 1; END;
 CREATE TRIGGER rbac_user_roles_no_system_accounts_insert BEFORE INSERT ON rbac_user_roles WHEN NEW.user_id = 'user_system' OR EXISTS (SELECT 1 FROM users WHERE id = NEW.user_id AND json_valid(metadata) AND json_extract(metadata, '$.type') = 'system') BEGIN SELECT RAISE(ABORT, 'system_account_role_refused'); END;
 CREATE TRIGGER rbac_user_roles_no_system_accounts_update BEFORE UPDATE OF user_id ON rbac_user_roles WHEN NEW.user_id = 'user_system' OR EXISTS (SELECT 1 FROM users WHERE id = NEW.user_id AND json_valid(metadata) AND json_extract(metadata, '$.type') = 'system') BEGIN SELECT RAISE(ABORT, 'system_account_role_refused'); END;

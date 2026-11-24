@@ -8486,6 +8486,7 @@
         ],
         "operationId": "adminAuditStats",
         "summary": "Audit counts",
+        "description": "Returns audit counts from pre-aggregated hourly and daily tables without scanning audit_events. Windows are UTC bucket-rounded: last_hour sums UTC hour buckets from now - 1h (1-2h span); last_24h, by_severity and by_event_type sum UTC hour buckets from now - 24h (24-25h span); last_7d sums UTC days from now - 7d (8 calendar days inclusive); total sums the 90-day retention window. partial is true while historical backfill is still running.",
         "x-audience": "admin",
         "responses": {
           "200": {
@@ -8519,6 +8520,7 @@
         ],
         "operationId": "adminUserAudit",
         "summary": "One user’s audit log",
+        "description": "Keyset-paginated audit trail for a single user, ordered newest first by (timestamp, id). Pass pagination.nextCursor as cursor (lossless tie-breaking) or pagination.nextBefore as before (ISO-8601, normalized to UTC milliseconds). Response returns { data, pagination: { limit, hasMore, nextCursor, nextBefore } } without a total count.",
         "x-audience": "admin",
         "parameters": [
           {
@@ -8527,6 +8529,33 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
             }
           }
         ],
@@ -8540,6 +8569,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
