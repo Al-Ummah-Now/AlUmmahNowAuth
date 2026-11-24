@@ -387,6 +387,35 @@ describe('openapi.json is sound', () => {
 		}
 	});
 
+	it('request bodies state what the handlers check', () => {
+		type Body = { pattern?: string; example?: string; minProperties?: number; required?: string[]; oneOf?: unknown[]; properties: Record<string, Body> };
+		const body = (method: 'post' | 'put', path: string) => (spec as unknown as { paths: Record<string, Record<string, { requestBody: { content: Record<string, { schema: Body }> } }>> }).paths[path]![method]!.requestBody.content['application/json']!.schema;
+		const source = (file: string, name: string) => new RegExp(`${name} = /([^\\n]+)/;`).exec(read(`apps/auth/src/${file}`))?.[1];
+		const invite = body('post', '/provisioning/invites').properties;
+		expect(invite.inviteId!.pattern).toBe(source('invites/service.ts', 'INVITE_ID_RE'));
+		expect(invite.userId!.pattern).toBe(source('invites/service.ts', 'USER_ID_RE'));
+		const link = body('post', '/provisioning/invites/{id}/link').properties.tokenHash!;
+		expect(read('apps/auth/src/invites/service.ts')).toContain(`!/${link.pattern}/.test(tokenHash)`);
+		const revoke = body('post', '/internal/token-revocations');
+		expect(revoke.oneOf).toEqual([{ required: ['install_id'] }, { required: ['client_id'] }]);
+		for (const name of ['user_id', 'install_id', 'client_id']) expect(read('apps/auth/src/revocation/install-routes.ts')).toContain(`const ID = /${revoke.properties[name]!.pattern}/;`);
+		for (const path of ['/native/passkey/verify', '/native/passkey/register/verify']) {
+			const b = body('post', path);
+			expect(b.properties.credential!.required, path).toEqual(['id', 'type', 'response']);
+			expect(read('apps/auth/src/passkeys/native.ts')).toContain(`!/${b.properties.challenge_id!.pattern}/.test(challengeId)`);
+		}
+		expect(body('put', '/account/name').minProperties).toBe(1);
+		expect(body('post', '/provisioning/invites/{id}/purge').required).toEqual(['confirm']);
+		// an example is one the handler would take
+		const check = (node: unknown): void => {
+			if (!node || typeof node !== 'object') return;
+			const at = node as Body;
+			if (typeof at.pattern === 'string' && typeof at.example === 'string') expect(at.example).toMatch(new RegExp(at.pattern));
+			Object.values(node).forEach(check);
+		};
+		check(spec);
+	});
+
 	it('path parameters match the path', () => {
 		for (const { key, path, op } of operations) {
 			const named = [...path.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();

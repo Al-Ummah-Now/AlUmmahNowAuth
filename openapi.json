@@ -868,11 +868,30 @@
                     "type": "string"
                   },
                   "challenge_id": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{16,128}$",
+                    "example": "CHALLENGE_ID_FROM_OPTIONS"
                   },
                   "credential": {
                     "type": "object",
-                    "description": "The WebAuthn PublicKeyCredential as JSON"
+                    "description": "The WebAuthn PublicKeyCredential as JSON",
+                    "required": [
+                      "id",
+                      "type",
+                      "response"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "public-key"
+                      },
+                      "response": {
+                        "type": "object"
+                      }
+                    }
                   }
                 }
               }
@@ -988,11 +1007,30 @@
                 ],
                 "properties": {
                   "challenge_id": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{16,128}$",
+                    "example": "CHALLENGE_ID_FROM_OPTIONS"
                   },
                   "credential": {
                     "type": "object",
-                    "description": "The WebAuthn PublicKeyCredential as JSON"
+                    "description": "The WebAuthn PublicKeyCredential as JSON",
+                    "required": [
+                      "id",
+                      "type",
+                      "response"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "public-key"
+                      },
+                      "response": {
+                        "type": "object"
+                      }
+                    }
                   },
                   "name": {
                     "type": "string",
@@ -1368,7 +1406,8 @@
                   "lastNameLocalized": {
                     "type": "object"
                   }
-                }
+                },
+                "minProperties": 1
               }
             }
           }
@@ -1698,15 +1737,20 @@
                 "properties": {
                   "inviteId": {
                     "type": "string",
-                    "description": "inv_ and 32 hex digits"
+                    "description": "inv_ and 32 hex digits",
+                    "pattern": "^inv_[0-9a-f]{32}$",
+                    "example": "inv_0123456789abcdef0123456789abcdef"
                   },
                   "userId": {
                     "type": "string",
-                    "description": "usr_ and 32 hex digits"
+                    "description": "usr_ and 32 hex digits",
+                    "pattern": "^usr_[0-9a-f]{32}$",
+                    "example": "usr_0123456789abcdef0123456789abcdef"
                   },
                   "email": {
                     "type": "string",
-                    "format": "email"
+                    "format": "email",
+                    "example": "person@example.com"
                   },
                   "name": {
                     "type": "string"
@@ -1975,7 +2019,9 @@
                 "properties": {
                   "tokenHash": {
                     "type": "string",
-                    "description": "Hash of the token in the app’s own link"
+                    "description": "Hash of the token in the app’s own link",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "example": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                   }
                 }
               }
@@ -2204,7 +2250,7 @@
           }
         ],
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -2212,9 +2258,14 @@
                 "properties": {
                   "confirm": {
                     "type": "string",
-                    "description": "The invited email, to confirm"
+                    "description": "The invited email, to confirm",
+                    "format": "email",
+                    "example": "person@example.com"
                   }
-                }
+                },
+                "required": [
+                  "confirm"
+                ]
               }
             }
           }
@@ -2285,16 +2336,31 @@
                 ],
                 "properties": {
                   "user_id": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._-]{1,128}$"
                   },
                   "install_id": {
                     "type": "string",
-                    "description": "The id a native app sent at /token"
+                    "description": "The id a native app sent at /token",
+                    "pattern": "^[A-Za-z0-9._-]{1,128}$"
                   },
                   "client_id": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._-]{1,128}$"
                   }
-                }
+                },
+                "oneOf": [
+                  {
+                    "required": [
+                      "install_id"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "client_id"
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2608,13 +2674,16 @@
                 ],
                 "properties": {
                   "note": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
                   },
                   "evidence": {
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/Evidence"
-                    }
+                    },
+                    "maxItems": 20
                   },
                   "requested_by": {
                     "$ref": "#/components/schemas/RequestedBy"
@@ -8958,10 +9027,13 @@
           "url": {
             "type": "string",
             "description": "An https address",
-            "format": "uri"
+            "format": "uri",
+            "maxLength": 2048,
+            "example": "https://example.com/evidence"
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 200
           }
         }
       },
@@ -8973,10 +9045,14 @@
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
           },
           "display_name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
           }
         }
       },
@@ -8991,7 +9067,8 @@
         ],
         "properties": {
           "subject_user_id": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
           },
           "action": {
             "type": "string",
@@ -9020,7 +9097,8 @@
           },
           "reason": {
             "type": "string",
-            "maxLength": 4000
+            "maxLength": 4000,
+            "minLength": 1
           },
           "evidence": {
             "type": "array",
@@ -9031,6 +9109,11 @@
           },
           "requested_by": {
             "$ref": "#/components/schemas/RequestedBy"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
           }
         }
       },
