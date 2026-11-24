@@ -57,10 +57,27 @@ describe('queue consumers', () => {
 			},
 		} as unknown as CfClient;
 		expect(await ensureQueues(cf, ['audit-events', 'account-events'], true)).toEqual(['ok       audit-events', 'missing  account-events (dry run)']);
-		expect(calls).toEqual(['GET /queues?per_page=1000']);
+		expect(calls).toEqual(['GET /queues?page=1&per_page=500']);
 		expect(await ensureQueues(cf, ['audit-events', 'account-events'])).toEqual(['ok       audit-events', 'created  account-events']);
 		expect(calls.slice(2)).toEqual(['POST /queues {"queue_name":"account-events"}']);
 		expect(await ensureQueues(cf, [])).toEqual([]);
+	});
+
+	it('reads every page of queues before it decides one is missing', async () => {
+		const names = Array.from({ length: 1001 }, (_, i) => (i === 1000 ? 'account-events' : `q${i}`));
+		const asked: string[] = [];
+		const cf = {
+			accountId: 'a',
+			async request(method: string, path: string) {
+				asked.push(`${method} ${path}`);
+				if (path.endsWith('/consumers')) return [{ script_name: 'w' }];
+				const page = Number(/page=(\d+)/.exec(path)![1]);
+				return names.slice((page - 1) * 500, page * 500).map((n) => ({ queue_id: n, queue_name: n }));
+			},
+		} as unknown as CfClient;
+		expect(await ensureQueues(cf, ['account-events'])).toEqual(['ok       account-events']);
+		expect(asked).toEqual([1, 2, 3].map((p) => `GET /queues?page=${p}&per_page=500`));
+		expect(await ensureConsumers(cf, [{ queue: 'account-events', worker: 'w', settings: {} }])).toEqual(['ok       account-events -> w']);
 	});
 
 	it('fails when a queue does not exist', async () => {

@@ -77,10 +77,22 @@ interface QueueConsumer {
 	service?: string;
 }
 
+const PER_PAGE = 500;
+
+/** Every queue of the account, page by page. */
+async function listQueues(cf: CfClient): Promise<QueueInfo[]> {
+	const all: QueueInfo[] = [];
+	for (let page = 1; ; page++) {
+		const queues = await cf.request<QueueInfo[]>('GET', `/queues?page=${page}&per_page=${PER_PAGE}`);
+		all.push(...queues);
+		if (queues.length < PER_PAGE) return all;
+	}
+}
+
 /** Creates the queues that are missing. Never changes or deletes one. */
 export async function ensureQueues(cf: CfClient, names: string[], dryRun = false): Promise<string[]> {
 	if (!names.length) return [];
-	const existing = new Set((await cf.request<QueueInfo[]>('GET', '/queues?per_page=1000')).map((q) => q.queue_name));
+	const existing = new Set((await listQueues(cf)).map((q) => q.queue_name));
 	const lines: string[] = [];
 	for (const name of names) {
 		if (existing.has(name)) lines.push(`ok       ${name}`);
@@ -96,7 +108,7 @@ export async function ensureQueues(cf: CfClient, names: string[], dryRun = false
 export async function ensureConsumers(cf: CfClient, specs: ConsumerSpec[], dryRun = false): Promise<string[]> {
 	const lines: string[] = [];
 	if (!specs.length) return lines;
-	const queues = await cf.request<QueueInfo[]>('GET', '/queues?per_page=1000');
+	const queues = await listQueues(cf);
 	for (const spec of specs) {
 		const queue = queues.find((q) => q.queue_name === spec.queue);
 		if (!queue) throw new Error(`Queue ${spec.queue} does not exist (wrangler queues create ${spec.queue})`);

@@ -204,11 +204,10 @@ export async function accountEventsCron(env: AccountEventsEnv, now = Date.now())
 		for (let page = 0; page < 10; page++) {
 			const { results } = await env.AUTH_DB.prepare(DUE_SQL).bind(now, PAGE).all<{ jti: string }>();
 			if (!results.length) break;
-			await enqueue(env, results.map((r) => r.jti), now);
-			done.queued += results.length;
-			// nothing moved (the queue is down): the next run tries again
-			const again = await env.AUTH_DB.prepare(DUE_SQL).bind(now, 1).first<{ jti: string }>();
-			if (!again || results.some((r) => r.jti === again.jti)) break;
+			const queued = await enqueue(env, results.map((r) => r.jti), now);
+			done.queued += queued;
+			// the queue is down: the next run tries again
+			if (queued < results.length || results.length < PAGE) break;
 		}
 	}
 	const old = await env.AUTH_DB.prepare(OLD_DELIVERED_SQL).bind(now - KEEP_MS, 500).run();
