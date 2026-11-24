@@ -23,13 +23,26 @@ import type { AppEnv } from "./apps";
 export const REAUTH_MAX_AGE_SECONDS = 600;
 
 /**
- * Stricter pre-check window (5 minutes) leaving a 5-minute safety margin inside Auth's
- * 600s limit so a multi-second erasure does not expire the step-up window mid-flight.
+ * Stricter pre-check window (5 minutes) for pass 1, leaving a 5-minute safety margin
+ * inside Auth's 600s limit before touching any user content.
  */
 export const PRECHECK_REAUTH_MAX_AGE_SECONDS = 300;
 
+/**
+ * Continuation window (570s — Auth's 600s limit minus 30s skew margin) used on resume passes
+ * after pass 1 has already started erasing content, so a multi-pass erase does not bounce
+ * to re-auth at 305s while Auth still accepts the sign-in.
+ */
+export const CONTINUATION_REAUTH_MAX_AGE_SECONDS = 570;
+
 /** Matches AlUmmahNow PrivacyService.MAX_ERASURE_PASSES. */
 export const MAX_ERASURE_PASSES = 50;
+
+export interface DeleteProgressState {
+  stage: "in_progress" | "content_erased";
+  resumeToken?: string;
+  updatedAt: number;
+}
 
 export const VIDEOS_API_URLS: Record<AppEnv, string | null> = {
   production: "https://videos.api.alummahnow.net",
@@ -111,16 +124,22 @@ export async function orchestrateAccountDeletion(opts: {
   authServerUrl: string;
   videosApiUrl: string | null;
   resumeToken?: string;
+  /** True when a prior pass already completed Videos erasure and only Auth DELETE /account remains. */
+  skipVideosErasure?: boolean;
+  /** True when erasure already started in an earlier pass (uses Auth's 600s window with a 30s margin). */
+  erasureStarted?: boolean;
   nowMs?: number;
   fetchFn?: typeof fetch;
 }): Promise<EraseAccountOutcome> {
   const fetchFn = opts.fetchFn ?? fetch;
   const nowMs = opts.nowMs ?? Date.now();
+  const isContinuation = Boolean(opts.resumeToken || opts.skipVideosErasure || opts.erasureStarted);
+  const reauthWindow = isContinuation ? CONTINUATION_REAUTH_MAX_AGE_SECONDS : PRECHECK_REAUTH_MAX_AGE_SECONDS;
 
-  // Verify the token's subject matches the account shown in the page before any upstream call.
+  // Fail closed: the token MUST carry properties.id matching expectedUserId before any upstream call.
   if (opts.expectedUserId !== undefined) {
     const tokenUid = tokenUserIdOf(opts.accessToken);
-    if (tokenUid !== null && tokenUid !== opts.expectedUserId) {
+    if (!tokenUid || tokenUid !== opts.expectedUserId) {
       return {
         ok: false,
         status: 409,
@@ -130,86 +149,99 @@ export async function orchestrateAccountDeletion(opts: {
     }
   }
 
-  // Check step-up freshness with margin BEFORE erasing any Videos data so a stale session never wipes content first.
-  if (!isRecentSignIn(opts.accessToken, nowMs, PRECHECK_REAUTH_MAX_AGE_SECONDS)) {
+  // Check step-up freshness BEFORE erasing any Videos data (300s for pass 1; 570s for continuation passes).
+  if (!isRecentSignIn(opts.accessToken, nowMs, reauthWindow)) {
+    if (opts.skipVideosErasure) {
+      return {
+        ok: false,
+        status: 409,
+        error: "content_erased_reauth_required",
+        contentErased: true,
+        maxAge: REAUTH_MAX_AGE_SECONDS,
+        detail: "Content removed; sign in again to finish deleting your account.",
+      };
+    }
     return {
       ok: false,
       status: 401,
       error: "insufficient_user_authentication",
-      maxAge: PRECHECK_REAUTH_MAX_AGE_SECONDS,
+      maxAge: reauthWindow,
       detail: "Sign in again to delete your account",
-    };
-  }
-
-  // Fail closed when Videos API is unconfigured so Auth is never deleted while Videos data stays behind.
-  if (!opts.videosApiUrl) {
-    return { ok: false, status: 503, error: "videos_api_unconfigured" };
-  }
-
-  // Step 1: Run one bounded Videos erasure pass while the user's access token is still valid.
-  let res: Response;
-  try {
-    res = await fetchFn(`${opts.videosApiUrl}/api/privacy/data`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${opts.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        confirm: "DELETE",
-        ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
-      }),
-    });
-  } catch {
-    return {
-      ok: false,
-      status: 502,
-      error: "videos_erasure_failed",
       ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
     };
   }
 
-  if (res.status === 401) {
-    const errBody = (await res.json().catch(() => null)) as { error?: unknown } | null;
-    if (errBody?.error === "insufficient_user_authentication") {
-      return {
-        ok: false,
-        status: 401,
-        error: "insufficient_user_authentication",
-        maxAge: PRECHECK_REAUTH_MAX_AGE_SECONDS,
-        ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
-      };
+  if (!opts.skipVideosErasure) {
+    // Fail closed when Videos API is unconfigured so Auth is never deleted while Videos data stays behind.
+    if (!opts.videosApiUrl) {
+      return { ok: false, status: 503, error: "videos_api_unconfigured" };
     }
-    return {
-      ok: false,
-      status: 502,
-      error: "videos_erasure_failed",
-      ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
-    };
-  }
-  if (!res.ok) {
-    return {
-      ok: false,
-      status: 502,
-      error: "videos_erasure_failed",
-      ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
-    };
-  }
 
-  const data = (await res.json().catch(() => null)) as { complete?: unknown; resumeToken?: unknown } | null;
-  const complete = data?.complete === true;
-  const nextResumeToken = typeof data?.resumeToken === "string" && data.resumeToken.length > 0 ? data.resumeToken : undefined;
-
-  if (!complete) {
-    if (!nextResumeToken) {
+    // Step 1: Run one bounded Videos erasure pass while the user's access token is still valid.
+    let res: Response;
+    try {
+      res = await fetchFn(`${opts.videosApiUrl}/api/privacy/data`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${opts.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          confirm: "DELETE",
+          ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
+        }),
+      });
+    } catch {
       return {
         ok: false,
         status: 502,
-        error: "videos_erasure_incomplete",
+        error: "videos_erasure_failed",
         ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
       };
     }
-    return { ok: true, complete: false, resumeToken: nextResumeToken };
+
+    if (res.status === 401) {
+      const errBody = (await res.json().catch(() => null)) as { error?: unknown } | null;
+      if (errBody?.error === "insufficient_user_authentication") {
+        return {
+          ok: false,
+          status: 401,
+          error: "insufficient_user_authentication",
+          maxAge: reauthWindow,
+          ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
+        };
+      }
+      return {
+        ok: false,
+        status: 502,
+        error: "videos_erasure_failed",
+        ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
+      };
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: 502,
+        error: "videos_erasure_failed",
+        ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
+      };
+    }
+
+    const data = (await res.json().catch(() => null)) as { complete?: unknown; resumeToken?: unknown } | null;
+    const complete = data?.complete === true;
+    const nextResumeToken = typeof data?.resumeToken === "string" && data.resumeToken.length > 0 ? data.resumeToken : undefined;
+
+    if (!complete) {
+      if (!nextResumeToken) {
+        return {
+          ok: false,
+          status: 502,
+          error: "videos_erasure_incomplete",
+          ...(opts.resumeToken ? { resumeToken: opts.resumeToken } : {}),
+        };
+      }
+      return { ok: true, complete: false, resumeToken: nextResumeToken };
+    }
   }
 
   // Step 2: Videos erasure is complete; delete the sign-in account on Auth (revokes all sessions & refresh tokens, 30-day purge).

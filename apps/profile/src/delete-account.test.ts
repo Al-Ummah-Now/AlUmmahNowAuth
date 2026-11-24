@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CONTINUATION_REAUTH_MAX_AGE_SECONDS,
   isRecentSignIn,
   orchestrateAccountDeletion,
   PRECHECK_REAUTH_MAX_AGE_SECONDS,
@@ -40,20 +41,58 @@ describe("delete-account orchestration (AlUmmahNowAuth#532)", () => {
     expect(resolveVideosApiUrl(undefined, null)).toBeNull();
   });
 
-  it("extracts token properties.id and rejects account mismatch before any upstream call", async () => {
+  it("extracts token properties.id and fails closed on missing or mismatched id before any upstream call", async () => {
     const tokenForB = jwtWithClaims(NOW_S + 900, NOW_S - 20, "u-other-b");
+    const tokenMissingId = jwtWithClaims(NOW_S + 900, NOW_S - 20, undefined);
     expect(tokenUserIdOf(tokenForB)).toBe("u-other-b");
+    expect(tokenUserIdOf(tokenMissingId)).toBeNull();
     const fetchSpy = vi.fn();
-    const res = await orchestrateAccountDeletion({
-      accessToken: tokenForB,
+    for (const badToken of [tokenForB, tokenMissingId]) {
+      const res = await orchestrateAccountDeletion({
+        accessToken: badToken,
+        expectedUserId: USER.id,
+        authServerUrl: AUTH,
+        videosApiUrl: VIDEOS_API,
+        nowMs: NOW_MS,
+        fetchFn: fetchSpy as unknown as typeof fetch,
+      });
+      expect(res).toMatchObject({ ok: false, status: 409, error: "account_mismatch" });
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("uses 300s pre-check for pass 1 and 570s continuation window for resume passes", async () => {
+    // 320s old: rejected on pass 1 (300s), allowed on continuation pass (570s)
+    const midWindowToken = jwtWithClaims(NOW_S + 900, NOW_S - 320);
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/privacy/data")) {
+        return new Response(JSON.stringify({ success: true, complete: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ deleted: true, userId: USER.id, deletedAt: NOW_MS }), { status: 200 });
+    });
+
+    const pass1 = await orchestrateAccountDeletion({
+      accessToken: midWindowToken,
       expectedUserId: USER.id,
       authServerUrl: AUTH,
       videosApiUrl: VIDEOS_API,
       nowMs: NOW_MS,
       fetchFn: fetchSpy as unknown as typeof fetch,
     });
-    expect(res).toMatchObject({ ok: false, status: 409, error: "account_mismatch" });
+    expect(pass1).toMatchObject({ ok: false, status: 401, error: "insufficient_user_authentication", maxAge: PRECHECK_REAUTH_MAX_AGE_SECONDS });
     expect(fetchSpy).not.toHaveBeenCalled();
+
+    const pass2 = await orchestrateAccountDeletion({
+      accessToken: midWindowToken,
+      expectedUserId: USER.id,
+      authServerUrl: AUTH,
+      videosApiUrl: VIDEOS_API,
+      resumeToken: "tok-2",
+      nowMs: NOW_MS,
+      fetchFn: fetchSpy as unknown as typeof fetch,
+    });
+    expect(pass2).toMatchObject({ ok: true, complete: true, userId: USER.id });
+    expect(CONTINUATION_REAUTH_MAX_AGE_SECONDS).toBe(570);
   });
 
   it("enforces the 300s pre-check margin (inside Auth's 600s limit) before erasing any Videos data", async () => {
@@ -290,17 +329,26 @@ describe("profile worker /delete-account and DELETE /api/account", () => {
     expect(arHtml).not.toContain("فيديو");
   });
 
-  it("?deleted=1 alone never fakes a deletion (signed out or signed in); only the HttpOnly proof cookie renders done when signed out", async () => {
+  it("?deleted=1 and forged cookies never fake a deletion; only a server-stored one-time KV nonce renders done once", async () => {
     // Signed out with ?deleted=1 and no cookie -> normal signed-out sign-in prompt
     const spoofedOut = await worker.fetch(new Request(`${APP}/delete-account?deleted=1`), env() as never, {} as ExecutionContext);
     const spoofedOutHtml = await spoofedOut.text();
     expect(spoofedOutHtml).not.toContain('data-testid="delete-account-done"');
     expect(spoofedOutHtml).toContain('data-testid="delete-account-signin"');
 
-    // Signed in with ?deleted=1 (and even with stale done cookie) -> normal delete page, never done card
+    // Forged static cookie without KV proof -> never renders done
+    const forgedCookie = await worker.fetch(
+      new Request(`${APP}/delete-account`, { headers: { Cookie: "delete_account_done=1" } }),
+      env() as never,
+      {} as ExecutionContext,
+    );
+    expect(await forgedCookie.text()).not.toContain('data-testid="delete-account-done"');
+
+    // Signed in with ?deleted=1 and valid KV nonce -> normal delete page, never done card
+    await kv.asKV().put("delete_done:nonce-1", USER.id);
     const cookie = await seedSession(jwtWithClaims(NOW_S + 900, NOW_S - 30), "sid-spoof");
     const spoofedIn = await worker.fetch(
-      new Request(`${APP}/delete-account?deleted=1`, { headers: { Cookie: `${cookie}; delete_account_done=1` } }),
+      new Request(`${APP}/delete-account?deleted=1`, { headers: { Cookie: `${cookie}; delete_account_done=nonce-1` } }),
       env() as never,
       {} as ExecutionContext,
     );
@@ -308,9 +356,9 @@ describe("profile worker /delete-account and DELETE /api/account", () => {
     expect(spoofedInHtml).not.toContain('data-testid="delete-account-done"');
     expect(spoofedInHtml).toContain('data-testid="delete-account-open-dialog"');
 
-    // Signed out WITH delete_account_done=1 cookie -> renders done card with matching hero
+    // Signed out WITH valid KV nonce -> renders done card ONCE and clears both KV and cookie
     const proved = await worker.fetch(
-      new Request(`${APP}/delete-account`, { headers: { Cookie: "delete_account_done=1" } }),
+      new Request(`${APP}/delete-account`, { headers: { Cookie: "delete_account_done=nonce-1" } }),
       env() as never,
       {} as ExecutionContext,
     );
@@ -318,6 +366,15 @@ describe("profile worker /delete-account and DELETE /api/account", () => {
     expect(provedHtml).toContain('data-testid="delete-account-done"');
     expect(provedHtml).toContain("Your account has been deleted");
     expect(provedHtml).not.toContain("Delete your Al\u00A0Ummah\u00A0Now account");
+    expect((proved.headers.getSetCookie?.() ?? [proved.headers.get("Set-Cookie") ?? ""]).join("\n")).toContain("delete_account_done=;");
+
+    // Replaying the same nonce a second time renders normal signed-out page (one-time)
+    const replayed = await worker.fetch(
+      new Request(`${APP}/delete-account`, { headers: { Cookie: "delete_account_done=nonce-1" } }),
+      env() as never,
+      {} as ExecutionContext,
+    );
+    expect(await replayed.text()).not.toContain('data-testid="delete-account-done"');
   });
 
   it("GET /delete-account signed in renders the accessible in-app dialog, embeds userId, uses <bdi> for email, and never browser confirm/alert", async () => {
@@ -456,7 +513,7 @@ describe("profile worker /delete-account and DELETE /api/account", () => {
     expect(await getSession({ db, kv: kv.asKV() }, "sid-ok", NOW_MS)).toBeNull();
     const cookies = ok.headers.getSetCookie?.() ?? [ok.headers.get("Set-Cookie") ?? ""];
     expect(cookies.join("\n")).toContain("profile_session=;");
-    expect(cookies.join("\n")).toContain("delete_account_done=1;");
+    expect(cookies.join("\n")).toMatch(/delete_account_done=[0-9a-f-]{36};/);
   });
 
   it("/logout keeps a safe same-origin ?return=/delete-account?lang=ar", async () => {
@@ -471,7 +528,7 @@ describe("profile worker /delete-account and DELETE /api/account", () => {
     expect(loc.searchParams.get("return")).toBe(`${APP}/delete-account?lang=ar`);
   });
 
-  it("renders ?reauth=1 with the re-auth banner, sign-in CTA, and no redundant Delete my account button", async () => {
+  it("ignores forgeable ?erased=1 query param and shows half-finished / erased notices only from server-side KV state", async () => {
     const cookie = await seedSession(jwtWithClaims(NOW_S + 900, NOW_S - 30));
     const res = await worker.fetch(
       new Request(`${APP}/delete-account?reauth=1`, { headers: { Cookie: cookie } }),
@@ -484,12 +541,39 @@ describe("profile worker /delete-account and DELETE /api/account", () => {
     expect(html).toContain('data-testid="delete-account-reauth-signin"');
     expect(html).not.toContain('data-testid="delete-account-open-dialog"');
 
-    // ?reauth=1&erased=1 shows the distinct content-already-removed copy
-    const erasedRes = await worker.fetch(
+    // Bare ?reauth=1&erased=1 without server-side KV state MUST NOT claim content was removed
+    const forgedErasedRes = await worker.fetch(
       new Request(`${APP}/delete-account?reauth=1&erased=1`, { headers: { Cookie: cookie } }),
       env() as never,
       {} as ExecutionContext,
     );
-    expect(await erasedRes.text()).toContain("Your Videos content has been removed");
+    const forgedHtml = await forgedErasedRes.text();
+    expect(forgedHtml).not.toContain("Your Videos content has been removed");
+    expect(forgedHtml).toContain("For your security, please sign in again");
+
+    // Server-side KV content_erased state bound to session.user.id DOES show the honest notice (both with and without ?reauth=1)
+    await kv.asKV().put(`delete_progress:${USER.id}`, JSON.stringify({ stage: "content_erased", updatedAt: NOW_MS }));
+    const realErasedReauth = await worker.fetch(
+      new Request(`${APP}/delete-account?reauth=1`, { headers: { Cookie: cookie } }),
+      env() as never,
+      {} as ExecutionContext,
+    );
+    expect(await realErasedReauth.text()).toContain("Your Videos content has been removed");
+
+    const realErasedReturn = await worker.fetch(
+      new Request(`${APP}/delete-account`, { headers: { Cookie: cookie } }),
+      env() as never,
+      {} as ExecutionContext,
+    );
+    expect(await realErasedReturn.text()).toContain("Your Videos content has already been removed");
+
+    // Server-side KV in_progress state preserves resumeToken across reloads and shows honest in-progress notice
+    await kv.asKV().put(`delete_progress:${USER.id}`, JSON.stringify({ stage: "in_progress", resumeToken: "tok-saved", updatedAt: NOW_MS }));
+    const inProgressReturn = await worker.fetch(
+      new Request(`${APP}/delete-account`, { headers: { Cookie: cookie } }),
+      env() as never,
+      {} as ExecutionContext,
+    );
+    expect(await inProgressReturn.text()).toContain("Account deletion is already in progress");
   });
 });

@@ -3,7 +3,11 @@ import { createSubjects } from "@al-ummah-now/openauth/subject";
 import { generatePKCE } from "@al-ummah-now/openauth/pkce";
 import * as v from "valibot";
 import { appsForUser, resolveAppEnv } from "./apps";
-import { orchestrateAccountDeletion, resolveVideosApiUrl } from "./delete-account";
+import {
+  orchestrateAccountDeletion,
+  resolveVideosApiUrl,
+  type DeleteProgressState,
+} from "./delete-account";
 import { localeOf, pickLocale } from "./i18n";
 import { renderDeleteAccountPage, renderHomePage } from "./page";
 import {
@@ -115,15 +119,45 @@ function clearSessionCookie(isLocalhost: boolean) {
 }
 
 const DELETE_DONE_COOKIE = "delete_account_done";
+const DELETE_DONE_KV_PREFIX = "delete_done:";
+const DELETE_DONE_TTL_SECONDS = 120;
+const DELETE_PROGRESS_KV_PREFIX = "delete_progress:";
+const DELETE_PROGRESS_TTL_SECONDS = 24 * 60 * 60;
 
-function createDeleteDoneCookie(isLocalhost: boolean) {
+function createDeleteDoneCookie(nonce: string, isLocalhost: boolean) {
   const secure = isLocalhost ? "" : "Secure; ";
-  return `${DELETE_DONE_COOKIE}=1; Path=/delete-account; HttpOnly; ${secure}SameSite=Lax; Max-Age=120`;
+  return `${DELETE_DONE_COOKIE}=${nonce}; Path=/delete-account; HttpOnly; ${secure}SameSite=Lax; Max-Age=${DELETE_DONE_TTL_SECONDS}`;
 }
 
 function clearDeleteDoneCookie(isLocalhost: boolean) {
   const secure = isLocalhost ? "" : "Secure; ";
   return `${DELETE_DONE_COOKIE}=; Path=/delete-account; HttpOnly; ${secure}SameSite=Lax; Max-Age=0`;
+}
+
+async function readDeleteProgress(env: Env, userId: string): Promise<DeleteProgressState | null> {
+  const raw = await env.AUTH_STORAGE.get(`${DELETE_PROGRESS_KV_PREFIX}${userId}`);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<DeleteProgressState>;
+    if (parsed.stage !== "in_progress" && parsed.stage !== "content_erased") return null;
+    return {
+      stage: parsed.stage,
+      ...(typeof parsed.resumeToken === "string" && parsed.resumeToken.length > 0 ? { resumeToken: parsed.resumeToken } : {}),
+      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeDeleteProgress(env: Env, userId: string, state: DeleteProgressState): Promise<void> {
+  await env.AUTH_STORAGE.put(`${DELETE_PROGRESS_KV_PREFIX}${userId}`, JSON.stringify(state), {
+    expirationTtl: DELETE_PROGRESS_TTL_SECONDS,
+  });
+}
+
+async function clearDeleteProgress(env: Env, userId: string): Promise<void> {
+  await env.AUTH_STORAGE.delete(`${DELETE_PROGRESS_KV_PREFIX}${userId}`);
 }
 
 // One OpenAuth client per isolate: the client caches discovery and JWKS
@@ -346,10 +380,19 @@ const worker = {
       if (body?.confirm !== 'DELETE') return json({ error: 'confirmation_required' }, 400);
       const expectedUserId = typeof body?.userId === 'string' && body.userId.trim().length > 0 ? body.userId.trim() : null;
       if (!expectedUserId) return json({ error: 'account_mismatch' }, 409);
-      const resumeToken = typeof body?.resumeToken === 'string' && body.resumeToken.length > 0 ? body.resumeToken : undefined;
+      // Compare stored session user id BEFORE refreshing tokens so a cross-tab mismatch never hits Auth.
+      const storedSession = await getSession(request, env);
+      if (!storedSession || !storedSession.user?.id) return json({ error: 'not_authenticated' }, 401);
+      if (storedSession.user.id !== expectedUserId) return json({ error: 'account_mismatch' }, 409);
       const { session } = await getFreshSession(request, env, authServerUrl);
       if (!session || !session.user?.id) return json({ error: 'not_authenticated' }, 401);
       if (session.user.id !== expectedUserId) return json({ error: 'account_mismatch' }, 409);
+
+      const savedProgress = await readDeleteProgress(env, expectedUserId);
+      const clientResumeToken = typeof body?.resumeToken === 'string' && body.resumeToken.length > 0 ? body.resumeToken : undefined;
+      const effectiveResumeToken = clientResumeToken ?? savedProgress?.resumeToken;
+      const skipVideosErasure = savedProgress?.stage === 'content_erased';
+
       const appEnv = resolveAppEnv(env.APP_ENV, url.hostname);
       const videosApiUrl = resolveVideosApiUrl(env.VIDEOS_API_URL, appEnv);
       const result = await orchestrateAccountDeletion({
@@ -357,9 +400,20 @@ const worker = {
         expectedUserId,
         authServerUrl,
         videosApiUrl,
-        resumeToken,
+        resumeToken: effectiveResumeToken,
+        skipVideosErasure,
+        erasureStarted: savedProgress !== null,
       });
       if (!result.ok) {
+        if (result.contentErased) {
+          await writeDeleteProgress(env, expectedUserId, { stage: 'content_erased', updatedAt: Date.now() });
+        } else if (result.resumeToken) {
+          await writeDeleteProgress(env, expectedUserId, {
+            stage: 'in_progress',
+            resumeToken: result.resumeToken,
+            updatedAt: Date.now(),
+          });
+        }
         return json(
           {
             error: result.error,
@@ -372,26 +426,49 @@ const worker = {
         );
       }
       if (!result.complete) {
+        await writeDeleteProgress(env, expectedUserId, {
+          stage: 'in_progress',
+          resumeToken: result.resumeToken,
+          updatedAt: Date.now(),
+        });
         return json({ deleted: false, complete: false, resumeToken: result.resumeToken }, 200);
       }
+      await clearDeleteProgress(env, expectedUserId);
       const sessionToken = sessionTokenOf(request);
       if (sessionToken) await endSession(storesOf(env), sessionToken);
+      const doneNonce = crypto.randomUUID();
+      await env.AUTH_STORAGE.put(`${DELETE_DONE_KV_PREFIX}${doneNonce}`, expectedUserId, {
+        expirationTtl: DELETE_DONE_TTL_SECONDS,
+      });
       return json(
         { deleted: true, complete: true, userId: result.userId ?? session.user.id, deletedAt: result.deletedAt },
         200,
-        [clearSessionCookie(isLocalhost), createDeleteDoneCookie(isLocalhost)],
+        [clearSessionCookie(isLocalhost), createDeleteDoneCookie(doneNonce, isLocalhost)],
       );
     }
 
     // Public web account deletion page (AlUmmahNowAuth#532; Google Play Data safety URL).
     // Works signed out (explains what is deleted and asks to sign in) and signed in.
-    // The "account deleted" state is shown ONLY when signed out AND backed by the short-lived
-    // HttpOnly proof cookie set by a completed DELETE /api/account (never spoofable via ?deleted=1).
+    // The "account deleted" state is shown ONLY when signed out AND backed by a one-time
+    // server-stored nonce in KV (never spoofable via query params or a fixed cookie value).
+    // Half-finished / content-erased notices come ONLY from server-side KV state bound to session.user.id.
     if ((url.pathname === '/delete-account' || url.pathname === '/delete-account/') && request.method === 'GET') {
       const { session, lapsed } = await getFreshSession(request, env, authServerUrl);
       const locale = pickLocale(request);
-      const hasDoneProof = readCookie(request.headers.get('Cookie'), DELETE_DONE_COOKIE) === '1';
-      const deleted = !session && hasDoneProof;
+      const doneNonce = readCookie(request.headers.get('Cookie'), DELETE_DONE_COOKIE);
+      let deleted = false;
+      let shouldClearDoneCookie = false;
+      if (!session && doneNonce) {
+        const stored = await env.AUTH_STORAGE.get(`${DELETE_DONE_KV_PREFIX}${doneNonce}`);
+        if (stored) {
+          deleted = true;
+          await env.AUTH_STORAGE.delete(`${DELETE_DONE_KV_PREFIX}${doneNonce}`);
+        }
+        shouldClearDoneCookie = true;
+      } else if (session && doneNonce) {
+        shouldClearDoneCookie = true;
+      }
+      const progress = session?.user?.id ? await readDeleteProgress(env, session.user.id) : null;
       const html = renderDeleteAccountPage({
         environment: env.APP_ENV,
         theme: await fetchAuthTheme(authServerUrl, PROFILE_CLIENT_ID, url.searchParams.get('theme')),
@@ -402,7 +479,7 @@ const worker = {
         path: url.pathname + url.search,
         deleted,
         reauth: !deleted && url.searchParams.get('reauth') === '1',
-        contentErased: !deleted && url.searchParams.get('erased') === '1',
+        erasureStage: !deleted && session ? (progress?.stage ?? null) : null,
       });
       const headers = new Headers({
         'Content-Type': 'text/html; charset=utf-8',
@@ -411,7 +488,7 @@ const worker = {
         'Vary': 'Cookie',
       });
       if (lapsed) headers.append('Set-Cookie', clearSessionCookie(isLocalhost));
-      if (session && hasDoneProof) headers.append('Set-Cookie', clearDeleteDoneCookie(isLocalhost));
+      if (shouldClearDoneCookie) headers.append('Set-Cookie', clearDeleteDoneCookie(isLocalhost));
       return new Response(html, { headers });
     }
 
