@@ -31,6 +31,13 @@ const REDACTED_KEYS = new Set([
   'id_token',
   'client_secret',
   'secret',
+  // Wiki E20 §5.1: no date of birth or age band in any log
+  'birth_date',
+  'birthdate',
+  'birth_date_enc',
+  'dob',
+  'age_band',
+  'ageband',
 ]);
 
 export function maskEmails(text: string): string {

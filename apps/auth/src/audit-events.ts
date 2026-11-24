@@ -27,6 +27,9 @@ export enum AuditEventType {
   ACCOUNT_CREATED = 'auth.account.created',
   ACCOUNT_UPDATED = 'auth.account.updated',
   ACCOUNT_DELETED = 'auth.account.deleted',
+  // Never the date or an age (wiki E20 §5.1)
+  BIRTH_DATE_SET = 'auth.account.birth_date_set',
+  BIRTH_DATE_CHANGED = 'auth.account.birth_date_changed',
 
   // Authorization Events
   AUTHORIZATION_GRANTED = 'auth.authorization.granted',

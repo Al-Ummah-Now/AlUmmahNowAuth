@@ -25,6 +25,7 @@ export default defineConfig({
           ADMIN_LIMITER: { namespace_id: "3006", simple: { limit: 1_000_000, period: 60 } },
           ADMIN_SENSITIVE_LIMITER: { namespace_id: "3007", simple: { limit: 1_000_000, period: 60 } },
           NATIVE_PASSKEY_LIMITER: { namespace_id: "3008", simple: { limit: 1_000_000, period: 60 } },
+          BIRTH_DATE_LIMITER: { namespace_id: "3009", simple: { limit: 1_000_000, period: 60 } },
           // Test-only: a real (miniflare) limiter with a small limit
           TEST_LIMITER: { namespace_id: "3999", simple: { limit: 10, period: 60 } },
         },

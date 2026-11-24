@@ -192,6 +192,7 @@ const LITERALS: Record<string, Record<string, string[]>> = {
 		'/account': ops('DELETE /account'),
 		'/account/export': ops('GET /account/export'),
 		'/account/name': ops('PUT /account/name'),
+		'/account/birth-date': ops('GET /account/birth-date', 'PUT /account/birth-date'),
 		'/account/sign-out-all': ops('POST /account/sign-out-all'),
 		'/themes': ops('GET /themes'),
 		'/themes/resolve': ops('GET /themes/resolve'),

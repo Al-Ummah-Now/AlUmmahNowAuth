@@ -29,6 +29,7 @@ import { revokeUserTokens } from '../custom/token-revocation';
 import { ThemeStore } from '../themes/store';
 import { ThemeService } from '../themes/service';
 import { invalidateThemeSettings } from '../themes/runtime';
+import { deleteBirthDate } from '../birth-date/store';
 import { logger } from '../logger';
 import type { DeletionKind, DeletionRow } from './store';
 
@@ -228,6 +229,7 @@ const user: KindHandler = {
 		statements.push(db.prepare('DELETE FROM webauthn_credentials WHERE user_id = ?').bind(userId));
 		statements.push(db.prepare('DELETE FROM webauthn_prompts WHERE user_id = ?').bind(userId));
 		statements.push(db.prepare('DELETE FROM passkey_setup_tickets WHERE user_id = ?').bind(userId));
+		statements.push(deleteBirthDate(db, userId));
 		for (const stmt of statements) await run(stmt);
 		await run(db.prepare('DELETE FROM users WHERE id = ? AND deleted_at IS NOT NULL').bind(userId));
 		// user_revocations / TOKEN_REVOCATIONS stay: they hold only the id, a time and a reason
