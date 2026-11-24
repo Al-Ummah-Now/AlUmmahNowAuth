@@ -112,3 +112,16 @@ By separating the client (profile app) from the server (auth server), we allow p
 The profile app uses the client ID: `profile-app`
 
 This should be registered in the auth server's client configuration.
+
+## Account deletion (`/delete-account`)
+
+Public page (the store listings link to it) and `DELETE /api/account`. One request is one bounded step
+(`src/delete-account.ts`): record the start, one Videos `DELETE /api/privacy/data` pass, and after the last pass Auth's
+`DELETE /account`. A retry always runs the Videos erase again. The page's script repeats the request.
+
+- **Progress** (`src/delete-progress.ts`) is in the auth D1 database, table `openauth_atomic`, key
+  `profile:delete-account::<user id>`, with no expiry until the account is gone; Auth's account purge removes it. The
+  Videos resume token stays there and never reaches the browser.
+- **Switch:** `auth_settings` key `account_deletion`. `{"on":false}` makes the page and the API answer 404 and hides the
+  profile card, within 30 seconds. No row means on.
+- **Needs:** api-videos with the reworked erase (AlUmmahNow#1937) and the profile client allowed on it (AlUmmahNow#1933).

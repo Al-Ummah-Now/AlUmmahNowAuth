@@ -158,6 +158,22 @@ export async function getSession(stores: SessionStores, token: string | null, no
   }
 }
 
+/**
+ * The user a session was for, also when it has ended (signed out or expired; rows stay about a week): only the
+ * browser holding the cookie can ask. Null when there is no row.
+ */
+export async function sessionOwner(stores: SessionStores, token: string | null): Promise<string | null> {
+  if (!token) return null;
+  const row = await readRow(stores.db, await sessionId(token));
+  if (!row) return null;
+  try {
+    const id = (JSON.parse(row.user_json) as { id?: unknown }).id;
+    return typeof id === "string" && id ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function createSession(
   stores: SessionStores,
   data: { user: StoredSession["user"]; tokens: SessionTokens },

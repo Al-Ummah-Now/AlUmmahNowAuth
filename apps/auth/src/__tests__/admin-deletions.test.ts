@@ -17,6 +17,7 @@ import { hideDeleted } from '../deletions/routes';
 import { createRefreshCheck } from '../handlers/refresh-check';
 import { D1UserService } from '../services/d1-user-service';
 import { D1UserAdapter } from '@al-ummah-now/openauth';
+import { progressKey } from '../../../profile/src/delete-progress';
 
 vi.mock('../audit-emitter', () => ({ emitAuditEvent: vi.fn().mockResolvedValue(undefined) }));
 
@@ -178,6 +179,10 @@ describe('cleanup', () => {
 				.run();
 		await session('del-s4', { id: 'del-u4', email: 'del-u4@example.com' });
 		await session('del-s5', { id: 'del-u5', email: 'del-u5@example.com', note: 'del-u4' });
+		// An unfinished web deletion (the profile app's record), of this user and of someone else
+		for (const id of ['del-u4', 'del-u40']) {
+			await db().prepare(`INSERT INTO openauth_atomic (key, value) VALUES (?, '{"stage":"started"}')`).bind(progressKey(id)).run();
+		}
 		const storage = authStorage(ENV);
 		await Storage.set(storage, ['email', 'del-u4@example.com', 'password'], { hash: 'h' });
 		await Storage.set(storage, ['email', 'del-u4@example.com', 'subject'], 'del-u4');
@@ -205,6 +210,8 @@ describe('cleanup', () => {
 		expect(await db().prepare(`SELECT 1 FROM rbac_user_roles WHERE user_id = 'del-u4'`).first()).toBeNull();
 		expect((await db().prepare(`SELECT id FROM app_sessions WHERE id LIKE 'del-s%' ORDER BY id`).all()).results).toEqual([{ id: 'del-s5' }]);
 		await db().prepare(`DELETE FROM app_sessions WHERE id LIKE 'del-s%'`).run();
+		expect((await db().prepare(`SELECT key FROM openauth_atomic WHERE key LIKE 'profile:delete-account::%'`).all()).results).toEqual([{ key: progressKey('del-u40') }]);
+		await db().prepare(`DELETE FROM openauth_atomic WHERE key = ?`).bind(progressKey('del-u40')).run();
 		expect(await Storage.get(storage, ['email', 'del-u4@example.com', 'password'])).toBeUndefined();
 		// Nothing keyed by the email is left: the subject record, sign-in attempts, codes
 		expect(await Storage.get(storage, ['email', 'del-u4@example.com', 'subject'])).toBeUndefined();

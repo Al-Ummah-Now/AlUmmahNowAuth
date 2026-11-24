@@ -207,6 +207,8 @@ const user: KindHandler = {
 			db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').bind(userId),
 			// Profile/admin sessions of the user; idx_app_sessions_user (migration 0032) serves this
 			db.prepare(`DELETE FROM app_sessions WHERE json_extract(user_json, '$.id') = ?`).bind(userId),
+			// What the profile app kept while the account was being deleted (apps/profile/src/delete-progress.ts progressKey)
+			db.prepare('DELETE FROM openauth_atomic WHERE key = ?').bind(`profile:delete-account::${userId}`),
 			// OpenAuth refresh tokens (key oauth:refresh/<subject>/<token>); the value names the user.
 			// idx_openauth_atomic_refresh_user (migration 0031) serves this; it was a scan of every token (#804)
 			db.prepare(

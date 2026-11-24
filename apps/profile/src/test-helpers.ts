@@ -34,8 +34,8 @@ export class FakeKV {
 }
 
 /**
- * D1 on SQLite (node:sqlite) with the real auth migration for app_sessions, so
- * the session SQL (conditional UPDATE ... RETURNING, ON CONFLICT) runs on real
+ * D1 on SQLite (node:sqlite) with the real auth migrations for app_sessions and
+ * openauth_atomic (and the schema snapshot's users and auth_settings), so the SQL (conditional UPDATE ... RETURNING, ON CONFLICT) runs on real
  * SQLite semantics. Every statement is atomic, like D1's single writer, and
  * each call yields to the event loop first, so concurrent requests interleave.
  */
@@ -43,8 +43,12 @@ export async function fakeD1(): Promise<D1Database & { rows(): Record<string, un
   const { DatabaseSync } = await import("node:sqlite");
   const { readFileSync } = await import("node:fs");
   const { fileURLToPath } = await import("node:url");
-  const db = new DatabaseSync(":memory:");
-  db.exec(readFileSync(fileURLToPath(new URL("../../auth/migrations/0025_app_sessions.sql", import.meta.url).href), "utf8"));
+  const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
+  const authFile = (path: string) => readFileSync(fileURLToPath(new URL(`../../auth/${path}`, import.meta.url).href), "utf8");
+  db.exec(authFile("migrations/0025_app_sessions.sql"));
+  db.exec(authFile("migrations/0021_openauth_atomic.sql"));
+  const snapshot = authFile("schema.snapshot.sql");
+  for (const table of ["users", "auth_settings"]) db.exec(new RegExp(`^CREATE TABLE ${table} .*;$`, "m").exec(snapshot)![0]);
   const tick = () => new Promise<void>((r) => setTimeout(r, 0));
   const statement = (sql: string, params: unknown[] = []) => ({
     bind: (...values: unknown[]) => statement(sql, values),

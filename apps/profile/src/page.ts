@@ -1,5 +1,6 @@
 import { clientFormatScript, formatNumber } from '../../../packages/ui/src/format.ts';
 import type { Locale, VisibleApp } from "./apps";
+import type { DoneProof } from "./delete-progress";
 import { dirFor, MESSAGES } from "./i18n";
 import { escapeHtml, renderAppCards, renderAppsSection } from "./launcher";
 import { NAV_CSS } from '../../../packages/ui/src/nav/aun-nav.generated.ts';
@@ -29,6 +30,8 @@ export interface HomePageOptions {
   street?: boolean;
   /** This page's path and query: the language button and Sign in keep them. */
   path?: string;
+  /** Account deletion is switched on: show its card. */
+  accountDeletion?: boolean;
 }
 
 /** JSON for embedding inside <script>: escapes "<" so "</script>" in data can't end the block. */
@@ -177,18 +180,10 @@ const STYLES = `
         }
 
         @media (max-width: 640px) {
-            .container { padding: 1rem 0.9rem; }
-            .hero { margin-bottom: 1rem; }
-            .hero h1 { font-size: 1.65rem; margin-bottom: 0.5rem; }
-            .hero p { font-size: 0.95rem; line-height: 1.45; }
+            .container { padding: 1.5rem 1rem; }
+            .hero h1 { font-size: 2rem; }
             .apps-cards { grid-template-columns: 1fr; }
-            .profile-card { padding: 1rem; }
-            .profile-card h2 { margin-bottom: 0.75rem; font-size: 1.2rem; }
-            .delete-stack { gap: 0.85rem; }
-            .delete-list { gap: 0.4rem; margin-bottom: 0.85rem; font-size: 0.88rem; line-height: 1.42; }
-            .delete-note { font-size: 0.88rem; margin-bottom: 0.75rem; }
-            .profile-field { padding: 0.65rem 0.8rem; margin-bottom: 0.65rem; }
-            .card-actions { margin-top: 0.85rem; }
+            .profile-card { padding: 1.25rem; }
         }
 
         /* Confirmation dialog (never a browser prompt) */
@@ -225,8 +220,8 @@ const STYLES = `
         .container:has(.delete-stack) { padding-top: 1.25rem; padding-bottom: 1.5rem; }
         .delete-stack > .profile-card, .delete-stack > .welcome-message { margin: 0; width: 100%; }
         .delete-stack .hero { margin-bottom: 0.25rem; }
-        /* Solid heading ink on /delete-account so light mode has full contrast on cream surfaces */
-        .delete-stack .hero h1 { font-size: clamp(1.6rem, 2.8vw, 2.2rem); margin-bottom: 0.45rem; background: none; -webkit-background-clip: border-box; -webkit-text-fill-color: currentColor; background-clip: border-box; color: var(--auth-profile-heading-text, var(--fanous-color-text-primary)); }
+        /* Solid heading ink on the deletion page, so light mode has full contrast on cream surfaces */
+        .delete-stack .hero h1 { text-wrap: balance; font-size: clamp(1.6rem, 2.8vw, 2.2rem); margin-bottom: 0.45rem; background: none; -webkit-background-clip: border-box; -webkit-text-fill-color: currentColor; background-clip: border-box; color: var(--auth-profile-heading-text, var(--fanous-color-text-primary)); }
         .delete-stack .hero p { font-size: 0.98rem; line-height: 1.48; }
         .delete-stack .error-message { margin-bottom: 0; padding: 0.75rem 1rem; font-size: 0.92rem; }
         .delete-stack .profile-card { padding: 1.25rem 1.5rem; }
@@ -234,6 +229,17 @@ const STYLES = `
         .delete-stack .delete-list { gap: 0.4rem; margin-bottom: 0.85rem; font-size: 0.9rem; line-height: 1.45; }
         .delete-stack .profile-field { padding: 0.6rem 0.85rem; margin-bottom: 0.65rem; }
         .delete-stack .card-actions { margin-top: 0.85rem; }
+        .delete-stack .card-actions .btn { transition: none; }
+        .confirm-dialog:has(.delete-confirm-input) .btn { transition: none; }
+        @media (max-width: 640px) {
+            .container:has(.delete-stack) { padding: 1rem 0.9rem; }
+            .delete-stack { gap: 0.85rem; }
+            .delete-stack .hero h1 { font-size: 1.65rem; margin-bottom: 0.4rem; }
+            .delete-stack .hero p { font-size: 0.95rem; line-height: 1.45; }
+            .delete-stack .profile-card { padding: 1rem; }
+            .delete-stack .card-actions .btn { flex: 1 1 auto; text-align: center; justify-content: center; }
+            .delete-stack .delete-note { font-size: 0.9rem; margin-bottom: 0.75rem; }
+        }
 `;
 
 const ICON_SIGNIN = '<svg class="aun-menu-icon aun-flip" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>';
@@ -353,13 +359,13 @@ export function renderHomePage(o: HomePageOptions): string {
                 </div>
             </section>
 
-            <section class="profile-card delete-account-card" id="delete-account" aria-labelledby="deleteAccountHeading">
+            ${o.accountDeletion ? `<section class="profile-card delete-account-card" id="delete-account" aria-labelledby="deleteAccountHeading">
                 <h2 id="deleteAccountHeading">${e(t.deleteAccountHeading)}</h2>
                 <p class="apps-section-sub">${e(t.deleteAccountCardIntro)}</p>
                 <div class="card-actions">
                     <a class="btn btn-danger" id="deleteAccountLink" data-testid="profile-delete-account" href="/delete-account${o.locale === "ar" ? "?lang=ar" : ""}">${e(t.deleteAccountOpenPage)}</a>
                 </div>
-            </section>
+            </section>` : ""}
         </div>
     </main>
 
@@ -768,18 +774,22 @@ export interface DeleteAccountPageOptions {
   environment?: string;
   street?: boolean;
   path?: string;
-  deleted?: boolean;
+  /** The account is gone (proven by the database, never by the query). */
+  done?: DoneProof | null;
   reauth?: boolean;
-  /** Server-side per-user erasure progress bound to session.user.id (never from query params). */
-  erasureStage?: "in_progress" | "content_erased" | null;
+  /** An unfinished deletion of this browser's account (from the database, never from the query). */
+  stage?: "started" | "content_erased" | null;
+  /** Whether a deletion is under way could not be read: say so and offer nothing to press. */
+  unavailable?: boolean;
 }
 
+/** Passes one confirmation runs before the person is asked again. */
+export const MAX_PASSES_PER_CONFIRMATION = 50;
+
 /**
- * Public web account deletion page (/delete-account, AlUmmahNowAuth#532).
- * Works signed out (Google Play Data safety requirement: names the apps, explains
- * what is deleted, and lets users sign in to finish deletion without the app) and
- * signed in (accessible <dialog> confirmation, step-up re-auth, erases Videos data
- * and deletes the Auth account via DELETE /api/account).
+ * Public web account deletion page (/delete-account, AlUmmahNowAuth#532). Signed out it names the apps, says what
+ * is deleted and asks to sign in (Google Play's Data safety link); signed in, an accessible <dialog> confirms and
+ * the script repeats DELETE /api/account, one bounded step at a time, until the account is gone.
  */
 export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
   const theme = o.theme ?? { id: BUILTIN_DEFAULT_THEME, css: compileBuiltin(BUILTIN_DEFAULT_THEME, o.authServerUrl)!.tokensCss };
@@ -792,22 +802,32 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
   const signInForDeleteHref = `/login?return=${encodeURIComponent(returnPath)}&prompt=login`;
   const reauthPageHref = o.locale === "ar" ? "/delete-account?reauth=1&lang=ar" : "/delete-account?reauth=1";
   const profileHref = o.locale === "ar" ? "/?lang=ar" : "/";
-  const daysText = formatNumber(30, o.locale, { useGrouping: false });
-  const retentionText = t.deleteAccountWhatRetention.replace("{days}", daysText);
-  const doneBodyText = t.deleteAccountDoneBody.replace("{days}", daysText);
-  const isDeleted = Boolean(o.deleted && !o.user);
-  const stage = !isDeleted && o.user ? (o.erasureStage ?? null) : null;
-  const noticeText = o.reauth
-    ? stage === "content_erased"
-      ? t.deleteAccountContentErasedReauth
-      : stage === "in_progress"
-        ? t.deleteAccountInProgressReauth
-        : t.deleteAccountReauthNotice
+  const withDays = (text: string) => text.replace("{days}", formatNumber(30, o.locale, { useGrouping: false }));
+  const doneText = (p: DoneProof) =>
+    !p.erased
+      ? t.deleteAccountDoneBodyAccount
+      : p.leftover === "channel"
+        ? t.deleteAccountDoneBodyChannel
+        : p.leftover === "other"
+          ? t.deleteAccountDoneBodyOther
+          : t.deleteAccountDoneBody;
+  const done = o.user ? null : (o.done ?? null);
+  const stage = done ? null : (o.stage ?? null);
+  // The button can only finish for someone signed in, recently enough
+  const mustSignIn = !o.user || Boolean(o.reauth);
+  const noticeText = o.unavailable
+    ? t.deleteAccountUnavailable
     : stage === "content_erased"
-      ? t.deleteAccountContentErasedNotice
-      : stage === "in_progress"
-        ? t.deleteAccountInProgressNotice
-        : null;
+      ? mustSignIn
+        ? t.deleteAccountContentErasedReauth
+        : t.deleteAccountContentErasedNotice
+      : stage === "started"
+        ? mustSignIn
+          ? t.deleteAccountInProgressReauth
+          : t.deleteAccountInProgressNotice
+        : o.reauth
+          ? t.deleteAccountReauthNotice
+          : null;
 
   const header = pageHeaderHtml({
     lang: o.locale,
@@ -818,8 +838,17 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
     signInHref: o.user ? undefined : signInForDeleteHref,
   });
 
-  const dialogBody = o.user ? t.deleteAccountDialogBody.replace("{email}", o.user.email) : "";
+  const dialogBody = o.user ? t.deleteAccountDialogBody.replace("{email}", () => o.user!.email) : "";
   const confirmLabel = t.deleteAccountConfirmLabel.replace("{word}", t.deleteAccountConfirmWord);
+  const signInLabel = stage ? t.deleteAccountContinueButton : t.deleteAccountSignInButton;
+  const whatItems = [
+    t.deleteAccountWhatAuth,
+    t.deleteAccountWhatVideos,
+    t.deleteAccountWhatChannels,
+    t.deleteAccountWhatAnon,
+    t.deleteAccountWhatFiles,
+    withDays(t.deleteAccountWhatRetention),
+  ];
 
   return `<!DOCTYPE html>
 <html lang="${o.locale}" dir="${dirFor(o.locale)}" data-theme="${e(theme.id)}">
@@ -838,48 +867,42 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
     <main class="container" data-testid="delete-account-page">
         <div class="delete-stack">
             <div class="hero" style="margin-bottom: 0.5rem;">
-                <h1>${e(isDeleted ? t.deleteAccountDoneTitle : t.deleteAccountHeroTitle)}</h1>
-                <p>${e(isDeleted ? t.deleteAccountDoneHeroBody : t.deleteAccountHeroBody)}</p>
+                <h1>${e(done ? t.deleteAccountDoneTitle : t.deleteAccountHeroTitle)}</h1>
+                ${done ? "" : `<p>${e(t.deleteAccountHeroBody)}</p>`}
             </div>
 
-            ${isDeleted ? `
-            <section class="welcome-message" role="status" data-testid="delete-account-done">
-                <h3>${e(t.deleteAccountDoneTitle)}</h3>
-                <p>${e(doneBodyText)}</p>
-            </section>` : ""}
-
-            ${noticeText && !isDeleted ? `
-            <div class="error-message" role="status" data-testid="${o.reauth ? "delete-account-reauth" : "delete-account-progress-notice"}">
+            ${done ? `
+            <section class="profile-card" role="status" data-testid="delete-account-done">
+                <p class="delete-note">${e(doneText(done))}</p>
+                <p class="delete-note" style="margin-bottom: 0;">${e(withDays(t.deleteAccountDonePurge))}</p>
+            </section>` : `
+            ${noticeText ? `
+            <div class="error-message" role="status" data-testid="${o.unavailable ? "delete-account-unavailable" : o.reauth ? "delete-account-reauth" : "delete-account-progress-notice"}">
                 ${e(noticeText)}
             </div>` : ""}
-
-            ${!isDeleted ? `
-            <section class="profile-card" aria-labelledby="deleteWhatHeading">
-                <h2 id="deleteWhatHeading">${e(t.deleteAccountWhatHeading)}</h2>
-                <ul class="delete-list">
-                    <li>${e(t.deleteAccountWhatAuth)}</li>
-                    <li>${e(t.deleteAccountWhatVideos)}</li>
-                    <li>${e(t.deleteAccountWhatAnon)}</li>
-                    <li>${e(retentionText)}</li>
-                </ul>
-
+            ${o.unavailable ? "" : `<section class="profile-card" data-testid="delete-account-actions">
                 ${o.user ? `
                 <div class="profile-field">
                     <label>${e(t.deleteAccountSignedInAs)}</label>
                     <div class="value" data-testid="delete-account-email"><bdi dir="ltr">${e(o.user.email)}</bdi></div>
                 </div>
-                <p class="delete-status" id="deleteStatus" role="alert"></p>
                 <div class="card-actions">
                     <a class="btn btn-secondary" href="${e(profileHref)}">${e(t.deleteAccountBackToProfile)}</a>
-                    ${o.reauth
-                      ? `<a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-reauth-signin">${e(t.deleteAccountSignInButton)}</a>`
-                      : `<button type="button" class="btn btn-danger" id="deleteAccountBtn" data-testid="delete-account-open-dialog">${e(t.deleteAccountStartButton)}</button>`}
+                    ${mustSignIn
+                      ? `<a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-reauth-signin">${e(signInLabel)}</a>`
+                      : `<button type="button" class="btn btn-danger" id="deleteAccountBtn" data-testid="delete-account-open-dialog">${e(stage ? t.deleteAccountFinishButton : t.deleteAccountStartButton)}</button>`}
                 </div>` : `
-                <p class="delete-note">${e(t.deleteAccountSignedOutNote)}</p>
-                <div class="card-actions">
-                    <a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-signin">${e(t.deleteAccountSignInButton)}</a>
+                ${noticeText ? "" : `<p class="delete-note">${e(t.deleteAccountSignedOutNote)}</p>`}
+                <div class="card-actions"${noticeText ? ' style="margin-top: 0;"' : ""}>
+                    <a class="btn btn-primary" href="${e(signInForDeleteHref)}" data-testid="delete-account-signin">${e(signInLabel)}</a>
                 </div>`}
-            </section>` : ""}
+            </section>`}
+            <section class="profile-card" aria-labelledby="deleteWhatHeading">
+                <h2 id="deleteWhatHeading">${e(t.deleteAccountWhatHeading)}</h2>
+                <ul class="delete-list" style="margin-bottom: 0;">
+                    ${whatItems.map((item) => `<li>${e(item)}</li>`).join("\n                    ")}
+                </ul>
+            </section>`}
         </div>
     </main>
 
@@ -887,12 +910,12 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
         <p>${e(t.footer.replace("{year}", formatNumber(new Date().getUTCFullYear(), o.locale, { useGrouping: false })))}</p>
     </footer>
 
-    ${o.user && !isDeleted && !o.reauth ? `
+    ${o.user && !mustSignIn && !o.unavailable ? `
     <dialog class="confirm-dialog" id="deleteAccountDialog" role="alertdialog" aria-labelledby="deleteDialogTitle" aria-describedby="deleteDialogBody" data-testid="delete-account-dialog">
         <form method="dialog" id="deleteAccountForm">
             <h2 id="deleteDialogTitle">${e(t.deleteAccountDialogTitle)}</h2>
             <p id="deleteDialogBody">${e(dialogBody)}</p>
-            <label class="delete-confirm-label" for="deleteConfirmInput">${e(confirmLabel)}</label>
+            <label class="delete-confirm-label" id="deleteConfirmLabel" for="deleteConfirmInput">${e(confirmLabel)}</label>
             <input class="delete-confirm-input" id="deleteConfirmInput" data-testid="delete-account-confirm-input" type="text" autocomplete="off" spellcheck="false" />
             <p class="delete-status" id="deleteDialogStatus" role="alert"></p>
             <div class="confirm-actions">
@@ -905,14 +928,33 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
         (function () {
             ${clientFormatScript(o.locale)}
             var EXPECTED_USER_ID = ${scriptJson(o.user.id)};
+            var STARTED_BEFORE = ${stage ? "true" : "false"};
+            var MAX_PASSES = ${MAX_PASSES_PER_CONFIRMATION};
             var CONFIRM_WORD = ${scriptJson(t.deleteAccountConfirmWord)};
             var DELETING_LABEL = ${scriptJson(t.deleteAccountDeleting)};
             var DELETING_PASS = ${scriptJson(t.deleteAccountDeletingPass)};
             var CONFIRM_LABEL = ${scriptJson(t.deleteAccountConfirmAction)};
-            var MISMATCH_MSG = ${scriptJson(t.deleteAccountMismatch)};
-            var ERROR_MSG = ${scriptJson(t.deleteAccountError)};
-            var CONTENT_ERASED_ERROR_MSG = ${scriptJson(t.deleteAccountContentErasedError)};
-            var SIGN_IN_URL = ${scriptJson(signInForDeleteHref)};
+            var T = ${scriptJson({
+              keepOpen: t.deleteAccountKeepOpen,
+              restarted: t.deleteAccountRestarted,
+              mismatch: t.deleteAccountMismatch,
+              nothing: t.deleteAccountErrorNothing,
+              started: t.deleteAccountErrorStarted,
+              unknown: t.deleteAccountErrorUnknown,
+              erased: t.deleteAccountContentErasedError,
+              paused: t.deleteAccountPaused,
+              pausedLater: t.deleteAccountPausedLater,
+              busyNothing: t.deleteAccountBusyNothing,
+              more: t.deleteAccountMore,
+              leftChannel: t.deleteAccountLeftChannel,
+              leftOther: t.deleteAccountLeftOther,
+              anyway: t.deleteAccountAnyway,
+              doneTitle: t.deleteAccountDoneTitle,
+              done: withDays(`${t.deleteAccountDoneBody} ${t.deleteAccountDonePurge}`),
+              doneAccount: t.deleteAccountDoneBodyAccount,
+              doneChannel: t.deleteAccountDoneBodyChannel,
+              doneOther: t.deleteAccountDoneBodyOther,
+            })};
             var REAUTH_URL = ${scriptJson(reauthPageHref)};
             var DONE_RETURN = ${scriptJson(returnPath)};
 
@@ -924,8 +966,11 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
             var cancelBtn = document.getElementById('deleteDialogCancel');
             var dialogStatus = document.getElementById('deleteDialogStatus');
             var busy = false;
-            var savedResumeToken = null;
+            var waiting = false;
+            var confirmLabel = CONFIRM_LABEL;
+            var acceptLeftover = null;
             var passCount = 0;
+            var sent = STARTED_BEFORE;
 
             function setStatus(msg, tone) {
                 dialogStatus.textContent = msg || '';
@@ -933,8 +978,13 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                 else dialogStatus.removeAttribute('data-tone');
             }
 
+            /* Case, spaces around it, Arabic marks, tatweel and direction marks do not matter */
+            function typed() {
+                return input.value.replace(/[\\u0640\\u064B-\\u065F\\u0670\\u061C\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069]/g, '').trim().toLowerCase() === CONFIRM_WORD.toLowerCase();
+            }
+
             function syncSubmit() {
-                submitBtn.disabled = busy || input.value.trim() !== CONFIRM_WORD;
+                submitBtn.disabled = busy || waiting || !typed();
             }
 
             function setBusy(on, label) {
@@ -947,107 +997,138 @@ export function renderDeleteAccountPage(o: DeleteAccountPageOptions): string {
                     submitBtn.textContent = label || DELETING_LABEL;
                 } else {
                     submitBtn.removeAttribute('data-busy');
-                    submitBtn.textContent = CONFIRM_LABEL;
+                    submitBtn.textContent = confirmLabel;
                     syncSubmit();
                 }
+            }
+
+            function stopWith(msg) {
+                setBusy(false);
+                setStatus(msg, 'error');
+            }
+
+            /* Closed after something may have been removed: the page behind must say so */
+            function closeDialog() {
+                dlg.close('cancel');
+                if (sent && !STARTED_BEFORE) window.location.reload();
+                else openBtn.focus();
             }
 
             openBtn.addEventListener('click', function () {
                 if (typeof dlg.showModal !== 'function' || dlg.open) return;
                 input.value = '';
-                savedResumeToken = null;
-                passCount = 0;
+                confirmLabel = CONFIRM_LABEL;
+                acceptLeftover = null;
                 setStatus('');
                 setBusy(false);
                 dlg.showModal();
-                input.focus();
+                cancelBtn.focus();
             });
 
             cancelBtn.addEventListener('click', function () {
-                if (busy) return;
-                dlg.close('cancel');
-                openBtn.focus();
+                if (!busy) closeDialog();
             });
 
+            /* Esc: not while a request is out */
             dlg.addEventListener('cancel', function (ev) {
-                if (busy) {
-                    ev.preventDefault();
-                    return;
-                }
-                openBtn.focus();
+                ev.preventDefault();
+                if (!busy) closeDialog();
+            });
+
+            /* A second Esc closes a dialog whatever its cancel event answers */
+            dlg.addEventListener('close', function () {
+                if (busy) dlg.showModal();
             });
 
             dlg.addEventListener('click', function (ev) {
-                if (ev.target === dlg && !busy) {
-                    dlg.close('cancel');
-                    openBtn.focus();
-                }
+                if (ev.target === dlg && !busy) closeDialog();
             });
 
             input.addEventListener('input', syncSubmit);
 
+            function pause(seconds, msg) {
+                waiting = true;
+                stopWith(msg);
+                setTimeout(function () {
+                    waiting = false;
+                    syncSubmit();
+                }, seconds * 1000);
+            }
+
             function runPass() {
                 passCount += 1;
-                var label = passCount > 1 ? DELETING_PASS.replace('{n}', aunNum(passCount)) : DELETING_LABEL;
-                setBusy(true, label);
-
-                var payload = { confirm: 'DELETE', userId: EXPECTED_USER_ID };
-                if (savedResumeToken) payload.resumeToken = savedResumeToken;
+                setBusy(true, passCount > 1 ? DELETING_PASS.replace('{n}', aunNum(passCount)) : DELETING_LABEL);
 
                 fetch('/api/account', {
                     method: 'DELETE',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify(acceptLeftover ? { confirm: 'DELETE', userId: EXPECTED_USER_ID, acceptLeftover: acceptLeftover } : { confirm: 'DELETE', userId: EXPECTED_USER_ID }),
                 }).then(function (res) {
-                    return res.json().catch(function () { return {}; }).then(function (data) {
-                        if (res.ok && data && data.deleted) {
-                            savedResumeToken = null;
-                            window.location.href = '/logout?return=' + encodeURIComponent(DONE_RETURN);
-                            return;
-                        }
-                        if (res.ok && data && data.complete === false && data.resumeToken) {
-                            savedResumeToken = data.resumeToken;
-                            runPass();
-                            return;
-                        }
-                        if (data && data.resumeToken) {
-                            savedResumeToken = data.resumeToken;
-                        }
-                        if (res.status === 409 && data && data.error === 'account_mismatch') {
-                            setStatus(MISMATCH_MSG, 'error');
-                            setTimeout(function () { window.location.reload(); }, 800);
-                            return;
-                        }
-                        if (res.status === 409 && data && data.error === 'content_erased_reauth_required') {
-                            window.location.href = REAUTH_URL;
-                            return;
-                        }
-                        if (res.status === 401 && data && data.error === 'insufficient_user_authentication') {
-                            window.location.href = REAUTH_URL;
-                            return;
-                        }
-                        if (res.status === 401 && data && data.error === 'not_authenticated') {
-                            window.location.href = SIGN_IN_URL;
-                            return;
-                        }
-                        if (data && data.contentErased) {
-                            setBusy(false);
-                            setStatus(CONTENT_ERASED_ERROR_MSG, 'error');
-                            return;
-                        }
-                        throw new Error((data && data.error) || 'delete_failed');
-                    });
+                    return res.json().then(function (data) { handle(res, data || {}); });
                 }).catch(function () {
-                    setBusy(false);
-                    setStatus(ERROR_MSG, 'error');
+                    /* No answer, or not one of ours: it may have worked */
+                    sent = true;
+                    stopWith(T.unknown);
                 });
+            }
+
+            function handle(res, data) {
+                if (res.ok && data.deleted === true) {
+                    var leave = function () { window.location.href = '/logout?return=' + encodeURIComponent(DONE_RETURN); };
+                    if (data.confirmed !== false) return leave();
+                    /* The page after sign-out could not be told: say it here first */
+                    document.getElementById('deleteDialogTitle').textContent = T.doneTitle;
+                    ['deleteDialogBody', 'deleteConfirmLabel', 'deleteConfirmInput', 'deleteDialogCancel', 'deleteDialogSubmit'].forEach(function (id) {
+                        document.getElementById(id).style.display = 'none';
+                    });
+                    setStatus(!data.erased ? T.doneAccount : data.leftover === 'channel' ? T.doneChannel : data.leftover === 'other' ? T.doneOther : T.done);
+                    setTimeout(leave, 10000);
+                    return;
+                }
+                if (res.ok && data.complete === false) {
+                    sent = true;
+                    if (data.leftover) {
+                        acceptLeftover = data.leftover;
+                        confirmLabel = T.anyway;
+                        stopWith(data.leftover === 'channel' ? T.leftChannel : T.leftOther);
+                        return;
+                    }
+                    setStatus(data.restarted ? T.restarted : T.keepOpen);
+                    if (passCount >= MAX_PASSES) stopWith(T.more);
+                    else runPass();
+                    return;
+                }
+                if (data.started) sent = true;
+                if (data.error === 'account_mismatch') {
+                    waiting = true;
+                    stopWith(T.mismatch);
+                    setTimeout(function () { window.location.reload(); }, 1500);
+                    return;
+                }
+                /* The page says how far it got, also for someone signed out meanwhile */
+                if (data.error === 'content_erased_reauth_required' || data.error === 'insufficient_user_authentication' || data.error === 'not_authenticated') {
+                    window.location.href = REAUTH_URL;
+                    return;
+                }
+                if (data.error === 'feature_off') {
+                    window.location.reload();
+                    return;
+                }
+                if (data.retryAfter) {
+                    pause(data.retryAfter, !data.started ? T.busyNothing : data.retryAfter > 600 ? T.pausedLater : T.paused);
+                    return;
+                }
+                if (data.contentErased) stopWith(T.erased);
+                else if (typeof data.error !== 'string') throw new Error('unknown answer');
+                else stopWith(data.started ? T.started : T.nothing);
             }
 
             form.addEventListener('submit', function (ev) {
                 ev.preventDefault();
-                if (busy || input.value.trim() !== CONFIRM_WORD) return;
-                setStatus('');
+                if (busy || waiting || !typed()) return;
+                passCount = 0;
+                setStatus(T.keepOpen);
                 runPass();
             });
         })();
