@@ -320,7 +320,7 @@ This project follows a structured roadmap toward v1.0 release (March 31, 2025). 
 
 ### Developer Guides
 - **[API Reference](./API_REFERENCE.md)** - Complete API documentation
-- **[OpenAPI Specification](./openapi.yaml)** - Machine-readable API spec
+- **[OpenAPI specification](./openapi.json)** - Machine-readable API spec
 - **[SDK Usage Guide](./SDK_USAGE.md)** - Client integration examples
 - **[Authentication Flows](./AUTHENTICATION_FLOWS.md)** - Detailed flow diagrams
 
