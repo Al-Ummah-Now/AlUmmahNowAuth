@@ -4,7 +4,8 @@
  *   GET  /admin/settings/account-events            each subscriber: last delivery, pending and failed counts;
  *        ?status=failed|pending|delivered&client=   and the deliveries of one status, newest first
  *        &before=<cursor>
- *   POST /admin/settings/account-events            { action: "resend", jti }: send a failed delivery again (audited)
+ *   POST /admin/settings/account-events            { action: "resend", jti }: send a failed delivery again (audited),
+ *                                                  while its client still receives that event
  *
  * 404 feature_off while events are off. Admins only (verifyAdminRequest checks
  * the acting user's roles in D1). Nothing here names a person but the user id.
@@ -14,7 +15,7 @@ import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { verifyAdminRequest } from '../auth-middleware';
 import { getClientIP, withinRateLimit } from '../rate-limit';
 import { enqueue } from './record';
-import { subscribers } from './subscribers';
+import { subscriber, subscribers } from './subscribers';
 import { accountEventsOn, type AccountEventType } from './types';
 
 export const ACCOUNT_EVENTS_PATH = '/admin/settings/account-events';
@@ -61,15 +62,16 @@ const FROM = (index: string) => `SELECT ${DELIVERY_COLUMNS} FROM account_event_d
 const SETTLED = 'd.settled_at <= ?2 AND (d.settled_at < ?2 OR d.jti < ?3) ORDER BY d.settled_at DESC, d.jti DESC LIMIT ?4';
 const LIST_SQL = `${FROM('idx_account_event_deliveries_settled')} WHERE d.status = ?1 AND ${SETTLED}`;
 const LIST_CLIENT_SQL = `${FROM('idx_account_event_deliveries_client')} WHERE d.status = ?1 AND d.client_id = ?5 AND ${SETTLED}`;
-/** Pending ones are few and short-lived: one page. */
-const PENDING_SQL = `${FROM('idx_account_event_deliveries_settled')} WHERE d.status = 'pending' ORDER BY d.seq DESC LIMIT ?1`;
-const PENDING_CLIENT_SQL = `${FROM('idx_account_event_deliveries_client')} WHERE d.client_id = ?2 AND d.status = 'pending' ORDER BY d.seq DESC LIMIT ?1`;
+/** Pending ones are few and short-lived: one page, newest first. None is settled, so the index holds them in rowid order. */
+const PENDING_SQL = `${FROM('idx_account_event_deliveries_settled')} WHERE d.status = 'pending' AND d.settled_at IS NULL ORDER BY d.rowid DESC LIMIT ?1`;
+const PENDING_CLIENT_SQL = `${FROM('idx_account_event_deliveries_client')} WHERE d.client_id = ?2 AND d.status = 'pending' AND d.settled_at IS NULL ORDER BY d.rowid DESC LIMIT ?1`;
 /** Before any real time: the first page. */
 const END = { at: Number.MAX_SAFE_INTEGER, jti: '' };
+const FAILED_SQL = `SELECT d.client_id, e.type FROM account_event_deliveries d JOIN account_events e ON e.seq = d.seq WHERE d.jti = ?1 AND d.status = 'failed'`;
 const RESEND_SQL = `UPDATE account_event_deliveries SET status = 'pending', attempts = 0, error = NULL, settled_at = NULL, next_at = ?2
 	WHERE jti = ?1 AND status = 'failed' RETURNING client_id, user_id, seq`;
 /** For the test that none of them scans a table. */
-export const ADMIN_QUERIES = { LAST_DELIVERED_SQL, COUNT_SQL, NAME_SQL, LIST_SQL, LIST_CLIENT_SQL, PENDING_SQL, PENDING_CLIENT_SQL };
+export const ADMIN_QUERIES = { LAST_DELIVERED_SQL, COUNT_SQL, NAME_SQL, LIST_SQL, LIST_CLIENT_SQL, PENDING_SQL, PENDING_CLIENT_SQL, FAILED_SQL };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
@@ -164,9 +166,14 @@ export async function handleAccountEvents(request: Request, env: Env, ctx: Execu
 		}
 		if (body?.action !== 'resend' || typeof body.jti !== 'string' || !JTI.test(body.jti)) return json({ error: 'invalid_request' }, 400);
 		if (!(await withinRateLimit(env.ADMIN_SENSITIVE_LIMITER, `account-events:resend:${actor.id}`))) return json({ error: 'rate_limited' }, 429);
+		// Unknown, or delivered or queued by somebody else meanwhile
+		const failed = await env.AUTH_DB.prepare(FAILED_SQL).bind(body.jti).first<{ client_id: string; type: AccountEventType }>();
+		if (!failed) return json({ error: 'not_failed' }, 409);
+		// The client left, lost the scope or no longer takes this event: it would only fail again
+		const to = await subscriber(env.AUTH_DB, failed.client_id);
+		if (!to?.types.includes(failed.type)) return json({ error: 'not_subscribed' }, 409);
 		const now = Date.now();
 		const row = await env.AUTH_DB.prepare(RESEND_SQL).bind(body.jti, now).first<{ client_id: string; user_id: string; seq: number }>();
-		// Unknown, or delivered or queued by somebody else meanwhile
 		if (!row) return json({ error: 'not_failed' }, 409);
 		await enqueue(env, [body.jti], now);
 		ctx.waitUntil(
