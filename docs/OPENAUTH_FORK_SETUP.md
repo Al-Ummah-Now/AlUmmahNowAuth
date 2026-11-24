@@ -1,5 +1,7 @@
 # OpenAuth Fork Setup
 
+> **History.** The fork is published to GitHub Packages as `@al-ummah-now/openauth`; nothing here needs doing. Setup today: [QUICKSTART.md](../QUICKSTART.md).
+
 This project uses a forked version of OpenAuth with enterprise features from [PR #1](https://github.com/meywd/openauth/pull/1).
 
 ## Current Dependency Configuration

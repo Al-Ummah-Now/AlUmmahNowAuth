@@ -1,5 +1,7 @@
 # Client Integration Guide
 
+> **History.** This is a plan, kept for the record. The package it describes, `@alummahnow/auth-client`, was never built. To sign in from an app today, read [SDK_USAGE.md](../../SDK_USAGE.md) and [AUTHENTICATION_FLOWS.md](../../AUTHENTICATION_FLOWS.md).
+
 ## Overview
 
 This guide explains how client applications (web apps, mobile apps, SPAs) can integrate with the AlUmmahNow Identity Platform to implement SSO, multi-account sessions, and other enterprise authentication features.
