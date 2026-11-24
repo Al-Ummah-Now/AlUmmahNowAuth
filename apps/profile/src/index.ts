@@ -324,7 +324,7 @@ const worker = {
         });
       // Changes only from this app's own page (CSRF)
       if (request.headers.get('Origin') !== url.origin) return json({ error: 'forbidden' }, 403);
-      let body: { confirm?: unknown } = {};
+      let body: { confirm?: unknown };
       try {
         body = (await request.json()) as { confirm?: unknown };
       } catch {
