@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { currentVersion, parseVersionId, promote, releaseApps, ReleaseError, type PromoteDeps } from '../promote.ts';
+import { currentVersion, parseVersionId, promote, releaseApps, ReleaseError, waitForAuthVersion, type PromoteDeps } from '../promote.ts';
 import { runSmoke, type CheckResult } from '../smoke.ts';
 
 const PREV = { auth: 'aaaaaaaa-0000-4000-8000-000000000001', profile: 'aaaaaaaa-0000-4000-8000-000000000002', admin: 'aaaaaaaa-0000-4000-8000-000000000003' };
@@ -108,5 +108,48 @@ describe('promote', () => {
 		const { deps, calls } = fakeDeps([ok, bad], { failRollbackFor: 'profile' });
 		await expect(promote(apps(), 'production', 'release abc', deps)).rejects.toMatchObject({ rolledBack: false, message: expect.stringMatching(/ROLLBACK FAILED/) });
 		expect(calls).toContain(`admin rollback ${PREV.admin}`);
+	});
+});
+
+describe('waitForAuthVersion', () => {
+	const NEW = NEXT.auth;
+	const OLD = PREV.auth;
+	/** Deep health answers with these versions in turn (the last one from then on; null: no answer). */
+	const wait = async (answers: (string | null)[], override = true) => {
+		let n = 0;
+		let t = 0;
+		const seen: Headers[] = [];
+		const fetchImpl = (async (_url: string, init?: RequestInit) => {
+			seen.push(new Headers(init?.headers));
+			const version = answers[Math.min(n++, answers.length - 1)];
+			if (version === null) throw new TypeError('fetch failed');
+			return new Response(JSON.stringify({ status: 'ok', version }));
+		}) as unknown as typeof fetch;
+		const error = await waitForAuthVersion('stage', 'al-ummah-now-auth-stage', NEW, override, 120_000, 3, fetchImpl, 3000, () => t, async (ms) => void (t += ms)).then(
+			() => null,
+			(e: Error) => e.message
+		);
+		return { error, asked: n, waited: t, seen };
+	};
+
+	it('wants the version three times in a row', async () => {
+		expect(await wait([NEW])).toMatchObject({ error: null, asked: 3, waited: 2000 });
+		// One answer is not enough: an old one, or none, starts the count again
+		expect(await wait([OLD, NEW, OLD, NEW, NEW, null, NEW])).toMatchObject({ error: null, asked: 9 });
+	});
+
+	it('gives up at the deadline while the edge stays mixed or old, and says what answered', async () => {
+		for (const answers of [[OLD], Array.from({ length: 500 }, (_, i) => (i % 3 === 2 ? OLD : NEW))]) {
+			const r = await wait(answers);
+			expect(r.error).toBe(`al-ummah-now-auth-stage did not serve ${NEW} 3 times in a row within 120s (last other answer: version ${OLD})`);
+			expect(r.waited).toBeGreaterThanOrEqual(120_000);
+			expect(r.waited).toBeLessThan(123_001);
+		}
+		expect((await wait([null])).error).toContain('(last other answer: fetch failed)');
+	});
+
+	it('sends the override only when asked to', async () => {
+		expect((await wait([NEW])).seen.every((h) => h.get('Cloudflare-Workers-Version-Overrides') === `al-ummah-now-auth-stage="${NEW}"`)).toBe(true);
+		expect((await wait([NEW], false)).seen.some((h) => h.has('Cloudflare-Workers-Version-Overrides'))).toBe(false);
 	});
 });
