@@ -984,11 +984,12 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
       expect(await run({ state: between({}), fetchFn: up.fetchFn })).toMatchObject({ error: "videos_erasure_refused", started: false });
     });
 
-    it("both save after their pass: the token, what is left and a finished erase all survive", async () => {
+    it("both save after their pass: what is left and a finished erase survive, and a token only between unfinished runs", async () => {
       for (const [theirs, mine, kept] of [
         [{ resumeToken: "theirs", leftover: "channel" }, { complete: false, resumeToken: "mine" }, { stage: "started", resumeToken: "mine", leftover: "channel" }],
-        [{ stage: "content_erased" }, { complete: false, resumeToken: "mine", errors: ["x"] }, { stage: "content_erased", resumeToken: "mine", leftover: "other" }],
+        [{ stage: "content_erased" }, { complete: false, resumeToken: "mine", errors: ["x"] }, { stage: "content_erased", leftover: "other" }],
         [{ stage: "content_erased", leftover: "other" }, { complete: false, resumeToken: "mine", errors: ["channel_unreadable:c"] }, { stage: "content_erased", leftover: "channel" }],
+        [{ resumeToken: "theirs" }, { complete: false, resumeToken: "mine" }, { stage: "started", resumeToken: "mine" }],
       ] as const) {
         const up = upstream([
           async () => {
@@ -997,9 +998,46 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
           },
         ]);
         expect(await run({ state: between({}), fetchFn: up.fetchFn })).toEqual({ ok: true, complete: false, restarted: false });
-        expect(await progress()).toMatchObject(kept);
+        const now = await progress();
+        expect(now).toMatchObject(kept);
+        if (kept.stage === "content_erased") expect(now).not.toHaveProperty("resumeToken");
         await db.prepare(`DELETE FROM openauth_atomic`).run();
       }
+    });
+
+    it("this one's erase finishes while the other is mid-scan: a retry starts from the beginning, never at the other's token", async () => {
+      for (const [mine, auth, theirs, firstAnswer] of [
+        // Paused: something was left behind, the person has to decide
+        [{ complete: true, errors: ["channel_unreadable:c"] }, [], { resumeToken: "stale" }, { ok: true, complete: false, leftover: "channel" }],
+        [{ complete: true }, [], { resumeToken: "stale", leftover: "channel" }, { ok: true, complete: false, leftover: "channel" }],
+        // Auth did not delete the account
+        [{ complete: true }, [() => reply({}, 500)], { resumeToken: "stale" }, expect.objectContaining({ ok: false, error: "account_deletion_failed" })],
+        [{ complete: true }, [new Error("network")], { resumeToken: "stale" }, expect.objectContaining({ ok: false, error: "account_deletion_failed" })],
+        [{ complete: true }, [() => reply({ error: "insufficient_user_authentication" }, 401)], { resumeToken: "stale" }, expect.objectContaining({ ok: false, error: "content_erased_reauth_required" })],
+      ] as [Record<string, unknown>, Step[], Partial<DeleteProgress>, unknown][]) {
+        const first = upstream([
+          async () => {
+            await other(theirs)();
+            return reply(mine);
+          },
+        ], auth);
+        expect(await run({ state: between({}), fetchFn: first.fetchFn })).toEqual(firstAnswer);
+        const now = await progress();
+        expect(now).toMatchObject({ stage: "content_erased" });
+        expect(now).not.toHaveProperty("resumeToken");
+
+        const retry = upstream([() => reply({ complete: true })], [() => reply(DELETED)]);
+        expect(await run({ state: between({}), fetchFn: retry.fetchFn, acceptLeftover: "channel" })).toMatchObject({ ok: true, complete: true });
+        expect(retry.calls[0].body).toEqual({ confirm: "DELETE" });
+        await db.prepare(`DELETE FROM openauth_atomic`).run();
+      }
+    });
+
+    it("a finished erase that holds a token all the same (an older record) is not resumed at it", async () => {
+      await setRecord(record({ stage: "content_erased", resumeToken: "stale" }));
+      const up = upstream([() => reply({ complete: true })], [() => reply(DELETED)]);
+      expect(await run({ state: between({}), fetchFn: up.fetchFn })).toMatchObject({ ok: true, complete: true });
+      expect(up.calls[0].body).toEqual({ confirm: "DELETE" });
     });
 
     it("this one's erase finishes while the other found something left: the person is asked before Auth", async () => {
