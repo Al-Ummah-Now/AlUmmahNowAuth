@@ -251,6 +251,35 @@ describe('the invite email from the admin\'s copy', () => {
 	});
 });
 
+describe('direction controls typed by people', () => {
+	const CONTROLS = /[\u202a-\u202e\u2066-\u2069]/;
+	const bad = (t: string) => `${t}\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069`;
+
+	it('leave every string of an email, subject and inbox preview included', () => {
+		const block = () => [
+			{ kind: 'p' as const, text: bad('p') },
+			{ kind: 'small' as const, text: bad('small') },
+			{ kind: 'notice' as const, text: bad('notice') },
+			{ kind: 'code' as const, label: bad('label'), code: '123456', hint: bad('hint') },
+			{ kind: 'quote' as const, label: bad('said'), text: bad('one\ntwo') },
+			{ kind: 'link' as const, label: bad('link'), url: 'https://www.alummahnow.net/x' },
+			{ kind: 'video' as const, url: 'https://www.alummahnow.net/v', imageUrl: 'https://www.alummahnow.net/i.jpg', title: bad('title'), channel: bad('channel'), alt: bad('alt') },
+		];
+		const email = renderEmail({ locale: 'en', subject: bad('subject'), preheader: bad('peek'), greeting: bad('hi'), heading: bad('heading'), blocks: block(), cta: { label: bad('do'), url: 'https://www.alummahnow.net/' }, after: block(), signoff: bad('bye'), reason: bad('why') });
+		for (const part of [email.subject, email.html, email.text]) expect(part).not.toMatch(CONTROLS);
+		expect(email.subject).toBe('subject');
+		expect(email.text).toMatch(/> one\n> two/);
+		expect(renderEmail({ locale: 'en', subject: 'a\r\nb\u2029c', preheader: 'p', blocks: [], reason: 'r' }).subject).toBe('a b c');
+	});
+
+	it('a row keeps the isolates it is built with, and nothing that overrides; joiners and marks stay', () => {
+		const email = renderEmail({ locale: 'en', subject: 's', preheader: 'p', blocks: [{ kind: 'facts', rows: [[bad('Device'), '\u2068Amina\u202e\u2069']] }, { kind: 'p', text: 'می\u200cرا' }], reason: 'r' });
+		expect(email.text).toContain('Device: \u2068Amina\u2069');
+		expect(email.text).toContain('می\u200cرا');
+		expect(email.html).not.toMatch(/[\u202a-\u202e]/);
+	});
+});
+
 describe('the layout', () => {
 	it('puts the preheader first and hidden, and the reason in the footer', () => {
 		const email = renderEmail({ locale: 'en', subject: 'S', preheader: 'Peek', blocks: [{ kind: 'p', text: 'Body' }], reason: 'Why you got it' });
