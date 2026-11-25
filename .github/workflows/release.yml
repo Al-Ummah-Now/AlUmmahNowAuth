@@ -89,6 +89,7 @@ jobs:
   build:
     name: Build once
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -140,6 +141,8 @@ jobs:
     name: Stage (deploy, smoke, E2E)
     needs: build
     runs-on: ubuntu-24.04
+    # Generous: a timeout in the middle of a promote skips its auto-rollback
+    timeout-minutes: 45
     environment:
       name: stage
       url: https://auth.stage.alummahnow.net
@@ -265,6 +268,8 @@ jobs:
     name: Production (migrate, 0% smoke, promote)
     needs: stage
     runs-on: ubuntu-24.04
+    # Generous: a timeout in the middle of a promote skips its auto-rollback
+    timeout-minutes: 45
     outputs:
       # The promote went through, whatever happens after it (the code is live)
       promoted: ${{ steps.promote.outcome == 'success' }}

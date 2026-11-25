@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { runSmoke, type CheckResult, type SmokeEnv, HOSTS } from './smoke.ts';
+import { REQUEST_TIMEOUT_MS, runSmoke, type CheckResult, type SmokeEnv, HOSTS } from './smoke.ts';
 
 export type ReleaseEnv = 'stage' | 'production';
 
@@ -190,7 +190,7 @@ export async function waitForAuthVersion(env: SmokeEnv, worker: string, version:
 	let last = 'no response';
 	while (Date.now() < deadline) {
 		try {
-			const res = await fetch(`${HOSTS[env].auth}/health?deep=1`, { headers });
+			const res = await fetch(`${HOSTS[env].auth}/health?deep=1`, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
 			const body = (await res.json()) as { version?: string | null };
 			if (body.version === version) return;
 			last = `version ${body.version}`;

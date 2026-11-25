@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { adminSource, deriveEnvConfig, resourceIds } from '../admin-config.ts';
 import { parseJsonc } from '../jsonc.ts';
-import { HOSTS, overrideHeader, runSmoke, VERSION_PAUSE_MS, VERSION_WAIT_MS, type CheckResult } from '../smoke.ts';
+import { HOSTS, overrideHeader, REQUEST_TIMEOUT_MS, runSmoke, VERSION_PAUSE_MS, VERSION_WAIT_MS, type CheckResult } from '../smoke.ts';
 
 /** A fake auth deployment for the smoke checks. */
 function fakeFetch(opts: { issuer?: string; deep?: object; deepStatus?: number; testRoute?: number; seen?: Headers[] } = {}): typeof fetch {
@@ -33,7 +35,23 @@ function fakeFetch(opts: { issuer?: string; deep?: object; deepStatus?: number; 
 	}) as typeof fetch;
 }
 
+/** A real server whose answers stall: no headers, or headers and half a body, then nothing. */
+async function stalling(run: (url: string) => Promise<void>): Promise<void> {
+	const server = createServer((req, res) => {
+		if (req.url === '/body') res.writeHead(200, { 'Content-Type': 'application/json' }).write('{"status":');
+	});
+	await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+	try {
+		await run(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+	} finally {
+		server.closeAllConnections();
+		server.close();
+	}
+}
+
 describe('runSmoke', () => {
+	afterEach(() => void vi.restoreAllMocks());
+
 	it('passes against a healthy production deployment', async () => {
 		const results = await runSmoke({ env: 'production', fetchImpl: fakeFetch() });
 		expect(results.filter((r) => !r.ok)).toEqual([]);
@@ -86,6 +104,71 @@ describe('runSmoke', () => {
 		const results = await runSmoke({ env: 'production', overrides: { 'al-ummah-now-profile': 'v-new' }, fetchImpl: fakeFetch(), ...c });
 		expect(deepHealth(results)).toMatchObject({ ok: false, detail: 'no candidate version of al-ummah-now-auth given' });
 		expect(c.now()).toBe(0);
+	});
+
+	it('gives every request a timeout, and one that stalls in any other check is a failure', async () => {
+		for (const overrides of [undefined, { 'al-ummah-now-auth': 'v-new' }]) {
+			const base = fakeFetch();
+			for (const path of ['/.well-known/jwks.json', '/password/authorize', '/test/email/smoke%40e2e.alummahnow.net']) {
+				const signals: unknown[] = [];
+				const results = await runSmoke({
+					env: 'production',
+					overrides,
+					requestTimeoutMs: 30,
+					fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+						signals.push(init?.signal);
+						if (new URL(String(input)).pathname !== path) return base(input, init);
+						return new Promise((_, reject) => init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason as Error)));
+					}) as typeof fetch,
+				});
+				expect(signals.every((s) => s instanceof AbortSignal)).toBe(true);
+				const failed = results.filter((r) => !r.ok);
+				expect(failed.length, path).toBeGreaterThan(0);
+				for (const f of failed) expect(f.detail, path).toMatch(/timeout/i);
+			}
+		}
+	});
+
+	it.each(['/headers', '/body'])('a stalled answer (%s) is not yet while the candidate is waited for, and a failure otherwise', async (path) => {
+		await stalling(async (url) => {
+			const base = fakeFetch();
+			const run = async (overrides?: Record<string, string>) => {
+				let n = 0;
+				const results = await runSmoke({
+					env: 'production',
+					overrides,
+					requestTimeoutMs: 50,
+					sleep: async () => {},
+					fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) =>
+						new URL(String(input)).pathname === '/health' && n++ === 0 ? fetch(url + path, init) : base(input, init)) as typeof fetch,
+				});
+				return { health: deepHealth(results), asked: n };
+			};
+			expect(await run({ 'al-ummah-now-auth': 'v-new' })).toMatchObject({ health: { ok: true }, asked: 2 });
+			expect(await run()).toMatchObject({ health: { ok: false, detail: expect.stringMatching(/timeout/i) }, asked: 1 });
+		});
+	});
+
+	it('never waits past the deadline when every answer stalls', async () => {
+		const c = clock();
+		let t = 0;
+		const timeouts: number[] = [];
+		vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => (timeouts.push(ms), new AbortController().signal));
+		const base = fakeFetch();
+		const results = await runSmoke({
+			env: 'production',
+			overrides: { 'al-ummah-now-auth': 'v-new' },
+			now: () => c.now() + t,
+			sleep: c.sleep,
+			fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+				if (new URL(String(input)).pathname !== '/health') return base(input, init);
+				t += timeouts.at(-1)!;
+				throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+			}) as typeof fetch,
+		});
+		expect(deepHealth(results)).toMatchObject({ ok: false, detail: 'no answer in time, expected candidate v-new (after 90 s)' });
+		expect(c.now() + t).toBe(VERSION_WAIT_MS);
+		expect(Math.max(...timeouts)).toBe(REQUEST_TIMEOUT_MS);
 	});
 
 	describe.each([
