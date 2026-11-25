@@ -7,7 +7,8 @@
  *
  * With --override, every request carries Cloudflare-Workers-Version-Overrides, so
  * the checks run on that (0%-traffic) version with production bindings, and the
- * auth deep-health check asserts the response came from it.
+ * auth deep-health check asserts the response came from it, waiting up to
+ * VERSION_WAIT_MS for the candidate. Every other check asks once.
  */
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
@@ -65,7 +66,13 @@ export interface SmokeOptions {
 	/** worker name → version id */
 	overrides?: Record<string, string>;
 	fetchImpl?: typeof fetch;
+	now?: () => number;
+	sleep?: (ms: number) => Promise<void>;
 }
+
+/** How long deep health may keep answering with another version than the candidate, and the pause between tries. */
+export const VERSION_WAIT_MS = 90_000;
+export const VERSION_PAUSE_MS = 5_000;
 
 export function overrideHeader(overrides: Record<string, string>): string {
 	return Object.entries(overrides)
@@ -76,6 +83,8 @@ export function overrideHeader(overrides: Record<string, string>): string {
 export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 	const hosts = HOSTS[opts.env];
 	const doFetch = opts.fetchImpl ?? fetch;
+	const now = opts.now ?? Date.now;
+	const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 	const headers: Record<string, string> = { 'User-Agent': 'al-ummah-now-release-smoke' };
 	if (opts.overrides && Object.keys(opts.overrides).length) headers['Cloudflare-Workers-Version-Overrides'] = overrideHeader(opts.overrides);
 	const get = (url: string, init: RequestInit = {}) =>
@@ -113,16 +122,27 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 	});
 
 	await check('auth: deep health (bindings resolve)', async () => {
-		const res = await get(`${hosts.auth}/health?deep=1`);
-		const body = (await res.json()) as { status: string; environment: string; version: string | null; checks: Record<string, boolean> };
-		const failed = Object.entries(body.checks ?? {})
-			.filter(([, ok]) => !ok)
-			.map(([k]) => k);
-		assert(res.status === 200 && body.status === 'ok', `degraded: ${failed.join(', ') || `HTTP ${res.status}`}`);
-		assert(body.environment === opts.env, `environment is ${body.environment}, expected ${opts.env}`);
-		const wanted = opts.overrides?.[opts.env === 'production' ? 'al-ummah-now-auth' : `al-ummah-now-auth-${opts.env}`];
-		if (wanted) assert(body.version === wanted, `served by version ${body.version}, expected candidate ${wanted}`);
-		return `env ${body.environment}, version ${body.version ?? 'unknown'}`;
+		const worker = opts.env === 'production' ? 'al-ummah-now-auth' : `al-ummah-now-auth-${opts.env}`;
+		const wanted = opts.overrides?.[worker];
+		// With overrides the candidate itself has to answer: no version to ask for is no proof
+		assert(wanted || !Object.keys(opts.overrides ?? {}).length, `no candidate version of ${worker} given`);
+		const start = now();
+		for (;;) {
+			const res = await get(`${hosts.auth}/health?deep=1`);
+			const body = (await res.json()) as { status: string; environment: string; version: string | null; checks: Record<string, boolean> };
+			const failed = Object.entries(body.checks ?? {})
+				.filter(([, ok]) => !ok)
+				.map(([k]) => k);
+			assert(res.status === 200 && body.status === 'ok', `degraded: ${failed.join(', ') || `HTTP ${res.status}`}`);
+			assert(body.environment === opts.env, `environment is ${body.environment}, expected ${opts.env}`);
+			const waited = Math.round((now() - start) / 1000);
+			if (!wanted || body.version === wanted) return `env ${body.environment}, version ${body.version ?? 'unknown'}${waited >= 1 && wanted ? ` (after ${waited} s)` : ''}`;
+			// Edge locations learn of a new deployment at different times: one can still answer with the version
+			// before it, after waitForVersion saw the candidate. Only that is waited for: an error, another status
+			// or a degraded answer fails above, at once, on every try.
+			assert(now() - start + VERSION_PAUSE_MS <= VERSION_WAIT_MS, `served by version ${body.version}, expected candidate ${wanted} (after ${waited} s)`);
+			await sleep(VERSION_PAUSE_MS);
+		}
 	});
 
 	await check('auth: test routes are not reachable without the secret', async () => {

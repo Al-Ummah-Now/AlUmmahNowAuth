@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { currentVersion, parseVersionId, promote, releaseApps, ReleaseError, type PromoteDeps } from '../promote.ts';
-import type { CheckResult } from '../smoke.ts';
+import { runSmoke, type CheckResult } from '../smoke.ts';
 
 const PREV = { auth: 'aaaaaaaa-0000-4000-8000-000000000001', profile: 'aaaaaaaa-0000-4000-8000-000000000002', admin: 'aaaaaaaa-0000-4000-8000-000000000003' };
 const NEXT = { auth: 'bbbbbbbb-0000-4000-8000-000000000001', profile: 'bbbbbbbb-0000-4000-8000-000000000002', admin: 'bbbbbbbb-0000-4000-8000-000000000003' };
@@ -73,6 +73,29 @@ describe('promote', () => {
 		await expect(promote(apps(), 'production', 'release abc', deps)).rejects.toMatchObject({ rolledBack: true, message: expect.stringMatching(/pre-traffic/) });
 		expect(calls.some((c) => c.endsWith(`${NEXT.auth}@100%`))).toBe(false);
 		expect(calls).toContain(`auth rollback ${PREV.auth}`);
+	});
+
+	it.each(['stage', 'production'] as const)('%s: promotes only when the candidate itself answered the pre-traffic smoke', async (env) => {
+		const health = async (version: string) => {
+			const { deps, calls } = fakeDeps([]);
+			let t = 0;
+			// The real smoke's verdict on deep health; the other checks are not under test
+			deps.smoke = async (e, overrides) =>
+				(await runSmoke({
+					env: e,
+					overrides,
+					now: () => t,
+					sleep: async (ms) => void (t += ms),
+					fetchImpl: (async () => new Response(JSON.stringify({ status: 'ok', environment: env, version, checks: {} }))) as unknown as typeof fetch,
+				})).filter((r) => r.name.startsWith('auth: deep health'));
+			return { calls, done: await promote(releaseApps('/repo', env), env, 'release abc', deps).catch((e: ReleaseError) => e) };
+		};
+		const stale = await health(PREV.auth);
+		expect(stale.done).toMatchObject({ rolledBack: true, message: expect.stringContaining(`expected candidate ${NEXT.auth}`) });
+		expect(stale.calls.some((c) => c.includes('@100%') && !c.includes('@0%'))).toBe(false);
+		const fresh = await health(NEXT.auth);
+		expect(fresh.done).not.toBeInstanceOf(Error);
+		expect(fresh.calls).toContain(`auth versions deploy ${NEXT.auth}@100%`);
 	});
 
 	it('rolls every worker back when the post-promote smoke fails', async () => {
