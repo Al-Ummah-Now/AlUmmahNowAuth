@@ -386,10 +386,20 @@ export interface RenderedEmailParts {
 /**
  * Direction controls typed by people (names, titles, messages) reorder the text around them, the subject and
  * the inbox preview included. The copy uses none, so they go from every string. A facts value keeps isolates
- * (U+2066–U+2069): admin-api's email/direction.ts builds rows with them, and it strips the values it puts inside.
+ * (U+2066–U+2069) that all close: admin-api's email/direction.ts builds rows with them, and it strips the values
+ * it puts inside.
  */
 const plain = (text: string) => text.replace(/[\u202a-\u202e\u2066-\u2069]/g, '');
-const plainRow = (text: string) => text.replace(/[\u202a-\u202e]/g, '');
+const plainRow = (text: string) => {
+	const row = text.replace(/[\u202a-\u202e]/g, '');
+	let open = 0;
+	for (const ch of row) {
+		if (ch === '\u2069') open--;
+		else if (ch >= '\u2066' && ch <= '\u2068') open++;
+		if (open < 0) return plain(row);
+	}
+	return open ? plain(row) : row;
+};
 
 function plainBlock(block: EmailBlock): EmailBlock {
 	switch (block.kind) {

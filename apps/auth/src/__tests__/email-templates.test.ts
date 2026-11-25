@@ -277,6 +277,12 @@ describe('direction controls typed by people', () => {
 		expect(email.text).toContain('Device: \u2068Amina\u2069');
 		expect(email.text).toContain('می\u200cرا');
 		expect(email.html).not.toMatch(/[\u202a-\u202e]/);
+		// A plain value whose isolates don't all close, or close more than they open, keeps none
+		for (const v of ['x\u2067y', 'x\u2069y', '\u2069x\u2068y', '\u2068x\u2069\u2069y']) {
+			const one = renderEmail({ locale: 'en', subject: 's', preheader: 'p', blocks: [{ kind: 'facts', rows: [['Device', v]] }], reason: 'r' });
+			expect(one.text).toContain('Device: xy\n');
+			expect(one.html).not.toMatch(/[\u2066-\u2069]/);
+		}
 	});
 });
 
