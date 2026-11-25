@@ -100,6 +100,8 @@ declare global {
     NATIVE_PASSKEY_LIMITER?: RateLimit;
     /** PUT /account/birth-date per person */
     BIRTH_DATE_LIMITER?: RateLimit;
+    /** POST /account/deletion-receipt per person, GET /account/status per client IP */
+    ACCOUNT_DELETION_LIMITER?: RateLimit;
     /** Encrypts dates of birth (birth-date/key.ts); the previous key while one is replaced */
     PROFILE_DATA_KEY?: SecretBinding;
     PROFILE_DATA_KEY_PREVIOUS?: SecretBinding;

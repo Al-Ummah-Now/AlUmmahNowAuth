@@ -15,6 +15,7 @@
  * - SEND_CODE_LIMITER: verification emails per client IP (per address for E2E)
  * - ADMIN_LIMITER: admin API reads and actions per admin
  * - ADMIN_SENSITIVE_LIMITER: destructive admin actions per admin
+ * - ACCOUNT_DELETION_LIMITER: deletion receipts per person, /account/status per client IP
  * - PASSWORD_IP_LIMITER / PASSWORD_EMAIL_LIMITER: password POSTs (security/password-guard.ts)
  */
 import { logger } from './logger';

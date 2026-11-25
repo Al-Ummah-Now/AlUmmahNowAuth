@@ -27,6 +27,7 @@ import { createRateLimitExceededEvent } from './audit-events';
 import { trackEvent } from './utils/analytics';
 import { readTokenRequestFields, tokenRateLimitBuckets } from './utils/token-rate-limit-subject';
 import { handleAccountExport, handleDeleteAccount, handleSetAccountName, handleSignOutAll } from './routes/account-routes';
+import { handleAccountStatus, handleDeletionReceipt } from './routes/deletion-receipt';
 import { AdminEnterpriseRoutes } from './admin-enterprise-routes';
 import { AdminTenantRoutes } from './admin-tenant-routes';
 import { routeAdminDLQ } from './admin-dlq-routes';
@@ -568,6 +569,53 @@ function passkeyPageTheme(url: URL) {
 	return openauthThemeFor(compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!);
 }
 
+/** Self-service account endpoints: every answer has the security headers and none is cached. */
+async function routeAccount(rctx: RouterContext): Promise<RouteResult> {
+	const { request } = rctx;
+	switch (rctx.url.pathname) {
+		// Self-service account deletion and export (Epic 9.7): the user's own token
+		case '/account':
+			if (request.method !== 'DELETE') return methodNotAllowed('DELETE');
+			return handleDeleteAccount(request, rctx.env, rctx.ctx, rctx.requestId);
+
+		// What became of a deletion whose answer was lost: the receipt, then the one question it answers
+		case '/account/deletion-receipt':
+			if (request.method !== 'POST') return methodNotAllowed('POST');
+			return handleDeletionReceipt(request, rctx.env);
+
+		case '/account/status':
+			if (request.method !== 'GET') return methodNotAllowed('GET');
+			return handleAccountStatus(request, rctx.env);
+
+		case '/account/export':
+			if (request.method !== 'GET') return methodNotAllowed('GET');
+			return handleAccountExport(request, rctx.env);
+
+		// The caller's own names (display, first, last): the videos profile sends them here
+		case '/account/name':
+			if (request.method !== 'PUT') return methodNotAllowed('PUT');
+			return handleSetAccountName(request, rctx.env);
+
+		// The caller's own date of birth, through the Profile app (wiki E20 §5.1)
+		case '/account/birth-date':
+			if (request.method === 'GET') return handleGetBirthDate(request, rctx.env);
+			if (request.method !== 'PUT') return methodNotAllowed('GET, PUT');
+			return handlePutBirthDate(request, rctx.env, rctx.ctx, rctx.requestId);
+
+		// Sign out of all devices (#437): revokes every sign-in of the caller
+		case '/account/sign-out-all':
+			if (request.method !== 'POST') return methodNotAllowed('POST');
+			return handleSignOutAll(request, rctx.env, rctx.ctx, rctx.requestId);
+	}
+	return null;
+}
+
+const accountAnswer = (response: Response, isProduction: boolean) => {
+	const secured = addSecurityHeaders(response, isProduction);
+	if (!/no-store/.test(secured.headers.get('Cache-Control') ?? '')) secured.headers.set('Cache-Control', 'no-store');
+	return secured;
+};
+
 /**
  * Auth's own sign-in pages (the invite card, the passkey card, "Check your email" after a
  * sign-in link) dressed like the issuer's: the shared site header (one header in every app,
@@ -617,6 +665,11 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 		if (response) return addSecurityHeaders(await withSignInChrome(response, url, rctx.env), rctx.isProduction);
 	}
 
+	if (pathname === '/account' || pathname.startsWith('/account/')) {
+		const response = await routeAccount(rctx);
+		if (response) return accountAnswer(response, rctx.isProduction);
+	}
+
 	// Handle exact path matches first
 	switch (pathname) {
 		case '/':
@@ -658,31 +711,6 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 		case '/themes/resolve':
 			if (request.method !== 'GET') return methodNotAllowed('GET');
 			return handleThemeResolve(rctx.env, url);
-
-		// Self-service account deletion and export (Epic 9.7): the user's own token
-		case '/account':
-			if (request.method !== 'DELETE') return methodNotAllowed('DELETE');
-			return handleDeleteAccount(request, rctx.env, rctx.ctx, rctx.requestId);
-
-		case '/account/export':
-			if (request.method !== 'GET') return methodNotAllowed('GET');
-			return handleAccountExport(request, rctx.env);
-
-		// The caller's own names (display, first, last): the videos profile sends them here
-		case '/account/name':
-			if (request.method !== 'PUT') return methodNotAllowed('PUT');
-			return handleSetAccountName(request, rctx.env);
-
-		// The caller's own date of birth, through the Profile app (wiki E20 §5.1)
-		case '/account/birth-date':
-			if (request.method === 'GET') return handleGetBirthDate(request, rctx.env);
-			if (request.method !== 'PUT') return methodNotAllowed('GET, PUT');
-			return handlePutBirthDate(request, rctx.env, rctx.ctx, rctx.requestId);
-
-		// Sign out of all devices (#437): revokes every sign-in of the caller
-		case '/account/sign-out-all':
-			if (request.method !== 'POST') return methodNotAllowed('POST');
-			return handleSignOutAll(request, rctx.env, rctx.ctx, rctx.requestId);
 	}
 
 	// Handle prefix-based routes

@@ -1339,6 +1339,105 @@
         ]
       }
     },
+    "/account/deletion-receipt": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "operationId": "createDeletionReceipt",
+        "summary": "A receipt for the status of a deletion",
+        "x-summary-ar": "إيصال لمعرفة حالة حذف",
+        "x-audience": "app",
+        "description": "An app asks for it before it deletes the account, and keeps it. Needs a sign-in at most 10 minutes old. The receipt lives 30 days and opens nothing but GET /account/status.",
+        "responses": {
+          "200": {
+            "description": "The receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "receipt",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "receipt": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ]
+      }
+    },
+    "/account/status": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "operationId": "accountStatus",
+        "summary": "Whether an account was deleted",
+        "x-summary-ar": "هل حُذف الحساب",
+        "x-audience": "app",
+        "description": "For an app that lost the answer of a deletion. Takes the receipt in the header, never an access token.",
+        "responses": {
+          "200": {
+            "description": "The answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "deleted"
+                  ],
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "deletionReceipt": []
+          }
+        ]
+      }
+    },
     "/account/export": {
       "get": {
         "tags": [
@@ -8768,6 +8867,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "An admin-scoped client token with the acting staff member in X-Acting-User-Id, or a staff member’s own access token"
+      },
+      "deletionReceipt": {
+        "type": "http",
+        "scheme": "Deletion-Receipt",
+        "description": "The receipt of POST /account/deletion-receipt"
       }
     },
     "responses": {

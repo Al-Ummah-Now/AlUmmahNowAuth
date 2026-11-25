@@ -99,6 +99,14 @@
         "limit": 5,
         "period": 60
       }
+    },
+    {
+      "name": "ACCOUNT_DELETION_LIMITER",
+      "namespace_id": "3010",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
     }
   ],
   "queues": {

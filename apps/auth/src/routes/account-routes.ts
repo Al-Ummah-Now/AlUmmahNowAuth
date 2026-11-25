@@ -14,7 +14,7 @@
  *
  * api-videos orchestrates the full deletion (content first, then this call).
  */
-import { jwtVerify, type JWTPayload } from 'jose';
+import { decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose';
 import { D1UserAdapter } from '@al-ummah-now/openauth';
 import { D1UserService } from '../services/d1-user-service';
 import { issuerKeySet } from '../utils/jwks-cache';
@@ -78,6 +78,8 @@ export async function verifyUserAccessToken(request: Request, env: Env): Promise
 export async function verifyUserToken(token: string, env: Env): Promise<VerifiedUser | Response> {
 	let claims: UserTokenClaims;
 	try {
+		// Not a JWT at all (a deletion receipt, say): refused before jose starts anything
+		decodeProtectedHeader(token);
 		({ payload: claims } = await jwtVerify<UserTokenClaims>(token, issuerKeySet(env), {
 			issuer: env.OPENAUTH_ISSUER || 'http://localhost:3301',
 		}));
