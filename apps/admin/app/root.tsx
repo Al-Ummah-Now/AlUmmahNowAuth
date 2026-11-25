@@ -6,6 +6,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  isRouteErrorResponse,
   useLocation,
   useRouteLoaderData,
 } from "react-router";
@@ -106,4 +107,19 @@ export default function App() {
     document.head.appendChild(script);
   }, [street]);
   return <Outlet />;
+}
+
+/**
+ * What React Router shows when a root route has no boundary, without its console.error of the error object: an unknown
+ * URL (bots' .php probes) printed "[object Object]" as an error (185 in 3 h, production 2026-11-25). Real faults are
+ * logged once by handleError (entry.server.tsx). Never the error's own text: it can hold internals.
+ */
+export function ErrorBoundary({ error }: { error?: unknown }) {
+  const known = isRouteErrorResponse(error) ? error : null;
+  const title = known ? `${known.status} ${known.statusText}`.trim() : "Application Error";
+  return (
+    <main style={{ fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
+      <h1 style={{ fontSize: "24px" }}>{title}</h1>
+    </main>
+  );
 }
