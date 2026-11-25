@@ -140,8 +140,7 @@ export async function sendPasskeyEmail(env: PasskeyEmailEnv, to: string, email: 
 		}
 		const apiKey = await requireSecret(env.RESEND_API_KEY as never, 'RESEND_API_KEY', env as unknown as Record<string, unknown>);
 		const doc = renderEmail(passkeyEmailDoc(email, locale));
-		const subject = passkeyEmailDoc(email, locale).subject;
-		const result = await SendEmail({ apiKey, from: FROM, to, subject, html: doc.html, text: doc.text });
+		const result = await SendEmail({ apiKey, from: FROM, to, subject: doc.subject, html: doc.html, text: doc.text });
 		return result.success;
 	} catch (error) {
 		logger.error('[passkeys] Could not send email', { kind: email.kind, error: error instanceof Error ? error.message : String(error) });
