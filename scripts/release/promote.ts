@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { REQUEST_TIMEOUT_MS, runSmoke, type CheckResult, type SmokeEnv, HOSTS } from './smoke.ts';
+import { overrideHeader, REQUEST_TIMEOUT_MS, runSmoke, type CheckResult, type SmokeEnv, HOSTS } from './smoke.ts';
 
 export type ReleaseEnv = 'stage' | 'production';
 
@@ -99,7 +99,7 @@ export interface Released {
 export interface PromoteDeps {
 	run: Runner;
 	smoke: (env: SmokeEnv, overrides?: Record<string, string>) => Promise<CheckResult[]>;
-	/** Resolves when auth deep health reports `version` (through the override, if given) */
+	/** Resolves when auth deep health reports `version` steadily (through the override, if given) */
 	waitForVersion: (env: SmokeEnv, worker: string, version: string, override: boolean) => Promise<void>;
 	log: (line: string) => void;
 }
@@ -182,24 +182,46 @@ export async function promote(apps: ReleaseApp[], env: ReleaseEnv, message: stri
 	return released;
 }
 
-/** Polls auth deep health until the given version answers (deployments take a few seconds to propagate). */
-export async function waitForAuthVersion(env: SmokeEnv, worker: string, version: string, override: boolean, timeoutMs = 90_000): Promise<void> {
+/**
+ * Polls auth deep health until the given version answers `steady` times in a row. One answer is not
+ * enough: Cloudflare rolls a deployment (and an override target) out across the edge gradually, so
+ * the request right after the first match can still reach the old version (release 45697039999: the
+ * stage smoke got the old version one request after the wait had passed, twice).
+ */
+export async function waitForAuthVersion(
+	env: SmokeEnv,
+	worker: string,
+	version: string,
+	override: boolean,
+	timeoutMs = 120_000,
+	steady = 3,
+	doFetch: typeof fetch = fetch,
+	pauseMs = 3000,
+	now: () => number = Date.now,
+	sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<void> {
 	const headers: Record<string, string> = { 'User-Agent': 'al-ummah-now-release' };
-	if (override) headers['Cloudflare-Workers-Version-Overrides'] = `${worker}="${version}"`;
-	const deadline = Date.now() + timeoutMs;
+	if (override) headers['Cloudflare-Workers-Version-Overrides'] = overrideHeader({ [worker]: version });
+	const deadline = now() + timeoutMs;
 	let last = 'no response';
-	while (Date.now() < deadline) {
+	let inARow = 0;
+	while (now() < deadline) {
 		try {
-			const res = await fetch(`${HOSTS[env].auth}/health?deep=1`, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+			const res = await doFetch(`${HOSTS[env].auth}/health?deep=1`, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
 			const body = (await res.json()) as { version?: string | null };
-			if (body.version === version) return;
+			if (body.version === version) {
+				if (++inARow >= steady) return;
+				await sleep(Math.min(pauseMs, 1000));
+				continue;
+			}
 			last = `version ${body.version}`;
 		} catch (error) {
 			last = (error as Error).message;
 		}
-		await new Promise((r) => setTimeout(r, 3000));
+		inARow = 0;
+		await sleep(pauseMs);
 	}
-	throw new Error(`${worker} did not serve ${version} within ${timeoutMs / 1000}s (last: ${last})`);
+	throw new Error(`${worker} did not serve ${version} ${steady} times in a row within ${timeoutMs / 1000}s (last other answer: ${last})`);
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
