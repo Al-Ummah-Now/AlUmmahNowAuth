@@ -52,6 +52,7 @@ import { iconServer } from '../../../packages/ui/src/app-icons/serve.ts';
 import { NAV_ICONS } from '../../../packages/ui/src/nav/aun-nav-icons.generated.ts';
 import { applyLogLevel } from '../../../packages/ui/src/log-level.ts';
 import { noIndexWorker } from '../../../packages/ui/src/crawlers.ts';
+import { releaseCheckedWorker } from '../../../packages/ui/src/release-check.ts';
 import { streetResponse } from '../../../packages/ui/src/fanous-street/index.ts';
 
 /** Account's tab and app icons (the owner's account lantern, cropped and downscaled by AlUmmahNow packages/app-icons). */
@@ -718,4 +719,5 @@ const worker = {
 } satisfies ExportedHandler<Env>;
 
 /** Nothing on this host is for search engines: robots.txt Disallow: / and X-Robots-Tag: noindex (packages/ui/src/crawlers.ts) */
-export default noIndexWorker(worker);
+// releaseCheckedWorker: outermost, proves to the release which version answered (packages/ui/src/release-check.ts)
+export default releaseCheckedWorker(noIndexWorker(worker));

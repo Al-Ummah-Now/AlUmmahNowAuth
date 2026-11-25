@@ -90,6 +90,8 @@ export const APPS: AppRule[] = [
 			requiredBindings: [
 				{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
 				{ kind: 'd1_databases', name: 'AUTH_DB' },
+				// The release's proof of which version answered (X-Release-Check)
+				{ kind: 'version_metadata', name: 'CF_VERSION_METADATA' },
 			],
 			forbiddenNames: TEST_ONLY,
 		},
@@ -99,6 +101,8 @@ export const APPS: AppRule[] = [
 			requiredBindings: [
 				{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
 				{ kind: 'd1_databases', name: 'AUTH_DB' },
+				// The release's proof of which version answered (X-Release-Check)
+				{ kind: 'version_metadata', name: 'CF_VERSION_METADATA' },
 			],
 			allowedHosts: ['*.stage.alummahnow.net'],
 		},
@@ -122,6 +126,8 @@ export const APPS: AppRule[] = [
 			requiredBindings: [
 				{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
 				{ kind: 'd1_databases', name: 'AUTH_DB' },
+				// The release's proof of which version answered (X-Release-Check)
+				{ kind: 'version_metadata', name: 'CF_VERSION_METADATA' },
 			],
 			forbiddenNames: TEST_ONLY,
 		},
@@ -136,6 +142,8 @@ export const APPS: AppRule[] = [
 			requiredBindings: [
 				{ kind: 'kv_namespaces', name: 'AUTH_STORAGE' },
 				{ kind: 'd1_databases', name: 'AUTH_DB' },
+				// The release's proof of which version answered (X-Release-Check)
+				{ kind: 'version_metadata', name: 'CF_VERSION_METADATA' },
 			],
 			allowedHosts: ['*.stage.alummahnow.net'],
 		},
