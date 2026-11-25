@@ -38,6 +38,8 @@ const AUTH_BINDINGS: Binding[] = [
 	{ kind: 'ratelimits', name: 'NATIVE_PASSKEY_LIMITER' },
 	// PUT /account/birth-date per person (wiki E20)
 	{ kind: 'ratelimits', name: 'BIRTH_DATE_LIMITER' },
+	// POST /account/deletion-receipt and GET /account/status
+	{ kind: 'ratelimits', name: 'ACCOUNT_DELETION_LIMITER' },
 	// Turnstile on sign-up, reset and sign-in (src/security/turnstile.ts) and the abuse counters
 	{ kind: 'secrets_store_secrets', name: 'TURNSTILE_SECRET' },
 	{ kind: 'analytics_engine_datasets', name: 'ABUSE_EVENTS' },

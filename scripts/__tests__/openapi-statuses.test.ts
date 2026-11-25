@@ -144,6 +144,7 @@ const T = `${SRC}/admin-tenant-routes.ts`;
 const Q = `${SRC}/admin-dlq-routes.ts`;
 const K = `${SRC}/passkeys/routes.ts`;
 const ACC = `${SRC}/routes/account-routes.ts`;
+const RECEIPT = `${SRC}/routes/deletion-receipt.ts`;
 const INV = `${SRC}/invites/routes.ts`;
 const HAND: Record<string, { file: string; fn: string; with?: string[] }> = {
 	'GET /admin/audit': { file: A, fn: 'getTokenAudit' },
@@ -169,6 +170,8 @@ const HAND: Record<string, { file: string; fn: string; with?: string[] }> = {
 	'POST /admin/dlq/cleanup': { file: Q, fn: 'handleDLQCleanup' },
 	'POST /admin/dlq/reset-stale': { file: Q, fn: 'handleDLQResetStale' },
 	'DELETE /account': { file: ACC, fn: 'handleDeleteAccount' },
+	'POST /account/deletion-receipt': { file: RECEIPT, fn: 'handleDeletionReceipt', with: [ACC] },
+	'GET /account/status': { file: RECEIPT, fn: 'handleAccountStatus' },
 	'GET /account/export': { file: ACC, fn: 'handleAccountExport' },
 	'PUT /account/name': { file: ACC, fn: 'handleSetAccountName' },
 	'GET /account/birth-date': { file: `${SRC}/birth-date/routes.ts`, fn: 'handleGetBirthDate', with: [ACC] },
