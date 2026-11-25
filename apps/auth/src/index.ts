@@ -13,6 +13,7 @@ import { D1TenantAdapter } from "./adapters/tenant-adapter";
 import { hexToSecret } from "./utils/crypto";
 import { isAllowedOrigin } from "./utils/cors";
 import { addSecurityHeaders } from "./utils/security-headers";
+import { protectAccountAnswer } from "./utils/account-answers";
 import { renderErrorPage } from "./ui/error-page";
 import { reportAuthError } from "./errors/report";
 import { flagSystemAccountAttempt } from './security/system-accounts';
@@ -163,7 +164,7 @@ const worker = {
             handleFetch(request.method === 'HEAD' ? new Request(request, { method: 'GET' }) : request, timedEnv, timedCtx, requestId, timer)
           )
         : await handleFetch(request, timedEnv, timedCtx, requestId, timer);
-      response = withRequestId(reportUnreported5xx(handled, request, env, ctx, requestId), requestId);
+      response = withRequestId(reportUnreported5xx(protectAccountAnswer(pathname, handled, isProductionRequest(env, new URL(request.url).hostname)), request, env, ctx, requestId), requestId);
       return withServerTiming(response, timer);
     } finally {
       // Deliver any audit events buffered during this request
@@ -223,6 +224,11 @@ const worker = {
   },
 } satisfies ExportedHandler<Env>;
 
+/** ENVIRONMENT when it is set; otherwise any host but this machine */
+function isProductionRequest(env: Env, hostname: string): boolean {
+  return env.ENVIRONMENT ? env.ENVIRONMENT === 'production' : hostname !== 'localhost' && hostname !== '127.0.0.1';
+}
+
 /** Nothing on this host is for search engines: robots.txt Disallow: / and X-Robots-Tag: noindex (packages/ui/src/crawlers.ts) */
 export default noIndexWorker(worker);
 
@@ -278,9 +284,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
 
     // Determine if running in production (test endpoints disabled in production)
     // Use ENVIRONMENT env var if set, otherwise fall back to hostname check
-    const isProduction = env.ENVIRONMENT
-      ? env.ENVIRONMENT === 'production'
-      : (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1');
+    const isProduction = isProductionRequest(env, url.hostname);
 
     // D1 logging stays off: every log line cost ~4 rows written (row, two
     // indexes, autoincrement) and nothing reads the table. Logs go to Workers Logs.

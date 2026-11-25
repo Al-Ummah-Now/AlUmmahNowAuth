@@ -9,6 +9,7 @@ import worker from '../index';
 import { setupDatabase } from '../test-setup';
 import { SIGNING_KEY_KV_KEY, clearJWKSCache } from '../utils/jwks-cache';
 import { REAUTH_MAX_AGE_SECONDS } from '../routes/account-routes';
+import { isAccountPath } from '../utils/account-answers';
 import { RECEIPT_TTL_SECONDS, readReceipt, signReceipt } from '../routes/deletion-receipt';
 
 const ISSUER = 'http://localhost:3301';
@@ -229,29 +230,43 @@ describe('the receipt of an account deletion (worker)', () => {
 		expect((await status(await forge(good()), off)).status).toBe(503);
 	});
 
-	it('every /account answer has the security headers and is not cached', async () => {
+	it('every /account answer has the security headers and is not cached, whoever made it', async () => {
 		const bearer = { Authorization: `Bearer ${await token('usr_alice')}` };
-		const answers = await Promise.all([
-			status(await receiptOf('usr_alice')),
-			status('nonsense'),
-			ask(await token('usr_alice')),
-			call('/account/status', { method: 'POST' }),
-			call('/account/deletion-receipt', { method: 'GET' }),
-			call('/account', { method: 'GET' }),
-			call('/account', { method: 'DELETE' }),
-			call('/account/export', { headers: bearer }),
-			call('/account/export'),
-			call('/account/name', { method: 'PUT', body: '{}' }),
-			call('/account/sign-out-all', { method: 'GET' }),
-			call('/account/birth-date'),
-		]);
-		for (const res of answers) {
-			expect(res.headers.get('cache-control'), res.url).toContain('no-store');
-			expect(res.headers.get('x-content-type-options')).toBe('nosniff');
-			expect(res.headers.get('x-frame-options')).toBe('DENY');
-			expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+		const full = { limit: async () => ({ success: false }) } as unknown as RateLimit;
+		const broken = {
+			prepare: () => {
+				throw new Error('D1 is down');
+			},
+		} as unknown as D1Database;
+		const receipt = await receiptOf('usr_alice');
+		const answers: [string, number, Response][] = [
+			['status', 200, await status(receipt)],
+			['no receipt', 401, await status('nonsense')],
+			['receipt', 200, await ask(await token('usr_alice'))],
+			['405', 405, await call('/account/status', { method: 'POST' })],
+			['405', 405, await call('/account/deletion-receipt', { method: 'GET' })],
+			['405', 405, await call('/account', { method: 'GET' })],
+			['no token', 401, await call('/account', { method: 'DELETE' })],
+			['export', 200, await call('/account/export', { headers: bearer })],
+			['unknown path', 404, await call('/account/nothing-here')],
+			['unknown path below one', 404, await call('/account/status/more', { headers: { Authorization: `Deletion-Receipt ${receipt}` } })],
+			['limiter', 429, await status(receipt, { ACCOUNT_DELETION_LIMITER: full })],
+			['no secret', 503, await status(receipt, { SESSION_SECRET: undefined, ENVIRONMENT: 'production' } as unknown as Partial<Env>)],
+		];
+		for (const [what, code, res] of answers) {
+			expect(res.status, what).toBe(code);
+			expect(res.headers.get('cache-control'), what).toContain('no-store');
+			expect(res.headers.get('x-content-type-options'), what).toBe('nosniff');
+			expect(res.headers.get('x-frame-options'), what).toBe('DENY');
+			expect(res.headers.get('content-security-policy'), what).toContain("frame-ancestors 'none'");
 		}
-		expect((await call('/account/status', { method: 'POST' })).status).toBe(405);
-		expect((await call('/account/deletion-receipt', { method: 'GET' })).status).toBe(405);
+		const thrown = await status(receipt, { AUTH_DB: broken });
+		expect(thrown.status).toBeGreaterThanOrEqual(500);
+		expect(thrown.headers.get('cache-control')).toContain('no-store');
+		expect(thrown.headers.get('x-content-type-options')).toBe('nosniff');
+		// Other paths keep their own caching
+		expect(isAccountPath('/accounts')).toBe(false);
+		expect(isAccountPath('/account-picker/remove')).toBe(false);
+		expect(isAccountPath('/account/passkeys')).toBe(true);
 	});
 });
