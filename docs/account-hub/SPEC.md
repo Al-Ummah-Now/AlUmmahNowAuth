@@ -237,6 +237,8 @@ New endpoints go in `account-routes.ts` next to the existing ones and reuse `ver
 
 ### 5.4 Account deletion and account events (phase C)
 
+**Built (2026-11-24, #533):** the profile app's public page `/delete-account`. It erases the Videos data first (`DELETE /api/privacy/data`, one bounded pass per request, again on every attempt) and then calls auth `DELETE /account`; see `apps/profile/README.md` and the shared rules in AlUmmahNowWiki `guides/data-lifecycle.md`. The text below is the plan for when apps clean up from account events.
+
 **Changed from the first draft.** The first draft had the hub call Videos' erase API, then auth. That broke §0. Now auth only deletes its own data and publishes an event. Each app cleans up its own data.
 
 **Deletion:**

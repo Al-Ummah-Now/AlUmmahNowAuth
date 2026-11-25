@@ -74,6 +74,7 @@ AlUmmahNowAuth/
 - Deploys to: `al-ummah-now-profile` worker
 - OAuth 2.0 client implementation
 - User profile display and session management
+- Account deletion: the public page `/delete-account` on the Profile host of each environment (`?lang=ar` for Arabic), see [apps/profile/README.md](./apps/profile/README.md#account-deletion-delete-account)
 - Demonstrates proper client-server architecture
 - Solves the 522 timeout issue (see [ARCHITECTURE.md](./ARCHITECTURE.md))
 - Shares KV and D1 with auth app
