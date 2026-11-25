@@ -7,13 +7,13 @@ import { orchestrateAccountDeletion, resolveVideosApiUrl } from "./delete-accoun
 import {
   accountDeleted,
   accountDeletionOn,
+  putDeleteProgress,
   putDoneProof,
   readDeleteProgress,
+  readStoredProgress,
   removeDeleteProgress,
   settleDeleteProgress,
-  startDeleteProgress,
   takeDoneProof,
-  writeDeleteProgress,
   type DeleteProgress,
   type DoneProof,
 } from "./delete-progress";
@@ -386,15 +386,14 @@ const worker = {
       const stores = storesOf(env);
       const sessionToken = sessionTokenOf(request);
       const state = {
-        read: () => readDeleteProgress(env.AUTH_DB, userId),
-        start: (p: DeleteProgress) => startDeleteProgress(env.AUTH_DB, userId, p),
-        write: (p: DeleteProgress) => writeDeleteProgress(env.AUTH_DB, userId, p),
-        remove: (p: DeleteProgress) => removeDeleteProgress(env.AUTH_DB, userId, p),
+        read: () => readStoredProgress(env.AUTH_DB, userId),
+        put: (p: DeleteProgress, expected: string | null) => putDeleteProgress(env.AUTH_DB, userId, p, expected),
+        remove: (expected: string) => removeDeleteProgress(env.AUTH_DB, userId, expected),
         accountDeleted: () => accountDeleted(env.AUTH_DB, userId),
       };
       /** The account is gone: from here on nothing may turn the answer into a failure. */
-      const deleted = async (proof: DoneProof, before: DeleteProgress | null, deletedAt?: number) => {
-        await bestEffort('its progress record stays', () => settleDeleteProgress(env.AUTH_DB, userId, before, proof));
+      const deleted = async (proof: DoneProof, deletedAt?: number) => {
+        await bestEffort('its progress record stays', () => settleDeleteProgress(env.AUTH_DB, userId, proof));
         if (sessionToken) await bestEffort('the profile session could not be ended', () => endSession(stores, sessionToken));
         const nonce = crypto.randomUUID();
         const proved = await bestEffort('the confirmation could not be stored', () => putDoneProof(env.AUTH_DB, nonce, proof));
@@ -419,8 +418,7 @@ const worker = {
       if (owner !== null) {
         try {
           if (await state.accountDeleted()) {
-            const before = await state.read();
-            return await deleted(doneProofOf(before), before);
+            return await deleted(doneProofOf((await state.read())?.record ?? null));
           }
         } catch {
           return json({ error: 'progress_unavailable', started: false }, 503);
@@ -458,7 +456,8 @@ const worker = {
       if (!result.complete) {
         return json({ deleted: false, complete: false, ...('leftover' in result ? { leftover: result.leftover } : result.restarted ? { restarted: true } : {}) });
       }
-      return await deleted({ erased: true, ...(result.leftover ? { leftover: result.leftover } : {}) }, null, result.deletedAt);
+      if ('settled' in result) return await deleted(doneProofOf(result.settled));
+      return await deleted({ erased: true, ...(result.leftover ? { leftover: result.leftover } : {}) }, result.deletedAt);
     }
 
     // Public web account deletion page (AlUmmahNowAuth#532; Google Play Data safety URL): signed out it says what is
@@ -485,7 +484,7 @@ const worker = {
             const proof = doneProofOf(progress);
             done = proof;
             endedHere = true;
-            await bestEffort('its progress record stays', () => settleDeleteProgress(env.AUTH_DB, owner, progress, proof));
+            await bestEffort('its progress record stays', () => settleDeleteProgress(env.AUTH_DB, owner, proof));
             if (session && sessionToken) await bestEffort('the profile session could not be ended', () => endSession(storesOf(env), sessionToken));
           }
           // Restored by staff after a finished deletion: nothing is under way

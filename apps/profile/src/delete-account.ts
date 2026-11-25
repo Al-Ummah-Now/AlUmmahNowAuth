@@ -12,7 +12,7 @@
  *   4. After `complete: true`, record it and call Auth `DELETE /account`. Auth's own row settles a lost answer.
  */
 import type { AppEnv } from "./apps";
-import type { DeleteProgress, Leftover } from "./delete-progress";
+import type { DeleteProgress, Leftover, StoredProgress } from "./delete-progress";
 
 /** Must match Auth's REAUTH_MAX_AGE_SECONDS (apps/auth/src/routes/account-routes.ts). */
 export const REAUTH_MAX_AGE_SECONDS = 600;
@@ -83,17 +83,18 @@ export function isRecentSignIn(
 
 /** The progress record and Auth's row, as one deletion sees them. */
 export interface DeletionState {
-  read(): Promise<DeleteProgress | null>;
-  /** The first record of a deletion; false when another attempt already has one (it is replaced). */
-  start(p: DeleteProgress): Promise<boolean>;
-  write(p: DeleteProgress): Promise<void>;
-  /** Only the very record given, if it is still the stored one. */
-  remove(p: DeleteProgress): Promise<void>;
+  read(): Promise<StoredProgress | null>;
+  /** Compare-and-set: the text written, or null when `expected` (null: nothing) is not what is stored. */
+  put(p: DeleteProgress, expected: string | null): Promise<string | null>;
+  /** Only if exactly `expected` is stored; whether it was. */
+  remove(expected: string): Promise<boolean>;
   accountDeleted(): Promise<boolean>;
 }
 
 export type EraseAccountOutcome =
   | { ok: true; complete: true; leftover?: Leftover; deletedAt?: number }
+  /** Another attempt has deleted the account: what its record says is all that may be said. */
+  | { ok: true; complete: true; settled: DeleteProgress }
   | { ok: true; complete: false; restarted: boolean }
   /** The erase finished but left something behind: the person decides before the account goes. */
   | { ok: true; complete: false; leftover: Leftover }
@@ -126,6 +127,23 @@ export function leftoverOf(errors: unknown): Leftover | undefined {
 const worse = (a: Leftover | undefined, b: Leftover | undefined): Leftover | undefined =>
   a === "channel" || b === "channel" ? "channel" : (a ?? b);
 
+/** Two attempts' records of one deletion: nothing either has saved is lost. */
+function merged(theirs: DeleteProgress, mine: DeleteProgress): DeleteProgress {
+  const leftover = worse(theirs.leftover, mine.leftover);
+  const resumeToken = mine.resumeToken ?? theirs.resumeToken;
+  return {
+    stage: theirs.stage === "content_erased" ? "content_erased" : mine.stage,
+    ...(resumeToken ? { resumeToken } : {}),
+    ...(leftover ? { leftover } : {}),
+    attempt: mine.attempt,
+    startedAt: Math.min(theirs.startedAt, mine.startedAt),
+    updatedAt: mine.updatedAt,
+  };
+}
+
+/** Compare-and-set tries before a record counts as not writable. */
+const MAX_SAVE_TRIES = 6;
+
 /** Refused before the erase handler ran: this pass removed nothing. */
 const REFUSED = new Set([400, 401, 403, 404, 429]);
 
@@ -148,49 +166,80 @@ export async function orchestrateAccountDeletion(opts: {
     return { ok: false, status: 409, error: "account_mismatch", started: false };
   }
 
-  let saved: DeleteProgress | null;
-  try {
-    saved = await state.read();
-  } catch (error) {
+  const readFailed = (error: unknown): EraseAccountOutcome => {
     console.error("Account deletion progress could not be read", error instanceof Error ? error.message : String(error));
     return { ok: false, status: 503, error: "progress_unavailable", started: false };
+  };
+  let stored: StoredProgress | null;
+  try {
+    stored = await state.read();
+    if (stored?.record.stage === "deleted" && (await state.accountDeleted())) return { ok: true, complete: true, settled: stored.record };
+  } catch (error) {
+    return readFailed(error);
   }
-  // A finished deletion of an account that is live again (restored by staff): a new one
-  if (saved?.stage === "deleted") saved = null;
-  let startedBefore = saved !== null;
+  // A settled record of an account that is live again (restored by staff) is no deletion under way
+  const underWay = (s: StoredProgress | null): DeleteProgress | null => (s && s.record.stage !== "deleted" ? s.record : null);
+  let saved = underWay(stored);
 
-  const maxAge = startedBefore ? CONTINUATION_REAUTH_MAX_AGE_SECONDS : PRECHECK_REAUTH_MAX_AGE_SECONDS;
+  const maxAge = saved ? CONTINUATION_REAUTH_MAX_AGE_SECONDS : PRECHECK_REAUTH_MAX_AGE_SECONDS;
   if (!isRecentSignIn(opts.accessToken, nowMs, maxAge)) {
-    return { ok: false, status: 401, error: "insufficient_user_authentication", maxAge, started: startedBefore };
+    return { ok: false, status: 401, error: "insufficient_user_authentication", maxAge, started: saved !== null };
   }
   // Never delete the sign-in account alone
-  if (!opts.videosApiUrl) return { ok: false, status: 503, error: "videos_api_unconfigured", started: startedBefore };
+  if (!opts.videosApiUrl) return { ok: false, status: 503, error: "videos_api_unconfigured", started: saved !== null };
 
-  // Only a run that is not finished goes on; after a finished one the erase starts from the beginning
-  const resumeToken = saved?.stage === "started" ? saved.resumeToken : undefined;
-  let record: DeleteProgress = {
-    stage: "started",
-    ...(resumeToken ? { resumeToken, ...(saved?.leftover ? { leftover: saved.leftover } : {}) } : {}),
-    attempt: crypto.randomUUID(),
-    startedAt: saved?.startedAt ?? nowMs,
-    updatedAt: nowMs,
-  };
+  // The marker, before any call. An earlier or concurrent attempt's is taken over with all it holds
+  const attempt = crypto.randomUUID();
+  let record: DeleteProgress = { stage: "started", attempt, startedAt: nowMs, updatedAt: nowMs };
+  let raw: string | null = null;
   try {
-    if (saved) await state.write(record);
-    // Another first attempt may be erasing already: then this one removes nothing
-    else if (!(await state.start(record))) startedBefore = true;
+    for (let tries = 0; raw === null; tries += 1) {
+      if (tries > 0) {
+        stored = await state.read();
+        if (stored?.record.stage === "deleted" && (await state.accountDeleted())) return { ok: true, complete: true, settled: stored.record };
+        saved = underWay(stored);
+      }
+      if (tries === MAX_SAVE_TRIES) throw new Error("too many concurrent attempts");
+      record = { ...(saved ?? { stage: "started", startedAt: nowMs }), attempt, updatedAt: nowMs };
+      raw = await state.put(record, stored?.raw ?? null);
+    }
   } catch (error) {
     console.error("Account deletion not started: its record could not be written", error instanceof Error ? error.message : String(error));
-    return { ok: false, status: 503, error: "progress_unavailable", started: startedBefore };
+    return { ok: false, status: 503, error: "progress_unavailable", started: saved !== null };
   }
-  /** Nothing was erased by this pass: a record made for it would say otherwise. */
-  const nothingErased = async (): Promise<boolean> => {
-    if (startedBefore) return true;
+  /** This attempt made the marker: no other had one. */
+  const madeMarker = saved === null;
+  // A run under way goes on; after a finished one the erase starts from the beginning
+  const resumeToken = saved?.resumeToken;
+
+  /** Saves this attempt's record, merged with what another attempt has saved since; the other's when it is settled. */
+  const keep = async (next: DeleteProgress): Promise<{ settled: DeleteProgress } | null> => {
+    for (let tries = 0; tries < MAX_SAVE_TRIES; tries += 1) {
+      const written = await state.put(next, raw);
+      if (written !== null) {
+        record = next;
+        raw = written;
+        return null;
+      }
+      const now = await state.read();
+      if (now?.record.stage === "deleted" && (await state.accountDeleted())) return { settled: now.record };
+      const theirs = underWay(now);
+      if (theirs) next = merged(theirs, next);
+      raw = now?.raw ?? null;
+    }
+    throw new Error("too many concurrent attempts");
+  };
+
+  /** This pass erased nothing: takes its own marker away, and answers from what is stored then. */
+  const nothingErased = async (): Promise<{ started: boolean } | { settled: DeleteProgress }> => {
     try {
-      await state.remove(record);
-      return false;
+      if (madeMarker && raw !== null && (await state.remove(raw))) return { started: false };
+      const now = await state.read();
+      if (!now) return { started: false };
+      if (await state.accountDeleted()) return { settled: now.record };
+      return { started: now.record.stage !== "deleted" };
     } catch {
-      return true;
+      return { started: true };
     }
   };
 
@@ -207,7 +256,9 @@ export async function orchestrateAccountDeletion(opts: {
   }
   if (REFUSED.has(res.status)) {
     const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
-    const started = await nothingErased();
+    const after = await nothingErased();
+    if ("settled" in after) return { ok: true, complete: true, settled: after.settled };
+    const { started } = after;
     if (res.status === 401 && body?.error === "insufficient_user_authentication") {
       return { ok: false, status: 401, error: "insufficient_user_authentication", maxAge, started };
     }
@@ -235,27 +286,28 @@ export async function orchestrateAccountDeletion(opts: {
     errors?: unknown;
   } | null;
   const restarted = data?.restarted === true;
-  // A run that began again reports again what it cannot remove
-  const leftover = worse(restarted ? undefined : record.leftover, leftoverOf(data?.errors));
+  // Reported across the passes of one run; a run from the beginning reports again what it cannot remove
+  const reported = worse(resumeToken && !restarted ? saved?.leftover : undefined, leftoverOf(data?.errors));
   const next = typeof data?.resumeToken === "string" && data.resumeToken ? data.resumeToken : undefined;
   if (data?.complete !== true && !next) return { ok: false, status: 502, error: "videos_erasure_incomplete", started: true };
 
-  record = {
-    stage: data?.complete === true ? "content_erased" : "started",
-    ...(data?.complete === true ? {} : { resumeToken: next }),
-    ...(leftover ? { leftover } : {}),
-    attempt: record.attempt,
-    startedAt: record.startedAt,
-    updatedAt: nowMs,
-  };
   try {
-    await state.write(record);
+    const settled = await keep({
+      stage: data?.complete === true ? "content_erased" : "started",
+      ...(data?.complete === true ? {} : { resumeToken: next }),
+      ...(reported ? { leftover: reported } : {}),
+      attempt,
+      startedAt: record.startedAt,
+      updatedAt: nowMs,
+    });
+    if (settled) return { ok: true, complete: true, settled: settled.settled };
   } catch (error) {
     // The earlier record still says "started": the next attempt repeats this pass
     console.error("Account deletion progress could not be written", error instanceof Error ? error.message : String(error));
     return { ok: false, status: 503, error: "progress_unavailable", started: true };
   }
   if (data?.complete !== true) return { ok: true, complete: false, restarted };
+  const leftover = record.leftover;
   // Never more than what they were told about
   if (leftover && opts.acceptLeftover !== leftover && opts.acceptLeftover !== "channel") return { ok: true, complete: false, leftover };
 
