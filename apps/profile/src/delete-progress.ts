@@ -6,6 +6,11 @@
  * reads current; KV can answer "missing" for a minute after a write) and has no expiry: it goes when the deletion
  * is done. Losing it is safe all the same: the next attempt erases from the start again, which is idempotent.
  *
+ * Several attempts can run at once (two tabs, a retry). Every write is a compare-and-set on the exact text the
+ * attempt read or wrote last, so none overwrites or removes what another has saved meanwhile; on a conflict the
+ * two records are merged (delete-account.ts). A settled record (stage deleted) is never touched by an attempt
+ * on a deleted account.
+ *
  * Auth's account purge removes the record with the account (apps/auth/src/deletions/kinds.ts).
  */
 
@@ -20,7 +25,7 @@ export interface DeleteProgress {
   leftover?: Leftover;
   /** stage deleted only: false when the account went some other way, so nothing is said about its content. */
   erased?: boolean;
-  /** Of the attempt that wrote it: no two records are equal, so an attempt only ever removes its own. */
+  /** Of the attempt that wrote it: no two records have the same text, so an attempt only replaces or removes its own. */
   attempt?: string;
   startedAt: number;
   updatedAt: number;
@@ -60,10 +65,7 @@ async function putValue(db: D1Database, key: string, value: unknown, expiresAt: 
 
 const leftoverOf = (value: unknown): Leftover | undefined => (value === "channel" || value === "other" ? value : undefined);
 
-/** Throws when the database cannot be read: "unknown" must never look like "nothing started". */
-export async function readDeleteProgress(db: D1Database, userId: string, nowMs = Date.now()): Promise<DeleteProgress | null> {
-  const raw = await getValue(db, progressKey(userId), nowMs);
-  if (raw === null) return null;
+function parseProgress(raw: string, nowMs: number): DeleteProgress {
   let p: Partial<DeleteProgress> | null = null;
   try {
     p = JSON.parse(raw) as Partial<DeleteProgress> | null;
@@ -82,47 +84,83 @@ export async function readDeleteProgress(db: D1Database, userId: string, nowMs =
   };
 }
 
-export async function writeDeleteProgress(db: D1Database, userId: string, p: DeleteProgress): Promise<void> {
-  await putValue(db, progressKey(userId), p, p.stage === "deleted" ? p.updatedAt + DELETED_TTL_MS : null);
+/** A stored record and its exact text, which a later write or removal must still find. */
+export interface StoredProgress {
+  record: DeleteProgress;
+  raw: string;
+}
+
+/** Throws when the database cannot be read: "unknown" must never look like "nothing started". */
+export async function readStoredProgress(db: D1Database, userId: string, nowMs = Date.now()): Promise<StoredProgress | null> {
+  const raw = await getValue(db, progressKey(userId), nowMs);
+  return raw === null ? null : { record: parseProgress(raw, nowMs), raw };
+}
+
+export async function readDeleteProgress(db: D1Database, userId: string, nowMs = Date.now()): Promise<DeleteProgress | null> {
+  return (await readStoredProgress(db, userId, nowMs))?.record ?? null;
 }
 
 /**
- * Writes the first record of a deletion. True when there was none (or only a finished one's, which has an expiry):
- * this attempt made it. Otherwise another attempt has started meanwhile; the record is replaced all the same, so
- * that the other attempt can no longer remove it.
+ * Compare-and-set: writes `p` only where `expected` is still stored (null: only where nothing is). The new text,
+ * or null when something else is there.
  */
-export async function startDeleteProgress(db: D1Database, userId: string, p: DeleteProgress): Promise<boolean> {
-  const created = await db
-    .prepare(
-      `INSERT INTO openauth_atomic (key, value, expires_at) VALUES (?1, ?2, NULL)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = NULL WHERE openauth_atomic.expires_at IS NOT NULL
-       RETURNING key`,
-    )
-    .bind(progressKey(userId), JSON.stringify(p))
-    .first();
-  if (created) return true;
-  await writeDeleteProgress(db, userId, p);
-  return false;
+export async function putDeleteProgress(db: D1Database, userId: string, p: DeleteProgress, expected: string | null, nowMs = Date.now()): Promise<string | null> {
+  const raw = JSON.stringify(p);
+  const statement =
+    expected === null
+      ? db
+          .prepare(
+            `INSERT INTO openauth_atomic (key, value, expires_at) VALUES (?1, ?2, NULL)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = NULL
+             WHERE openauth_atomic.expires_at IS NOT NULL AND openauth_atomic.expires_at <= ?3
+             RETURNING key`,
+          )
+          .bind(progressKey(userId), raw, nowMs)
+      : db
+          .prepare(
+            `UPDATE openauth_atomic SET value = ?2, expires_at = NULL
+             WHERE key = ?1 AND value = ?4 AND (expires_at IS NULL OR expires_at > ?3) RETURNING key`,
+          )
+          .bind(progressKey(userId), raw, nowMs, expected);
+  return (await statement.first()) ? raw : null;
+}
+
+/** Removes the record only where `expected` is still stored; whether it did. */
+export async function removeDeleteProgress(db: D1Database, userId: string, expected: string): Promise<boolean> {
+  return (
+    (await db.prepare(`DELETE FROM openauth_atomic WHERE key = ?1 AND value = ?2 RETURNING key`).bind(progressKey(userId), expected).first()) !== null
+  );
 }
 
 /**
- * The account is proven gone: what is left of the record expires in a day, without the resume token. Nothing is
- * written when there was no record to keep and no erase to speak of.
+ * The account is proven gone: its record keeps what may be said for a day, without the resume token. A record
+ * that is settled already stays as it is, and nothing is made where there is no record and no erase to speak of.
  */
-export async function settleDeleteProgress(db: D1Database, userId: string, before: DeleteProgress | null, proof: DoneProof, nowMs = Date.now()): Promise<void> {
-  if (before?.stage === "deleted" || (!before && !proof.erased)) return;
-  await writeDeleteProgress(db, userId, {
+export async function settleDeleteProgress(db: D1Database, userId: string, proof: DoneProof, nowMs = Date.now()): Promise<void> {
+  const settled: DeleteProgress = {
     stage: "deleted",
     ...(proof.leftover ? { leftover: proof.leftover } : {}),
     ...(proof.erased ? {} : { erased: false }),
-    startedAt: before?.startedAt ?? nowMs,
+    startedAt: nowMs,
     updatedAt: nowMs,
-  });
-}
-
-/** Removes exactly the record `p` (written by this request), never one another tab has written since. */
-export async function removeDeleteProgress(db: D1Database, userId: string, p: DeleteProgress): Promise<void> {
-  await db.prepare(`DELETE FROM openauth_atomic WHERE key = ?1 AND value = ?2`).bind(progressKey(userId), JSON.stringify(p)).run();
+  };
+  const value = JSON.stringify(settled);
+  const expiresAt = nowMs + DELETED_TTL_MS;
+  if (proof.erased) {
+    await db
+      .prepare(
+        `INSERT INTO openauth_atomic (key, value, expires_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at
+         WHERE openauth_atomic.expires_at IS NULL OR openauth_atomic.expires_at <= ?4`,
+      )
+      .bind(progressKey(userId), value, expiresAt, nowMs)
+      .run();
+  } else {
+    await db
+      .prepare(`UPDATE openauth_atomic SET value = ?2, expires_at = ?3 WHERE key = ?1 AND expires_at IS NULL`)
+      .bind(progressKey(userId), value, expiresAt)
+      .run();
+  }
 }
 
 /** Whether Auth has deleted this account (a primary-key read of Auth's own row). */

@@ -12,7 +12,17 @@ import {
   tokenUserIdOf,
   type DeletionState,
 } from "./delete-account";
-import { clearAccountDeletionSwitchCache, progressKey, readDeleteProgress, removeDeleteProgress, startDeleteProgress, writeDeleteProgress, type DeleteProgress } from "./delete-progress";
+import {
+  accountDeleted,
+  clearAccountDeletionSwitchCache,
+  progressKey,
+  putDeleteProgress,
+  readDeleteProgress,
+  readStoredProgress,
+  removeDeleteProgress,
+  settleDeleteProgress,
+  type DeleteProgress,
+} from "./delete-progress";
 import { renderHomePage } from "./page";
 import { FakeKV, NOW_MS, NOW_S, fakeD1 } from "./test-helpers";
 import { getSession, sessionId } from "./session-store";
@@ -66,19 +76,18 @@ function memoryState(initial: DeleteProgress | null = null, o: { deleted?: () =>
   let stored = initial;
   const writes: DeleteProgress[] = [];
   const state: DeletionState = {
-    read: async () => stored,
-    start: async (p) => {
-      const created = stored === null || stored.stage === "deleted";
-      await state.write(p);
-      return created;
-    },
-    write: async (p) => {
+    read: async () => (stored ? { record: stored, raw: JSON.stringify(stored) } : null),
+    put: async (p, expected) => {
       if (o.failWrite?.(p)) throw new Error("D1 down");
+      if ((stored ? JSON.stringify(stored) : null) !== expected) return null;
       writes.push(p);
       stored = p;
+      return JSON.stringify(p);
     },
-    remove: async (p) => {
-      if (JSON.stringify(stored) === JSON.stringify(p)) stored = null;
+    remove: async (expected) => {
+      if (!stored || JSON.stringify(stored) !== expected) return false;
+      stored = null;
+      return true;
     },
     accountDeleted: async () => o.deleted?.() ?? false,
   };
@@ -230,6 +239,7 @@ describe("account deletion, one step (AlUmmahNowAuth#532)", () => {
       const first = upstream([reply({ complete: true })], [authStep]);
       expect(await run({ state: mem.state, fetchFn: first.fetchFn })).toMatchObject({ ok: false, started: true, contentErased: true });
       expect(mem.stored()).toMatchObject({ stage: "content_erased" });
+      expect(mem.stored()).not.toHaveProperty("resumeToken");
 
       // Something uploaded meanwhile: the retry's erase needs two passes, and Auth comes only after both
       const second = upstream([reply({ complete: false, resumeToken: "n1" }), reply({ complete: true })], [reply(DELETED)]);
@@ -372,6 +382,12 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
     );
 
   const progress = () => readDeleteProgress(db, USER.id, NOW_MS);
+  /** As an earlier or another attempt left it. */
+  const setRecord = (p: DeleteProgress) =>
+    db
+      .prepare(`INSERT INTO openauth_atomic (key, value, expires_at) VALUES (?1, ?2, ?3) ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at`)
+      .bind(progressKey(USER.id), JSON.stringify(p), p.stage === "deleted" ? p.updatedAt + 86400_000 : null)
+      .run();
   const expiry = async () =>
     (await db.prepare(`SELECT expires_at FROM openauth_atomic WHERE key = ?1`).bind(progressKey(USER.id)).first<{ expires_at: number | null }>())?.expires_at;
   const cookiesOf = (res: Response) => res.headers.getSetCookie();
@@ -700,7 +716,7 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
 
   it("a Worker that died right after Auth committed: settled on the next request or view, session still open", async () => {
     const cookie = await seedSession(signedInAgo(20));
-    await writeDeleteProgress(db, USER.id, record({ stage: "content_erased", leftover: "channel" }));
+    await setRecord(record({ stage: "content_erased", leftover: "channel" }));
     expect(await expiry()).toBeNull();
     await setAccount("deleted");
     const view = await page(cookie);
@@ -733,7 +749,7 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
   it("an account deleted some other way while a deletion was under way: its record expires, without the token or a claim", async () => {
     for (const how of ["retry", "view"]) {
       const cookie = await seedSession(signedInAgo(20), `sid-${how}`);
-      await writeDeleteProgress(db, USER.id, record({ resumeToken: "sealed-1" }));
+      await setRecord(record({ resumeToken: "sealed-1" }));
       await setAccount("deleted");
       if (how === "retry") expect(await (await del(cookie)).json()).toEqual({ deleted: true, complete: true, erased: false });
       else expect(await pageText(cookie)).toContain("Your Al Ummah Now account was deleted. You are signed out of all apps.");
@@ -773,7 +789,8 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
       const a = del(cookie);
       const b = del(cookie);
       const first = await Promise.race([a, b]);
-      expect(((await first.json()) as { error: string }).error).toBe("videos_erasure_refused");
+      // The other attempt may be erasing: never "nothing was removed"
+      expect(await first.json()).toEqual({ error: "videos_erasure_refused", started: true });
       expect(await progress()).toMatchObject({ stage: "started" });
       // The other Worker dies here: the page still says so
       const held = globalThis.fetch;
@@ -787,24 +804,288 @@ describe("profile worker: /delete-account and DELETE /api/account", () => {
     }
   });
 
-  it("the first record: made once, replaced by a second attempt, only ever removed by the attempt that still owns it", async () => {
-    const a = record({ attempt: "a" });
-    const b = record({ attempt: "b" });
-    expect(await startDeleteProgress(db, USER.id, a)).toBe(true);
-    expect(await startDeleteProgress(db, USER.id, b)).toBe(false);
-    await removeDeleteProgress(db, USER.id, a);
-    expect(await progress()).toMatchObject({ stage: "started" });
-    await removeDeleteProgress(db, USER.id, b);
-    expect(await progress()).toBeNull();
-    // A finished deletion's record (with an expiry) is no attempt: the account was restored
-    await writeDeleteProgress(db, USER.id, record({ stage: "deleted" }));
-    expect(await startDeleteProgress(db, USER.id, a)).toBe(true);
+  it("the record's compare-and-set: made once, replaced or removed only as it was read, settled once", async () => {
+    const put = (p: Partial<DeleteProgress>, expected: string | null) => putDeleteProgress(db, USER.id, record(p), expected, NOW_MS);
+    const a = await put({ attempt: "a" }, null);
+    expect(a).not.toBeNull();
+    expect(await put({ attempt: "b" }, null)).toBeNull();
+    const b = await put({ attempt: "b", resumeToken: "t" }, a);
+    expect(b).not.toBeNull();
+    expect(await put({ attempt: "a2" }, a)).toBeNull();
+    expect(await removeDeleteProgress(db, USER.id, a!)).toBe(false);
+    expect(await progress()).toMatchObject({ resumeToken: "t" });
+    // Settled: in a day, without the token; not again, not by the claim-free variant, and not by a stale attempt
+    await settleDeleteProgress(db, USER.id, { erased: true, leftover: "channel" }, NOW_MS);
+    const settled = await readStoredProgress(db, USER.id, NOW_MS);
+    expect(settled!.record).toMatchObject({ stage: "deleted", leftover: "channel" });
+    await settleDeleteProgress(db, USER.id, { erased: true }, NOW_MS + 5000);
+    await settleDeleteProgress(db, USER.id, { erased: false }, NOW_MS + 5000);
+    expect(await put({ attempt: "b" }, b)).toBeNull();
+    expect(await put({ attempt: "c" }, null)).toBeNull();
+    expect(await removeDeleteProgress(db, USER.id, b!)).toBe(false);
+    expect((await readStoredProgress(db, USER.id, NOW_MS))!.raw).toBe(settled!.raw);
+    expect(await expiry()).toBe(NOW_MS + 86400_000);
+    // Taken over on purpose, by who read it (an account restored since), or once it has run out
+    expect(await put({ attempt: "d" }, settled!.raw)).not.toBeNull();
     expect(await expiry()).toBeNull();
+    await db.prepare(`UPDATE openauth_atomic SET expires_at = ?1`).bind(NOW_MS - 1).run();
+    expect(await put({ attempt: "e" }, null)).not.toBeNull();
+    expect(await expiry()).toBeNull();
+    // No record and nothing erased: none is made
+    await db.prepare(`DELETE FROM openauth_atomic`).run();
+    await settleDeleteProgress(db, USER.id, { erased: false }, NOW_MS);
+    expect(await progress()).toBeNull();
+  });
+
+  describe("two attempts at once, at every step", () => {
+    type Act = () => Promise<unknown>;
+    const gone = async () => {
+      await setAccount("deleted");
+      await settleDeleteProgress(db, USER.id, { erased: true, leftover: "channel" }, NOW_MS);
+    };
+    /** What the other attempt does between two of this one's steps, by the step it comes before. */
+    function between(hooks: { put?: Act; remove?: Act; read2?: Act }) {
+      let reads = 0;
+      const once = { ...hooks };
+      const take = async (k: "put" | "remove" | "read2") => {
+        const act = once[k];
+        delete once[k];
+        await act?.();
+      };
+      const state: DeletionState = {
+        read: async () => {
+          if (++reads > 1) await take("read2");
+          return readStoredProgress(db, USER.id, NOW_MS);
+        },
+        put: async (p, expected) => {
+          await take("put");
+          return putDeleteProgress(db, USER.id, p, expected, NOW_MS);
+        },
+        remove: async (expected) => {
+          await take("remove");
+          return removeDeleteProgress(db, USER.id, expected);
+        },
+        accountDeleted: () => accountDeleted(db, USER.id),
+      };
+      return state;
+    }
+    const other = (p: Partial<DeleteProgress>) => () => setRecord(record({ attempt: "other", ...p }));
+    const refused = () => reply({ error: "invalid_audience" }, 401);
+    const settledAnswer = { ok: true, complete: true, settled: expect.objectContaining({ stage: "deleted", leftover: "channel" }) };
+    const unchangedSettled = async () => {
+      expect(await progress()).toMatchObject({ stage: "deleted", leftover: "channel" });
+      expect(await expiry()).toBe(NOW_MS + 86400_000);
+    };
+
+    it("the other starts, saves its token, or finishes its erase before this one's marker: all it saved is kept and used", async () => {
+      for (const [saved, sentToken] of [
+        [{}, undefined],
+        [{ resumeToken: "theirs", leftover: "channel" as const }, "theirs"],
+        [{ stage: "content_erased" as const, leftover: "other" as const }, undefined],
+      ] as const) {
+        const up = upstream([refused]);
+        const result = await run({ state: between({ put: other(saved) }), fetchFn: up.fetchFn });
+        expect(up.calls.map((c) => c.body)).toEqual([{ confirm: "DELETE", ...(sentToken ? { resumeToken: sentToken } : {}) }]);
+        // Refused: but the other may be erasing
+        expect(result).toEqual({ ok: false, status: 502, error: "videos_erasure_refused", started: true });
+        expect(await progress()).toMatchObject(saved.stage ? saved : { stage: "started", ...saved });
+        await db.prepare(`DELETE FROM openauth_atomic`).run();
+      }
+    });
+
+    it("the other makes the marker and is refused (removes it) before this one's: this one makes its own", async () => {
+      let marker: string | null = null;
+      const state = between({
+        put: async () => {
+          marker = await putDeleteProgress(db, USER.id, record({ attempt: "other" }), null, NOW_MS);
+        },
+        read2: async () => {
+          expect(await removeDeleteProgress(db, USER.id, marker!)).toBe(true);
+        },
+      });
+      expect(await run({ state, fetchFn: upstream([refused]).fetchFn })).toMatchObject({ error: "videos_erasure_refused", started: false });
+      expect(await progress()).toBeNull();
+    });
+
+    it("the other deletes the account before this one's marker: answered as deleted, nothing called, its record untouched", async () => {
+      const up = upstream([]);
+      expect(await run({ state: between({ put: gone }), fetchFn: up.fetchFn })).toEqual(settledAnswer);
+      expect(up.calls).toEqual([]);
+      await unchangedSettled();
+    });
+
+    it("a settled record of a deleted account read at the start: the same", async () => {
+      await gone();
+      const up = upstream([]);
+      expect(await run({ state: between({}), fetchFn: up.fetchFn })).toEqual(settledAnswer);
+      expect(up.calls).toEqual([]);
+      await unchangedSettled();
+    });
+
+    it("the other deletes the account while this one's Videos call is out, whatever that answers", async () => {
+      for (const answer of [refused, () => reply({}, 429), () => reply({ complete: false, resumeToken: "mine" }), () => reply({ complete: true })]) {
+        const up = upstream([
+          async () => {
+            await gone();
+            return answer();
+          },
+        ]);
+        expect(await run({ state: between({}), fetchFn: up.fetchFn })).toEqual(settledAnswer);
+        expect(up.urls()).toEqual([ERASE]);
+        await unchangedSettled();
+        await db.prepare(`DELETE FROM openauth_atomic`).run();
+        await setAccount("active");
+      }
+    });
+
+    it("the other deletes the account between this one's refusal and its removal", async () => {
+      expect(await run({ state: between({ remove: gone }), fetchFn: upstream([refused]).fetchFn })).toEqual(settledAnswer);
+      await unchangedSettled();
+    });
+
+    it("the other has deleted the account but not settled its record yet: deleted, with what the record says", async () => {
+      const up = upstream([
+        async () => {
+          await setRecord(record({ attempt: "other", stage: "content_erased", leftover: "channel" }));
+          await setAccount("deleted");
+          return refused();
+        },
+      ]);
+      expect(await run({ state: between({}), fetchFn: up.fetchFn })).toEqual({
+        ok: true, complete: true, settled: expect.objectContaining({ stage: "content_erased", leftover: "channel" }),
+      });
+    });
+
+    it("the other takes the marker over while this one, its maker, is being refused: kept, and not \"nothing was removed\"", async () => {
+      for (const answer of [refused, () => reply({ error: "insufficient_user_authentication" }, 401), () => reply({}, 429)]) {
+        for (const when of ["during", "before removal"] as const) {
+          const takeover = other({ resumeToken: "theirs" });
+          const state = between(when === "before removal" ? { remove: takeover } : {});
+          const up = upstream([
+            async () => {
+              if (when === "during") await takeover();
+              return answer();
+            },
+          ]);
+          expect(await run({ state, fetchFn: up.fetchFn })).toMatchObject({ ok: false, started: true });
+          expect(await progress()).toMatchObject({ stage: "started", resumeToken: "theirs" });
+          await db.prepare(`DELETE FROM openauth_atomic`).run();
+        }
+      }
+    });
+
+    it("the other came and went, erasing nothing: nothing was removed", async () => {
+      const up = upstream([
+        async () => {
+          await db.prepare(`DELETE FROM openauth_atomic`).run();
+          return refused();
+        },
+      ]);
+      expect(await run({ state: between({}), fetchFn: up.fetchFn })).toMatchObject({ error: "videos_erasure_refused", started: false });
+    });
+
+    it("both save after their pass: the token, what is left and a finished erase all survive", async () => {
+      for (const [theirs, mine, kept] of [
+        [{ resumeToken: "theirs", leftover: "channel" }, { complete: false, resumeToken: "mine" }, { stage: "started", resumeToken: "mine", leftover: "channel" }],
+        [{ stage: "content_erased" }, { complete: false, resumeToken: "mine", errors: ["x"] }, { stage: "content_erased", resumeToken: "mine", leftover: "other" }],
+        [{ stage: "content_erased", leftover: "other" }, { complete: false, resumeToken: "mine", errors: ["channel_unreadable:c"] }, { stage: "content_erased", leftover: "channel" }],
+      ] as const) {
+        const up = upstream([
+          async () => {
+            await other(theirs as Partial<DeleteProgress>)();
+            return reply(mine);
+          },
+        ]);
+        expect(await run({ state: between({}), fetchFn: up.fetchFn })).toEqual({ ok: true, complete: false, restarted: false });
+        expect(await progress()).toMatchObject(kept);
+        await db.prepare(`DELETE FROM openauth_atomic`).run();
+      }
+    });
+
+    it("this one's erase finishes while the other found something left: the person is asked before Auth", async () => {
+      const up = upstream([
+        async () => {
+          await other({ stage: "content_erased", leftover: "channel" })();
+          return reply({ complete: true });
+        },
+      ]);
+      expect(await run({ state: between({}), fetchFn: up.fetchFn })).toEqual({ ok: true, complete: false, leftover: "channel" });
+      expect(up.urls()).toEqual([ERASE]);
+      expect(await progress()).toMatchObject({ stage: "content_erased", leftover: "channel" });
+    });
+
+    it("the other removes the marker while this one is erasing: this one's progress is written all the same", async () => {
+      const up = upstream([
+        async () => {
+          await db.prepare(`DELETE FROM openauth_atomic`).run();
+          return reply({ complete: false, resumeToken: "mine" });
+        },
+      ]);
+      expect(await run({ state: between({}), fetchFn: up.fetchFn })).toMatchObject({ ok: true, complete: false });
+      expect(await progress()).toMatchObject({ stage: "started", resumeToken: "mine" });
+    });
+
+    it("a settled record of a restored account is taken over once, and an attempt that comes second keeps the first's marker", async () => {
+      await setRecord(record({ stage: "deleted", leftover: "channel" }));
+      const up = upstream([refused]);
+      expect(await run({ state: between({ put: other({ resumeToken: "theirs" }) }), fetchFn: up.fetchFn })).toMatchObject({ started: true });
+      expect(await progress()).toMatchObject({ stage: "started", resumeToken: "theirs" });
+      expect(await expiry()).toBeNull();
+      await setRecord(record({ stage: "deleted", leftover: "channel" }));
+      expect(await run({ state: between({}), fetchFn: upstream([() => reply({ complete: false, resumeToken: "n" })]).fetchFn })).toMatchObject({ complete: false });
+      const now = await progress();
+      expect(now).toMatchObject({ stage: "started", resumeToken: "n" });
+      expect(now).not.toHaveProperty("leftover");
+    });
+
+    it("a marker or progress that never stops changing is an error, not a guess", async () => {
+      let n = 0;
+      const state = between({});
+      const contested: DeletionState = { ...state, put: async (p, e) => (await setRecord(record({ attempt: `o${++n}` })), state.put(p, e)) };
+      const none = upstream([]);
+      expect(await run({ state: contested, fetchFn: none.fetchFn })).toEqual({ ok: false, status: 503, error: "progress_unavailable", started: true });
+      expect(none.calls).toEqual([]);
+      await db.prepare(`DELETE FROM openauth_atomic`).run();
+      let out = false;
+      const later: DeletionState = { ...state, put: async (p, e) => (out && (await setRecord(record({ attempt: `o${++n}` }))), state.put(p, e)) };
+      const up = upstream([() => ((out = true), reply({ complete: true }))]);
+      expect(await run({ state: later, fetchFn: up.fetchFn })).toEqual({ ok: false, status: 503, error: "progress_unavailable", started: true });
+      expect(up.urls()).toEqual([ERASE]);
+    });
+  });
+
+  it("a refused first attempt answers from the marker there now, on the real route", async () => {
+    const cookie = await seedSession(signedInAgo(20));
+    for (const [during, body, status] of [
+      [async () => {}, { error: "videos_erasure_refused", started: false }, 502],
+      [async () => void (await setRecord(record({ attempt: "other" }))), { error: "videos_erasure_refused", started: true }, 502],
+      [async () => void (failSql = /SELECT value FROM openauth_atomic/), { error: "videos_erasure_refused", started: false }, 502],
+      [async () => void (failSql = /DELETE FROM openauth_atomic/), { error: "videos_erasure_refused", started: true }, 502],
+      [
+        async () => {
+          await setAccount("deleted");
+          await settleDeleteProgress(db, USER.id, { erased: true, leftover: "channel" }, NOW_MS);
+        },
+        { deleted: true, complete: true, erased: true, leftover: "channel" },
+        200,
+      ],
+    ] as [() => Promise<void>, unknown, number][]) {
+      globalThis.fetch = upstream([
+        async () => {
+          await during();
+          return reply({ error: "invalid_audience" }, 401);
+        },
+      ]).fetchFn;
+      const res = await del(cookie);
+      expect([res.status, await res.json()]).toEqual([status, body]);
+      failSql = null;
+      await db.prepare(`DELETE FROM openauth_atomic`).run();
+    }
   });
 
   it("an account restored after a finished deletion starts afresh", async () => {
     const cookie = await seedSession(signedInAgo(20));
-    await writeDeleteProgress(db, USER.id, record({ stage: "deleted" }));
+    await setRecord(record({ stage: "deleted" }));
     const html = await pageText(cookie);
     expect(html).toContain('data-testid="delete-account-open-dialog"');
     expect(html).not.toContain('data-testid="delete-account-progress-notice"');
