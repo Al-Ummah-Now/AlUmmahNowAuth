@@ -127,12 +127,16 @@ export function leftoverOf(errors: unknown): Leftover | undefined {
 const worse = (a: Leftover | undefined, b: Leftover | undefined): Leftover | undefined =>
   a === "channel" || b === "channel" ? "channel" : (a ?? b);
 
-/** Two attempts' records of one deletion: nothing either has saved is lost. */
+/**
+ * Two attempts' records of one deletion. A finished erase wins, and carries no token: the token of a run that was
+ * somewhere in the middle is no place to go on from after it. Between two unfinished runs a token is kept.
+ */
 function merged(theirs: DeleteProgress, mine: DeleteProgress): DeleteProgress {
   const leftover = worse(theirs.leftover, mine.leftover);
-  const resumeToken = mine.resumeToken ?? theirs.resumeToken;
+  const stage = theirs.stage === "content_erased" ? "content_erased" : mine.stage;
+  const resumeToken = stage === "started" ? (mine.resumeToken ?? theirs.resumeToken) : undefined;
   return {
-    stage: theirs.stage === "content_erased" ? "content_erased" : mine.stage,
+    stage,
     ...(resumeToken ? { resumeToken } : {}),
     ...(leftover ? { leftover } : {}),
     attempt: mine.attempt,
@@ -210,7 +214,7 @@ export async function orchestrateAccountDeletion(opts: {
   /** This attempt made the marker: no other had one. */
   const madeMarker = saved === null;
   // A run under way goes on; after a finished one the erase starts from the beginning
-  const resumeToken = saved?.resumeToken;
+  const resumeToken = saved?.stage === "started" ? saved.resumeToken : undefined;
 
   /** Saves this attempt's record, merged with what another attempt has saved since; the other's when it is settled. */
   const keep = async (next: DeleteProgress): Promise<{ settled: DeleteProgress } | null> => {
