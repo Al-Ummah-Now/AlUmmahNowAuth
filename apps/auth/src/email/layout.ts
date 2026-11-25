@@ -383,6 +383,51 @@ export interface RenderedEmailParts {
 	text: string;
 }
 
-export function renderEmail(doc: EmailDoc): RenderedEmailParts {
+/**
+ * Direction controls typed by people (names, titles, messages) reorder the text around them, the subject and
+ * the inbox preview included. The copy uses none, so they go from every string. A facts value keeps isolates
+ * (U+2066–U+2069): admin-api's email/direction.ts builds rows with them, and it strips the values it puts inside.
+ */
+const plain = (text: string) => text.replace(/[\u202a-\u202e\u2066-\u2069]/g, '');
+const plainRow = (text: string) => text.replace(/[\u202a-\u202e]/g, '');
+
+function plainBlock(block: EmailBlock): EmailBlock {
+	switch (block.kind) {
+		case 'p':
+		case 'small':
+		case 'notice':
+			return { ...block, text: plain(block.text) };
+		case 'code':
+			return { ...block, label: plain(block.label), hint: block.hint && plain(block.hint) };
+		case 'facts':
+			return { ...block, rows: block.rows.map(([k, v]): [string, string] => [plain(k), plainRow(v)]) };
+		case 'quote':
+			return { ...block, label: block.label && plain(block.label), text: plain(block.text) };
+		case 'link':
+			return { ...block, label: plain(block.label) };
+		case 'video':
+			return { ...block, title: plain(block.title), channel: block.channel && plain(block.channel), alt: plain(block.alt) };
+	}
+}
+
+function plainDoc(doc: EmailDoc): EmailDoc {
+	return {
+		...doc,
+		// One line
+		// eslint-disable-next-line no-control-regex
+		subject: plain(doc.subject).replace(/[\r\n\u001c-\u001e\u0085\u2028\u2029]+/g, ' '),
+		preheader: plain(doc.preheader),
+		greeting: doc.greeting && plain(doc.greeting),
+		heading: doc.heading && plain(doc.heading),
+		blocks: doc.blocks.map(plainBlock),
+		cta: doc.cta && { ...doc.cta, label: plain(doc.cta.label) },
+		after: doc.after?.map(plainBlock),
+		signoff: doc.signoff && plain(doc.signoff),
+		reason: plain(doc.reason),
+	};
+}
+
+export function renderEmail(input: EmailDoc): RenderedEmailParts {
+	const doc = plainDoc(input);
 	return { subject: doc.subject, html: renderEmailHtml(doc), text: renderEmailText(doc) };
 }
