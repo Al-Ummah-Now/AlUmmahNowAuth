@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { adminSource, deriveEnvConfig, resourceIds } from '../admin-config.ts';
 import { parseJsonc } from '../jsonc.ts';
-import { HOSTS, overrideHeader, runSmoke } from '../smoke.ts';
+import { HOSTS, overrideHeader, runSmoke, VERSION_PAUSE_MS, VERSION_WAIT_MS, type CheckResult } from '../smoke.ts';
 
 /** A fake auth deployment for the smoke checks. */
 function fakeFetch(opts: { issuer?: string; deep?: object; deepStatus?: number; testRoute?: number; seen?: Headers[] } = {}): typeof fetch {
@@ -64,9 +64,86 @@ describe('runSmoke', () => {
 		const ok = await runSmoke({ env: 'production', overrides: { 'al-ummah-now-auth': 'v-new' }, fetchImpl: fakeFetch({ seen }) });
 		expect(ok.filter((r) => !r.ok)).toEqual([]);
 		expect(seen[0].get('Cloudflare-Workers-Version-Overrides')).toBe('al-ummah-now-auth="v-new"');
+	});
 
-		const stale = await runSmoke({ env: 'production', overrides: { 'al-ummah-now-auth': 'v-other' }, fetchImpl: fakeFetch() });
-		expect(stale.find((r) => r.name.startsWith('auth: deep health'))?.detail).toContain('expected candidate v-other');
+	/** A clock that moves only when somebody sleeps. */
+	const clock = () => {
+		let t = 0;
+		return { now: () => t, sleep: async (ms: number) => void (t += ms) };
+	};
+	const deepHealth = (results: CheckResult[]) => results.find((r) => r.name.startsWith('auth: deep health'))!;
+
+	it('fails when the candidate never answers, after waiting as long as allowed and no longer', async () => {
+		const c = clock();
+		const stale = await runSmoke({ env: 'production', overrides: { 'al-ummah-now-auth': 'v-other' }, fetchImpl: fakeFetch(), ...c });
+		expect(deepHealth(stale)).toMatchObject({ ok: false, detail: 'served by version v-new, expected candidate v-other (after 90 s)' });
+		expect(c.now()).toBe(VERSION_WAIT_MS);
+		expect(stale.filter((r) => !r.ok)).toHaveLength(1);
+	});
+
+	it('fails when overrides name no candidate of auth', async () => {
+		const c = clock();
+		const results = await runSmoke({ env: 'production', overrides: { 'al-ummah-now-profile': 'v-new' }, fetchImpl: fakeFetch(), ...c });
+		expect(deepHealth(results)).toMatchObject({ ok: false, detail: 'no candidate version of al-ummah-now-auth given' });
+		expect(c.now()).toBe(0);
+	});
+
+	describe.each([
+		['production', 'al-ummah-now-auth'],
+		['stage', 'al-ummah-now-auth-stage'],
+	] as const)('the version that answers on %s (release 45697039999)', (env, worker) => {
+		const overrides = { [worker]: 'v-new' };
+		/** Deep health answers with these in turn (the last one from then on); everything else is healthy. */
+		const answering = (...answers: (() => Response)[]) => {
+			let n = 0;
+			const base = fakeFetch();
+			const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = new URL(String(input));
+				if (url.pathname === '/health') return answers[Math.min(n++, answers.length - 1)]();
+				return base(input, init);
+			}) as typeof fetch;
+			return { fetchImpl, asked: () => n };
+		};
+		const says = (version: string | null, over: object = {}, status = 200) => () =>
+			new Response(JSON.stringify({ status: 'ok', environment: env, version, checks: { d1: true }, ...over }), { status });
+
+		it('waits for the candidate while an edge location still answers with the version before', async () => {
+			const c = clock();
+			const h = answering(says('v-old'), says(null), says('v-new'));
+			const health = deepHealth(await runSmoke({ env, overrides, fetchImpl: h.fetchImpl, ...c }));
+			expect(health).toMatchObject({ ok: true, detail: `env ${env}, version v-new (after ${(2 * VERSION_PAUSE_MS) / 1000} s)` });
+			expect([h.asked(), c.now()]).toEqual([3, 2 * VERSION_PAUSE_MS]);
+		});
+
+		it('does not wait for an error, a status, a degraded answer or another environment, not even between tries', async () => {
+			const bad: [string, () => Response, RegExp][] = [
+				['status', says('v-new', {}, 500), /HTTP 500/],
+				['degraded', says('v-new', { status: 'degraded', checks: { d1: false } }, 503), /degraded: d1/],
+				['degraded, old version', says('v-old', { status: 'degraded', checks: { d1: false } }, 503), /degraded: d1/],
+				['environment', says('v-new', { environment: 'qa' }), /environment is qa/],
+				['not JSON', () => new Response('<html>'), /./],
+				['network', () => { throw new TypeError('fetch failed'); }, /fetch failed/],
+			];
+			for (const [name, answer, detail] of bad) {
+				const first = clock();
+				const a = answering(answer, says('v-new'));
+				const atOnce = deepHealth(await runSmoke({ env, overrides, fetchImpl: a.fetchImpl, ...first }));
+				expect([atOnce.ok, a.asked(), first.now()], name).toEqual([false, 1, 0]);
+				expect(atOnce.detail, name).toMatch(detail);
+				const later = clock();
+				const b = answering(says('v-old'), answer, says('v-new'));
+				const afterOne = deepHealth(await runSmoke({ env, overrides, fetchImpl: b.fetchImpl, ...later }));
+				expect([afterOne.ok, b.asked(), later.now()], name).toEqual([false, 2, VERSION_PAUSE_MS]);
+				expect(afterOne.detail, name).toMatch(detail);
+			}
+		});
+
+		it('asks once without overrides (after the promotion waitForVersion reads the version)', async () => {
+			const c = clock();
+			const h = answering(says('v-old'));
+			expect(deepHealth(await runSmoke({ env, fetchImpl: h.fetchImpl, ...c }))).toMatchObject({ ok: true, detail: `env ${env}, version v-old` });
+			expect([h.asked(), c.now()]).toEqual([1, 0]);
+		});
 	});
 });
 
