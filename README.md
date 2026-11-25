@@ -234,7 +234,7 @@ The source of truth is [`scripts/release/secrets-manifest.ts`](scripts/release/s
 | auth (`al-ummah-now-auth[-qa\|-stage]`) | `PROFILE_DATA_KEY` | Secrets Store (`…_QA`, `…_STAGE`) | all | Base64 of 32 bytes; encrypts dates of birth in D1. Without it they can no longer be read |
 | | `RESEND_API_KEY` | Secrets Store | all | Sign-in and verification email |
 | | `INTERNAL_API_KEY` | Secrets Store (`internal-api-key`, `-qa`, `-stage`; shared with the videos Workers) | all | Reports unexpected errors to the videos admin Errors page (`ERRORS_INGEST_URL`, app `auth`, #341) |
-| | `SESSION_SECRET` | worker secret (64 hex chars) | all | Encrypts the `__session` SSO cookie. Production returns 503 without it |
+| | `SESSION_SECRET` | worker secret (64 hex chars) | all | Encrypts the `__session` SSO cookie, and derives the key of deletion receipts (`routes/deletion-receipt.ts`). Production returns 503 without it. Replacing it signs every browser out and ends open receipts: `GET /account/status` answers 401 for them, and an app that was waiting for an answer asks the person to check again or sign out |
 | | `CLIENT_SECRET_SALT` | Secrets Store (`…_QA`, `…_STAGE`) | all | Legacy: required by deep health, read by no code (client secrets use per-secret PBKDF2 salts) |
 | | `E2E_CODE_SINK_SECRET` | Secrets Store (`…_QA`, `…_STAGE`) | qa, stage only | Gates `/test/*` and the E2E email-code sink. **Forbidden in production** |
 | | `TEST_PROMOTE_SECRET` | worker secret | qa, stage only | E2E role-promotion route. **Forbidden in production** |

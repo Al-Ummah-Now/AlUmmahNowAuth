@@ -147,6 +147,8 @@ const LITERALS: Record<string, Record<string, string[]>> = {
 	},
 	'deletions/routes.ts': { '/${opts.prefix}': DISPATCH },
 	'handlers/account-picker-signout.ts': { '/account-picker/remove': DISPATCH },
+	// Which paths' answers get the account headers, not a route
+	'utils/account-answers.ts': { '/account': DISPATCH, '/account/': DISPATCH },
 	'index.ts': { '/authorize': DISPATCH, '/health': ops('GET /health', 'HEAD /health'), '/session/': DISPATCH, '/session/accounts': DISPATCH, '/token/revoke': DISPATCH },
 	'invites/routes.ts': {
 		'/^\\/invite\\/([^/]+)(?:\\/(send|request))?\\/?$/': ops('GET /invite/{}', 'POST /invite/{}', 'POST /invite/{}/send', 'POST /invite/{}/request'),

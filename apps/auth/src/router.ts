@@ -569,7 +569,7 @@ function passkeyPageTheme(url: URL) {
 	return openauthThemeFor(compileBuiltin(BUILTIN_DEFAULT_THEME, url.origin)!);
 }
 
-/** Self-service account endpoints: every answer has the security headers and none is cached. */
+/** Self-service account endpoints. Their headers are set around every answer (utils/account-answers.ts, index.ts). */
 async function routeAccount(rctx: RouterContext): Promise<RouteResult> {
 	const { request } = rctx;
 	switch (rctx.url.pathname) {
@@ -609,12 +609,6 @@ async function routeAccount(rctx: RouterContext): Promise<RouteResult> {
 	}
 	return null;
 }
-
-const accountAnswer = (response: Response, isProduction: boolean) => {
-	const secured = addSecurityHeaders(response, isProduction);
-	if (!/no-store/.test(secured.headers.get('Cache-Control') ?? '')) secured.headers.set('Cache-Control', 'no-store');
-	return secured;
-};
 
 /**
  * Auth's own sign-in pages (the invite card, the passkey card, "Check your email" after a
@@ -667,7 +661,7 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 
 	if (pathname === '/account' || pathname.startsWith('/account/')) {
 		const response = await routeAccount(rctx);
-		if (response) return accountAnswer(response, rctx.isProduction);
+		if (response) return response;
 	}
 
 	// Handle exact path matches first
