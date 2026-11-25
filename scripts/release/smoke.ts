@@ -68,11 +68,17 @@ export interface SmokeOptions {
 	fetchImpl?: typeof fetch;
 	now?: () => number;
 	sleep?: (ms: number) => Promise<void>;
+	/** How long one request may take (tests) */
+	requestTimeoutMs?: number;
 }
 
 /** How long deep health may keep answering with another version than the candidate, and the pause between tries. */
 export const VERSION_WAIT_MS = 90_000;
 export const VERSION_PAUSE_MS = 5_000;
+
+/** One request may take this long (a stalled one must not outlive the waits around it). */
+export const REQUEST_TIMEOUT_MS = 15_000;
+export const isTimeout = (error: unknown): boolean => (error as Error)?.name === 'TimeoutError';
 
 export function overrideHeader(overrides: Record<string, string>): string {
 	return Object.entries(overrides)
@@ -87,8 +93,9 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 	const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 	const headers: Record<string, string> = { 'User-Agent': 'al-ummah-now-release-smoke' };
 	if (opts.overrides && Object.keys(opts.overrides).length) headers['Cloudflare-Workers-Version-Overrides'] = overrideHeader(opts.overrides);
-	const get = (url: string, init: RequestInit = {}) =>
-		doFetch(url, { redirect: 'manual', ...init, headers: { ...headers, ...(init.headers as Record<string, string>) } });
+	const requestTimeout = opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
+	const get = (url: string, init: RequestInit = {}, timeoutMs = requestTimeout) =>
+		doFetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs), ...init, headers: { ...headers, ...(init.headers as Record<string, string>) } });
 
 	const results: CheckResult[] = [];
 	const check = async (name: string, fn: () => Promise<string>) => {
@@ -128,19 +135,28 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 		assert(wanted || !Object.keys(opts.overrides ?? {}).length, `no candidate version of ${worker} given`);
 		const start = now();
 		for (;;) {
-			const res = await get(`${hosts.auth}/health?deep=1`);
-			const body = (await res.json()) as { status: string; environment: string; version: string | null; checks: Record<string, boolean> };
-			const failed = Object.entries(body.checks ?? {})
-				.filter(([, ok]) => !ok)
-				.map(([k]) => k);
-			assert(res.status === 200 && body.status === 'ok', `degraded: ${failed.join(', ') || `HTTP ${res.status}`}`);
-			assert(body.environment === opts.env, `environment is ${body.environment}, expected ${opts.env}`);
-			const waited = Math.round((now() - start) / 1000);
-			if (!wanted || body.version === wanted) return `env ${body.environment}, version ${body.version ?? 'unknown'}${waited >= 1 && wanted ? ` (after ${waited} s)` : ''}`;
+			let served: string;
+			try {
+				const res = await get(`${hosts.auth}/health?deep=1`, {}, Math.min(requestTimeout, Math.max(VERSION_PAUSE_MS, VERSION_WAIT_MS - (now() - start))));
+				const body = (await res.json()) as { status: string; environment: string; version: string | null; checks: Record<string, boolean> };
+				const failed = Object.entries(body.checks ?? {})
+					.filter(([, ok]) => !ok)
+					.map(([k]) => k);
+				assert(res.status === 200 && body.status === 'ok', `degraded: ${failed.join(', ') || `HTTP ${res.status}`}`);
+				assert(body.environment === opts.env, `environment is ${body.environment}, expected ${opts.env}`);
+				const after = Math.round((now() - start) / 1000);
+				if (!wanted || body.version === wanted) return `env ${body.environment}, version ${body.version ?? 'unknown'}${after >= 1 && wanted ? ` (after ${after} s)` : ''}`;
+				served = `served by version ${body.version}`;
+			} catch (error) {
+				// A request that stalls says nothing about the candidate yet
+				if (!wanted || !isTimeout(error)) throw error;
+				served = 'no answer in time';
+			}
 			// Edge locations learn of a new deployment at different times: one can still answer with the version
-			// before it, after waitForVersion saw the candidate. Only that is waited for: an error, another status
-			// or a degraded answer fails above, at once, on every try.
-			assert(now() - start + VERSION_PAUSE_MS <= VERSION_WAIT_MS, `served by version ${body.version}, expected candidate ${wanted} (after ${waited} s)`);
+			// before it, after waitForVersion saw the candidate. Only that (and a stalled request) is waited for: an
+			// error, another status or a degraded answer fails above, at once, on every try.
+			const waited = Math.round((now() - start) / 1000);
+			assert(now() - start + VERSION_PAUSE_MS <= VERSION_WAIT_MS, `${served}, expected candidate ${wanted} (after ${waited} s)`);
 			await sleep(VERSION_PAUSE_MS);
 		}
 	});

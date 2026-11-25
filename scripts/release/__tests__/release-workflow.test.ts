@@ -18,6 +18,14 @@ describe('release.yml', () => {
 		}
 	});
 
+	it('limits every job, the promoting ones well above what a promote with its rollback takes', () => {
+		const jobs = workflow.slice(workflow.indexOf('\njobs:')).split(/\n(?= {2}[a-z][a-z0-9-]*:\n)/).slice(1);
+		const limits = Object.fromEntries(jobs.map((j) => [/^ {2}([a-z0-9-]+):/.exec(j)![1], Number(/\n {4}timeout-minutes: (\d+)/.exec(j)?.[1])]));
+		expect(Object.keys(limits)).toEqual(expect.arrayContaining(['build', 'stage', 'production', 'record']));
+		for (const [job, minutes] of Object.entries(limits)) expect(minutes, job).toBeGreaterThan(0);
+		expect(Math.min(limits.stage, limits.production)).toBeGreaterThanOrEqual(45);
+	});
+
 	it('builds the audit consumer once and deploys that bundle to both envs', () => {
 		expect(workflow).toContain('--outdir ../../dist/audit-consumer');
 	});
