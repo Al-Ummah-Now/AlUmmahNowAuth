@@ -6,12 +6,15 @@
  *     --override al-ummah-now-auth=<version-id>     # pre-traffic: hit the candidate version
  *
  * With --override, every request carries Cloudflare-Workers-Version-Overrides, so
- * the checks run on that (0%-traffic) version with production bindings, and the
- * auth deep-health check asserts the response came from it, waiting up to
- * VERSION_WAIT_MS for the candidate. Every other check asks once.
+ * the checks run on that (0%-traffic) version with production bindings. Auth deep
+ * health says which version answered; every other check sends X-Release-Check and
+ * counts only when its Worker's candidate answered all its requests
+ * (packages/ui/src/release-check.ts). Another version's answer is asked for again,
+ * up to VERSION_WAIT_MS for the whole smoke. Without --override every check asks once.
  */
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { RELEASE_CHECK_HEADER, RELEASE_CHECK_OK } from '../../packages/ui/src/release-check.ts';
 
 export type SmokeEnv = 'qa' | 'stage' | 'production';
 
@@ -72,13 +75,17 @@ export interface SmokeOptions {
 	requestTimeoutMs?: number;
 }
 
-/** How long deep health may keep answering with another version than the candidate, and the pause between tries. */
+/** How long the whole smoke may wait for answers of the candidates instead of another version, and the pause between tries. */
 export const VERSION_WAIT_MS = 90_000;
 export const VERSION_PAUSE_MS = 5_000;
 
 /** One request may take this long (a stalled one must not outlive the waits around it). */
 export const REQUEST_TIMEOUT_MS = 15_000;
 export const isTimeout = (error: unknown): boolean => (error as Error)?.name === 'TimeoutError';
+
+/** The Workers' names, without the env's suffix. */
+const WORKERS = { auth: 'al-ummah-now-auth', profile: 'al-ummah-now-profile', admin: 'al-ummah-now-auth-admin' } as const;
+export const workerName = (env: SmokeEnv, app: keyof typeof WORKERS): string => (env === 'production' ? WORKERS[app] : `${WORKERS[app]}-${env}`);
 
 export function overrideHeader(overrides: Record<string, string>): string {
 	return Object.entries(overrides)
@@ -98,18 +105,62 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 		doFetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs), ...init, headers: { ...headers, ...(init.headers as Record<string, string>) } });
 
 	const results: CheckResult[] = [];
-	const check = async (name: string, fn: () => Promise<string>) => {
-		try {
-			results.push({ name, ok: true, detail: await fn() });
-		} catch (error) {
-			results.push({ name, ok: false, detail: (error as Error).message });
+	// One deadline for the whole smoke: a mixed edge is mixed for all checks alike
+	const deadline = now() + VERSION_WAIT_MS;
+	const started = now();
+	const timeLeft = () => Math.min(requestTimeout, Math.max(VERSION_PAUSE_MS, deadline - now()));
+	const waited = () => Math.round((now() - started) / 1000);
+	type Get = (url: string, init?: RequestInit) => Promise<Response>;
+
+	/**
+	 * A check of `app`'s Worker. With a candidate of it, the verdict counts only when the candidate answered every
+	 * request of the check; otherwise (an older version, an edge error page, a stalled request) the whole check runs
+	 * again until the deadline. A verdict of the candidate, pass or fail, and a failed connection end it at once.
+	 */
+	const check = async (name: string, app: keyof typeof WORKERS, fn: (get: Get) => Promise<string>) => {
+		const worker = workerName(opts.env, app);
+		const wanted = opts.overrides?.[worker];
+		for (let tries = 1; ; tries++) {
+			const proven: boolean[] = [];
+			let broken = false;
+			const ask: Get = async (url, init = {}) => {
+				try {
+					const asked = wanted ? { ...init, headers: { ...(init.headers as Record<string, string>), [RELEASE_CHECK_HEADER]: wanted } } : init;
+					const res = await get(url, asked, wanted ? timeLeft() : requestTimeout);
+					proven.push(res.headers.get(RELEASE_CHECK_HEADER) === RELEASE_CHECK_OK);
+					return res;
+				} catch (error) {
+					broken = broken || !isTimeout(error);
+					throw error;
+				}
+			};
+			let result: CheckResult;
+			let stalled = false;
+			try {
+				result = { name, ok: true, detail: await fn(ask) };
+			} catch (error) {
+				stalled = isTimeout(error);
+				result = { name, ok: false, detail: (error as Error).message };
+			}
+			const answeredByCandidate = proven.length > 0 && proven.every(Boolean) && !stalled;
+			if (!wanted || broken || answeredByCandidate) {
+				if (wanted && tries > 1 && result.ok) result.detail += ` (after ${waited()} s)`;
+				results.push(result);
+				return;
+			}
+			if (now() + VERSION_PAUSE_MS > deadline) {
+				const last = stalled ? 'no answer in time' : `last answer, of another version: ${result.detail}`;
+				results.push({ name, ok: false, detail: `not answered by candidate ${wanted} of ${worker} (after ${waited()} s; ${last})` });
+				return;
+			}
+			await sleep(VERSION_PAUSE_MS);
 		}
 	};
 	const assert = (cond: unknown, msg: string) => {
 		if (!cond) throw new Error(msg);
 	};
 
-	await check('auth: issuer metadata', async () => {
+	await check('auth: issuer metadata', 'auth', async (get) => {
 		const res = await get(`${hosts.auth}/.well-known/oauth-authorization-server`);
 		assert(res.status === 200, `HTTP ${res.status}`);
 		const meta = (await res.json()) as Record<string, string>;
@@ -120,7 +171,7 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 		return `issuer ${meta.issuer}`;
 	});
 
-	await check('auth: JWKS', async () => {
+	await check('auth: JWKS', 'auth', async (get) => {
 		const res = await get(`${hosts.auth}/.well-known/jwks.json`);
 		assert(res.status === 200, `HTTP ${res.status}`);
 		const keys = ((await res.json()) as { keys?: unknown[] }).keys ?? [];
@@ -128,24 +179,27 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 		return `${keys.length} key(s)`;
 	});
 
-	await check('auth: deep health (bindings resolve)', async () => {
-		const worker = opts.env === 'production' ? 'al-ummah-now-auth' : `al-ummah-now-auth-${opts.env}`;
+	// Says which version answered in its body, the same rule otherwise
+	const health = 'auth: deep health (bindings resolve)';
+	try {
+		const worker = workerName(opts.env, 'auth');
 		const wanted = opts.overrides?.[worker];
 		// With overrides the candidate itself has to answer: no version to ask for is no proof
 		assert(wanted || !Object.keys(opts.overrides ?? {}).length, `no candidate version of ${worker} given`);
-		const start = now();
 		for (;;) {
 			let served: string;
 			try {
-				const res = await get(`${hosts.auth}/health?deep=1`, {}, Math.min(requestTimeout, Math.max(VERSION_PAUSE_MS, VERSION_WAIT_MS - (now() - start))));
+				const res = await get(`${hosts.auth}/health?deep=1`, {}, wanted ? timeLeft() : requestTimeout);
 				const body = (await res.json()) as { status: string; environment: string; version: string | null; checks: Record<string, boolean> };
 				const failed = Object.entries(body.checks ?? {})
 					.filter(([, ok]) => !ok)
 					.map(([k]) => k);
 				assert(res.status === 200 && body.status === 'ok', `degraded: ${failed.join(', ') || `HTTP ${res.status}`}`);
 				assert(body.environment === opts.env, `environment is ${body.environment}, expected ${opts.env}`);
-				const after = Math.round((now() - start) / 1000);
-				if (!wanted || body.version === wanted) return `env ${body.environment}, version ${body.version ?? 'unknown'}${after >= 1 && wanted ? ` (after ${after} s)` : ''}`;
+				if (!wanted || body.version === wanted) {
+					results.push({ name: health, ok: true, detail: `env ${body.environment}, version ${body.version ?? 'unknown'}${waited() >= 1 && wanted ? ` (after ${waited()} s)` : ''}` });
+					break;
+				}
 				served = `served by version ${body.version}`;
 			} catch (error) {
 				// A request that stalls says nothing about the candidate yet
@@ -155,20 +209,21 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 			// Edge locations learn of a new deployment at different times: one can still answer with the version
 			// before it, after waitForVersion saw the candidate. Only that (and a stalled request) is waited for: an
 			// error, another status or a degraded answer fails above, at once, on every try.
-			const waited = Math.round((now() - start) / 1000);
-			assert(now() - start + VERSION_PAUSE_MS <= VERSION_WAIT_MS, `${served}, expected candidate ${wanted} (after ${waited} s)`);
+			assert(now() + VERSION_PAUSE_MS <= deadline, `${served}, expected candidate ${wanted} (after ${waited()} s)`);
 			await sleep(VERSION_PAUSE_MS);
 		}
-	});
+	} catch (error) {
+		results.push({ name: health, ok: false, detail: (error as Error).message });
+	}
 
-	await check('auth: test routes are not reachable without the secret', async () => {
+	await check('auth: test routes are not reachable without the secret', 'auth', async (get) => {
 		const res = await get(`${hosts.auth}/test/email/smoke%40e2e.alummahnow.net`, { headers: { 'X-E2E-Secret': 'not-the-secret' } });
 		assert(res.status === 404, `HTTP ${res.status}`);
 		return '404';
 	});
 
 	for (const client of CLIENTS[opts.env]) {
-		await check(`auth: authorize renders sign-in for ${client.name}`, async () => {
+		await check(`auth: authorize renders sign-in for ${client.name}`, 'auth', async (get) => {
 			const url = new URL(`${hosts.auth}/authorize`);
 			url.searchParams.set('client_id', client.id);
 			url.searchParams.set('redirect_uri', client.redirect(hosts));
@@ -197,11 +252,11 @@ export async function runSmoke(opts: SmokeOptions): Promise<CheckResult[]> {
 		});
 	}
 
-	for (const [name, base] of [
-		['profile', hosts.profile],
-		['auth admin', hosts.admin],
+	for (const [name, app, base] of [
+		['profile', 'profile', hosts.profile],
+		['auth admin', 'admin', hosts.admin],
 	] as const) {
-		await check(`${name}: home page`, async () => {
+		await check(`${name}: home page`, app, async (get) => {
 			const res = await get(`${base}/`);
 			assert(res.status >= 200 && res.status < 400, `HTTP ${res.status}`);
 			return `HTTP ${res.status}`;

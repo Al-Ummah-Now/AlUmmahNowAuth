@@ -7,8 +7,18 @@ import { adminSource, deriveEnvConfig, resourceIds } from '../admin-config.ts';
 import { parseJsonc } from '../jsonc.ts';
 import { HOSTS, overrideHeader, REQUEST_TIMEOUT_MS, runSmoke, VERSION_PAUSE_MS, VERSION_WAIT_MS, type CheckResult } from '../smoke.ts';
 
-/** A fake auth deployment for the smoke checks. */
-function fakeFetch(opts: { issuer?: string; deep?: object; deepStatus?: number; testRoute?: number; seen?: Headers[] } = {}): typeof fetch {
+/** A fake auth deployment whose candidates answer every request that asks for them (X-Release-Check). */
+function fakeFetch(opts: Parameters<typeof answers>[0] = {}): typeof fetch {
+	const base = answers(opts);
+	return (async (input: RequestInfo | URL, init?: RequestInit) => {
+		const res = await base(input, init);
+		if (new Headers(init?.headers).has('X-Release-Check')) res.headers.set('X-Release-Check', 'ok');
+		return res;
+	}) as typeof fetch;
+}
+
+/** The same, of no particular version. */
+function answers(opts: { issuer?: string; deep?: object; deepStatus?: number; testRoute?: number; seen?: Headers[] } = {}): typeof fetch {
 	const h = HOSTS.production;
 	return (async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = new URL(String(input));
@@ -106,6 +116,100 @@ describe('runSmoke', () => {
 		expect(c.now()).toBe(0);
 	});
 
+	describe('who answered the other checks (X-Release-Check)', () => {
+		const overrides = { 'al-ummah-now-auth': 'v-new', 'al-ummah-now-profile': 'v-profile', 'al-ummah-now-auth-admin': 'v-admin' };
+		type Page = (url: URL, init: RequestInit | undefined) => Response | null | Promise<Response | null>;
+		const env = (page: Page = () => null) => {
+			const base = fakeFetch();
+			const seen: { url: URL; check: string | null }[] = [];
+			const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = new URL(String(input));
+				seen.push({ url, check: new Headers(init?.headers).get('X-Release-Check') });
+				return (url.pathname === '/health' ? null : await page(url, init)) ?? base(input, init);
+			}) as typeof fetch;
+			return { fetchImpl, seen };
+		};
+		const bare = answers();
+		const oldAnswer = (url: URL) => bare(url, { headers: {} }) as Promise<Response>;
+		const run = (h: { fetchImpl: typeof fetch }, c: ReturnType<typeof clock>, o: Record<string, string> | undefined = overrides) => runSmoke({ env: 'production', overrides: o, fetchImpl: h.fetchImpl, ...c });
+		const isJwks = (url: URL) => url.pathname === '/.well-known/jwks.json';
+		const jwks = (results: CheckResult[]) => results.find((r) => r.name === 'auth: JWKS')!;
+
+		it('asks each Worker for its own candidate, on every hop, and passes at once when they answer', async () => {
+			const c = clock();
+			const h = env();
+			expect((await run(h, c)).filter((r) => !r.ok)).toEqual([]);
+			expect(c.now()).toBe(0);
+			const asked = h.seen.filter((x) => x.url.pathname !== '/health');
+			expect(asked.some((x) => x.url.pathname === '/password/authorize')).toBe(true);
+			const wanted = { [HOSTS.production.auth]: 'v-new', [HOSTS.production.profile]: 'v-profile', [HOSTS.production.admin]: 'v-admin' };
+			for (const { url, check } of asked) expect(check, String(url)).toBe(wanted[url.origin]);
+		});
+
+		it('names the stage Workers with their suffix', async () => {
+			const seen = new Map<string, string | null>();
+			await runSmoke({
+				env: 'stage',
+				overrides: { 'al-ummah-now-auth-stage': 'a', 'al-ummah-now-profile-stage': 'p', 'al-ummah-now-auth-admin-stage': 'd' },
+				...clock(),
+				fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+					const url = new URL(String(input));
+					if (url.pathname !== '/health') seen.set(url.origin, new Headers(init?.headers).get('X-Release-Check'));
+					return new Response('no', { status: 500, headers: { 'X-Release-Check': 'ok' } });
+				}) as typeof fetch,
+			});
+			expect(Object.fromEntries(seen)).toEqual({ [HOSTS.stage.auth]: 'a', [HOSTS.stage.profile]: 'p', [HOSTS.stage.admin]: 'd' });
+		});
+
+		it('sends nothing and asks once without overrides, or for a Worker that has no candidate', async () => {
+			const c = clock();
+			const plain = env((url) => oldAnswer(url));
+			expect((await run(plain, c, {})).filter((r) => !r.ok)).toEqual([]);
+			expect(plain.seen.every((x) => x.check === null)).toBe(true);
+			const one = env((url) => (url.origin === HOSTS.production.auth ? null : oldAnswer(url)));
+			expect((await run(one, c, { 'al-ummah-now-auth': 'v-new' })).filter((r) => !r.ok)).toEqual([]);
+			expect(c.now()).toBe(0);
+		});
+
+		it('an old version that would pass every check passes none, within one deadline for all', async () => {
+			const c = clock();
+			const results = (await run(env((url) => oldAnswer(url)), c)).filter((r) => !r.name.startsWith('auth: deep health'));
+			expect(results).toHaveLength(8);
+			for (const r of results) expect([r.ok, /^not answered by candidate v-\w+ of al-ummah-now-[a-z-]+ \(after 90 s; last answer, of another version: /.test(r.detail)], `${r.name}: ${r.detail}`).toEqual([false, true]);
+			expect(c.now()).toBe(VERSION_WAIT_MS);
+		});
+
+		it('a sign-in page counts only when the candidate answered every hop', async () => {
+			const c = clock();
+			const results = await run(env((url) => (url.pathname === '/password/authorize' ? oldAnswer(url) : null)), c);
+			const authorize = results.filter((r) => r.name.startsWith('auth: authorize'));
+			expect(authorize).toHaveLength(3);
+			for (const r of authorize) expect(r.detail).toContain('not answered by candidate v-new');
+			expect(results.filter((r) => !r.ok)).toHaveLength(3);
+		});
+
+		it('what an old version answers wrongly is asked again; what the candidate answers wrongly fails at once', async () => {
+			const c = clock();
+			let n = 0;
+			const late = await run(env((url) => (isJwks(url) && n++ < 2 ? new Response('gone', { status: 500 }) : null)), c);
+			expect(late.filter((r) => !r.ok)).toEqual([]);
+			expect([jwks(late).detail, c.now()]).toEqual(['1 key(s) (after 10 s)', 2 * VERSION_PAUSE_MS]);
+			const d = clock();
+			const bad = await run(env((url) => (isJwks(url) ? new Response('broken', { status: 503, headers: { 'X-Release-Check': 'ok' } }) : null)), d);
+			expect([jwks(bad).detail, d.now()]).toEqual(['HTTP 503', 0]);
+		});
+
+		it('a failed connection fails at once, and only an exact ok is proof', async () => {
+			const c = clock();
+			const broken = await run(env((url) => { if (isJwks(url)) throw new TypeError('fetch failed'); return null; }), c);
+			expect([jwks(broken).ok, jwks(broken).detail, c.now()]).toEqual([false, 'fetch failed', 0]);
+			for (const value of ['OK', 'v-new', 'ok, ok']) {
+				const r = await run(env(async (url) => { if (!isJwks(url)) return null; const res = await oldAnswer(url); res.headers.set('X-Release-Check', value); return res; }), clock());
+				expect(jwks(r).detail, value).toContain('not answered by candidate');
+			}
+		});
+	});
+
 	it('gives every request a timeout, and one that stalls in any other check is a failure', async () => {
 		for (const overrides of [undefined, { 'al-ummah-now-auth': 'v-new' }]) {
 			const base = fakeFetch();
@@ -115,6 +219,7 @@ describe('runSmoke', () => {
 					env: 'production',
 					overrides,
 					requestTimeoutMs: 30,
+					...clock(),
 					fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
 						signals.push(init?.signal);
 						if (new URL(String(input)).pathname !== path) return base(input, init);
@@ -124,7 +229,7 @@ describe('runSmoke', () => {
 				expect(signals.every((s) => s instanceof AbortSignal)).toBe(true);
 				const failed = results.filter((r) => !r.ok);
 				expect(failed.length, path).toBeGreaterThan(0);
-				for (const f of failed) expect(f.detail, path).toMatch(/timeout/i);
+				for (const f of failed) expect(f.detail, path).toMatch(overrides ? /no answer in time/ : /timeout/i);
 			}
 		}
 	});

@@ -56,6 +56,7 @@ import { ACCOUNT_PICKER_REMOVE_PATH, afterAccountPickerRemove } from "./handlers
 import { deepHealth } from "./health";
 import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
 import { noIndexWorker } from '../../../packages/ui/src/crawlers.ts';
+import { releaseCheckedWorker } from '../../../packages/ui/src/release-check.ts';
 import { resolveUserDisplayName } from "../../../packages/ui/src/display-name.ts";
 import { tenantCustomDomains } from "./utils/tenant-domains";
 import { guardIssuerStorage, handleTokenRevoke, parseAccessTtl, parseRefreshTtl } from "./revocation/token-gate";
@@ -230,7 +231,8 @@ function isProductionRequest(env: Env, hostname: string): boolean {
 }
 
 /** Nothing on this host is for search engines: robots.txt Disallow: / and X-Robots-Tag: noindex (packages/ui/src/crawlers.ts) */
-export default noIndexWorker(worker);
+// releaseCheckedWorker: outermost, proves to the release which version answered (packages/ui/src/release-check.ts)
+export default releaseCheckedWorker(noIndexWorker(worker));
 
 /**
  * A 5xx answered without a report (a route that returned 500/503 itself, not by throwing):

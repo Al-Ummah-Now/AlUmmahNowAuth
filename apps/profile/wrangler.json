@@ -3,6 +3,7 @@
   "main": "src/index.ts",
   "name": "al-ummah-now-profile",
   "upload_source_maps": true,
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "workers_dev": true,
   "kv_namespaces": [
     {
@@ -50,6 +51,7 @@
       "observability": { "enabled": true, "head_sampling_rate": 1, "logs": { "enabled": true, "head_sampling_rate": 1, "invocation_logs": false } },
       "logpush": false,
       "name": "al-ummah-now-profile-stage",
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
       "routes": [
         {
           "pattern": "profile.auth.stage.alummahnow.net",

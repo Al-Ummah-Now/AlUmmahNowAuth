@@ -1,6 +1,7 @@
 {
   "compatibility_date": "2025-04-19",
   "main": "src/index.ts",
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "name": "al-ummah-now-profile-qa",
   "upload_source_maps": true,
   "workers_dev": true,

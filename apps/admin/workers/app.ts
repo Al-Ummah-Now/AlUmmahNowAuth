@@ -2,6 +2,7 @@ import { createRequestHandler } from "react-router";
 import { cloudflareLoadContext } from "../app/lib/cloudflare-context";
 import { applyLogLevel } from "../../../packages/ui/src/log-level.ts";
 import { noIndexWorker } from '../../../packages/ui/src/crawlers.ts';
+import { releaseCheckedWorker } from '../../../packages/ui/src/release-check.ts';
 import { streetResponse } from "../../../packages/ui/src/fanous-street/index.ts";
 
 const requestHandler = createRequestHandler(
@@ -24,7 +25,8 @@ const worker = {
 } satisfies ExportedHandler<Env>;
 
 /** Nothing on this host is for search engines: robots.txt Disallow: / and X-Robots-Tag: noindex (packages/ui/src/crawlers.ts) */
-export default noIndexWorker(worker);
+// releaseCheckedWorker: outermost, proves to the release which version answered (packages/ui/src/release-check.ts)
+export default releaseCheckedWorker(noIndexWorker(worker));
 
 interface Env {
   AUTH_STORAGE: KVNamespace;
