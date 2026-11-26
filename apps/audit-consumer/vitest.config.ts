@@ -9,5 +9,7 @@ export default defineConfig({
   ],
   test: {
     globals: true,
+    // Cap worker fan-out on high-core machines.
+    maxWorkers: 4,
   },
 });
