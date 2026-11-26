@@ -61,6 +61,7 @@ const HONO: Mount[] = [
 	{ file: `${SRC}/custom/user-list-routes.ts`, prefix: '/admin/users' },
 	{ file: `${SRC}/custom/user-role-routes.ts`, prefix: '/admin/users' },
 	{ file: `${SRC}/custom/role-admin-routes.ts`, prefix: '/admin' },
+	{ file: `${SRC}/invites/admin-routes.ts`, prefix: '/admin/invites' },
 	{ file: `${SRC}/deletions/routes.ts`, prefix: '/admin/deletions' },
 	{ file: `${SRC}/moderation/admin-routes.ts`, prefix: '/admin/moderation-requests' },
 	{ file: `${SRC}/themes/routes.ts`, prefix: '/admin/themes' },
@@ -214,7 +215,7 @@ const LITERALS: Record<string, Record<string, string[]>> = {
 		...Object.fromEntries(
 			[
 				'/^\\/admin/', '/^\\/admin\\/clients/', '/^\\/admin\\/users/', '/^\\/admin\\/users\\/[^/]+\\/tokens$/', '/^\\/admin\\/users\\/[^/]+\\/sessions/', '/^\\/admin\\/users\\/[^/]+\\/passkeys/', '/^\\/api\\/permissions/',
-				'/account/passkeys', '/account/passkeys/', '/admin', '/admin/', '/admin/audit', '/admin/audit-logs', '/admin/clients', '/admin/deletions', '/admin/deletions/', '/admin/dlq', '/admin/health', '/admin/metrics',
+				'/account/passkeys', '/account/passkeys/', '/admin', '/admin/', '/admin/audit', '/admin/audit-logs', '/admin/clients', '/admin/deletions', '/admin/deletions/', '/admin/dlq', '/admin/health', '/admin/invites', '/admin/invites/', '/admin/metrics',
 				'/admin/moderation-requests', '/admin/moderation-requests/', '/admin/permissions', '/admin/roles', '/admin/sessions', '/admin/sessions/revoke', '/admin/sessions/revoke-user', '/admin/settings/staff-passkeys',
 				'/admin/stats', '/admin/tenants', '/admin/themes', '/admin/themes/', '/admin/users', '/admin/users/tokens/revoke', '/api/permissions', '/authorize', '/invite/', '/moderation/requests', '/moderation/requests/',
 				'/passkeys/', '/provisioning/invites', '/provisioning/invites/', '/session/', '/tenants', '/tenants/', '/test/',

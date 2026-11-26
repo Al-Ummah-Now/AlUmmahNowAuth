@@ -68,11 +68,11 @@ export const purgeDueAt = (row: Pick<DeletionRow, 'deleted_at' | 'purge_requeste
 export class DeletionStore {
 	constructor(private db: D1Database) {}
 
-	insertStatement(d: NewDeletion): D1PreparedStatement {
+	insertStatement(d: NewDeletion, onlyAfterChange = false): D1PreparedStatement {
 		return this.db
 			.prepare(
 				`INSERT INTO admin_deletions (kind, item_id, tenant_id, label, deleted_at, deleted_by, deleted_by_email, reason, snapshot)
-				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+				 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9${onlyAfterChange ? " WHERE changes() > 0" : ""}`
 			)
 			.bind(
 				d.kind,

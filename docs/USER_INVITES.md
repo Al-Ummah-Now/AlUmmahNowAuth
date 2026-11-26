@@ -258,3 +258,18 @@ They can be filtered in the Auth admin's audit log.
 On QA and stage, an address at `e2e.alummahnow.net` is not emailed while the
 E2E sink is enabled. Its link is kept in KV under `test:invite:<email>` for 10
 minutes, like sign-in codes.
+
+## Auth admin
+
+Filter the Users page by **Invited** to find provisioned accounts that have
+yet to accept. Open **Invites** from that filter or from the sidebar for the
+inviter, source app, and expiry. The Invites page supports search and shows
+pending, accepted, expired, and revoked invites.
+
+Auth admins can revoke pending and expired invites after confirming the
+action and signing in again if their current sign-in is older than 15 minutes.
+An unused account then appears in **Recently deleted**.
+
+The Auth admin uses `GET /admin/invites` with `status`, `search`, `limit`, and
+`cursor` and calls `POST /admin/invites/:id/revoke` with its admin client
+credentials and acting-user context. Revocations emit `user.invite.revoked`.

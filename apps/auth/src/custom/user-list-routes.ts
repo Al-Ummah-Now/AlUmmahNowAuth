@@ -19,7 +19,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { SYSTEM_USER_IDS_SQL } from '../security/system-accounts';
 
-type UserStatus = 'active' | 'suspended' | 'deleted';
+type UserStatus = 'active' | 'invited' | 'suspended' | 'deleted';
 
 // Variables set by adminContextMiddleware
 type AdminVariables = {
@@ -189,7 +189,8 @@ export function userListRoutes(db: D1Database) {
       // Parse query parameters
       const url = new URL(c.req.url);
       if (url.searchParams.get('system') === 'only') return await listSystemAccounts(c, db);
-      const status = url.searchParams.get('status') as UserStatus | null;
+      const rawStatus = url.searchParams.get('status');
+      const status = rawStatus === 'all' ? null : rawStatus;
       const email = url.searchParams.get('email');
       const cursor = url.searchParams.get('cursor');
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);

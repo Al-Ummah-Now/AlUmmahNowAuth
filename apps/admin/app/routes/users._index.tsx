@@ -2,11 +2,13 @@ import { formatNumber } from "../../../../packages/ui/src/format.ts";
 import { Email } from "../components/email";
 import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { pageTitle } from "../lib/admin-copy";
+import { inviteCopy, USER_STATUSES } from "../lib/invite-copy";
+import { Badge } from "../components/ui/badge";
 import { pagesCopy } from "../lib/pages-copy";
 import { withLang } from "../lib/shell-copy";
 import { useState, useEffect, useRef } from "react";
 import type { MetaFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useFetcher, useNavigate, useRevalidator, useSearchParams } from "react-router";
+import { Link, useLoaderData, useFetcher, useNavigate, useRevalidator, useSearchParams } from "react-router";
 import { Plus, Settings, Trash2, Mail, User, Pencil, KeyRound } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -59,6 +61,7 @@ interface UserRow {
   email: string;
   name?: string;
   created_at: string;
+  status?: string;
   roles: Array<{ id: string; name: string }>;
 }
 
@@ -72,6 +75,7 @@ type EditUserResult =
 
 interface LoaderData {
   users: UserRow[];
+  nextCursor?: string;
   allRoles: Array<{ id: string; name: string; is_system: boolean; description?: string }>;
   user: { id: string; email: string } | null;
   authServerUrl: string;
@@ -149,8 +153,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   try {
     // Fetch users via M2M API
     // ?q= (e.g. from a moderation request): load the users whose email matches
-    const q = new URL(request.url).searchParams.get("q")?.trim();
-    const usersResponse = await listUsers(env, actingUser, q ? { email: q, skipCount: true } : { skipCount: true }, request);
+    const params = new URL(request.url).searchParams;
+    const q = params.get("q")?.trim();
+    const status = USER_STATUSES.find((value) => value === params.get("status"));
+    const cursor = params.get("cursor");
+    const usersResponse = await listUsers(env, actingUser, {
+      skipCount: true,
+      ...(q && { email: q }),
+      ...(status && { status }),
+      ...(cursor && { cursor }),
+    }, request);
 
     if (isErrorResponse(usersResponse)) {
       console.error("Error fetching users:", usersResponse.error);
@@ -164,6 +176,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       // The platform's display-name rule (name, then first + last)
       name: resolveUserDisplayName(user),
       created_at: user.created_at,
+      status: user.status,
       roles: user.roles || [],
     }));
 
@@ -178,7 +191,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     const { systemAccounts, systemError } = await loadSystemAccounts(env, actingUser, request);
     const loadError = [isErrorResponse(rolesResponse) ? `Roles: ${rolesResponse.error}` : undefined, systemError].filter(Boolean).join("; ") || undefined;
-    return { users, allRoles, user: { id: currentUser.id, email: currentUser.email }, authServerUrl, loadError, systemAccounts };
+    return { users, allRoles, nextCursor: usersResponse.pagination?.nextCursor, user: { id: currentUser.id, email: currentUser.email }, authServerUrl, loadError, systemAccounts };
   } catch (error) {
     console.error("Error loading users:", error);
     return {
@@ -421,7 +434,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
 }
 
 export default function Users() {
-  const { users, allRoles, user, authServerUrl, loadError, systemAccounts } = useLoaderData<LoaderData>();
+  const { users, allRoles, user, authServerUrl, loadError, systemAccounts, nextCursor } = useLoaderData<LoaderData>();
   const revalidator = useRevalidator();
   const fetcher = useFetcher();
   const editFetcher = useFetcher<EditUserResult>();
@@ -444,6 +457,22 @@ export default function Users() {
   const systemView = searchParams.get("view") === "system";
   const systemCopy = systemAccountsCopy(deleteLang);
   const lang = deleteLang;
+  const statusCopy = inviteCopy(lang);
+  const status = USER_STATUSES.find((value) => value === searchParams.get("status")) ?? "all";
+  const statusBadge = (value?: string) => value ? (
+    <Badge variant={value === "invited" ? "default" : "secondary"}>
+      {Object.entries(statusCopy.userStatuses).find(([key]) => key === value)?.[1] ?? value}
+    </Badge>
+  ) : null;
+  function userHref(changes: Record<string, string>) {
+    const params = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    params.delete("lang");
+    return withLang(params.size ? `/users?${params}` : "/users", lang);
+  }
   const t = pagesCopy(lang).users;
   const c = pagesCopy(lang).common;
   // People by name: display name, else email (rule: never a bare "-")
@@ -804,12 +833,27 @@ export default function Users() {
                 defaultValue={searchQuery}
                 onQueryChange={setSearchQuery}
                 // Enter: the server-side search (every user, not only the loaded page)
-                onSearch={(q) => navigate(withLang(q ? `/users?q=${encodeURIComponent(q)}` : "/users", lang))}
+                onSearch={(q) => navigate(userHref({ q, cursor: "" }))}
                 // A suggestion: the list narrowed to that user
-                hrefFor={(s) => withLang(`/users?q=${encodeURIComponent(s.secondary ?? s.label)}`, lang)}
+                hrefFor={(s) => userHref({ q: s.secondary ?? s.label, cursor: "" })}
                 className="max-w-sm"
                 testId="users-search"
               />
+            </div>
+
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                {statusCopy.status}
+                <select
+                  value={status}
+                  className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3"
+                  onChange={(event) => navigate(userHref({ status: event.target.value, cursor: "" }))}
+                >
+                  <option value="all">{statusCopy.all}</option>
+                  {USER_STATUSES.map((value) => <option key={value} value={value}>{statusCopy.userStatuses[value]}</option>)}
+                </select>
+              </label>
+              {status === "invited" && <Button asChild variant="outline"><Link to={withLang("/invites", lang)}>{statusCopy.view}</Link></Button>}
             </div>
 
             {loadError && users.length === 0 ? null : users.length === 0 ? (
@@ -831,6 +875,8 @@ export default function Users() {
                       <div className="font-medium"><bdi>{nameOf(u)}</bdi></div>
                       {u.name?.trim() && <div className="text-sm text-[var(--color-muted-foreground)]"><Email value={u.email} /></div>}
                       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                        <dt className="text-[var(--color-muted-foreground)]">{statusCopy.status}</dt>
+                        <dd>{statusBadge(u.status)}</dd>
                         <dt className="text-[var(--color-muted-foreground)]">{t.colRoles}</dt>
                         <dd className="flex flex-wrap gap-1">{rolesOf(u)}</dd>
                         <dt className="text-[var(--color-muted-foreground)]">{t.colCreated}</dt>
@@ -845,6 +891,7 @@ export default function Users() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t.colUser}</TableHead>
+                    <TableHead>{statusCopy.status}</TableHead>
                     <TableHead>{t.colRoles}</TableHead>
                     <TableHead>{t.colCreated}</TableHead>
                     <TableHead className="text-end">{c.actions}</TableHead>
@@ -867,6 +914,7 @@ export default function Users() {
                           </div>
                         </div>
                       </TableCell>
+                      <TableCell>{statusBadge(user.status)}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2">{rolesOf(user)}</div>
                       </TableCell>
@@ -881,6 +929,14 @@ export default function Users() {
                 </div>
               </>
             )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {searchParams.has("cursor") && (
+                <Button asChild variant="outline"><Link to={userHref({ cursor: "" })}>{statusCopy.first}</Link></Button>
+              )}
+              {nextCursor && (
+                <Button asChild variant="outline"><Link to={userHref({ cursor: nextCursor })}>{statusCopy.next}</Link></Button>
+              )}
+            </div>
           </CardContent>
         </Card>
 

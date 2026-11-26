@@ -7,7 +7,7 @@
 import type { AdminLang } from "./deletion-copy";
 import { sameSitePath } from "../../../../packages/ui/src/nav/page-header.ts";
 
-export type NavKey = "dashboard" | "users" | "roles" | "sessions" | "clients" | "audit" | "moderation" | "themes" | "deleted" | "security" | "signingKeys" | "accountEvents";
+export type NavKey = "dashboard" | "users" | "roles" | "sessions" | "clients" | "audit" | "moderation" | "themes" | "invites" | "deleted" | "security" | "signingKeys" | "accountEvents";
 
 export interface ShellCopy {
   brand: string;
@@ -31,6 +31,7 @@ const en: ShellCopy = {
   nav: {
     dashboard: "Dashboard",
     users: "Users",
+    invites: "Invites",
     roles: "Roles",
     sessions: "Sessions",
     clients: "OAuth Clients",
@@ -55,6 +56,7 @@ const ar: ShellCopy = {
   nav: {
     dashboard: "لوحة المعلومات",
     users: "المستخدمون",
+    invites: "الدعوات",
     roles: "الأدوار",
     sessions: "الجلسات",
     clients: "عملاء OAuth",

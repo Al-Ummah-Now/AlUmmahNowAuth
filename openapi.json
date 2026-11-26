@@ -3813,6 +3813,7 @@
             "name": "status",
             "in": "query",
             "required": false,
+            "description": "Account status, such as active, invited or suspended. Use all to omit the status filter.",
             "schema": {
               "type": "string"
             }
@@ -6453,6 +6454,236 @@
             "adminToken": []
           }
         ]
+      }
+    },
+    "/admin/invites": {
+      "get": {
+        "tags": [
+          "Admin: users"
+        ],
+        "x-audience": "admin",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "operationId": "adminListInvites",
+        "summary": "List invites",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "pending",
+                "accepted",
+                "expired",
+                "revoked"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "description": "Invitee email, name, invite ID or user ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The previous page’s nextCursor value",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invite summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "invites",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "invites": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "email",
+                          "name",
+                          "clientId",
+                          "clientName",
+                          "status",
+                          "invitedByUserId",
+                          "invitedByEmail",
+                          "createdAt",
+                          "expiresAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "clientId": {
+                            "type": "string"
+                          },
+                          "clientName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "accepted",
+                              "expired",
+                              "revoked"
+                            ]
+                          },
+                          "invitedByUserId": {
+                            "type": "string"
+                          },
+                          "invitedByEmail": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "integer",
+                            "format": "int64",
+                            "description": "Unix time in milliseconds"
+                          },
+                          "expiresAt": {
+                            "type": "integer",
+                            "format": "int64",
+                            "description": "Unix time in milliseconds"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/admin/invites/{id}/revoke": {
+      "post": {
+        "tags": [
+          "Admin: users"
+        ],
+        "x-audience": "admin",
+        "security": [
+          {
+            "adminToken": []
+          }
+        ],
+        "operationId": "adminRevokeInvite",
+        "summary": "Revoke an unaccepted invite",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^inv_[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invite revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
       }
     },
     "/admin/deletions": {
