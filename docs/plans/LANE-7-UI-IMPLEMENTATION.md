@@ -1491,7 +1491,10 @@ const navigationItems = [
 
 ### 1. Account Switcher Component
 
-**File**: `apps/profile/src/components/AccountSwitcher.tsx`
+The React sketch below predates the shared sign-out dialog. Use the
+server-rendered forms in `apps/auth/src/ui/account-switcher.ts` as the reference
+for account sign-out. They use `confirmAttributes()` for single-account and
+all-account sign-out and render `renderConfirmDialog(locale)` once.
 
 ```tsx
 import { useState, useEffect, useRef } from 'react';
@@ -1997,159 +2000,40 @@ function formatRelativeTime(dateString: string): string {
 
 ### 2. Sessions Management Page
 
-**File**: `apps/profile/src/routes/settings.sessions.tsx`
+Auth serves the sessions page at `/settings/sessions`. The renderer in
+`apps/auth/src/ui/session-list.ts` lists the current device and other sessions.
+Only the other sessions offer sign-out actions.
 
-```tsx
-import { useState, useEffect } from 'react';
-import { DeviceCard } from '../components/DeviceCard';
+Use `CONFIRM_COPY` and `confirmAttributes()` from
+`apps/auth/src/ui/confirm-dialog.ts` on the POST forms. Render
+`renderConfirmDialog(locale)` once after the forms. The dialog sends the selected
+form when the user confirms. Cancel, Escape, and clicking the backdrop leave the
+form unsent. The confirmation tests can intercept the form POST to verify when
+the browser sends it.
 
-interface DeviceSession {
-  id: string;
-  deviceType: string;
-  deviceName: string;
-  ipAddress: string;
-  lastActivity: string;
-  createdAt: string;
-  isCurrentSession: boolean;
-}
+```typescript
+import { CONFIRM_COPY, confirmAttributes, renderConfirmDialog } from './confirm-dialog';
 
-export function SessionsSettingsPage() {
-  const [sessions, setSessions] = useState<DeviceSession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [revoking, setRevoking] = useState<string | null>(null);
+// Inside renderSessionList, once the renderer has found other sessions:
+const t = CONFIRM_COPY[locale];
+const bulkSignOut = `
+  <form method="POST" action="/session/devices/revoke-all"
+    ${confirmAttributes({
+      title: t.signOutAllOtherTitle,
+      message: t.signOutAllOtherMessage,
+      action: t.signOutAllOtherAction,
+    })}>
+    <button type="submit">Sign out all other devices</button>
+  </form>
+`;
 
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  async function loadSessions() {
-    try {
-      const response = await fetch('/api/session/devices', {
-        credentials: 'include',
-      });
-      const data = await response.json();
-      setSessions(data.sessions);
-    } catch (error) {
-      console.error('Failed to load sessions', error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleRevoke(sessionId: string) {
-    setRevoking(sessionId);
-    try {
-      await fetch(`/api/session/devices/${sessionId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      await loadSessions();
-    } catch (error) {
-      console.error('Failed to revoke session', error);
-    } finally {
-      setRevoking(null);
-    }
-  }
-
-  async function handleRevokeAll() {
-    if (!confirm('Sign out from all other devices? You will stay signed in on this device.')) {
-      return;
-    }
-
-    try {
-      const otherSessions = sessions.filter(s => !s.isCurrentSession);
-      for (const session of otherSessions) {
-        await fetch(`/api/session/devices/${session.id}`, {
-          method: 'DELETE',
-          credentials: 'include',
-        });
-      }
-      await loadSessions();
-    } catch (error) {
-      console.error('Failed to revoke sessions', error);
-    }
-  }
-
-  const currentSession = sessions.find(s => s.isCurrentSession);
-  const otherSessions = sessions.filter(s => !s.isCurrentSession);
-
-  return (
-    <div className="sessions-page">
-      <header className="page-header">
-        <h1>Active Sessions</h1>
-        <p className="description">
-          Manage your active sessions across all devices. You can sign out from
-          devices you no longer use or don't recognize.
-        </p>
-      </header>
-
-      {loading ? (
-        <div className="loading-state">
-          <div className="spinner" />
-          <p>Loading sessions...</p>
-        </div>
-      ) : (
-        <>
-          {/* Current Session */}
-          {currentSession && (
-            <section className="session-section">
-              <h2>Current Session</h2>
-              <DeviceCard
-                session={currentSession}
-                isCurrent
-              />
-            </section>
-          )}
-
-          {/* Other Sessions */}
-          <section className="session-section">
-            <div className="section-header">
-              <h2>Other Sessions ({otherSessions.length})</h2>
-              {otherSessions.length > 0 && (
-                <button
-                  onClick={handleRevokeAll}
-                  className="sign-out-all-btn"
-                >
-                  Sign out all other devices
-                </button>
-              )}
-            </div>
-
-            {otherSessions.length === 0 ? (
-              <div className="empty-state">
-                <p>No other active sessions</p>
-              </div>
-            ) : (
-              <div className="sessions-list">
-                {otherSessions.map(session => (
-                  <DeviceCard
-                    key={session.id}
-                    session={session}
-                    onRevoke={() => handleRevoke(session.id)}
-                    isRevoking={revoking === session.id}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Security Notice */}
-          <section className="security-notice">
-            <div className="notice-icon">🔒</div>
-            <div className="notice-content">
-              <h3>Don't recognize a session?</h3>
-              <p>
-                If you see a device or location you don't recognize, sign out
-                from that session immediately and change your password.
-              </p>
-            </div>
-          </section>
-        </>
-      )}
-    </div>
-  );
-}
+// Include the dialog once after all session forms.
+return `${sessionCards}${bulkSignOut}${renderConfirmDialog(locale)}`;
 ```
+
+For a single device, use the same form pattern with
+`POST /session/devices/:id` and the localized `signOutDeviceTitle`,
+`signOutDeviceMessage`, and `signOut` labels.
 
 ---
 
@@ -2787,12 +2671,8 @@ describe('User Sessions Page', () => {
 ```typescript
 describe('Sessions Settings Page', () => {
   describe('Initialization', () => {
-    it('should load sessions on mount', async () => {
-      // Acceptance: GET /session/devices called
-    });
-
-    it('should show loading state while fetching', async () => {
-      // Acceptance: Spinner visible
+    it('should render sessions in the page response', async () => {
+      // Acceptance: GET /settings/sessions returns the current and other devices.
     });
   });
 
@@ -2827,7 +2707,7 @@ describe('Sessions Settings Page', () => {
       // Acceptance: Button visible
     });
 
-    it('should show "Sign out all other devices" when multiple', async () => {
+    it('should show "Sign out all other devices" when other sessions exist', async () => {
       // Acceptance: Button in header
     });
 
@@ -2841,30 +2721,27 @@ describe('Sessions Settings Page', () => {
   });
 
   describe('Revoke Session', () => {
-    it('should call API on revoke click', async () => {
-      // Acceptance: DELETE /session/devices/:id called
+    it('should ask before signing out a device', async () => {
+      // Click the device's Sign out button and assert the alertdialog is visible.
+      // Confirm inside the dialog and verify POST /session/devices/:id is sent.
     });
 
-    it('should show loading state during revoke', async () => {
-      // Acceptance: 'Signing out...' text
-    });
-
-    it('should remove session from list after revoke', async () => {
-      // Acceptance: Session no longer visible
-    });
   });
 
   describe('Revoke All', () => {
     it('should show confirmation before bulk revoke', async () => {
-      // Acceptance: confirm() called
+      // Click Sign out all other devices and assert the alertdialog title and
+      // message are visible. No POST is sent while the dialog is open.
     });
 
-    it('should revoke each session sequentially', async () => {
-      // Acceptance: Multiple DELETE calls made
+    it('should leave sessions alone when dismissed', async () => {
+      // Cancel, press Escape, or click the backdrop. Assert the alertdialog
+      // closes and no POST /session/devices/revoke-all is sent.
     });
 
-    it('should refresh list after bulk revoke', async () => {
-      // Acceptance: loadSessions called
+    it('should submit the bulk form after confirmation', async () => {
+      // Click Sign out other devices inside the alertdialog. Assert exactly one
+      // POST /session/devices/revoke-all.
     });
   });
 
@@ -3040,7 +2917,10 @@ test.describe('Profile AccountSwitcher E2E', () => {
 
     await page.click('.account-switcher-trigger');
     await page.hover('text=user2@test.com');
-    await page.click('[aria-label="Sign out user2@test.com"]');
+    await page.getByRole('button', { name: 'Sign out of user2@test.com', exact: true }).click();
+    const dialog = page.getByRole('alertdialog', { name: 'Sign out of this account?' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Sign out', exact: true }).click();
 
     await expect(page.getByText('user2@test.com')).not.toBeVisible();
   });
@@ -3056,29 +2936,26 @@ test.describe('Profile Sessions E2E', () => {
     await expect(page.getByText('Current Session')).toBeVisible();
   });
 
-  test('can revoke other session', async ({ page, context }) => {
-    // Login on first "device"
+  test('sends a device sign-out request after confirmation', async ({ page, browser }) => {
     await loginAs(page, 'user@test.com');
 
-    // Login on second "device"
-    const page2 = await context.newPage();
+    // A separate context gives the second device its own cookies.
+    const page2 = await browser.newPage();
     await loginAs(page2, 'user@test.com');
 
-    // Go to sessions on first device
     await page.goto('/settings/sessions');
+    await expect(page.getByRole('heading', { name: 'Other Sessions (1)' })).toBeVisible();
 
-    // Should see 2 sessions
-    await expect(page.locator('[data-testid="device-card"]')).toHaveCount(2);
-
-    // Revoke the other session
-    await page.click('[data-testid="revoke-btn"]');
-
-    // Should now see 1 session
-    await expect(page.locator('[data-testid="device-card"]')).toHaveCount(1);
-
-    // Second device should be logged out
-    const check = await page2.request.get('/session/check');
-    expect((await check.json()).authenticated).toBe(false);
+    await page.route('**/session/devices/*', route => route.fulfill({ status: 204 }));
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    const dialog = page.getByRole('alertdialog', { name: 'Sign out this device?' });
+    await expect(dialog).toBeVisible();
+    const submitted = page.waitForRequest(request =>
+      request.method() === 'POST' && /\/session\/devices\/[^/]+$/.test(new URL(request.url()).pathname)
+    );
+    await dialog.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await submitted;
+    await page2.close();
   });
 });
 ```
