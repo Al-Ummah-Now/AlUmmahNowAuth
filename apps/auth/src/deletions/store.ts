@@ -50,6 +50,11 @@ export interface NewDeletion {
 export const deletedClause = (kind: DeletionKind, idColumn: string) =>
 	`SELECT 1 FROM admin_deletions d WHERE d.kind = '${kind}' AND d.item_id = ${idColumn}`;
 
+/** The claimed erased subject also marks the irreversible phase of a user purge. */
+export const userPurgeClaimed = (idColumn: string) =>
+	`EXISTS (SELECT 1 FROM admin_deletions d WHERE d.kind = 'user' AND d.item_id = ${idColumn}
+		AND CASE WHEN json_valid(d.snapshot) THEN json_extract(d.snapshot, '$.erased_audit_id') IS NOT NULL ELSE 0 END)`;
+
 export function cleanReason(reason: unknown): string | null {
 	if (typeof reason !== 'string') return null;
 	const trimmed = reason.trim();
@@ -106,6 +111,28 @@ export class DeletionStore {
 
 	removeStatement(kind: DeletionKind, itemId: string): D1PreparedStatement {
 		return this.db.prepare('DELETE FROM admin_deletions WHERE kind = ? AND item_id = ?').bind(kind, itemId);
+	}
+
+	removeRestorableUserStatement(userId: string): D1PreparedStatement {
+		return this.db.prepare(`DELETE FROM admin_deletions WHERE kind = 'user' AND item_id = ?1 AND NOT ${userPurgeClaimed('?1')}`).bind(userId);
+	}
+
+	/** Compare-and-set the snapshot before the first irreversible write. */
+	async claimUserPurge(row: DeletionRow, snapshot: string): Promise<DeletionRow | null> {
+		return this.db
+			.prepare(
+				`UPDATE admin_deletions SET snapshot = ?1
+				 WHERE kind = 'user' AND item_id = ?2 AND deleted_at = ?3 AND snapshot IS ?4
+				 RETURNING *`
+			)
+			.bind(snapshot, row.item_id, row.deleted_at, row.snapshot)
+			.first<DeletionRow>();
+	}
+
+	finishUserPurgeStatement(row: DeletionRow): D1PreparedStatement {
+		return this.db
+			.prepare(`DELETE FROM admin_deletions WHERE kind = 'user' AND item_id = ? AND deleted_at = ? AND snapshot = ?`)
+			.bind(row.item_id, row.deleted_at, row.snapshot);
 	}
 
 	/** Marks the item for the cleanup's next run. Returns false when it is not (or no longer) deleted. */

@@ -133,7 +133,13 @@ export async function restore(env: DeletionEnv, kind: DeletionKind, itemId: stri
 	if (!row) throw new DeletionError(404, 'not_deleted', 'Not in Recently deleted');
 	const plan = await HANDLERS[kind].restore(env, row, now);
 	try {
-		await env.AUTH_DB.batch([store.removeStatement(kind, itemId), ...plan.statements]);
+		const remove = kind === 'user' ? store.removeRestorableUserStatement(itemId) : store.removeStatement(kind, itemId);
+		// The user restore statements and the final delete all check the purge claim in the same transaction.
+		const results = await env.AUTH_DB.batch(kind === 'user' ? [...plan.statements, remove] : [remove, ...plan.statements]);
+		if (kind === 'user' && !results.at(-1)?.meta.changes) {
+			if (await store.isDeleted(kind, itemId)) throw new DeletionError(409, 'purge_in_progress', 'Permanent deletion has already started');
+			throw new DeletionError(404, 'not_deleted', 'Not in Recently deleted');
+		}
 	} catch (error) {
 		if (/UNIQUE constraint failed/i.test(error instanceof Error ? error.message : String(error))) {
 			throw new DeletionError(409, 'conflict', 'Another item now has the same name or email; it cannot be restored');
@@ -147,7 +153,7 @@ export async function restore(env: DeletionEnv, kind: DeletionKind, itemId: stri
 
 /**
  * "Delete permanently now": the cleanup removes the item on its next run (within
- * the hour). Nothing is removed here, and it can still be restored until then.
+ * the hour). The item stays restorable until the cleanup claims it.
  * `confirm` must repeat the item's label (or id when it has none): the
  * type-to-confirm in the admin dialog, checked again here.
  */

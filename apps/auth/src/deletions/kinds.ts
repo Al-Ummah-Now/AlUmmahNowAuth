@@ -33,9 +33,9 @@ import { invalidateThemeSettings } from '../themes/runtime';
 import { deleteBirthDate } from '../birth-date/store';
 import { logger } from '../logger';
 import { enqueue, recordAccountEvent } from '../account-events/record';
-import { redactUserAuditEvents, type AuditRedactionOptions } from './audit-redaction';
-import type { DeletionKind, DeletionRow } from './store';
-
+import { withoutAccountEvents } from '../account-events/types';
+import { generateErasedSubject, redactUserAuditEvents, type AuditRedactionOptions } from './audit-redaction';
+import { DeletionStore, userPurgeClaimed, type DeletionKind, type DeletionRow } from './store';
 
 export class DeletionError extends Error {
 	constructor(
@@ -50,9 +50,13 @@ export class DeletionError extends Error {
 
 export type DeletionEnv = Pick<Env, 'AUTH_DB' | 'AUTH_STORAGE' | 'TOKEN_REVOCATIONS' | 'AUTH_THEMES' | 'ACCOUNT_EVENTS' | 'ACCOUNT_EVENTS_QUEUE'>;
 
+export const PURGE_TIME_BUDGET_MS = 1_500;
+export const DISPOSABLE_CLEANUP_ACTOR = 'e2e-disposable-cleanup';
+
 export interface PurgeOptions {
 	/** Overrides for batched audit_events redaction (tests / tuning). */
-	auditRedaction?: Omit<AuditRedactionOptions, 'erasedSubject'>;
+	auditRedaction?: Omit<AuditRedactionOptions, 'deadline'>;
+	deadline?: number;
 }
 
 export type PurgeOutcome = 'done' | 'deferred' | void;
@@ -80,7 +84,7 @@ export interface KindHandler {
 
 const snapshotOf = <T>(row: DeletionRow): Partial<T> => {
 	try {
-		return row.snapshot ? (JSON.parse(row.snapshot) as Partial<T>) : {};
+		return row.snapshot ? ((JSON.parse(row.snapshot) as Partial<T> | null) ?? {}) : {};
 	} catch {
 		return {};
 	}
@@ -101,7 +105,7 @@ async function run(stmt: D1PreparedStatement): Promise<number> {
 interface UserSnapshot {
 	status: string;
 	email: string;
-	/** Temporary random erased subject held only while a multi-run redaction resumes; deleted with admin_deletions. */
+	/** The irreversible purge claim and its random subject, removed when the purge finishes. */
 	erased_audit_id?: string;
 }
 
@@ -143,11 +147,12 @@ const user: KindHandler = {
 			.bind(current.tenant_id, current.email, row.item_id)
 			.first();
 		if (taken) throw new DeletionError(409, 'email_in_use', `Another account now uses ${current.email}; it can't be restored`);
-		const event = await recordAccountEvent(env, { type: 'account-enabled', userId: row.item_id }, { now, onlyIf: 'deleted' });
+		const event = await recordAccountEvent(env, { type: 'account-enabled', userId: row.item_id }, { now, onlyIf: 'restorable' });
 		return {
 			statements: [
 				...event.statements,
-				env.AUTH_DB.prepare('UPDATE users SET status = ?2, deleted_at = NULL, updated_at = ?3 WHERE id = ?1 AND deleted_at IS NOT NULL').bind(
+				env.AUTH_DB.prepare(`UPDATE users SET status = ?2, deleted_at = NULL, updated_at = ?3
+					WHERE id = ?1 AND deleted_at IS NOT NULL AND NOT ${userPurgeClaimed('users.id')}`).bind(
 					row.item_id,
 					status,
 					now
@@ -160,10 +165,37 @@ const user: KindHandler = {
 	async purge(env, row, opts) {
 		const db = env.AUTH_DB;
 		const userId = row.item_id;
+		const deadline = opts?.deadline ?? Date.now() + PURGE_TIME_BUDGET_MS;
 		const found = await db.prepare('SELECT email, tenant_id, deleted_at FROM users WHERE id = ?').bind(userId).first<{ email: string; tenant_id: string; deleted_at: number | null }>();
 		// Restored behind the cleanup's back (or re-created): never purge a live account
 		if (found && found.deleted_at === null) throw new DeletionError(409, 'user_live', 'The account is not deleted');
-		const email = (found?.email ?? snapshotOf<UserSnapshot>(row).email ?? row.label ?? '').toLowerCase();
+		if (Date.now() >= deadline) return 'deferred';
+
+		// Whoever claims the snapshot first fixes the subject for all retries and overlapping runs.
+		// A restore that already removed the snapshot wins instead, and the purge stops.
+		const store = new DeletionStore(db);
+		const snap = snapshotOf<UserSnapshot>(row);
+		let claimed: DeletionRow | null = row;
+		if (!snap.erased_audit_id) {
+			const snapshot = JSON.stringify({ ...snap, erased_audit_id: generateErasedSubject() });
+			claimed = await store.claimUserPurge(row, snapshot);
+			claimed ??= await store.get('user', userId);
+		}
+		if (!claimed || claimed.deleted_at !== row.deleted_at) return 'deferred';
+		const erasedSubject = snapshotOf<UserSnapshot>(claimed).erased_audit_id;
+		if (!erasedSubject) return 'deferred';
+
+		const auditRedaction = await redactUserAuditEvents(db, userId, erasedSubject, { ...opts?.auditRedaction, deadline });
+		if (auditRedaction.remaining || Date.now() >= deadline) {
+			logger.info('[deletions] Audit event redaction deferred to next run', {
+				userId,
+				redacted: auditRedaction.redacted,
+				batches: auditRedaction.batches,
+			});
+			return 'deferred';
+		}
+
+		const email = (found?.email ?? snap.email ?? row.label ?? '').toLowerCase();
 		const tenantId = found?.tenant_id ?? row.tenant_id;
 		const { results: identities } = await db
 			.prepare('SELECT provider, provider_user_id FROM user_identities WHERE user_id = ?')
@@ -255,35 +287,18 @@ const user: KindHandler = {
 		statements.push(db.prepare('DELETE FROM passkey_setup_tickets WHERE user_id = ?').bind(userId));
 		statements.push(deleteBirthDate(db, userId));
 		for (const stmt of statements) await run(stmt);
-		// Redact the user's audit_events rows in indexed batches before deleting the user row
-		// or emitting account-purged (#515). If a large history hits the per-run batch or time
-		// cap, persist the random erased subject temporarily on admin_deletions.snapshot so the
-		// next cleanup run reuses it; the snapshot row is deleted once redaction completes.
-		const snap = snapshotOf<UserSnapshot>(row);
-		const auditRedaction = await redactUserAuditEvents(db, userId, {
-			...opts?.auditRedaction,
-			erasedSubject: snap.erased_audit_id,
-		});
-		if (auditRedaction.remaining) {
-			if (auditRedaction.erasedSubject && snap.erased_audit_id !== auditRedaction.erasedSubject) {
-				await db
-					.prepare('UPDATE admin_deletions SET snapshot = ?1 WHERE kind = ?2 AND item_id = ?3')
-					.bind(JSON.stringify({ ...snap, erased_audit_id: auditRedaction.erasedSubject }), row.kind, row.item_id)
-					.run();
-			}
-			logger.info('[deletions] Audit event redaction deferred to next run', {
-				userId,
-				redacted: auditRedaction.redacted,
-				batches: auditRedaction.batches,
-			});
-			return 'deferred';
-		}
-
 		// Apps erase the account's data, told exactly when the row goes: not for a retry that finds it
 		// gone, nor for an account restored meanwhile
-		const event = await recordAccountEvent(env, { type: 'account-purged', userId }, { onlyIf: 'deleted' });
-		await db.batch([...event.statements, db.prepare('DELETE FROM users WHERE id = ? AND deleted_at IS NOT NULL').bind(userId)]);
-		await enqueue(env, event.jtis);
+		// A QA disposable purge that deferred still suppresses account events when cron resumes it.
+		const eventEnv = claimed.deleted_by === DISPOSABLE_CLEANUP_ACTOR ? withoutAccountEvents(env) : env;
+		const event = await recordAccountEvent(eventEnv, { type: 'account-purged', userId }, { onlyIf: 'deleted' });
+		const results = await db.batch([
+			...event.statements,
+			db.prepare('DELETE FROM users WHERE id = ? AND deleted_at IS NOT NULL').bind(userId),
+			store.finishUserPurgeStatement(claimed),
+		]);
+		if (!results.at(-1)?.meta.changes) return 'deferred';
+		await enqueue(eventEnv, event.jtis);
 		return 'done';
 		// user_revocations / TOKEN_REVOCATIONS stay: they hold only the id, a time and a reason
 		// code (never the email) and keep any token still in flight dead until the entry expires

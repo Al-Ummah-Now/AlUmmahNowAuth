@@ -14,7 +14,8 @@ import { keyIdOf } from '../birth-date/key';
 import { readBirthDate, writeBirthDate, type BirthDateEnv } from '../birth-date/store';
 import { ageBandClaims, ageBandClaimsSupported } from '../birth-date/band';
 import { clearBirthDateSettingCache, writeBirthDateSetting } from '../birth-date/setting';
-import { HANDLERS, type DeletionEnv } from '../deletions/kinds';
+import { purgeItem } from '../deletions/purge';
+import { softDelete } from '../deletions/service';
 import { redactLogValue } from '../logger';
 
 const ISSUER = 'http://localhost:3301';
@@ -372,8 +373,8 @@ describe('/account/birth-date', () => {
 	it('the admin purge removes it', async () => {
 		await seedUser('bd7');
 		await put('bd7', '1990-01-02');
-		await E.AUTH_DB.prepare(`UPDATE users SET status = 'deleted', deleted_at = ? WHERE id = 'bd7'`).bind(Date.now()).run();
-		await HANDLERS.user.purge(E as DeletionEnv, { kind: 'user', item_id: 'bd7', tenant_id: 'default', label: 'bd7@example.com', deleted_at: Date.now(), deleted_by: 'test', reason: null, snapshot: null } as never);
+		await softDelete(E, 'user', 'bd7', { userId: 'test-admin' });
+		expect(await purgeItem(E, 'user', 'bd7')).toBe(true);
 		expect(await row('bd7')).toBeNull();
 	});
 });

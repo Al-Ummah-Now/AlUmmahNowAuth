@@ -22,9 +22,9 @@
  */
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { withoutAccountEvents } from '../account-events/types';
-import { HANDLERS, type DeletionEnv } from '../deletions/kinds';
+import { DISPOSABLE_CLEANUP_ACTOR, HANDLERS, type DeletionEnv } from '../deletions/kinds';
 import { auditDeletion } from '../deletions/service';
-import { DeletionStore, type DeletionRow } from '../deletions/store';
+import { DeletionStore } from '../deletions/store';
 import { logger } from '../logger';
 import { e2eAccountKind } from '../utils/e2e-accounts';
 import { RUN_USER_MARKER } from '../utils/e2e-sink';
@@ -37,7 +37,6 @@ export const QA_DATABASE = 'al-ummah-now-d1-qa';
 export const DISPOSABLE_FLAG = 'enabled';
 const QA_HOST = 'auth.qa.alummahnow.net';
 const HOUR = 60 * 60 * 1000;
-const ACTOR = 'e2e-disposable-cleanup';
 
 export interface DisposableEnv {
 	AUTH_DB: D1Database;
@@ -95,30 +94,19 @@ export const MARK_DELETED_SQL = `UPDATE users SET status = 'deleted', deleted_at
 	AND ${MARKED} = 0`;
 
 async function erase(env: DeletionEnv, row: AccountRow, now: number): Promise<boolean> {
-	const marked = await env.AUTH_DB.prepare(MARK_DELETED_SQL)
-		.bind(row.id, now, row.email, now - 24 * HOUR, now - 48 * HOUR)
-		.run();
-	if ((marked.meta?.changes ?? 0) !== 1) return false;
-	const deletion: DeletionRow = {
-		kind: 'user',
-		item_id: row.id,
-		tenant_id: row.tenant_id,
-		label: row.email,
-		deleted_at: row.deleted_at ?? now,
-		deleted_by: ACTOR,
-		deleted_by_email: null,
-		reason: 'QA test account cleanup (#312)',
-		purge_requested_at: now,
-		purge_requested_by: ACTOR,
-		snapshot: null,
-		attempts: 0,
-		last_error: null,
-	};
-	// The account's own purge (every statement by index), then its entry in the list of deleted items
-	// No account event for a test account (docs/account-hub/SPEC.md §5.4)
-	await HANDLERS.user.purge(withoutAccountEvents(env), deletion);
-	await new DeletionStore(env.AUTH_DB).removeStatement('user', row.id).run();
-	return true;
+	const [marked] = await env.AUTH_DB.batch([
+		env.AUTH_DB.prepare(MARK_DELETED_SQL).bind(row.id, now, row.email, now - 24 * HOUR, now - 48 * HOUR),
+		// Persist a retryable deletion before the handler claims its erased subject.
+		env.AUTH_DB.prepare(
+			`INSERT OR IGNORE INTO admin_deletions (kind, item_id, tenant_id, label, deleted_at, deleted_by, reason, purge_requested_at, purge_requested_by)
+			 SELECT 'user', id, tenant_id, email, deleted_at, ?2, 'QA test account cleanup (#312)', ?3, ?2 FROM users WHERE id = ?1 AND changes() = 1`
+		).bind(row.id, DISPOSABLE_CLEANUP_ACTOR, now),
+	]);
+	if (marked.meta.changes !== 1) return false;
+	const deletion = await new DeletionStore(env.AUTH_DB).get('user', row.id);
+	if (!deletion) return false;
+	// No account event for a test account (docs/account-hub/SPEC.md §5.4).
+	return (await HANDLERS.user.purge(withoutAccountEvents(env), deletion)) === 'done';
 }
 
 const json = (body: unknown, status: number) =>
@@ -181,7 +169,7 @@ export async function disposableUsers(url: URL, env: DisposableEnv, now = Date.n
 		await auditDeletion(
 			AuditEventType.ADMIN_ITEM_PURGED,
 			null,
-			{ kind: 'user', trigger: ACTOR, accounts: counts.deleted, admins: counts.deletedAdmins },
+			{ kind: 'user', trigger: DISPOSABLE_CLEANUP_ACTOR, accounts: counts.deleted, admins: counts.deletedAdmins },
 			AuditEventSeverity.CRITICAL
 		);
 	}

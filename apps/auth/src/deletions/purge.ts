@@ -7,7 +7,7 @@
  */
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { logger } from '../logger';
-import { HANDLERS, type DeletionEnv, type PurgeOptions } from './kinds';
+import { HANDLERS, PURGE_TIME_BUDGET_MS, type DeletionEnv, type PurgeOptions } from './kinds';
 import { auditDeletion } from './service';
 import { DeletionStore, type DeletionKind } from './store';
 
@@ -22,29 +22,34 @@ const zero = (): Record<DeletionKind, number> => ({ user: 0, client: 0, role: 0,
 
 /**
  * Hard-deletes one soft-deleted item now and drops it from the list. False when
- * it is not in the list (restored meanwhile). Throws when the kind's purge
+ * it is no longer in the list or needs another run. Throws when the kind's purge
  * fails; the caller records the failure. Audit-logged like every purge.
  */
 export async function purgeItem(env: DeletionEnv, kind: DeletionKind, itemId: string, opts?: PurgeOptions): Promise<boolean> {
+	const deadline = opts?.deadline ?? Date.now() + PURGE_TIME_BUDGET_MS;
+	if (Date.now() >= deadline) return false;
 	const store = new DeletionStore(env.AUTH_DB);
 	// Restored meanwhile: the row is gone, so there is nothing to purge
 	const current = await store.get(kind, itemId);
-	if (!current) return false;
-	const outcome = await HANDLERS[kind].purge(env, current, opts);
+	if (!current || Date.now() >= deadline) return false;
+	const outcome = await HANDLERS[kind].purge(env, current, { ...opts, deadline });
 	if (outcome === 'deferred') return false;
-	await store.removeStatement(kind, itemId).run();
+	if (kind !== 'user') await store.removeStatement(kind, itemId).run();
+	const trigger = current.purge_requested_at !== null ? 'requested' : 'retention';
 	await auditDeletion(
 		AuditEventType.ADMIN_ITEM_PURGED,
 		null,
-		{
-			kind,
-			item_id: itemId,
-			label: current.label,
-			deleted_by: current.deleted_by,
-			deleted_at: current.deleted_at,
-			requested_by: current.purge_requested_by,
-			trigger: current.purge_requested_at !== null ? 'requested' : 'retention',
-		},
+		kind === 'user'
+			? { kind, trigger }
+			: {
+					kind,
+					item_id: itemId,
+					label: current.label,
+					deleted_by: current.deleted_by,
+					deleted_at: current.deleted_at,
+					requested_by: current.purge_requested_by,
+					trigger,
+				},
 		AuditEventSeverity.CRITICAL
 	);
 	return true;
@@ -52,15 +57,20 @@ export async function purgeItem(env: DeletionEnv, kind: DeletionKind, itemId: st
 
 export async function purgeDeleted(
 	env: DeletionEnv,
-	opts: { now?: number; limit?: number; auditRedaction?: PurgeOptions['auditRedaction'] } = {}
+	opts: { now?: number; limit?: number; timeBudgetMs?: number; auditRedaction?: PurgeOptions['auditRedaction'] } = {}
 ): Promise<PurgeResult> {
-	const now = opts.now ?? Date.now();
+	// The due query, item starts and redaction batches share a deadline.
+	// Let an item finish once it starts credential or resource cleanup.
+	const start = Date.now();
+	const deadline = start + (opts.timeBudgetMs ?? PURGE_TIME_BUDGET_MS);
+	const now = opts.now ?? start;
 	const store = new DeletionStore(env.AUTH_DB);
 	const result: PurgeResult = { purged: zero(), failed: zero() };
 	const due = await store.due(now, opts.limit ?? PURGE_BATCH);
 	for (const row of due) {
+		if (Date.now() >= deadline) break;
 		try {
-			if (await purgeItem(env, row.kind, row.item_id, opts.auditRedaction ? { auditRedaction: opts.auditRedaction } : undefined)) {
+			if (await purgeItem(env, row.kind, row.item_id, { auditRedaction: opts.auditRedaction, deadline })) {
 				result.purged[row.kind]++;
 			}
 		} catch (error) {

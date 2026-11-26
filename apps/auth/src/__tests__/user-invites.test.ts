@@ -13,8 +13,9 @@ import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { authStorage } from '../storage/auth-storage';
 import { createOnSuccessHandler } from '../handlers/auth-handlers';
 import { D1UserService } from '../services/d1-user-service';
-import { claimInvitedAccount, purgeRevokedInvites, RETENTION_MS, InviteService } from '../invites/service';
+import { claimInvitedAccount, RETENTION_MS, InviteService } from '../invites/service';
 import { BUILT_IN_COPY, inviteEmailHtml, inviteEmailSubject, inviteEmailText } from '../invites/email';
+import { purgeDeleted } from '../deletions/purge';
 import { logger } from '../logger';
 import type { RBACServiceImpl } from '@al-ummah-now/openauth/rbac/index';
 import type { D1UserAdapter } from '@al-ummah-now/openauth';
@@ -731,8 +732,8 @@ describe('a refused link says the true reason', () => {
 		const before = await DB().prepare('SELECT count(*) AS n FROM user_invite_superseded_tokens WHERE invite_id = ?').bind(body.inviteId).first<{ n: number }>();
 		expect(before!.n).toBe(1);
 		await call('POST', `/provisioning/invites/${body.inviteId}/revoke`, { actor: { id: 'usr_videosadmin' } });
-		await DB().prepare('UPDATE user_invites SET deleted_at = ? WHERE id = ?').bind(Date.now() - RETENTION_MS - 1000, body.inviteId).run();
-		await purgeRevokedInvites(DB());
+		await DB().prepare('UPDATE admin_deletions SET deleted_at = ? WHERE item_id = ?').bind(Date.now() - RETENTION_MS - 1000, body.userId).run();
+		await purgeDeleted(env as unknown as Env);
 		const after = await DB().prepare('SELECT count(*) AS n FROM user_invite_superseded_tokens WHERE invite_id = ?').bind(body.inviteId).first<{ n: number }>();
 		expect(after!.n).toBe(0);
 	});
@@ -849,8 +850,8 @@ describe('revoke, restore, purge', () => {
 		expect(queued.json.invite.purgeRequestedAt).toBeGreaterThan(0);
 		expect(queued.json.invite.status).toBe('revoked');
 
-		const result = await purgeRevokedInvites(DB());
-		expect(result.purged).toBeGreaterThanOrEqual(1);
+		const result = await purgeDeleted(env as unknown as Env);
+		expect(result.purged.user).toBeGreaterThanOrEqual(1);
 		expect(await DB().prepare('SELECT id FROM user_invites WHERE id = ?').bind(body.inviteId).first()).toBeNull();
 		expect(await DB().prepare('SELECT id FROM users WHERE id = ?').bind(body.userId).first()).toBeNull();
 		expect(await DB().prepare('SELECT user_id FROM rbac_user_roles WHERE user_id = ?').bind(body.userId).first()).toBeNull();
@@ -861,9 +862,9 @@ describe('revoke, restore, purge', () => {
 		await call('POST', `/provisioning/invites/${body.inviteId}/revoke`, {});
 		const service = new InviteService(DB());
 		const { invite: revoked } = await service.get(body.inviteId);
-		await purgeRevokedInvites(DB(), revoked.deletedAt! + RETENTION_MS - 1000);
+		await purgeDeleted(env as unknown as Env, { now: revoked.deletedAt! + RETENTION_MS - 1000 });
 		expect(await DB().prepare('SELECT id FROM user_invites WHERE id = ?').bind(body.inviteId).first()).not.toBeNull();
-		await purgeRevokedInvites(DB(), revoked.deletedAt! + RETENTION_MS + 1000);
+		await purgeDeleted(env as unknown as Env, { now: revoked.deletedAt! + RETENTION_MS + 1000 });
 		expect(await DB().prepare('SELECT id FROM user_invites WHERE id = ?').bind(body.inviteId).first()).toBeNull();
 	});
 });

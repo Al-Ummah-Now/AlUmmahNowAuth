@@ -18,6 +18,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from 'cloudflare:test';
+import { Storage } from '@al-ummah-now/openauth/storage/storage';
+import { emitAuditEvent } from '../audit-emitter';
+import { authStorage } from '../storage/auth-storage';
 import { setupDatabase } from '../test-setup';
 import {
 	AUDIT_METADATA_ALLOWLIST,
@@ -28,21 +31,28 @@ import {
 	redactUserAuditEvents,
 } from '../deletions/audit-redaction';
 import {
+	AuditEventType,
 	createAccountUpdatedEvent,
 	createLoginFailedEvent,
 	createLoginSuccessEvent,
 	createTokenIssuedEvent,
 	type AuditEvent,
 } from '../audit-events';
-import { softDelete } from '../deletions/service';
-import { purgeDeleted } from '../deletions/purge';
-import { RETENTION_MS } from '../deletions/store';
+import { requestPurge, restore, softDelete } from '../deletions/service';
+import { purgeDeleted, purgeItem } from '../deletions/purge';
+import { DeletionStore, RETENTION_MS } from '../deletions/store';
 
 vi.mock('../audit-emitter', () => ({ emitAuditEvent: vi.fn().mockResolvedValue(undefined) }));
 
 const ENV = env as unknown as Env;
 const db = () => ENV.AUTH_DB;
 const ADMIN = { userId: 'redact-admin', email: 'admin@example.com' };
+
+async function addLogins(userId: string, email: string, count: number) {
+	for (let i = 0; i < count; i++) {
+		await addAuditEvent(createLoginSuccessEvent(email, userId, { method: 'password', requestId: `req-${i}` }));
+	}
+}
 
 async function addUser(id: string, email: string) {
 	const now = Date.now();
@@ -190,15 +200,14 @@ describe('Audit event redaction on account erase (#515)', () => {
 			);
 
 			// First pass capped at 1 batch of 2 rows -> 2 redacted, remaining=true
-			const pass1 = await redactUserAuditEvents(db(), 'redact-u-batch', { batchSize: 2, maxBatches: 1 });
+			const erasedSubject = generateErasedSubject();
+			const pass1 = await redactUserAuditEvents(db(), 'redact-u-batch', erasedSubject, { batchSize: 2, maxBatches: 1 });
 			expect(pass1.redacted).toBe(2);
 			expect(pass1.batches).toBe(1);
 			expect(pass1.remaining).toBe(true);
-			expect(pass1.erasedSubject).toMatch(new RegExp(`^${ERASED_SUBJECT_PREFIX}[0-9a-f]{32}$`));
 
 			// Second pass resumes with the same erasedSubject and finishes the remaining 2 rows
-			const pass2 = await redactUserAuditEvents(db(), 'redact-u-batch', {
-				erasedSubject: pass1.erasedSubject!,
+			const pass2 = await redactUserAuditEvents(db(), 'redact-u-batch', erasedSubject, {
 				batchSize: 2,
 				maxBatches: 2,
 			});
@@ -206,7 +215,6 @@ describe('Audit event redaction on account erase (#515)', () => {
 				redacted: 2,
 				batches: 1,
 				remaining: false,
-				erasedSubject: pass1.erasedSubject,
 			});
 
 			// Zero rows remain under the original user_id
@@ -221,7 +229,7 @@ describe('Audit event redaction on account erase (#515)', () => {
 				.prepare(
 					'SELECT event_type, user_id, ip_address, user_agent, error_message, request_id, metadata FROM audit_events WHERE user_id = ? ORDER BY rowid ASC'
 				)
-				.bind(pass1.erasedSubject!)
+				.bind(erasedSubject)
 				.all<{
 					event_type: string;
 					user_id: string;
@@ -234,7 +242,7 @@ describe('Audit event redaction on account erase (#515)', () => {
 
 			expect(redactedRows.results).toHaveLength(4);
 			for (const r of redactedRows.results) {
-				expect(r.user_id).toBe(pass1.erasedSubject);
+				expect(r.user_id).toBe(erasedSubject);
 				expect(r.ip_address).toBeNull();
 				expect(r.user_agent).toBeNull();
 				expect(r.error_message).toBeNull();
@@ -293,6 +301,11 @@ describe('Audit event redaction on account erase (#515)', () => {
 			);
 
 			const t0 = Date.now();
+			const storage = authStorage(ENV);
+			const passwordKey = ['email', 'purge-me@example.com', 'password'];
+			await Storage.set(storage, passwordKey, { hash: 'test-hash' });
+			await db().prepare(`INSERT INTO user_identities (id, user_id, tenant_id, provider, provider_user_id, created_at)
+				VALUES ('redact-identity', 'redact-u-purge', 'default', 'google', 'redact-provider', 1)`).run();
 			await softDelete(ENV, 'user', 'redact-u-purge', ADMIN, { now: t0 });
 
 			// Run 1: cap at 2 rows * 1 batch -> defers without error, attempts stays 0, user & admin_deletions remain
@@ -318,6 +331,10 @@ describe('Audit event redaction on account erase (#515)', () => {
 				await db().prepare(`SELECT 1 FROM account_events WHERE user_id = ? AND type = 'account-purged'`).bind('redact-u-purge').first()
 			).toBeNull();
 
+			expect(await Storage.get(storage, passwordKey)).toEqual({ hash: 'test-hash' });
+			expect(await db().prepare("SELECT id FROM user_identities WHERE id = 'redact-identity'").first()).not.toBeNull();
+			await expect(restore(ENV, 'user', 'redact-u-purge', ADMIN)).rejects.toMatchObject({ status: 409, code: 'purge_in_progress' });
+
 			// Run 2: finishes remaining 3 rows with the exact same erased id, deletes user + admin_deletions
 			const run2 = await purgeDeleted(ENV, {
 				now: t0 + RETENTION_MS + 2,
@@ -325,6 +342,8 @@ describe('Audit event redaction on account erase (#515)', () => {
 			});
 			expect(run2.purged.user).toBe(1);
 			expect(run2.failed.user).toBe(0);
+			expect(await Storage.get(storage, passwordKey)).toBeUndefined();
+			expect(await db().prepare("SELECT id FROM user_identities WHERE id = 'redact-identity'").first()).toBeNull();
 
 			// User and admin_deletions row (along with temporary erased_audit_id) are gone
 			expect(await db().prepare('SELECT id FROM users WHERE id = ?').bind('redact-u-purge').first()).toBeNull();
@@ -374,6 +393,134 @@ describe('Audit event redaction on account erase (#515)', () => {
 		});
 	});
 
+	it('persists the subject before committing a batch and reuses it after a crash', async () => {
+		const userId = 'redact-crash';
+		const email = 'redact-crash@example.com';
+		await addUser(userId, email);
+		await addLogins(userId, email, 2);
+		await softDelete(ENV, 'user', userId, ADMIN);
+		await db().prepare(`CREATE TRIGGER fail_later_redaction BEFORE UPDATE ON audit_events
+			WHEN OLD.user_id = 'redact-crash' AND EXISTS (SELECT 1 FROM audit_events WHERE user_id LIKE 'erased:%')
+			BEGIN SELECT RAISE(ABORT, 'redaction interrupted'); END`).run();
+		try {
+			await expect(purgeItem(ENV, 'user', userId, { auditRedaction: { batchSize: 1 } })).rejects.toThrow(/redaction interrupted/);
+		} finally {
+			await db().prepare('DROP TRIGGER fail_later_redaction').run();
+		}
+		const row = await new DeletionStore(db()).get('user', userId);
+		const subject = JSON.parse(row!.snapshot!).erased_audit_id;
+		expect(subject).toMatch(/^erased:[0-9a-f]{32}$/);
+		const subjects = async () => (await db().prepare('SELECT user_id FROM audit_events ORDER BY rowid').all<{ user_id: string }>()).results.map((r) => r.user_id);
+		expect(await subjects()).toEqual([subject, userId]);
+		expect(await purgeItem(ENV, 'user', userId)).toBe(true);
+		expect(await subjects()).toEqual([subject, subject]);
+	});
+
+	it('uses a single subject when two purges overlap and ignores an audit row that already changed subjects', async () => {
+		const userId = 'redact-overlap';
+		const email = 'redact-overlap@example.com';
+		await addUser(userId, email);
+		await addLogins(userId, email, 3);
+		await softDelete(ENV, 'user', userId, ADMIN);
+		const options = { auditRedaction: { batchSize: 1, maxBatches: 1 } };
+		expect(await Promise.all([purgeItem(ENV, 'user', userId, options), purgeItem(ENV, 'user', userId, options)])).toEqual([false, false]);
+		const row = await new DeletionStore(db()).get('user', userId);
+		const subject = JSON.parse(row!.snapshot!).erased_audit_id;
+		const redacted = await db().prepare('SELECT rowid AS row_id FROM audit_events WHERE user_id = ?').bind(subject).first<{ row_id: number }>();
+		expect(redacted).not.toBeNull();
+		const staleUpdate = await db().prepare(AUDIT_REDACTION_SQL.updateRow).bind(generateErasedSubject(), '{}', redacted!.row_id, userId).run();
+		expect(staleUpdate.meta.changes).toBe(0);
+		expect(await purgeItem(ENV, 'user', userId)).toBe(true);
+		const final = await db().prepare('SELECT DISTINCT user_id FROM audit_events').all();
+		expect(final.results).toEqual([{ user_id: subject }]);
+	});
+
+	it('refuses to restore an account after a failure following credential deletion', async () => {
+		const userId = 'redact-partial';
+		const email = 'redact-partial@example.com';
+		await addUser(userId, email);
+		const storage = authStorage(ENV);
+		const passwordKey = ['email', email, 'password'];
+		await Storage.set(storage, passwordKey, { hash: 'test-hash' });
+		await softDelete(ENV, 'user', userId, ADMIN);
+		await db().prepare(`CREATE TRIGGER fail_user_delete BEFORE DELETE ON users WHEN OLD.id = 'redact-partial'
+			BEGIN SELECT RAISE(ABORT, 'purge interrupted'); END`).run();
+		try {
+			await expect(purgeItem(ENV, 'user', userId)).rejects.toThrow(/purge interrupted/);
+		} finally {
+			await db().prepare('DROP TRIGGER fail_user_delete').run();
+		}
+		expect(await Storage.get(storage, passwordKey)).toBeUndefined();
+		await expect(restore(ENV, 'user', userId, ADMIN)).rejects.toMatchObject({ status: 409, code: 'purge_in_progress' });
+		expect(await purgeItem(ENV, 'user', userId)).toBe(true);
+	});
+
+	it('stops redacting and leaves later items untouched when the shared batch deadline expires', async () => {
+		const first = 'redact-budget-first';
+		const second = 'redact-budget-second';
+		const t0 = Date.now();
+		await addUser(first, 'first@example.com');
+		await addUser(second, 'second@example.com');
+		await addLogins(first, 'first@example.com', 2);
+		await addLogins(second, 'second@example.com', 1);
+		await softDelete(ENV, 'user', first, ADMIN, { now: t0 });
+		await softDelete(ENV, 'user', second, ADMIN, { now: t0 + 1 });
+		let clock = t0;
+		const database = db();
+		const timedDb = new Proxy(database, {
+			get(target, key) {
+				if (key === 'batch') {
+					return async (statements: D1PreparedStatement[]) => {
+						const result = await target.batch(statements);
+						clock = t0 + 100;
+						return result;
+					};
+				}
+				if (key === 'prepare') return target.prepare.bind(target);
+				return Reflect.get(target, key);
+			},
+		});
+		const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => clock);
+		try {
+			const result = await purgeDeleted({ ...ENV, AUTH_DB: timedDb }, {
+				now: t0 + RETENTION_MS + 2,
+				timeBudgetMs: 100,
+				auditRedaction: { batchSize: 1 },
+			});
+			expect(result.purged.user).toBe(0);
+			expect(result.failed.user).toBe(0);
+		} finally {
+			nowSpy.mockRestore();
+		}
+		const store = new DeletionStore(database);
+		expect(JSON.parse((await store.get('user', first))!.snapshot!)).toHaveProperty('erased_audit_id');
+		expect(JSON.parse((await store.get('user', second))!.snapshot!)).not.toHaveProperty('erased_audit_id');
+		const original = await database.prepare('SELECT user_id FROM audit_events WHERE user_id IN (?, ?) ORDER BY user_id').bind(first, second).all();
+		expect(original.results).toEqual([{ user_id: first }, { user_id: second }]);
+		expect(await purgeDeleted(ENV, { now: t0 + RETENTION_MS + 2 })).toMatchObject({ purged: { user: 2 } });
+	});
+
+	it('writes a user purge audit event with only the kind and trigger', async () => {
+		const userId = 'redact-audit';
+		const email = 'redact-audit@example.com';
+		await addUser(userId, email);
+		await addLogins(userId, email, 1);
+		await softDelete(ENV, 'user', userId, ADMIN);
+		await requestPurge(ENV, 'user', userId, ADMIN, email);
+		vi.mocked(emitAuditEvent).mockImplementationOnce(addAuditEvent);
+		expect(await purgeItem(ENV, 'user', userId)).toBe(true);
+		const event = await db().prepare('SELECT user_id, metadata, ip_address, user_agent, request_id, error_message FROM audit_events WHERE event_type = ?')
+			.bind(AuditEventType.ADMIN_ITEM_PURGED).first<{ user_id: string | null; metadata: string }>();
+		expect(event).toEqual({
+			user_id: null,
+			ip_address: null,
+			user_agent: null,
+			request_id: null,
+			error_message: null,
+			metadata: JSON.stringify({ kind: 'user', trigger: 'requested', actor_email: null }),
+		});
+	});
+
 	describe('EXPLAIN QUERY PLAN index verification', () => {
 		it('selectBatch uses the user_id index and updateRow uses rowid PK with no table scans', async () => {
 			const selectPlan = await db()
@@ -387,7 +534,7 @@ describe('Audit event redaction on account erase (#515)', () => {
 
 			const updatePlan = await db()
 				.prepare(`EXPLAIN QUERY PLAN ${AUDIT_REDACTION_SQL.updateRow}`)
-				.bind('erased:00000000000000000000000000000000', '{}', 1)
+				.bind('erased:00000000000000000000000000000000', '{}', 1, 'redact-u1')
 				.all<{ detail: string }>();
 			const updateDetail = updatePlan.results.map((r) => r.detail).join(' | ');
 			expect(updateDetail).toContain('SEARCH audit_events USING INTEGER PRIMARY KEY (rowid=?)');
