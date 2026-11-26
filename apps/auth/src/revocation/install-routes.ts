@@ -12,6 +12,7 @@
  * install works. The user (and a named client) must be in the caller's tenant,
  * else 404. Audited; answers 204.
  */
+import { TOKEN_REVOKE_SCOPE } from '../../../../packages/auth-contract/client-scopes';
 import { authenticateScopedClient } from '../moderation/client-routes';
 import { withinRateLimit, getClientIP, RATE_LIMIT_PERIOD_SECONDS } from '../rate-limit';
 import { emitAuditEvent } from '../audit-emitter';
@@ -19,7 +20,6 @@ import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { clientScopeKey, installScopeKey, revokeScope } from './revocation-list';
 
 export const TOKEN_REVOCATION_PATH = '/internal/token-revocations';
-export const TOKEN_REVOKE_SCOPE = 'tokens:revoke';
 
 const ID = /^[A-Za-z0-9._-]{1,128}$/;
 

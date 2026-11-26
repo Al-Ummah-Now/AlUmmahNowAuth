@@ -243,53 +243,28 @@ export async function createUser(page: Page, user: TestUser): Promise<void> {
 export async function editUser(
   page: Page,
   email: string,
-  updates: Partial<TestUser>
+  updates: { email?: string; roles?: string[] }
 ): Promise<void> {
-  // Navigate to users page
   await page.goto(`${TEST_URLS.adminDashboard}/users`);
-  // Wait for network requests to complete
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   await expect(page).toHaveURL(new RegExp(`${TEST_URLS.adminDashboard}/users`));
 
-  // Wait for users table to load - find user row and click edit button
   const userRow = page.locator(`tr:has-text("${email}")`);
   await expect(userRow).toBeVisible({ timeout: 10000 });
   await userRow.locator('button:has-text("Edit")').click();
 
-  // Wait for dialog to open
-  await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
-
-  // Update fields
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible({ timeout: 5000 });
   if (updates.email) {
-    await page.fill('input[id="email"]', updates.email);
+    await dialog.locator('input[id="email"]').fill(updates.email);
   }
-  if (updates.role) {
-    // Select role using the dropdown (edit dialog uses select, not checkboxes)
-    // Wait for the select to be visible and have options loaded
-    const roleSelect = page.locator('select[id="role"]');
-    await expect(roleSelect).toBeVisible({ timeout: 5000 });
-
-    // Wait for at least one option to be loaded (roles load async)
-    // Note: <option> elements are "hidden" in Playwright's visibility model until
-    // the dropdown is expanded, so we check for option count instead
-    await expect(async () => {
-      const optionCount = await roleSelect.locator('option').count();
-      expect(optionCount).toBeGreaterThan(0);
-    }).toPass({ timeout: 10000, intervals: [500, 1000, 2000] });
-
-    // Capitalize first letter to match actual role names (e.g., 'member' -> 'Member')
-    const normalizedRole = updates.role.charAt(0).toUpperCase() + updates.role.slice(1).toLowerCase();
-
-    // Wait for the specific role option to be available by checking it exists in DOM
-    await expect(async () => {
-      const hasOption = await roleSelect.locator(`option[value="${normalizedRole}"], option:has-text("${normalizedRole}")`).count();
-      expect(hasOption).toBeGreaterThan(0);
-    }).toPass({ timeout: 5000, intervals: [500, 1000] });
-
-    await roleSelect.selectOption({ label: normalizedRole });
-
-    // Small delay to ensure React state is updated
-    await page.waitForTimeout(100);
+  if (updates.roles) {
+    for (const checkbox of await dialog.getByRole('checkbox').all()) {
+      await checkbox.uncheck();
+    }
+    for (const role of updates.roles) {
+      await dialog.getByRole('checkbox', { name: role, exact: true }).check();
+    }
   }
 
   // Submit form (click Save button in dialog)

@@ -10,6 +10,7 @@
  * client_id:client_secret, the same check /token uses: createClientAuthMiddleware)
  * and must hold the moderation:request scope. A client only ever sees its own requests.
  */
+import { MODERATION_CLIENT_SCOPE } from '../../../../packages/auth-contract/client-scopes';
 import { createClientAuthMiddleware, type OAuthClient } from '../middleware/clientAuth';
 import { withinRateLimit, RATE_LIMIT_PERIOD_SECONDS, getClientIP } from '../rate-limit';
 import { emitAuditEvent } from '../audit-emitter';
@@ -20,7 +21,6 @@ import {
 	CreateRequestSchema,
 	MAX_REQUESTS_PER_CLIENT_PER_HOUR,
 	MODERATION_ACTIONS,
-	MODERATION_CLIENT_SCOPE,
 	MODERATION_STATUSES,
 	ProvideInfoSchema,
 	payloadHash,
