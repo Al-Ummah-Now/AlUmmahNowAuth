@@ -58,7 +58,8 @@ vi.mock('../logger', () => ({
   },
 }));
 
-vi.mock('../rate-limit', () => ({
+vi.mock(import('../rate-limit'), async (importOriginal) => ({
+  ...await importOriginal(),
   withinRateLimit: vi.fn().mockResolvedValue(true),
   getClientIP: vi.fn().mockReturnValue('127.0.0.1'),
 }));
@@ -67,6 +68,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 async function insertAuditRow(opts: {
+  id?: string;
   timestamp: string;
   eventType: string;
   severity: string;
@@ -77,10 +79,11 @@ async function insertAuditRow(opts: {
   success?: number;
 }) {
   await env.AUTH_DB.prepare(`
-    INSERT INTO audit_events (timestamp, event_type, severity, user_id, ip_address, request_id, metadata, success)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO audit_events (id, timestamp, event_type, severity, user_id, ip_address, request_id, metadata, success)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
     .bind(
+      opts.id ?? crypto.randomUUID(),
       opts.timestamp,
       opts.eventType,
       opts.severity,
@@ -334,9 +337,9 @@ describe('Audit stats, user trail keyset paging, and counts backfill (#514)', ()
     ])('continues with a cursor through a split timestamp tie after starting with %s', async (_mode, start, expected) => {
       const rows = [
         { timestamp: '2026-11-24T01:00:00.000Z', eventType: 'older' },
-        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-1' },
-        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-2' },
-        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-3' },
+        { id: 'id-2', timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-2' },
+        { id: 'id-3', timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-3' },
+        { id: 'id-1', timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-1' },
         { timestamp: '2026-11-24T03:00:00.000Z', eventType: 'exact' },
         { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'other', userId: 'user-456' },
       ];
@@ -527,7 +530,7 @@ describe('Audit stats, user trail keyset paging, and counts backfill (#514)', ()
         {
           name: 'cursor page',
           sql: AUDIT_ADMIN_QUERIES.userTrailCursor,
-          binds: ['user-123', '2026-11-24T01:00:00.000Z', 10, 51],
+          binds: ['user-123', '2026-11-24T01:00:00.000Z', 'id-2', 51],
         },
         {
           name: 'before page',
