@@ -88,7 +88,10 @@ describe('TokenCleanupService (real schema)', () => {
     const now = Date.now();
     const old = now - (ANALYTICS_RETENTION_DAYS + 1) * DAY;
     const recent = now - DAY;
-    for (const [id, ts] of [['old', old], ['recent', recent]] as const) {
+    // 30 days since AUN-D1-SCALING D1-4: a 31-day row goes, a 29-day row stays
+    expect(ANALYTICS_RETENTION_DAYS).toBe(30);
+    const kept = now - 29 * DAY;
+    for (const [id, ts] of [['old', old], ['recent', recent], ['kept', kept]] as const) {
       await env.AUTH_DB.prepare(
         `INSERT INTO token_usage (id, client_id, token_type, created_at) VALUES (?, 'c', 'access', ?)`
       ).bind(id, ts).run();
@@ -97,7 +100,7 @@ describe('TokenCleanupService (real schema)', () => {
     const result = await TokenCleanupService.runCleanup(env, now);
 
     expect(result.oldAnalyticsDeleted).toBe(1);
-    expect(await count('token_usage')).toBe(1);
+    expect(await count('token_usage')).toBe(2);
   });
 
   it('handleTokenCron runs cleanup for the hourly expression', async () => {

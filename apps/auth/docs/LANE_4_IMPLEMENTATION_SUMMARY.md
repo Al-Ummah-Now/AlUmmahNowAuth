@@ -171,7 +171,7 @@ WHERE ur.user_id = ? AND cp.client_id = ?
   - Expired browser sessions (cascades to account_sessions)
   - Expired refresh tokens
   - Expired app tokens
-  - Old token usage analytics (90 day retention)
+  - Old token usage analytics (30-day retention since AUN-D1-SCALING D1-4)
 
 ## Database Schema
 
