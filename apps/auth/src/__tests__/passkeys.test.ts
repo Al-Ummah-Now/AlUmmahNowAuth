@@ -601,6 +601,8 @@ describe('passkey policy and helpers', () => {
 	it('staff roles', () => {
 		expect(isStaff(['Super Admin'])).toBe(true);
 		expect(isStaff(['Content Reviewer'])).toBe(true);
+		expect(isStaff(['Billing Admin'])).toBe(true);
+		expect(isStaff(['billing_viewer'])).toBe(true);
 		expect(isStaff(['writer'])).toBe(true);
 		expect(isStaff(['Member', 'Scholar'])).toBe(false);
 	});

@@ -13,6 +13,15 @@ describe("roleLabel", () => {
     expect(roleLabel("super_admin", "en")).toBe("Super admin");
     expect(roleLabel("Content Reviewer", "en")).toBe("Content reviewer");
   });
+  it.each([
+    ["Billing Admin", "billing_admin", "مشرف الفوترة"],
+    ["Billing Viewer", "billing_viewer", "مطّلع على الفوترة"],
+  ])("localizes %s consistently from the claim or the role ID", (name, id, arabic) => {
+    for (const role of [name, id]) {
+      expect(roleLabel(role, "en")).toBe(name);
+      expect(roleLabel(role, "ar")).toBe(arabic);
+    }
+  });
   it("keeps an unknown role's own name in Arabic", () => {
     expect(roleLabel("Translator", "ar")).toBe("Translator");
   });

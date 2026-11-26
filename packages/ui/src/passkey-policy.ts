@@ -9,7 +9,7 @@
  */
 
 /** Normalised staff role names (lower-case, spaces → `_`). */
-export const STAFF_ROLES = ['super_admin', 'admin', 'moderator', 'writer', 'content_reviewer', 'senior_reviewer'] as const;
+export const STAFF_ROLES = ['super_admin', 'admin', 'moderator', 'writer', 'content_reviewer', 'senior_reviewer', 'billing_admin', 'billing_viewer'] as const;
 
 /** Step-up window for high-risk admin actions (AD5): 15 minutes. */
 export const STEP_UP_MAX_AGE_SECONDS = 900;

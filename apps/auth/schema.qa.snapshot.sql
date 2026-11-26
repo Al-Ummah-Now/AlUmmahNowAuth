@@ -50,6 +50,7 @@
 --   migrations-qa/0052_audit_daily_counts_and_user_index.sql
 --   migrations-qa/0053_token_audit_keyset_indexes.sql
 --   migrations-qa/0054_webhook_dlq_replay_timestamps.sql
+--   migrations-qa/0055_billing_roles.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_event_deliveries (jti TEXT PRIMARY KEY, seq INTEGER NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')), attempts INTEGER NOT NULL DEFAULT 0, error TEXT, next_at INTEGER NOT NULL, created_at INTEGER NOT NULL, settled_at INTEGER);

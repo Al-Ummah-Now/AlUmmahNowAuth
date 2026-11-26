@@ -9,7 +9,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { decodeJwt } from 'jose';
 import worker from '../index';
-import { setupDatabase } from '../test-setup';
+import billingRolesSql from '../../migrations/0055_billing_roles.sql?raw';
+import { normaliseRole } from '../passkeys/policy';
+import { setupDatabase, sqlStatements } from '../test-setup';
 import { PROFILE, registerTestClients } from './helpers/clients';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { joinKey, Storage } from '@al-ummah-now/openauth/storage/storage';
@@ -181,6 +183,28 @@ describe('refresh recomputes roles (worker)', () => {
 		const revoked = await browser.refresh(granted.body.refresh_token);
 		expect(revoked.status).toBe(200);
 		expect(roles(revoked.body.access_token)).toEqual(['Member']);
+	});
+
+	it('emits assigned billing roles on sign-in and refresh', async () => {
+		for (const stmt of sqlStatements(billingRolesSql)) await E.AUTH_DB.prepare(stmt).run();
+		const browser = new Browser();
+		const first = await browser.signIn();
+		const id = await userId();
+		await grant(id, 'role_billing_admin');
+		await grant(id, 'role_billing_viewer');
+		try {
+			const signedIn = await new Browser().signIn();
+			const refreshed = await browser.refresh(first.refresh_token);
+			expect(refreshed.status).toBe(200);
+			for (const token of [signedIn.access_token, refreshed.body.access_token]) {
+				const names = roles(token).sort();
+				expect(names).toEqual(['Billing Admin', 'Billing Viewer', 'Member']);
+				expect(names.map(normaliseRole)).toEqual(['billing_admin', 'billing_viewer', 'member']);
+			}
+		} finally {
+			await revoke(id, 'role_billing_admin');
+			await revoke(id, 'role_billing_viewer');
+		}
 	});
 
 	it("another tenant's roles never reach this tenant's token", async () => {

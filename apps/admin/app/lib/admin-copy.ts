@@ -960,7 +960,7 @@ const security = {
     what: "the security settings",
     staffPasskeys: "Staff passkeys",
     intro: (days: number) =>
-      `Staff (Super admin, Admin, Moderator, Writer, Content reviewer, Senior reviewer) sign in to the admin tools with a passkey. Staff who already have a staff role when this is switched on get ${countOf(days, "en", ["day", "days"], AR_DAYS)}; anyone made staff later needs one at once.`,
+      `Staff (Super admin, Admin, Moderator, Writer, Content reviewer, Senior reviewer, Billing Admin, Billing Viewer) sign in to the admin tools with a passkey. Staff who already have a staff role when this is switched on get ${countOf(days, "en", ["day", "days"], AR_DAYS)}; anyone made staff later needs one at once.`,
     on: "On",
     onSince: (since: string, graceEnd: string) => ` since ${since}. Grace for existing staff ends ${graceEnd}.`,
     off: "Off.",
@@ -985,7 +985,7 @@ const security = {
     what: "إعدادات الأمان",
     staffPasskeys: "مفاتيح مرور فريق العمل",
     intro: (days: number) =>
-      `يسجّل فريق العمل (المشرف العام، والمشرف، والمراقب، والكاتب، ومراجع المحتوى، والمراجع الأول) الدخول إلى أدوات الإدارة بمفتاح مرور. من يحمل دورًا في فريق العمل عند التفعيل يُمهَل ${countOf(days, "ar", ["", ""], AR_DAYS)}، ومن يُضاف إلى الفريق بعد ذلك يحتاج إلى مفتاح فورًا.`,
+      `يسجّل فريق العمل (المشرف العام، والمشرف، والمراقب، والكاتب، ومراجع المحتوى، والمراجع الأول، ومشرف الفوترة، والمطّلع على الفوترة) الدخول إلى أدوات الإدارة بمفتاح مرور. من يحمل دورًا في فريق العمل عند التفعيل يُمهَل ${countOf(days, "ar", ["", ""], AR_DAYS)}، ومن يُضاف إلى الفريق بعد ذلك يحتاج إلى مفتاح فورًا.`,
     on: "مفعَّل",
     onSince: (since: string, graceEnd: string) => ` منذ ${since}. تنتهي مهلة الفريق الحالي في ${graceEnd}.`,
     off: "غير مفعَّل.",

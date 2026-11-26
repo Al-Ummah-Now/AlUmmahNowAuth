@@ -12,6 +12,13 @@ export const ROLE_NAMES_AR: Record<string, string> = {
   creator: "صانع محتوى",
   "content reviewer": "مراجع محتوى",
   "senior reviewer": "مراجع أول",
+  "billing admin": "مشرف الفوترة",
+  "billing viewer": "مطّلع على الفوترة",
+};
+
+const BILLING_ROLE_NAMES_EN: Record<string, string> = {
+  "billing admin": "Billing Admin",
+  "billing viewer": "Billing Viewer",
 };
 
 /**
@@ -21,6 +28,7 @@ export const ROLE_NAMES_AR: Record<string, string> = {
 export function roleLabel(role: string, lang: string): string {
   const key = role.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   if (lang === "ar") return ROLE_NAMES_AR[key] ?? role;
+  if (Object.hasOwn(BILLING_ROLE_NAMES_EN, key)) return BILLING_ROLE_NAMES_EN[key];
   return key ? key.charAt(0).toUpperCase() + key.slice(1) : role;
 }
 
@@ -29,6 +37,8 @@ export function roleLabel(role: string, lang: string): string {
  * (apps/auth/migrations). A description an admin has changed is shown as written.
  */
 export const ROLE_DESCRIPTIONS_AR: Record<string, string> = {
+  "Manage plans, assignments and overrides": "إدارة الخطط وتعييناتها والتجاوزات",
+  "View plans, assignments and overrides": "عرض الخطط وتعييناتها والتجاوزات",
   "Administrative access": "صلاحيات الإدارة",
   "Basic member access": "صلاحيات العضو الأساسية",
   "Video platform content moderation": "الإشراف على محتوى منصة المرئيات",
