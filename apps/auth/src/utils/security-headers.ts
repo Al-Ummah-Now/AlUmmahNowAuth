@@ -43,22 +43,22 @@ export function addSecurityHeaders(
 
 	// Content Security Policy
 	// - default-src 'self': Only load resources from same origin by default
-	// - script-src 'self' 'unsafe-inline': Allow inline scripts for OpenAuth UI
+	// - script-src: Allow OpenAuth UI scripts, Turnstile, and Cloudflare Web Analytics
+	// - frame-src: Allow Turnstile challenge frames
 	// - style-src: Allow inline styles, Tailwind preflight, and Google Fonts CSS for OpenAuth UI
 	// - img-src 'self' data: https: Allow images from same origin, data URIs, and HTTPS
-	// - font-src 'self' https://fonts.gstatic.com: Allow fonts from same origin and Google Fonts
-	// - connect-src 'self': Only make network requests to same origin
+	// - font-src: Allow fonts from the same origin, Google Fonts, and the Al Ummah Now CDN
+	// - connect-src: Allow same-origin requests and Cloudflare Web Analytics reporting
 	// - frame-ancestors 'none': Prevent embedding (same as X-Frame-Options: DENY)
 	headers.set(
 		'Content-Security-Policy',
 		"default-src 'self'; " +
-			// Cloudflare Turnstile: api.js and its challenge iframe (security/turnstile.ts)
-			"script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; " +
+			"script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com; " +
 			"frame-src https://challenges.cloudflare.com; " +
 			"style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; " +
 			"img-src 'self' data: https:; " +
-			"font-src 'self' https://fonts.gstatic.com; " +
-			"connect-src 'self'; " +
+			"font-src 'self' https://fonts.gstatic.com https://cdn.alummahnow.net; " +
+			"connect-src 'self' https://cloudflareinsights.com; " +
 			"frame-ancestors 'none'"
 	);
 
