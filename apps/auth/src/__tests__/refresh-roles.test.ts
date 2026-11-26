@@ -10,6 +10,7 @@ import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:
 import { decodeJwt } from 'jose';
 import worker from '../index';
 import billingRolesSql from '../../migrations/0055_billing_roles.sql?raw';
+import contentEditorRoleSql from '../../migrations/0056_content_editor_role.sql?raw';
 import { normaliseRole } from '../passkeys/policy';
 import { setupDatabase, sqlStatements } from '../test-setup';
 import { PROFILE, registerTestClients } from './helpers/clients';
@@ -204,6 +205,26 @@ describe('refresh recomputes roles (worker)', () => {
 		} finally {
 			await revoke(id, 'role_billing_admin');
 			await revoke(id, 'role_billing_viewer');
+		}
+	});
+
+	it('emits Content Editor on sign-in and refresh after assignment', async () => {
+		for (const stmt of sqlStatements(contentEditorRoleSql)) await E.AUTH_DB.prepare(stmt).run();
+		const browser = new Browser();
+		const first = await browser.signIn();
+		const id = await userId();
+		await grant(id, 'role_content_editor');
+		try {
+			const signedIn = await new Browser().signIn();
+			const refreshed = await browser.refresh(first.refresh_token);
+			expect(refreshed.status).toBe(200);
+			for (const token of [signedIn.access_token, refreshed.body.access_token]) {
+				const names = roles(token).sort();
+				expect(names).toEqual(['Content Editor', 'Member']);
+				expect(names.map(normaliseRole)).toEqual(['content_editor', 'member']);
+			}
+		} finally {
+			await revoke(id, 'role_content_editor');
 		}
 	});
 

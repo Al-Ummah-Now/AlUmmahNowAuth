@@ -39,6 +39,11 @@ describe("role filtering", () => {
     for (const role of ["Super Admin", "Admin", "Moderator", "Scholar"]) expect(ids([role])).toContain("cms");
   });
 
+  it.each(["Content Editor", "content_editor"])("shows the CMS as the only admin app for %s", (role) => {
+    const adminApps = appsForUser([role], "production", "en").filter((app) => app.category === "admin");
+    expect(adminApps).toEqual([expect.objectContaining({ id: "cms", url: "https://cms.alummahnow.net" })]);
+  });
+
   it("a Scholar sees the CMS (to write articles) but neither admin app", () => {
     expect(ids(["Scholar", "Member"])).toEqual(["www", "videos", "profile", "cms"]);
   });

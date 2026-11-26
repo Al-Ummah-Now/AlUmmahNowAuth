@@ -603,6 +603,7 @@ describe('passkey policy and helpers', () => {
 		expect(isStaff(['Content Reviewer'])).toBe(true);
 		expect(isStaff(['Billing Admin'])).toBe(true);
 		expect(isStaff(['billing_viewer'])).toBe(true);
+		expect(isStaff(['content_editor'])).toBe(true);
 		expect(isStaff(['writer'])).toBe(true);
 		expect(isStaff(['Member', 'Scholar'])).toBe(false);
 	});

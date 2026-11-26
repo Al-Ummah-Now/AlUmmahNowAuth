@@ -10,6 +10,7 @@ export const ROLE_NAMES_AR: Record<string, string> = {
   scholar: "عالم",
   writer: "كاتب",
   creator: "صانع محتوى",
+  "content editor": "محرر المحتوى",
   "content reviewer": "مراجع محتوى",
   "senior reviewer": "مراجع أول",
   "billing admin": "مشرف الفوترة",
@@ -37,6 +38,7 @@ export function roleLabel(role: string, lang: string): string {
  * (apps/auth/migrations). A description an admin has changed is shown as written.
  */
 export const ROLE_DESCRIPTIONS_AR: Record<string, string> = {
+  "Edit website content in the CMS": "تحرير محتوى الموقع في نظام إدارة المحتوى",
   "Manage plans, assignments and overrides": "إدارة الخطط وتعييناتها والتجاوزات",
   "View plans, assignments and overrides": "عرض الخطط وتعييناتها والتجاوزات",
   "Administrative access": "صلاحيات الإدارة",
