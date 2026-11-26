@@ -27,7 +27,6 @@ export const ERASED_SUBJECT_PREFIX = 'erased:';
 
 export const AUDIT_REDACTION_BATCH_SIZE = 500;
 export const AUDIT_REDACTION_MAX_BATCHES = 50;
-export const AUDIT_REDACTION_TIME_BUDGET_MS = 1_500;
 
 /**
  * Non-personal metadata fields kept in plaintext after account erase
@@ -62,24 +61,20 @@ export const AUDIT_REDACTION_SQL = {
 	updateRow: `
 		UPDATE audit_events
 		SET user_id = ?1, ip_address = NULL, user_agent = NULL, error_message = NULL, request_id = NULL, metadata = ?2
-		WHERE rowid = ?3
+		WHERE rowid = ?3 AND user_id = ?4
 	`,
 } as const;
 
 export interface AuditRedactionOptions {
-	/** Reuse an in-progress erased subject across deferred cleanup runs. */
-	erasedSubject?: string;
 	batchSize?: number;
 	maxBatches?: number;
-	timeBudgetMs?: number;
+	deadline?: number;
 }
 
 export interface AuditRedactionResult {
 	redacted: number;
 	batches: number;
 	remaining: boolean;
-	/** The random `erased:<128-bit hex>` subject used, or null if the user had 0 rows. */
-	erasedSubject: string | null;
 }
 
 /** Generates a random 128-bit `erased:<32-hex>` subject, never derived from userId. */
@@ -124,7 +119,7 @@ export function redactAuditMetadata(raw: string | null | undefined): string {
 
 /**
  * Redacts a user's audit_events rows in indexed batches of `batchSize` (default 500),
- * bounded by both `maxBatches` and a wall-clock `timeBudgetMs`.
+ * bounded by both `maxBatches` and the purge deadline.
  * Because each updated row's `user_id` changes from `userId` to `erased:<random>`,
  * subsequent batches seek the next unredacted rows via the `user_id` index without
  * OFFSET or table scans.
@@ -132,24 +127,20 @@ export function redactAuditMetadata(raw: string | null | undefined): string {
 export async function redactUserAuditEvents(
 	db: D1Database,
 	userId: string,
+	erasedSubject: string,
 	options: AuditRedactionOptions = {}
 ): Promise<AuditRedactionResult> {
 	const batchSize = Math.max(1, Math.min(options.batchSize ?? AUDIT_REDACTION_BATCH_SIZE, 1000));
 	const maxBatches = Math.max(1, options.maxBatches ?? AUDIT_REDACTION_MAX_BATCHES);
-	const timeBudgetMs = Math.max(1, options.timeBudgetMs ?? AUDIT_REDACTION_TIME_BUDGET_MS);
+	const deadline = options.deadline ?? Infinity;
 
-	let erasedSubject: string | null =
-		options.erasedSubject && options.erasedSubject.startsWith(ERASED_SUBJECT_PREFIX)
-			? options.erasedSubject
-			: null;
 	let redacted = 0;
 	let batches = 0;
-	const startedAt = Date.now();
 
 	const selectStmt = db.prepare(AUDIT_REDACTION_SQL.selectBatch);
 	const updateStmt = db.prepare(AUDIT_REDACTION_SQL.updateRow);
 
-	while (batches < maxBatches && (batches === 0 || Date.now() - startedAt < timeBudgetMs)) {
+	while (batches < maxBatches && Date.now() < deadline) {
 		let rows: Array<{ row_id: number; metadata: string | null }>;
 		try {
 			const res = await selectStmt
@@ -158,31 +149,33 @@ export async function redactUserAuditEvents(
 			rows = res.results ?? [];
 		} catch (error) {
 			if (/no such table/i.test(error instanceof Error ? error.message : String(error))) {
-				return { redacted: 0, batches: 0, remaining: false, erasedSubject };
+				return { redacted: 0, batches: 0, remaining: false };
 			}
 			throw error;
 		}
 
 		if (rows.length === 0) {
-			return { redacted, batches, remaining: false, erasedSubject };
+			return { redacted, batches, remaining: false };
 		}
 
-		erasedSubject ??= generateErasedSubject();
+		if (Date.now() >= deadline) break;
 
 		const updates = rows.map((row) =>
-			updateStmt.bind(erasedSubject, redactAuditMetadata(row.metadata), row.row_id)
+			updateStmt.bind(erasedSubject, redactAuditMetadata(row.metadata), row.row_id, userId)
 		);
-		await db.batch(updates);
+		const results = await db.batch(updates);
 
-		redacted += rows.length;
+		for (const result of results) redacted += result.meta.changes;
 		batches++;
 
 		if (rows.length < batchSize) {
-			return { redacted, batches, remaining: false, erasedSubject };
+			return { redacted, batches, remaining: false };
 		}
 	}
 
-	// Hit maxBatches or timeBudgetMs on a full batch: check whether more rows remain
+	if (Date.now() >= deadline) return { redacted, batches, remaining: true };
+
+	// A full final batch may have cleared the last rows.
 	const probe = await selectStmt.bind(userId, 1).first<{ row_id: number }>();
-	return { redacted, batches, remaining: !!probe, erasedSubject };
+	return { redacted, batches, remaining: !!probe };
 }

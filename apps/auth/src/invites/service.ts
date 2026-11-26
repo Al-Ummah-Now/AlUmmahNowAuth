@@ -31,7 +31,7 @@ import { emitAuditEvent } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import { enqueue, recordAccountEvent, type OnlyIf, type Recorded } from '../account-events/record';
 import type { AccountEvent, AccountEventsEnv } from '../account-events/types';
-import { DeletionStore } from '../deletions/store';
+import { deletedClause, DeletionStore, userPurgeClaimed } from '../deletions/store';
 
 export const DEFAULT_INVITE_TTL_DAYS = 14;
 export const MAX_INVITE_TTL_DAYS = 90;
@@ -652,24 +652,30 @@ export class InviteService {
 			.first<{ id: string }>();
 		if (taken) throw new InviteError(409, 'email_taken', 'Another account now uses this email', { userId: taken.id });
 		const now = this.now();
-		const event = await this.record({ type: 'account-enabled', userId: row.user_id }, 'unused', now);
-		await this.db.batch([
+		const event = await this.record({ type: 'account-enabled', userId: row.user_id }, 'restorableUnused', now);
+		const results = await this.db.batch([
 			...event.statements,
-			new DeletionStore(this.db).removeStatement('user', row.user_id),
 			this.db
 				.prepare(
 					`UPDATE user_invites SET deleted_at = NULL, deleted_by = NULL, deleted_by_email = NULL, deleted_reason = NULL,
 					   purge_requested_at = NULL, purge_requested_by = NULL, updated_at = ?3
-					 WHERE tenant_id = ?1 AND id = ?2`
+					 WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NOT NULL
+					   AND NOT ${userPurgeClaimed('user_invites.user_id')}`
 				)
 				.bind(this.tenantId, id, now),
 			this.db
 				.prepare(
 					`UPDATE users SET status = 'invited', deleted_at = NULL, updated_at = ?3
-					 WHERE tenant_id = ?1 AND id = ?2 AND status = 'deleted' AND last_login_at IS NULL`
+					 WHERE tenant_id = ?1 AND id = ?2 AND status = 'deleted' AND last_login_at IS NULL AND NOT ${userPurgeClaimed('users.id')}`
 				)
 				.bind(this.tenantId, row.user_id, now),
+			new DeletionStore(this.db).removeRestorableUserStatement(row.user_id),
 		]);
+		if (!results[event.statements.length]?.meta.changes) {
+			const current = await this.requireRow(id);
+			if (current.deleted_at === null) return toInvite(current, now);
+			throw new InviteError(409, 'purge_in_progress', 'Permanent deletion has already started');
+		}
 		await this.enqueue(event.jtis, now);
 		return toInvite(await this.requireRow(id), now);
 	}
@@ -741,14 +747,16 @@ export async function claimInvitedAccount(db: D1Database, tenantId: string, user
 
 /**
  * Hourly cleanup: revoked invites 30+ days old, or queued with "Delete
- * permanently now", are removed with their never-used account (users row and
- * role links). An account that somehow signed in is kept; only the invite goes.
+ * permanently now", are removed. The account purge handles invites tracked in
+ * admin_deletions so the account's audit redaction and deadline apply to them.
+ * For untracked invites, an account that signed in is kept; only the invite goes.
  */
 export async function purgeRevokedInvites(db: D1Database, now = Date.now(), batchSize = 25, events?: AccountEventsEnv): Promise<{ purged: number; failed: number }> {
 	const due = await db
 		.prepare(
 			`SELECT id, user_id FROM user_invites
 			 WHERE deleted_at IS NOT NULL AND (purge_requested_at IS NOT NULL OR deleted_at <= ?1)
+			   AND NOT EXISTS (${deletedClause('user', 'user_invites.user_id')})
 			 ORDER BY deleted_at LIMIT ?2`
 		)
 		.bind(now - RETENTION_MS, batchSize)
@@ -757,19 +765,21 @@ export async function purgeRevokedInvites(db: D1Database, now = Date.now(), batc
 	let failed = 0;
 	for (const row of due.results ?? []) {
 		try {
-			const event = events ? await recordAccountEvent(events, { type: 'account-purged', userId: row.user_id }, { now, onlyIf: 'unused' }) : { statements: [], jtis: [] };
-			await db.batch([
+			const event = events ? await recordAccountEvent(events, { type: 'account-purged', userId: row.user_id }, { now, onlyIf: 'untrackedUnused' }) : { statements: [], jtis: [] };
+			const untracked = `NOT EXISTS (${deletedClause('user', '?1')})`;
+			const results = await db.batch([
 				...event.statements,
 				db
 					.prepare(
 						`DELETE FROM rbac_user_roles WHERE user_id = ?1 AND EXISTS (
-						   SELECT 1 FROM users WHERE id = ?1 AND status = 'deleted' AND last_login_at IS NULL)`
+						   SELECT 1 FROM users WHERE id = ?1 AND status = 'deleted' AND last_login_at IS NULL) AND ${untracked}`
 					)
 					.bind(row.user_id),
-				db.prepare(`DELETE FROM users WHERE id = ?1 AND status = 'deleted' AND last_login_at IS NULL`).bind(row.user_id),
-				db.prepare('DELETE FROM user_invite_superseded_tokens WHERE invite_id = ?1').bind(row.id),
-				db.prepare('DELETE FROM user_invites WHERE id = ?1 AND deleted_at IS NOT NULL').bind(row.id),
+				db.prepare(`DELETE FROM users WHERE id = ?1 AND status = 'deleted' AND last_login_at IS NULL AND ${untracked}`).bind(row.user_id),
+				db.prepare(`DELETE FROM user_invite_superseded_tokens WHERE invite_id = ?2 AND ${untracked}`).bind(row.user_id, row.id),
+				db.prepare(`DELETE FROM user_invites WHERE id = ?2 AND deleted_at IS NOT NULL AND ${untracked}`).bind(row.user_id, row.id),
 			]);
+			if (!results.at(-1)?.meta.changes) continue;
 			purged++;
 			if (events) await enqueue(events, event.jtis, now);
 			await emitAuditEvent({

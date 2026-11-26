@@ -10,7 +10,8 @@ import worker from '../index';
 import { setupDatabase } from '../test-setup';
 import { softDelete, restore, requestPurge } from '../deletions/service';
 import { purgeDeleted, purgeItem } from '../deletions/purge';
-import { RETENTION_MS } from '../deletions/store';
+import { DISPOSABLE_CLEANUP_ACTOR } from '../deletions/kinds';
+import { DeletionStore, RETENTION_MS } from '../deletions/store';
 import { createActionRunner } from '../moderation/actions';
 import { InviteService, purgeRevokedInvites } from '../invites/service';
 import { recordAccountEvent } from '../account-events/record';
@@ -116,7 +117,7 @@ describe('an admin', () => {
 		const purge = await recordAccountEvent(on(), { type: 'account-purged', userId: 'aee-race' }, { onlyIf: 'deleted' });
 		const enable = await recordAccountEvent(on(), { type: 'account-enabled', userId: 'aee-race' }, { onlyIf: 'deleted' });
 		const invited = await recordAccountEvent(on(), { type: 'account-disabled', userId: 'aee-race', reason: 'deleted' }, { onlyIf: 'invited' });
-		const unused = await recordAccountEvent(on(), { type: 'account-purged', userId: 'aee-race' }, { onlyIf: 'unused' });
+		const unused = await recordAccountEvent(on(), { type: 'account-purged', userId: 'aee-race' }, { onlyIf: 'untrackedUnused' });
 		await db().batch([...purge.statements, ...enable.statements, ...invited.statements, ...unused.statements]);
 		expect(await events('aee-race')).toEqual([]);
 		expect(await deliveries('aee-race')).toEqual([]);
@@ -216,6 +217,24 @@ describe('the owner, DELETE /account', () => {
 	});
 });
 
+it('cron suppresses account events when resuming a QA disposable purge', async () => {
+	const userId = 'aee-disposable-resume';
+	await addUser(userId, 'deleted');
+	await db().prepare('UPDATE users SET deleted_at = 1 WHERE id = ?').bind(userId).run();
+	await new DeletionStore(db()).insertStatement({
+		kind: 'user',
+		itemId: userId,
+		tenantId: 'default',
+		label: `${userId}@example.com`,
+		deletedBy: DISPOSABLE_CLEANUP_ACTOR,
+		snapshot: { erased_audit_id: 'erased:00000000000000000000000000000000' },
+		now: 1,
+	}).run();
+	expect((await purgeDeleted(on())).purged.user).toBe(1);
+	expect(await state(userId)).toBeNull();
+	expect(await events(userId)).toEqual([]);
+});
+
 describe('invites', () => {
 	const hex = () => crypto.randomUUID().replace(/-/g, '');
 	const actor = { userId: 'usr_x', email: 'x@example.com', clientId: 'videos' };
@@ -234,8 +253,8 @@ describe('invites', () => {
 		expect(await events(userId)).toEqual(['account-disabled:deleted']);
 		await service.restore(id);
 		await service.revoke(id, actor as never);
-		await db().prepare('UPDATE user_invites SET deleted_at = ? WHERE id = ?').bind(Date.now() - RETENTION_MS - 1000, id).run();
-		expect(await purgeRevokedInvites(db(), undefined, undefined, on())).toEqual({ purged: 1, failed: 0 });
+		await db().prepare('UPDATE admin_deletions SET deleted_at = ? WHERE item_id = ?').bind(Date.now() - RETENTION_MS - 1000, userId).run();
+		expect((await purgeDeleted(on())).purged.user).toBe(1);
 		expect(await events(userId)).toEqual(['account-disabled:deleted', 'account-enabled', 'account-disabled:deleted', 'account-purged']);
 		expect(queued).toEqual(await deliveries(userId));
 	});
@@ -257,18 +276,21 @@ describe('invites', () => {
 		expect(await purgeRevokedInvites(db(), undefined, undefined, on())).toEqual({ purged: 1, failed: 0 });
 		expect(await purged(userId)).toBe(1);
 	});
-	it('the invites cleanup first, then the account cleanup: told once', async () => {
+	it('leaves tracked accounts to the account purge and refuses invite restore once claimed', async () => {
 		const { service, id, userId } = await invite(on());
 		await service.revoke(id, actor as never);
 		await db().prepare('UPDATE user_invites SET deleted_at = ? WHERE id = ?').bind(old(), id).run();
-		expect(await purgeRevokedInvites(db(), undefined, undefined, on())).toEqual({ purged: 1, failed: 0 });
-		expect([await state(userId), await purged(userId)]).toEqual([null, 1]);
-		// the account is still in Recently deleted
-		expect(await db().prepare(`SELECT 1 FROM admin_deletions WHERE item_id = ?`).bind(userId).first()).not.toBeNull();
 		await db().prepare('UPDATE admin_deletions SET deleted_at = ? WHERE item_id = ?').bind(old(), userId).run();
+		await db().prepare(`INSERT INTO audit_events (timestamp, event_type, severity, user_id, success)
+			VALUES ('2026-11-26T00:00:00Z', 'login_success', 'info', ?1, 1), ('2026-11-26T00:01:00Z', 'login_success', 'info', ?1, 1)`).bind(userId).run();
+		expect((await purgeDeleted(on(), { auditRedaction: { batchSize: 1, maxBatches: 1 } })).purged.user).toBe(0);
+		expect(await purgeRevokedInvites(db(), undefined, undefined, on())).toEqual({ purged: 0, failed: 0 });
+		await expect(service.restore(id)).rejects.toMatchObject({ status: 409, code: 'purge_in_progress' });
+		expect(await events(userId)).toEqual(['account-disabled:deleted']);
 		expect((await purgeDeleted(on())).purged.user).toBe(1);
-		expect(await purged(userId)).toBe(1);
+		expect([await state(userId), await purged(userId)]).toEqual([null, 1]);
 	});
+
 	it('an account that signed in is kept, and not announced as purged', async () => {
 		const { service, id, userId } = await invite(on());
 		await service.revoke(id, actor as never);

@@ -3,6 +3,7 @@
  * that causes the event, so there is an event exactly when there is a change;
  * queueing is best effort (the cron queues what is left, deliver.ts).
  */
+import { deletedClause, userPurgeClaimed } from '../deletions/store';
 import { logger } from '../logger';
 import { subscribers, type Subscriber } from './subscribers';
 import { accountEventsOn, type AccountEvent, type AccountEventMessage, type AccountEventsEnv } from './types';
@@ -27,10 +28,12 @@ export interface Recorded {
 const ONLY_IF = {
 	live: 'deleted_at IS NULL',
 	deleted: 'deleted_at IS NOT NULL',
+	restorable: `deleted_at IS NOT NULL AND NOT ${userPurgeClaimed('users.id')}`,
+	restorableUnused: `status = 'deleted' AND last_login_at IS NULL AND NOT ${userPurgeClaimed('users.id')}`,
 	/** An invited account nobody has claimed. */
 	invited: `status = 'invited' AND deleted_at IS NULL`,
 	/** A deleted account nobody ever signed in to (a revoked invite's). */
-	unused: `status = 'deleted' AND last_login_at IS NULL`,
+	untrackedUnused: `status = 'deleted' AND last_login_at IS NULL AND NOT EXISTS (${deletedClause('user', 'users.id')})`,
 } as const;
 export type OnlyIf = keyof typeof ONLY_IF;
 
