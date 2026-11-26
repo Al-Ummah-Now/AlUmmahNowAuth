@@ -43,7 +43,7 @@ async function adminHead(origin, themeId) {
   const shellCss = shellThemeCss(compiled.tokensCss);
   // The street as root.tsx adds it: its CSS in the head, its script after hydration (here: once the page is up)
   const street = streetOn(shellCss)
-    ? `<link rel="stylesheet" href="${STREET_CSS_PATH}" data-fanous-street=""><script>addEventListener("load",()=>setTimeout(()=>{const s=document.createElement("script");s.type="module";s.src=${JSON.stringify(STREET_JS_PATH)};s.dataset.fanousStreet="";document.head.appendChild(s)},600))</script>`
+    ? `<link rel="stylesheet" href="${STREET_CSS_PATH}" data-fanous-street=""><script>addEventListener("load",()=>setTimeout(()=>{const s=document.createElement("script");s.type="module";s.src=${JSON.stringify(STREET_JS_PATH).replace(/</g, '\\u003c')};s.dataset.fanousStreet="";document.head.appendChild(s)},600))</script>`
     : "";
   return (
     `<meta name="viewport" content="width=device-width, initial-scale=1"><script>${MODE_SCRIPT}</script>` +

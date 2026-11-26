@@ -122,7 +122,7 @@ export function addSetupHeading(page: string, lang: Lang): string {
 	const firstStep = page.includes('name="repeat"');
 	const heading = `<h1 data-component="title" data-testid="add-password-title">${escapeText(t.setupTitle)}</h1>${firstStep ? `<p data-component="description">${escapeText(t.setupText)}</p>` : ''}`;
 	const prefill = firstStep
-		? `<script>(function(){try{var v=sessionStorage.getItem(${JSON.stringify(SETUP_EMAIL_KEY)});var e=document.querySelector('form[data-component="form"] input[name="email"]');if(v&&e&&!e.value){e.value=v;var p=document.querySelector('form[data-component="form"] input[name="password"]');if(p)p.focus();}}catch(_){}})();</script>`
+		? `<script>(function(){try{var v=sessionStorage.getItem(${JSON.stringify(SETUP_EMAIL_KEY).replace(/</g, '\\u003c')});var e=document.querySelector('form[data-component="form"] input[name="email"]');if(v&&e&&!e.value){e.value=v;var p=document.querySelector('form[data-component="form"] input[name="password"]');if(p)p.focus();}}catch(_){}})();</script>`
 		: '';
 	const at = start + LOGIN_FORM.length;
 	return page.slice(0, at) + heading + page.slice(at).replace('</form>', `</form>${prefill}`);
