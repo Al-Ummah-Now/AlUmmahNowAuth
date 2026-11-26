@@ -237,7 +237,7 @@ export class AdminTenantRoutes {
       await verifyAdminAuth(request, env);
 
       const tenant = await this.tenantService.getTenantById(tenantId);
-      if (!tenant) {
+      if (!tenant || tenant.status === 'deleted') {
         return createAuthErrorResponse('Tenant not found', 404);
       }
 

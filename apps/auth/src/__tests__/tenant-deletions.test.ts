@@ -26,21 +26,61 @@ it('protects default and deletes, lists, restores and purges a tenant in the mig
 	await db.batch(statements.map((sql) => db.prepare(sql)));
 	await db.batch([
 		db.prepare("INSERT INTO tenants (id, name, domain, created_at, updated_at) VALUES ('default', 'Default', 'default.test', 1, 1), ('other', 'Other', 'other.test', 1, 1)"),
-		db.prepare("INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES ('tenant-user', 'other', 'user@example.com', 1, 1)"),
+		db.prepare("INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES ('tenant-user', 'other', 'user@example.com', 1, 1), ('default-user', 'default', 'default@example.com', 1, 1)"),
 		db.prepare("INSERT INTO tenant_admins (tenant_id, user_id) VALUES ('other', 'tenant-user')"),
-		db.prepare("INSERT INTO oauth_clients (id, name, tenant_id, created_at, updated_at) VALUES ('tenant-client', 'Client', 'other', 1, 1)"),
+		db.prepare("INSERT INTO oauth_clients (id, name, tenant_id, created_at, updated_at) VALUES ('tenant-client', 'Client', 'other', 1, 1), ('default-client', 'Default client', 'default', 1, 1)"),
 		db.prepare("INSERT INTO auth_theme_client_defaults (client_id, theme_id, updated_at) VALUES ('tenant-client', 'theme', 1)"),
 	]);
+	const dependencies = [
+		{ table: 'webauthn_credentials', key: 'user_id', suffix: 'user', columns: 'id, user_id, public_key, device_type, name, created_at', values: "?1, ?1, 'key', 'singleDevice', 'Passkey', 1" },
+		{ table: 'webauthn_prompts', key: 'user_id', suffix: 'user', columns: 'user_id, dismissed_at', values: '?1, 1' },
+		{ table: 'passkey_setup_tickets', key: 'user_id', suffix: 'user', columns: 'token_hash, user_id, created_by, created_at, expires_at', values: "?1, ?1, 'admin', 1, 2" },
+		{ table: 'user_birth_dates', key: 'user_id', suffix: 'user', columns: 'user_id, birth_date_enc, key_id, changed_at', values: "?1, 'encrypted', 'key', 1" },
+		{ table: 'user_revocations', key: 'user_id', suffix: 'user', columns: 'user_id, revoked_before, reason, updated_at', values: "?1, 1, 'test', 1" },
+		{ table: 'user_invite_superseded_tokens', key: 'user_id', suffix: 'user', columns: 'token_hash, invite_id, user_id, tenant_id, superseded_at', values: '?1, ?1, ?1, ?2, 1' },
+		{ table: 'app_sessions', key: "json_extract(user_json, '$.id')", suffix: 'user', columns: 'id, app, user_json, access_token, expires_at, created_at, updated_at', values: "?1, 'admin', json_object('id', ?1), 'token', 2, 1, 1" },
+		{ table: 'account_event_deliveries', key: 'client_id', suffix: 'client', columns: 'jti, seq, user_id, client_id, next_at, created_at', values: "?1, 1, 'tenant-user', ?1, 1, 1" },
+	];
+	await db.batch([
+		db.prepare("INSERT INTO browser_sessions (id, tenant_id, active_user_id, created_at, last_activity) VALUES ('control-browser', 'default', 'tenant-user', 1, 1)"),
+		db.prepare("INSERT INTO openauth_atomic (key, value) VALUES ('oauth:refresh::tenant', json_object('properties', json_object('id', 'tenant-user'))), ('oauth:refresh::default', json_object('properties', json_object('id', 'default-user')))"),
+		db.prepare("INSERT INTO password_login_attempts (email, window_start) VALUES ('user@example.com', 1), ('default@example.com', 1)"),
+	]);
+	await db.prepare("INSERT INTO account_events (seq, id, type, user_id, created_at) VALUES (1, 'shared-event', 'account-disabled', 'tenant-user', 1)").run();
+	await db.batch(dependencies.flatMap(({ table, suffix, columns, values }) =>
+		[['tenant', 'other'], ['default', 'default']].map(([prefix, tenantId]) => {
+			const statement = db.prepare(`INSERT INTO ${table} (${columns}) VALUES (${values})`);
+			const id = `${prefix}-${suffix}`;
+			return table === 'user_invite_superseded_tokens' ? statement.bind(id, tenantId) : statement.bind(id);
+		})));
+	const expectDependencies = async (deletedTenantCount: number) => {
+		for (const { table, key, suffix } of dependencies) {
+			const count = (prefix: string) =>
+				db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${key} = ?`).bind(`${prefix}-${suffix}`).first<number>('n');
+			expect(await count('tenant'), table).toBe(deletedTenantCount);
+			expect(await count('default'), table).toBe(1);
+		}
+	};
 	const routes = new AdminTenantRoutes(db);
 	const tenants = new TenantService(db);
-	const remove = (id: string) => routes.handle(new Request(`https://auth.test/admin/tenants/${id}?reason=cleanup`, { method: 'DELETE' }), bindings, {} as ExecutionContext);
+	const requestTenant = (path: string, method = 'GET') =>
+		routes.handle(new Request(`https://auth.test/admin/tenants/${path}`, { method }), bindings, {} as ExecutionContext);
+	const remove = (id: string) => requestTenant(`${id}?reason=cleanup`, 'DELETE');
 	const tenant = (id: string) => db.prepare('SELECT status FROM tenants WHERE id = ?').bind(id).first();
 	const list = () => deletionAdminRoutes.request('/admin/deletions?kind=tenant', {}, bindings).then((res) => res.json());
 
 	expect((await remove('default')).status).toBe(400);
 	expect(await tenant('default')).toEqual({ status: 'active' });
 	expect(await list()).toMatchObject({ items: [] });
+	expect((await requestTenant('other/admins/tenant-user', 'DELETE')).status).toBe(200);
+	expect(await db.prepare("SELECT 1 FROM tenant_admins WHERE user_id = 'tenant-user'").first()).toBeNull();
+	expect(await tenant('other')).toEqual({ status: 'active' });
+	expect(await list()).toMatchObject({ items: [] });
+	await db.prepare("INSERT INTO tenant_admins (tenant_id, user_id) VALUES ('other', 'tenant-user')").run();
+	expect((await requestTenant('other')).status).toBe(200);
 	expect((await remove('other')).status).toBe(200);
+	expect((await remove('other')).status).toBe(404);
+	expect((await requestTenant('other')).status).toBe(404);
 	expect(await tenant('other')).toEqual({ status: 'deleted' });
 	expect((await tenants.listTenants()).tenants.map(({ id }) => id)).toEqual(['default']);
 	expect(await list()).toMatchObject({ items: [{ kind: 'tenant', id: 'other', label: 'Other', reason: 'cleanup' }] });
@@ -49,18 +89,27 @@ it('protects default and deletes, lists, restores and purges a tenant in the mig
 
 	const restorePath = '/admin/deletions/tenant/other/restore';
 	expect((await deletionAdminRoutes.request(restorePath, { method: 'POST' }, bindings)).status).toBe(200);
+	expect((await deletionAdminRoutes.request(restorePath, { method: 'POST' }, bindings)).status).toBe(404);
+	expect((await requestTenant('other')).status).toBe(200);
 	expect(await tenant('other')).toEqual({ status: 'active' });
 	expect((await tenants.listTenants({ status: 'active' })).total).toBe(2);
 	expect(await list()).toMatchObject({ items: [] });
 	expect((await remove('other')).status).toBe(200);
 	expect((await purgeDeleted(bindings)).purged.tenant).toBe(0);
+	await expectDependencies(1);
 	expect((await purgeDeleted(bindings, { now: Date.now() + RETENTION_MS })).purged.tenant).toBe(1);
 	expect(await tenant('other')).toBeNull();
 	expect(await tenant('default')).toEqual({ status: 'active' });
 	expect(await list()).toMatchObject({ items: [] });
-	for (const table of ['users', 'tenant_admins', 'oauth_clients', 'auth_theme_client_defaults']) {
-		expect(await db.prepare(`SELECT 1 FROM ${table}`).first()).toBeNull();
+	await expectDependencies(0);
+	expect(await db.prepare("SELECT active_user_id FROM browser_sessions WHERE id = 'control-browser'").first()).toEqual({ active_user_id: null });
+	expect((await db.prepare("SELECT key FROM openauth_atomic ORDER BY key").all()).results).toEqual([{ key: 'oauth:refresh::default' }]);
+	expect((await db.prepare("SELECT email FROM password_login_attempts ORDER BY email").all()).results).toEqual([{ email: 'default@example.com' }]);
+	expect(await db.prepare("SELECT seq FROM account_events WHERE id = 'shared-event'").first()).toEqual({ seq: 1 });
+	for (const table of ['users', 'tenant_admins', 'oauth_clients']) {
+		expect(await db.prepare(`SELECT 1 FROM ${table} WHERE tenant_id = 'other'`).first()).toBeNull();
 	}
+	expect(await db.prepare("SELECT 1 FROM auth_theme_client_defaults WHERE client_id = 'tenant-client'").first()).toBeNull();
 	expect((await db.prepare('PRAGMA foreign_key_check').all()).results).toEqual([]);
 	for (const eventType of ['admin.item.deleted', 'admin.item.restored', 'admin.item.purged']) {
 		expect(emitAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
