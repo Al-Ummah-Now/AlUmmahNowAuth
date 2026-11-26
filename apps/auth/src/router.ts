@@ -22,10 +22,8 @@ import {
 } from './handlers/session-ui-handlers';
 import { handleSelectAccountGet, handleSelectAccountPost } from './routes/select-account';
 import { RATE_LIMIT_PERIOD_SECONDS, getClientIP, withinRateLimit } from './rate-limit';
-import { getAuditEmitter } from './audit-emitter';
-import { createRateLimitExceededEvent } from './audit-events';
-import { trackEvent } from './utils/analytics';
-import { readTokenRequestFields, tokenRateLimitBuckets } from './utils/token-rate-limit-subject';
+import { recordTokenRejection } from './security/bounded-audit';
+import type { TokenRateLimitBucket } from './utils/token-rate-limit-subject';
 import { handleAccountExport, handleDeleteAccount, handleSetAccountName, handleSignOutAll } from './routes/account-routes';
 import { handleAccountStatus, handleDeletionReceipt } from './routes/deletion-receipt';
 import { AdminEnterpriseRoutes } from './admin-enterprise-routes';
@@ -67,6 +65,7 @@ export interface RouterContext {
 	isProduction: boolean;
 	/** Whether Auth can send email this request (index.ts, utils/email-availability.ts) */
 	emailAvailable: boolean;
+	tokenBuckets: TokenRateLimitBucket[];
 	// Hono apps for delegating
 	adminUserApp: Hono;
 	adminRbacApp: Hono;
@@ -453,47 +452,22 @@ function handleAuthorizeRedirect(rctx: RouterContext): RouteResult {
  * Handle token endpoint rate limiting
  */
 async function handleTokenRateLimit(rctx: RouterContext): Promise<RouteResult> {
-	const { url, request, env, ctx, requestId, isProduction } = rctx;
-
-	const isTokenEndpoint =
-		url.pathname === '/token' ||
-		url.pathname === '/token/introspect' ||
-		url.pathname === '/token/revoke';
-
-	if (!isTokenEndpoint) {
-		return null;
-	}
-
-	const clientIP = getClientIP(request);
+	const { url, request, env, ctx, isProduction, tokenBuckets } = rctx;
 
 	// Workers Rate Limiting (AU-1): per user for refreshes, per client for our own
 	// server-side apps, per IP otherwise. No shared key, no KV writes.
-	const buckets = tokenRateLimitBuckets(request, url.pathname, clientIP, await readTokenRequestFields(request));
-	for (const bucket of buckets) {
+	for (const bucket of tokenBuckets) {
 		const limiter = bucket.limiter === 'client' ? env.TOKEN_CLIENT_LIMITER : env.TOKEN_LIMITER;
 		if (await withinRateLimit(limiter, bucket.key)) continue;
 
 		const retryAfter = RATE_LIMIT_PERIOD_SECONDS;
 		logger.warn('Rate limit exceeded for token endpoint', {
-			clientIP,
+			clientIP: getClientIP(request),
 			bucket: bucket.limiter,
 			endpoint: url.pathname,
 		});
 
-		// Emit rate limit exceeded audit event
-		const auditEvent = createRateLimitExceededEvent(url.pathname, 0, RATE_LIMIT_PERIOD_SECONDS, retryAfter, {
-			ipAddress: clientIP,
-			userAgent: request.headers.get('User-Agent') ?? undefined,
-			requestId,
-		});
-		ctx.waitUntil(getAuditEmitter().emit(auditEvent));
-
-		// Track rate limit in analytics
-		trackEvent(env, {
-			event: 'rate_limit_hit',
-			ipAddress: clientIP,
-			userAgent: request.headers.get('User-Agent') ?? undefined,
-		});
+		recordTokenRejection(rctx, url.pathname, bucket.key, 429, true);
 
 		ctx.waitUntil(logger.finalizeRequest());
 		const response = new Response(
@@ -771,7 +745,7 @@ export async function routeRequest(rctx: RouterContext): Promise<RouteResult> {
 	}
 
 	// Token rate limiting (doesn't return response if allowed, just checks)
-	if (pathname === '/token' || pathname === '/token/introspect' || pathname === '/token/revoke') {
+	if (rctx.tokenBuckets.length) {
 		return await handleTokenRateLimit(rctx);
 	}
 

@@ -157,6 +157,9 @@ export enum AuditEventSeverity {
  * Base audit event interface
  */
 export interface AuditEvent {
+  /** Stable row ID for events bounded across Worker instances and delivery retries. */
+  id?: string;
+
   /** ISO 8601 timestamp when the event occurred */
   timestamp: string;
 

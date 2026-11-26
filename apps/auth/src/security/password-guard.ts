@@ -21,6 +21,7 @@
 import { toAsciiDigits } from '../../../../packages/ui/src/format.ts';
 import { getClientIP } from '../rate-limit';
 import { logger } from '../logger';
+import type { PasswordSignInFailure } from './bounded-audit';
 import { checkCode, releaseLoginAttempt, reserveLoginSlot } from './password-attempts';
 import {
 	checkHuman,
@@ -81,6 +82,8 @@ export interface PasswordGuard {
 	request: Request;
 	/** For PasswordProvider's `checkCode` hook. */
 	checkCode: (email: string, code: string) => Promise<boolean>;
+	/** Called by the provider when it rejects a submitted credential. */
+	invalidCredentials: () => void;
 	/** Post-processing of the issuer's response. */
 	finish: (response: Response) => Promise<Response>;
 	/** Turnstile widget to add to the page this request renders (null: none). */
@@ -111,7 +114,8 @@ export async function guardPasswordRequest(
 	env: PasswordGuardEnv,
 	url: URL,
 	copy: PasswordCopy,
-	waitUntil?: WaitUntil
+	waitUntil?: WaitUntil,
+	onSignInFailure?: (outcome: PasswordSignInFailure) => void,
 ): Promise<PasswordGuard> {
 	const lang = langOf(url);
 	const guard: PasswordGuard = {
@@ -121,6 +125,7 @@ export async function guardPasswordRequest(
 			if (result === 'locked') copy.error_invalid_code = COPY.codeLocked[lang];
 			return result === 'ok';
 		},
+		invalidCredentials: () => {},
 		finish: async (response) => response,
 		widget: null,
 	};
@@ -168,7 +173,10 @@ export async function guardPasswordRequest(
 	let throttled =
 		!(await underLimit(env.PASSWORD_IP_LIMITER, `ip:${ip}`)) ||
 		(email !== undefined && !(await underLimit(env.PASSWORD_EMAIL_LIMITER, `email:${email}`)));
-	if (throttled) recordAbuse(env, endpoint, 'rate_limited');
+	if (throttled) {
+		recordAbuse(env, endpoint, 'rate_limited');
+		if (step === 'authorize') onSignInFailure?.('rate_limited');
+	}
 
 	// Sends an email (sign-up code, reset code) or, on sign-in, follows failed attempts
 	const sends = (step === 'register' && action !== 'verify') || (step === 'change' && action === 'code');
@@ -180,6 +188,7 @@ export async function guardPasswordRequest(
 		const count = await reserveLoginSlot(env.AUTH_DB, email);
 		reserved = count !== null;
 		throttled = !reserved;
+		if (throttled) onSignInFailure?.('locked_out');
 		if (reserved && turnstileOn) {
 			// count includes this attempt: from the Nth failure on, the page carries the widget
 			if (count! >= TURNSTILE_AFTER_FAILURES) guard.widget = { action: WIDGET_ACTION.authorize };
@@ -230,6 +239,10 @@ export async function guardPasswordRequest(
 	}
 
 	if (reserved && email) {
+		const password = form.get('password');
+		if (typeof password === 'string' && password.length > 0 && onSignInFailure) {
+			guard.invalidCredentials = () => onSignInFailure('invalid_credentials');
+		}
 		guard.finish = async (response) => {
 			// Success redirects (to the app, or to the forced password change); a wrong
 			// password re-renders the form. Only a success gives the slot back.

@@ -7,7 +7,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import worker, { toTokenUsageRow } from './index';
+import { env } from 'cloudflare:workers';
+import worker, { toTokenUsageRow, type AppAuditQueueMessage } from './index';
+import type { D1Database } from '@cloudflare/workers-types';
 
 type Bound = { sql: string; args: unknown[] };
 
@@ -164,9 +166,9 @@ describe('Audit Consumer Worker', () => {
       );
 
       expect(bound).toHaveLength(1);
-      expect(bound[0].sql).toMatch(/WHERE NOT EXISTS/);
-      expect(bound[0].sql.match(/\?/g)).toHaveLength(bound[0].args.length);
+      expect(bound[0].sql).toMatch(/OR NOT EXISTS/);
       expect(bound[0].args.slice(10)).toEqual([
+        null,
         '2026-01-01T00:00:00.000Z',
         'tenant.created',
         'admin-1',
@@ -175,6 +177,30 @@ describe('Audit Consumer Worker', () => {
         JSON.stringify({ tenantId: 't1' }),
       ]);
       expect(msg.ack).toHaveBeenCalledOnce();
+    });
+
+    it('stores one row for samples with the same ID from different Workers or queue deliveries', async () => {
+      const { AUDIT_DB } = env as unknown as { AUDIT_DB: D1Database };
+      await AUDIT_DB.prepare(`CREATE TABLE audit_events (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        timestamp TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL,
+        user_id TEXT, ip_address TEXT, user_agent TEXT, request_id TEXT, metadata TEXT,
+        success INTEGER NOT NULL, error_message TEXT
+      )`).run();
+      const sample = (id: string, rowId: string) => {
+        const msg = appMessage(id);
+        const event: AppAuditQueueMessage['event'] = { ...msg.body.event, id: rowId, requestId: id };
+        return { ...msg, body: { ...msg.body, event } };
+      };
+      const first = sample('worker-1', 'shared-window');
+      const duplicate = sample('worker-2', 'shared-window');
+      const nextWindow = sample('worker-3', 'next-window');
+      const legacy = appMessage('legacy');
+      await worker.queue(batchOf([first, duplicate, nextWindow, legacy]), { AUDIT_DB });
+      await worker.queue({ ...batchOf([duplicate, legacy]), queue: 'audit-events-dlq' }, { AUDIT_DB });
+      const { results } = await AUDIT_DB.prepare('SELECT request_id FROM audit_events ORDER BY request_id').all();
+      expect(results).toEqual(['req-1', 'worker-1', 'worker-3'].map(request_id => ({ request_id })));
+      expect(duplicate.ack).toHaveBeenCalledTimes(2);
     });
 
     it('routes mixed batches to the right tables', async () => {

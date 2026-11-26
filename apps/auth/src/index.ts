@@ -38,6 +38,9 @@ import * as v from 'valibot';
 import { logger } from "./logger";
 import { AdminEnterpriseRoutes } from "./admin-enterprise-routes";
 import { ensureAuditEmitter, flushAuditEvents } from "./audit-emitter";
+import { recordPasswordSignInFailure, recordTokenRejection, type PasswordSignInFailure } from './security/bounded-audit';
+import { getClientIP } from './rate-limit';
+import { readTokenRequestFields, tokenRateLimitBuckets } from './utils/token-rate-limit-subject';
 import { resolveRequestId, withRequestId } from "./utils/request-id";
 import { RequestTimer, instrumentCtx, instrumentEnv, shouldLogTiming } from "./utils/request-timing";
 import {
@@ -385,10 +388,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // first passkey (utils/email-availability.ts). Read by the router
     // (passkeys), the password routes below and the after-sign-in card.
     const emailAvailable = await isEmailAvailable(env);
+    const path = routedPath(url.pathname);
+    const tokenPath = url.pathname;
+    const tokenBuckets = tokenPath === '/token' || tokenPath === '/token/introspect' || tokenPath === '/token/revoke'
+      ? tokenRateLimitBuckets(request, tokenPath, getClientIP(request), await readTokenRequestFields(request))
+      : [];
 
     const routerContext: RouterContext = {
       request,
       emailAvailable,
+      tokenBuckets,
       env,
       ctx,
       url,
@@ -461,11 +470,17 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     }
     // The password sign-in POST's email, read before the guard and the issuer take the body:
     // an email with no password gets the two options (sign-in-link/) instead of "wrong password"
-    const signInPath = routedPath(url.pathname) === '/password/authorize';
-    const postedEmail = signInPath && request.method === 'POST'
+    const signInPath = path === '/password/authorize';
+    const passwordSignIn = signInPath && request.method === 'POST';
+    const postedEmail = passwordSignIn
       ? await request.clone().formData().then((f) => f.get('email'), () => null)
       : null;
-    const passwordGuard = await timer.stage('guard', () => guardPasswordRequest(request, env, url, passwordCopy, (promise) => ctx.waitUntil(promise)));
+    const onPasswordSignInFailure = passwordSignIn
+      ? (outcome: PasswordSignInFailure) => recordPasswordSignInFailure(routerContext, outcome)
+      : undefined;
+    const passwordGuard = await timer.stage('guard', () => guardPasswordRequest(
+      request, env, url, passwordCopy, (promise) => ctx.waitUntil(promise), onPasswordSignInFailure,
+    ));
 
     // The page's theme, from Auth's own themes (Auth admin): the per-call ?theme=
     // if it is published, else the client's default (known at /authorize), else
@@ -483,6 +498,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const openauthTheme = { ...openauthThemeFor(theme), favicon: signInFavicon(theme, env.ENVIRONMENT) };
     // Scholar sites: the one exact callback of a live site's primary host (site-redirects.ts)
     const siteRedirect = await allowedSiteRedirect(env, request);
+    const passwordUI = PasswordUI({
+      sendCode: createSendCodeHandler(
+        userService,
+        { request, env, ctx, requestId, url, emailTheme: theme.email, timer },
+        storage,
+      ),
+      copy: passwordCopy,
+      // "Sign in with a passkey" and passkeys in the email autofill (AUTH-PASSKEYS)
+      passkey: true,
+    });
     const { app } = createMultiTenantIssuer({
       // Pin the issuer: used for the `iss` claim, discovery documents and token
       // verification instead of the request Host / X-Forwarded-* headers.
@@ -547,16 +572,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       nativePasskey: nativePasskeyOptions(env as never, ctx, requestId),
       providers: {
         password: PasswordProvider({
-          ...PasswordUI({
-            sendCode: createSendCodeHandler(
-              userService,
-              { request, env, ctx, requestId, url, emailTheme: theme.email, timer },
-              storage,
-            ),
-            copy: passwordCopy,
-            // "Sign in with a passkey" and passkeys in the email autofill (AUTH-PASSKEYS)
-            passkey: true,
-          }),
+          ...passwordUI,
+          login: (req, form, error, render) => {
+            if (error?.type === 'invalid_password') passwordGuard.invalidCredentials();
+            return passwordUI.login(req, form, error, render);
+          },
           // Every submitted email code is counted in D1: 5 tries, 15 minutes, single use
           checkCode: passwordGuard.checkCode,
           // A password reset signs the account out everywhere (#437)
@@ -603,12 +623,17 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
         theme: openauthTheme,
         timer,
         emailAvailable,
+        onPasswordSignInFailure,
       }),
     });
 
     // Call issuer to handle the request
     // OpenAuth enterprise issuer manages sessions via D1SessionAdapter and sets the __session cookie
     const issued = await timer.stage('issuer', () => app.fetch(passwordGuard.request, env, ctx));
+    if (tokenPath === '/token' && request.method === 'POST' && issued.status >= 400 && issued.status < 500) {
+      const [bucket] = tokenBuckets;
+      if (bucket) recordTokenRejection(routerContext, tokenPath, bucket.key, issued.status);
+    }
     let issuerResponse = await timer.stage('guard.finish', () => passwordGuard.finish(issued));
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
     // and the shared site header on top (AlUmmahNow docs/design/NAV.md "Header")

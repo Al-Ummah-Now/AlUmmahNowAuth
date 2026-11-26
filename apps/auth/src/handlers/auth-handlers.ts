@@ -17,6 +17,7 @@ import { Storage, type StorageAdapter } from '@al-ummah-now/openauth/storage/sto
 import type { PasswordSendCodeError } from '@al-ummah-now/openauth/provider/password';
 import { getLocaleFromRequest } from '@al-ummah-now/openauth/ui/i18n';
 import { accountStateOf, isRefusedAccountState, readAccountState, type AccountState } from '../security/account-status';
+import type { PasswordSignInFailure } from '../security/bounded-audit';
 import { endBrowserSignIns } from '../revocation/lifecycle';
 import { renderAccountSuspendedPage } from '../ui/account-suspended-page';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
@@ -62,6 +63,7 @@ export interface AuthHandlerContext {
 	timer?: RequestTimer;
 	/** Whether Auth can send email (utils/email-availability.ts); the passkey card needs it for staff */
 	emailAvailable?: boolean;
+	onPasswordSignInFailure?: (outcome: PasswordSignInFailure) => void;
 }
 
 /**
@@ -134,7 +136,7 @@ export function createOnSuccessHandler(
 	rbacService: RBACServiceImpl,
 	handlerCtx: AuthHandlerContext
 ) {
-	const { request, env, ctx, requestId, db, homeUrl, theme, timer } = handlerCtx;
+	const { request, env, ctx, requestId, db, homeUrl, theme, timer, onPasswordSignInFailure } = handlerCtx;
 
 	/** D1 state of an existing account: the user service's row, else a direct D1 read. */
 	async function stateOf(user: { id: string; status?: string; deleted_at?: number | null; metadata?: unknown }): Promise<AccountState> {
@@ -149,31 +151,17 @@ export function createOnSuccessHandler(
 	 * prompt=none answers the app with login_required (OIDC), so the app shows
 	 * its sign-in button; everything else gets the en/ar "account suspended" page.
 	 */
-	async function refuse(email: string, userId: string, state: AccountState, provider: string): Promise<Response> {
+	async function refuse(email: string, userId: string, state: 'suspended' | 'deleted' | 'system', provider: string): Promise<Response> {
 		logger.warn('[auth] Refused sign-in of a suspended or deleted account', { userId, state, provider });
 		// A system account: audit event + needs-action item on the admin Errors page
 		if (state === 'system') {
 			flagSystemAccountAttempt(env as SystemAccountEnv, ctx, { userId, attempt: 'sign_in', detail: provider || undefined, request, requestId });
 		}
-		const clientIP = getClientIP(request);
-		ctx.waitUntil(
-			getAuditEmitter().emit(
-				createLoginFailedEvent(email, `account_${state}`, {
-					ipAddress: clientIP,
-					userAgent: request.headers.get('User-Agent') ?? undefined,
-					requestId,
-				})
-			)
-		);
-		trackEvent(env, {
-			event: 'login_failed',
-			userId,
-			email,
-			ipAddress: clientIP,
-			userAgent: request.headers.get('User-Agent') ?? undefined,
-			errorCode: `account_${state}`,
-			success: false,
-		});
+		if (provider === 'password' && onPasswordSignInFailure) {
+			onPasswordSignInFailure(`account_${state}`);
+		} else {
+			recordLoginFailure(email, `account_${state}`, `account_${state}`, userId);
+		}
 		// A browser session left over (suspended outside the admin API) must not keep trying silent sign-on
 		if (db) {
 			try {
@@ -196,6 +184,13 @@ export function createOnSuccessHandler(
 			return new Response(null, { status: 302, headers: { Location: location.toString(), 'Cache-Control': 'no-store' } });
 		}
 		return renderAccountSuspendedPage(getLocaleFromRequest(request), homeUrl || '/', theme);
+	}
+
+	function recordLoginFailure(email: string, reason: string, errorCode: string, userId?: string): void {
+		const ipAddress = getClientIP(request);
+		const userAgent = request.headers.get('User-Agent') ?? undefined;
+		ctx.waitUntil(getAuditEmitter().emit(createLoginFailedEvent(email, reason, { ipAddress, userAgent, requestId })));
+		trackEvent(env, { event: 'login_failed', userId, email, ipAddress, userAgent, errorCode, success: false });
 	}
 
 	return async (
@@ -398,29 +393,11 @@ export function createOnSuccessHandler(
 
 			return subjectResponse;
 		} catch (error) {
-			// Emit login failed audit event (use outer ctx for waitUntil)
-			const clientIP = getClientIP(request);
-			const failedEvent = createLoginFailedEvent(
-				email,
-				error instanceof Error ? error.message : String(error),
-				{
-					ipAddress: clientIP,
-					userAgent: request.headers.get('User-Agent') ?? undefined,
-					requestId,
-				}
-			);
-			ctx.waitUntil(getAuditEmitter().emit(failedEvent));
-
-			// Track login failed in analytics
-			trackEvent(env, {
-				event: 'login_failed',
-				email,
-				ipAddress: clientIP,
-				userAgent: request.headers.get('User-Agent') ?? undefined,
-				errorCode: error instanceof Error ? error.message : 'unknown',
-				success: false,
-			});
-
+			if (value.provider === 'password' && onPasswordSignInFailure) {
+				onPasswordSignInFailure('sign_in_error');
+			} else {
+				recordLoginFailure(email, error instanceof Error ? error.message : String(error), error instanceof Error ? error.message : 'unknown');
+			}
 			throw error;
 		}
 	};

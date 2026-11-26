@@ -26,6 +26,7 @@ export interface AppAuditQueueMessage {
   version: 1;
   type: "app_audit_event";
   event: {
+    id?: string;
     timestamp: string;
     eventType: string;
     severity: string;
@@ -107,8 +108,8 @@ async function writeWithRetry<T>(
  * apps/auth D1Sink). Retries the messages on failure; after the last attempt
  * the events are logged so they remain recoverable from Workers logs.
  *
- * Idempotent: an event identical to a stored row is skipped, because queues deliver
- * at least once and the dead-letter queue replays messages through this handler.
+ * Bounded samples use a stable row ID across Workers and retries. Older messages
+ * without an ID still deduplicate on event contents during redelivery or DLQ replay.
  */
 export async function handleAppAuditMessages(
   messages: readonly Message<AppAuditQueueMessage>[],
@@ -118,14 +119,15 @@ export async function handleAppAuditMessages(
     const stmt = db.prepare(
       `INSERT INTO audit_events (
         timestamp, event_type, severity, user_id, ip_address,
-        user_agent, request_id, metadata, success, error_message
+        user_agent, request_id, metadata, success, error_message, id
       )
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-      WHERE NOT EXISTS (
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?11, lower(hex(randomblob(16))))
+      WHERE ?11 IS NOT NULL OR NOT EXISTS (
         SELECT 1 FROM audit_events
-        WHERE timestamp = ? AND event_type = ? AND user_id IS ?
-          AND ip_address IS ? AND request_id IS ? AND metadata IS ?
-      )`
+        WHERE timestamp = ?12 AND event_type = ?13 AND user_id IS ?14
+          AND ip_address IS ?15 AND request_id IS ?16 AND metadata IS ?17
+      )
+      ON CONFLICT(id) DO NOTHING`
     );
     return db.batch(
       messages.map(({ body: { event } }) => {
@@ -141,6 +143,7 @@ export async function handleAppAuditMessages(
           metadata,
           event.success ? 1 : 0,
           event.errorMessage ?? null,
+          event.id ?? null,
           event.timestamp,
           event.eventType,
           event.userId ?? null,

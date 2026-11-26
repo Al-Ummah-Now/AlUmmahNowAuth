@@ -9,7 +9,7 @@
  * - password sign-in: exactly MAX_LOGIN_FAILURES guesses reach the password
  *   check, every other one gets 429, and so does the right password afterwards.
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { env } from 'cloudflare:test';
 import '../test-setup';
 import worker from '../index';
@@ -19,6 +19,8 @@ import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { MAX_CODE_ATTEMPTS, MAX_LOGIN_FAILURES } from '../security/password-attempts';
+import { AuditEventType } from '../audit-events';
+import { fakeLimiter } from './helpers/fake-limiter';
 
 const ORIGIN = 'http://localhost';
 const SINK_SECRET = 'test-sink-secret';
@@ -163,15 +165,28 @@ describe('forgot password: email code brute force', () => {
 });
 
 describe('password sign-in brute force', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	async function failureRows(ip: string) {
+		await settle();
+		const { results } = await env.AUTH_DB.prepare(
+			'SELECT * FROM audit_events WHERE ip_address = ? AND event_type = ? ORDER BY error_message',
+		).bind(ip, AuditEventType.LOGIN_FAILED).all<{ error_message: string; metadata: string }>();
+		return results;
+	}
+
 	it(`200 parallel wrong passwords: exactly ${MAX_LOGIN_FAILURES} are checked, the rest get 429, then the right one too`, async () => {
-		const e = testEnv();
+		vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+		const writeDataPoint = vi.fn();
+		const e = testEnv({ AUDIT_QUEUE: undefined, AUTH_ANALYTICS: { writeDataPoint } });
+		const ip = '198.51.100.211';
 		const email = `stuffed-${crypto.randomUUID().slice(0, 8)}@example.com`;
 		await createAccount(email, 'Right-pass-123');
 		const { jar, query } = await startFlow(e, '/password/authorize');
 
 		const statuses = await Promise.all(
 			Array.from({ length: 200 }, () =>
-				call(e, `/password/authorize${query}`, new Map(jar), form({ email, password: 'wrong-guess' }), '198.51.100.1', false).then(
+				call(e, `/password/authorize${query}`, new Map(jar), form({ email, password: 'wrong-guess' }), ip, false).then(
 					(r) => r.status
 				)
 			)
@@ -179,12 +194,59 @@ describe('password sign-in brute force', () => {
 		expect(statuses.filter((s) => s === 401).length).toBe(MAX_LOGIN_FAILURES);
 		expect(statuses.filter((s) => s === 429).length).toBe(200 - MAX_LOGIN_FAILURES);
 
-		const right = await call(e, `/password/authorize${query}`, new Map(jar), form({ email, password: 'Right-pass-123' }));
+		const right = await call(e, `/password/authorize${query}`, new Map(jar), form({ email, password: 'Right-pass-123' }), ip);
 		expect(right.status).toBe(429);
 		expect(right.headers.get('Retry-After')).toBe('60');
 		const html = await right.text();
 		expect(html).toContain('Too many attempts');
 		expect(html).toContain(email); // the form keeps the email
+		const rows = await failureRows(ip);
+		expect(rows.map(row => JSON.parse(row.metadata))).toEqual([
+			{ method: 'password', failureReason: 'invalid_credentials' },
+			{ method: 'password', failureReason: 'locked_out' },
+		]);
+		expect(JSON.stringify(rows)).not.toContain(email);
+		expect(JSON.stringify(rows)).not.toContain('wrong-guess');
+		expect(JSON.stringify(rows)).not.toContain('Right-pass-123');
+		const outcomes = writeDataPoint.mock.calls.filter(([point]) => point.indexes[0] === 'login_failed').map(([point]) => point.blobs[6]);
+		expect(outcomes.filter(outcome => outcome === 'invalid_credentials')).toHaveLength(MAX_LOGIN_FAILURES);
+		expect(outcomes.filter(outcome => outcome === 'locked_out')).toHaveLength(201 - MAX_LOGIN_FAILURES);
+	});
+
+	it('bounds rotated emails by IP and distinguishes IP throttling from invalid credentials', async () => {
+		vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+		const e = testEnv({ AUDIT_QUEUE: undefined, PASSWORD_IP_LIMITER: fakeLimiter(4) });
+		const ip = '198.51.100.212';
+		const { jar, query } = await startFlow(e, '/password/authorize');
+		const submit = (email: string, password: string) =>
+			call(e, `/password/authorize${query}`, new Map(jar), form({ email, password }), ip, false);
+		expect((await submit('empty@example.com', '')).status).toBe(401);
+		expect(await failureRows(ip)).toEqual([]);
+		const guesses = await Promise.all(Array.from({ length: 8 }, (_, i) => submit(`rotated-${i}@example.com`, 'guess')));
+		expect(guesses.filter(res => res.status === 401)).toHaveLength(3);
+		expect(guesses.filter(res => res.status === 429)).toHaveLength(5);
+		expect((await failureRows(ip)).map(row => row.error_message)).toEqual(['invalid_credentials', 'rate_limited']);
+	});
+
+	it('records a suspended account separately after the provider verifies the password', async () => {
+		vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+		const e = testEnv({ AUDIT_QUEUE: undefined });
+		const ip = '198.51.100.213';
+		const email = `suspended-${crypto.randomUUID()}@example.com`;
+		const password = 'Right-pass-123';
+		await createAccount(email, password);
+		await e.AUTH_DB.prepare(
+			"INSERT INTO users (id, email, status, created_at, updated_at) VALUES (?, ?, 'suspended', 0, 0)",
+		).bind(crypto.randomUUID(), email).run();
+		const { jar, query } = await startFlow(e, '/password/authorize');
+		const responses = await Promise.all(Array.from({ length: 2 }, () =>
+			call(e, `/password/authorize${query}`, new Map(jar), form({ email, password }), ip, false),
+		));
+		expect(responses.map(res => res.status)).toEqual([403, 403]);
+		const rows = await failureRows(ip);
+		expect(rows.map(row => JSON.parse(row.metadata))).toEqual([{ method: 'password', failureReason: 'account_suspended' }]);
+		expect(JSON.stringify(rows)).not.toContain(email);
+		expect(JSON.stringify(rows)).not.toContain(password);
 	});
 
 	it('a percent-encoded path (Hono decodes it to the login route) is limited too', async () => {
@@ -201,11 +263,12 @@ describe('password sign-in brute force', () => {
 	});
 
 	it('the right password signs in and does not use up a slot', async () => {
-		const e = testEnv();
+		const e = testEnv({ AUDIT_QUEUE: undefined });
+		const ip = '198.51.100.214';
 		const email = `fine-${crypto.randomUUID().slice(0, 8)}@example.com`;
 		await createAccount(email, 'Right-pass-123');
 		const { jar, query } = await startFlow(e, '/password/authorize');
-		const res = await call(e, `/password/authorize${query}`, jar, form({ email, password: 'Right-pass-123' }));
+		const res = await call(e, `/password/authorize${query}`, jar, form({ email, password: 'Right-pass-123' }), ip);
 		expect(res.status).toBeGreaterThanOrEqual(300);
 		expect(res.status).toBeLessThan(400);
 		// The slot is given back after the redirect (waitUntil, #804)
@@ -214,6 +277,7 @@ describe('password sign-in brute force', () => {
 			failures: number;
 		}>();
 		expect(row?.failures).toBe(0);
+		expect(await failureRows(ip)).toEqual([]);
 	});
 
 	it('Arabic pages get the Arabic message', async () => {

@@ -496,8 +496,9 @@ export class D1Sink implements AuditEventSink {
         this.db.prepare(
           `INSERT INTO audit_events (
             timestamp, event_type, severity, user_id, ip_address,
-            user_agent, request_id, metadata, success, error_message
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            user_agent, request_id, metadata, success, error_message, id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, lower(hex(randomblob(16)))))
+          ON CONFLICT(id) DO NOTHING`
         ).bind(
           event.timestamp,
           event.eventType,
@@ -508,7 +509,8 @@ export class D1Sink implements AuditEventSink {
           event.requestId,
           JSON.stringify(event.metadata),
           event.success ? 1 : 0,
-          event.errorMessage ?? null
+          event.errorMessage ?? null,
+          event.id ?? null
         )
       );
 

@@ -23,7 +23,7 @@ import { isSystemUser, isSystemUserId } from './system-accounts';
 export type AccountState = 'active' | 'suspended' | 'deleted' | 'missing' | 'system';
 
 /** Only an active account (or one D1 has not copied yet) may sign in or get tokens. */
-export function isRefusedAccountState(state: AccountState): boolean {
+export function isRefusedAccountState(state: AccountState): state is 'suspended' | 'deleted' | 'system' {
 	return state === 'suspended' || state === 'deleted' || state === 'system';
 }
 
