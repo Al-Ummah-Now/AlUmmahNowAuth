@@ -15,6 +15,7 @@
  *   exactly those accounts, with every role row and status ("can't sign in").
  */
 
+import { countLiveUsers, createAdminCountCache, liveUserCount } from '../services/admin-count-cache';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { SYSTEM_USER_IDS_SQL } from '../security/system-accounts';
@@ -110,22 +111,9 @@ interface RoleRow {
   role_name: string;
 }
 
-/** The unfiltered live-user count per tenant, per isolate (a dashboard figure, not a ledger). */
-const TOTAL_TTL_MS = 5 * 60_000; // each miss reads every live user (48k rows on QA)
-const totals = new Map<string, { at: number; count: number }>();
-
-function cachedTotal(tenantId: string): number | undefined {
-  const hit = totals.get(tenantId);
-  return hit && Date.now() - hit.at < TOTAL_TTL_MS ? hit.count : undefined;
-}
-
-function rememberTotal(tenantId: string, count: number): void {
-  totals.set(tenantId, { at: Date.now(), count });
-}
-
 /** Forget the cached totals (tests). */
 export function clearUserTotals(): void {
-  totals.clear();
+  liveUserCount.clear();
   roleCountCache.clear();
 }
 
@@ -134,7 +122,7 @@ export interface RoleCounts {
   roles: Array<{ id: string; name: string; user_count: number }>;
   admin_users: number;
 }
-const roleCountCache = new Map<string, { at: number; counts: RoleCounts }>();
+const roleCountCache = createAdminCountCache<RoleCounts>();
 
 // The live, unexpired grants of live people: deleted users and system accounts left out, like the list
 const LIVE_GRANTS_SQL = `
@@ -147,16 +135,14 @@ const LIVE_GRANTS_SQL = `
 const ADMIN_ROLE_SQL = `lower(replace(replace(trim(r.name), ' ', '_'), '-', '_')) IN ('admin', 'super_admin')`;
 
 async function roleCounts(db: D1Database, tenantId: string): Promise<RoleCounts> {
-  const hit = roleCountCache.get(tenantId);
-  if (hit && Date.now() - hit.at < TOTAL_TTL_MS) return hit.counts;
-  const [perRole, admins] = await Promise.all([
-    db.prepare(`SELECT r.id AS id, r.name AS name, COUNT(*) AS user_count ${LIVE_GRANTS_SQL} GROUP BY r.id, r.name ORDER BY user_count DESC, r.name`)
-      .bind(tenantId).all<{ id: string; name: string; user_count: number }>(),
-    db.prepare(`SELECT COUNT(DISTINCT ur.user_id) AS count ${LIVE_GRANTS_SQL} AND ${ADMIN_ROLE_SQL}`).bind(tenantId).first<{ count: number }>(),
-  ]);
-  const counts: RoleCounts = { roles: perRole.results ?? [], admin_users: admins?.count ?? 0 };
-  roleCountCache.set(tenantId, { at: Date.now(), counts });
-  return counts;
+  return roleCountCache.get(db, [tenantId], async () => {
+    const [perRole, admins] = await Promise.all([
+      db.prepare(`SELECT r.id AS id, r.name AS name, COUNT(*) AS user_count ${LIVE_GRANTS_SQL} GROUP BY r.id, r.name ORDER BY user_count DESC, r.name`)
+        .bind(tenantId).all<{ id: string; name: string; user_count: number }>(),
+      db.prepare(`SELECT COUNT(DISTINCT ur.user_id) AS count ${LIVE_GRANTS_SQL} AND ${ADMIN_ROLE_SQL}`).bind(tenantId).first<{ count: number }>(),
+    ]);
+    return { roles: perRole.results ?? [], admin_users: admins?.count ?? 0 };
+  });
 }
 
 /**
@@ -262,7 +248,7 @@ export function userListRoutes(db: D1Database) {
       // Get total count. COUNT(*) reads every live user of the tenant (48k rows on
       // QA), so callers that don't show it pass count=none (pickers, the users page,
       // users-by-role) and get total_count null; the unfiltered total is reused for
-      // a few seconds per isolate (the dashboard's "Total Users").
+      // one minute per isolate (the dashboard's "Total Users").
       const skipCount = url.searchParams.get('count') === 'none';
       const unfiltered = !status && !email && !search;
       const countQuery = `
@@ -279,9 +265,8 @@ export function userListRoutes(db: D1Database) {
 
       let totalCount: number | null = null;
       if (!skipCount) {
-        const cached = unfiltered ? cachedTotal(tenantId) : undefined;
-        if (cached !== undefined) {
-          totalCount = cached;
+        if (unfiltered) {
+          totalCount = await countLiveUsers(db, tenantId);
         } else {
           // The count stays an index count; the system accounts it includes are
           // subtracted with a primary-key read of the same filter
@@ -290,7 +275,6 @@ export function userListRoutes(db: D1Database) {
             db.prepare(`${countQuery} AND id IN (${SYSTEM_USER_IDS_SQL})`).bind(...countBindingsSimple).first<{ count: number }>(),
           ]);
           totalCount = Math.max(0, (countResult?.count || 0) - (systemResult?.count || 0));
-          if (unfiltered) rememberTotal(tenantId, totalCount);
         }
       }
 

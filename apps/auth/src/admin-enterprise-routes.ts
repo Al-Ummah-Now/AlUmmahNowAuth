@@ -25,6 +25,9 @@ import {
   utcHour,
 } from './services/audit-counts-backfill';
 import * as v from 'valibot';
+import { createAdminCountCache } from './services/admin-count-cache';
+
+export const auditCountCache = createAdminCountCache<number>();
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -119,6 +122,7 @@ function decodeAuditCursor(raw: string): AuditCursor | null {
 // ============================================================================
 
 const AuditLogQuerySchema = v.object({
+  count: v.optional(v.string()),
   page: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1))),
   limit: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(100))),
   event_type: v.optional(v.string()),
@@ -486,7 +490,8 @@ export class AdminEnterpriseRoutes {
    */
   private async getAuditLogs(request: Request, url: URL, env: Env): Promise<Response> {
     try {
-      await verifyAdminRequest(request, env, 'admin:audit');
+      const auth = await verifyAdminRequest(request, env, 'admin:audit');
+      const tenantId = auth.type === 'm2m' ? auth.tenantId : undefined;
 
       // Parse query parameters
       const queryParams = Object.fromEntries(url.searchParams);
@@ -498,7 +503,7 @@ export class AdminEnterpriseRoutes {
 
       // Build dynamic query
       const whereConditions: string[] = [];
-      const bindParams: unknown[] = [];
+      const bindParams: string[] = [];
 
       if (params.event_type) {
         whereConditions.push('event_type = ?');
@@ -523,14 +528,6 @@ export class AdminEnterpriseRoutes {
 
       const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-      // Count matching records, at most 20 pages past this one. An uncapped COUNT(*) read every
-      // audit event (270k rows on QA, 125M rows/day); `capped` tells the page the total is a floor.
-      const countCap = offset + limit * 20;
-      const countQuery = `SELECT COUNT(*) as total FROM (SELECT 1 FROM audit_events ${whereClause} LIMIT ?)`;
-      const countResult = await this.db.prepare(countQuery).bind(...bindParams, countCap).first<{ total: number }>();
-      const total = countResult?.total || 0;
-      const capped = total >= countCap;
-
       // Fetch paginated results
       const dataQuery = `
         SELECT * FROM audit_events
@@ -540,8 +537,21 @@ export class AdminEnterpriseRoutes {
       `;
       const result = await this.db.prepare(dataQuery).bind(...bindParams, limit, offset).all<AuditEvent>();
 
+      const data = result.results || [];
+      if (params.count === 'none') return Response.json({ data });
+
+      // Count at most 20 pages beyond the current offset. The cap is part of
+      // the cache key because different pages may report different lower bounds.
+      const countCap = offset + limit * 20;
+      const countQuery = `SELECT COUNT(*) as total FROM (SELECT 1 FROM audit_events ${whereClause} LIMIT ?)`;
+      const total = await auditCountCache.get(this.db, [tenantId, countQuery, ...bindParams, countCap], async () => {
+        const row = await this.db.prepare(countQuery).bind(...bindParams, countCap).first<{ total: number }>();
+        return row?.total ?? 0;
+      });
+      const capped = total >= countCap;
+
       return new Response(JSON.stringify({
-        data: result.results || [],
+        data,
         pagination: {
           page,
           limit,
@@ -657,7 +667,8 @@ export class AdminEnterpriseRoutes {
    */
   private async getUserAuditTrail(userId: string, request: Request, url: URL, env: Env): Promise<Response> {
     try {
-      await verifyAdminRequest(request, env, 'admin:audit');
+      const auth = await verifyAdminRequest(request, env, 'admin:audit');
+      const tenantId = auth.type === 'm2m' ? auth.tenantId : undefined;
 
       const rawLimit = url.searchParams.get('limit');
       const rawPage = url.searchParams.get('page');
@@ -669,8 +680,10 @@ export class AdminEnterpriseRoutes {
         const page = parseInt(rawPage || '1');
         const limit = parseInt(rawLimit || '50');
         const offset = (page - 1) * limit;
-        const countResult = await this.db.prepare(AUDIT_ADMIN_QUERIES.userTrailCount).bind(userId).first<{ total: number }>();
-        const total = countResult?.total || 0;
+        const total = await auditCountCache.get(this.db, [tenantId, AUDIT_ADMIN_QUERIES.userTrailCount, userId], async () => {
+          const row = await this.db.prepare(AUDIT_ADMIN_QUERIES.userTrailCount).bind(userId).first<{ total: number }>();
+          return row?.total ?? 0;
+        });
         const result = await this.db.prepare(AUDIT_ADMIN_QUERIES.userTrailPage).bind(userId, limit, offset).all<AuditEvent>();
 
         return Response.json({

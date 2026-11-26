@@ -22,7 +22,7 @@ import { env } from 'cloudflare:test';
 import '../test-setup';
 import { sqlStatements } from '../test-setup';
 import migration0052Sql from '../../migrations/0052_audit_daily_counts_and_user_index.sql?raw';
-import { AdminEnterpriseRoutes, AUDIT_ADMIN_QUERIES } from '../admin-enterprise-routes';
+import { auditCountCache, AdminEnterpriseRoutes, AUDIT_ADMIN_QUERIES } from '../admin-enterprise-routes';
 import { D1Sink } from '../audit-emitter';
 import { AuditEventSeverity, AuditEventType } from '../audit-events';
 import {
@@ -102,6 +102,7 @@ describe('Audit stats, user trail keyset paging, and counts backfill (#514)', ()
   const mockEnv = env as unknown as Env;
 
   beforeEach(async () => {
+    auditCountCache.clear();
     routes = new AdminEnterpriseRoutes(env.AUTH_DB, env.AUTH_STORAGE);
     await env.AUTH_DB.prepare('DELETE FROM audit_events').run();
     await env.AUTH_DB.prepare('DELETE FROM audit_daily_counts').run();
