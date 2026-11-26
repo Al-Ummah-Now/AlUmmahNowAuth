@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { env } from 'cloudflare:test';
 import '../test-setup';
-import { AdminEnterpriseRoutes, tokenAuditPageQuery } from '../admin-enterprise-routes';
+import { auditCountCache, AdminEnterpriseRoutes, tokenAuditPageQuery } from '../admin-enterprise-routes';
 
 // Mock the auth middleware
 vi.mock('../auth-middleware', () => ({
@@ -63,6 +63,7 @@ describe('AdminEnterpriseRoutes', () => {
   const mockEnv = env as unknown as Env;
 
   beforeEach(async () => {
+    auditCountCache.clear();
     routes = new AdminEnterpriseRoutes(env.AUTH_DB, env.AUTH_STORAGE);
 
     // Clean up tables before each test (with error handling for tables that might not exist)
@@ -304,6 +305,41 @@ describe('AdminEnterpriseRoutes', () => {
           INSERT INTO audit_events (timestamp, event_type, severity, user_id, success, metadata)
           VALUES (?, ?, ?, ?, ?, '{}')
         `).bind(event.timestamp, event.event_type, event.severity, event.user_id, event.success).run();
+      }
+    });
+
+    it('caches audit counts by filters and cap, and supports skipping counts', async () => {
+      const first = vi.fn().mockResolvedValue({ total: 3 });
+      const prepare = vi.fn((_sql: string) => ({
+        bind: () => ({ first, all: async () => ({ results: [] }) }),
+      }));
+      const cachedRoutes = new AdminEnterpriseRoutes({ prepare } as unknown as D1Database, env.AUTH_STORAGE);
+      const request = (query: string) => cachedRoutes.handle(
+        new Request(`http://localhost/admin/audit-logs?${query}`), mockEnv, mockCtx,
+      );
+      const countPrepares = () => prepare.mock.calls.filter(([sql]) => sql.includes('COUNT(*)')).length;
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(100_000);
+      try {
+        const query = 'start_date=2026-01-01&end_date=2026-01-31';
+        expect((await request(query)).status).toBe(200);
+        expect((await request(query)).status).toBe(200);
+        expect(countPrepares()).toBe(1);
+        expect(first).toHaveBeenCalledTimes(1);
+
+        await request('start_date=2026-01-01&end_date=2026-02-28');
+        await request(`${query}&page=2`);
+        expect(countPrepares()).toBe(3);
+        expect(first).toHaveBeenCalledTimes(3);
+
+        expect(await (await request('count=none')).json()).toEqual({ data: [] });
+        expect(first).toHaveBeenCalledTimes(3);
+
+        clock.mockReturnValue(160_000);
+        await request(query);
+        expect(countPrepares()).toBe(4);
+        expect(first).toHaveBeenCalledTimes(4);
+      } finally {
+        clock.mockRestore();
       }
     });
 

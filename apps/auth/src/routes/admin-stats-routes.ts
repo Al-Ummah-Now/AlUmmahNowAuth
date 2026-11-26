@@ -15,6 +15,15 @@ import { SYSTEM_USER_IDS_SQL } from '../security/system-accounts';
 import { requireAdmin, requirePermission } from '../middleware/admin-auth';
 import { rateLimit } from '../middleware/rate-limit';
 
+import { countLiveUsers, createAdminCountCache } from '../services/admin-count-cache';
+
+type DashboardStats = {
+	users: { total: number; admins: number; regular: number };
+	roles: { total: number; systemRoles: number; customRoles: number };
+	usersByRole: Array<{ roleId: string; roleName: string; userCount: number }>;
+};
+export const adminStatsCache = createAdminCountCache<DashboardStats>();
+
 // Define Hono app with admin variables
 type AdminVariables = {
 	browserSession: unknown;
@@ -72,107 +81,100 @@ adminStatsRoutes.get(
 		const tenantId = c.get('tenantId');
 
 		try {
-			// Run all stats queries in parallel for performance
-			const [
-				totalUsersResult,
-				adminCountResult,
-				totalRolesResult,
-				systemRolesResult,
-				usersByRoleResults,
-			] = await Promise.all([
-				// Total users in tenant (soft-deleted users excluded, matching the users list).
-				// System accounts are not counted: an index count minus their primary-key rows.
-				c.env.AUTH_DB.prepare(`
-					SELECT
-						(SELECT COUNT(*) FROM users WHERE tenant_id = ?1 AND deleted_at IS NULL)
-						- (SELECT COUNT(*) FROM users WHERE id IN (${SYSTEM_USER_IDS_SQL}) AND tenant_id = ?1 AND deleted_at IS NULL)
-						AS count
-				`)
-					.bind(tenantId)
-					.first<{ count: number }>(),
+			const stats = await adminStatsCache.get(c.env.AUTH_DB, [tenantId], async () => {
+				// Run all stats queries in parallel for performance
+				const [
+					totalUsers,
+					adminCountResult,
+					totalRolesResult,
+					systemRolesResult,
+					usersByRoleResults,
+				] = await Promise.all([
+					countLiveUsers(c.env.AUTH_DB, tenantId),
 
-				// Admin users count (users with admin or super_admin role)
-				// Using LOWER() for case-insensitive comparison (role names may be 'Admin', 'Super Admin')
-				c.env.AUTH_DB.prepare(`
-					SELECT COUNT(DISTINCT ur.user_id) as count
-					FROM rbac_user_roles ur
-					JOIN rbac_roles r ON ur.role_id = r.id
-					WHERE r.tenant_id = ?
-					AND LOWER(r.name) IN ('admin', 'super admin', 'super_admin')
-					AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
-					AND ur.user_id NOT IN (${SYSTEM_USER_IDS_SQL})
-				`)
-					.bind(tenantId)
-					.first<{ count: number }>(),
-
-				// Total roles in tenant
-				c.env.AUTH_DB.prepare(`
-					SELECT COUNT(*) as count
-					FROM rbac_roles
-					WHERE tenant_id = ?
-				`)
-					.bind(tenantId)
-					.first<{ count: number }>(),
-
-				// System roles count (roles with is_system_role = 1)
-				c.env.AUTH_DB.prepare(`
-					SELECT COUNT(*) as count
-					FROM rbac_roles
-					WHERE tenant_id = ?
-					AND is_system_role = 1
-				`)
-					.bind(tenantId)
-					.first<{ count: number }>(),
-
-				// Users by role with role names
-				c.env.AUTH_DB.prepare(`
-					SELECT
-						r.id as role_id,
-						r.name as role_name,
-						COUNT(DISTINCT ur.user_id) as user_count
-					FROM rbac_roles r
-					LEFT JOIN rbac_user_roles ur ON r.id = ur.role_id
+					// Admin users count (users with admin or super_admin role)
+					// Using LOWER() for case-insensitive comparison (role names may be 'Admin', 'Super Admin')
+					c.env.AUTH_DB.prepare(`
+						SELECT COUNT(DISTINCT ur.user_id) as count
+						FROM rbac_user_roles ur
+						JOIN rbac_roles r ON ur.role_id = r.id
+						WHERE r.tenant_id = ?
+						AND LOWER(r.name) IN ('admin', 'super admin', 'super_admin')
 						AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
 						AND ur.user_id NOT IN (${SYSTEM_USER_IDS_SQL})
-					WHERE r.tenant_id = ?
-					GROUP BY r.id, r.name
-					ORDER BY user_count DESC, r.name ASC
-				`)
-					.bind(tenantId)
-					.all<{ role_id: string; role_name: string; user_count: number }>(),
-			]);
+					`)
+						.bind(tenantId)
+						.first<{ count: number }>(),
 
-			const totalUsers = totalUsersResult?.count || 0;
-			const adminCount = adminCountResult?.count || 0;
-			const totalRoles = totalRolesResult?.count || 0;
-			const systemRoles = systemRolesResult?.count || 0;
+					// Total roles in tenant
+					c.env.AUTH_DB.prepare(`
+						SELECT COUNT(*) as count
+						FROM rbac_roles
+						WHERE tenant_id = ?
+					`)
+						.bind(tenantId)
+						.first<{ count: number }>(),
 
-			// Calculate regular users (non-admin users)
-			const regularUsers = totalUsers - adminCount;
+					// System roles count (roles with is_system_role = 1)
+					c.env.AUTH_DB.prepare(`
+						SELECT COUNT(*) as count
+						FROM rbac_roles
+						WHERE tenant_id = ?
+						AND is_system_role = 1
+					`)
+						.bind(tenantId)
+						.first<{ count: number }>(),
 
-			// Calculate custom roles (total - system)
-			const customRoles = totalRoles - systemRoles;
+					// Users by role with role names
+					c.env.AUTH_DB.prepare(`
+						SELECT
+							r.id as role_id,
+							r.name as role_name,
+							COUNT(DISTINCT ur.user_id) as user_count
+						FROM rbac_roles r
+						LEFT JOIN rbac_user_roles ur ON r.id = ur.role_id
+							AND (ur.expires_at IS NULL OR ur.expires_at > unixepoch() * 1000)
+							AND ur.user_id NOT IN (${SYSTEM_USER_IDS_SQL})
+						WHERE r.tenant_id = ?
+						GROUP BY r.id, r.name
+						ORDER BY user_count DESC, r.name ASC
+					`)
+						.bind(tenantId)
+						.all<{ role_id: string; role_name: string; user_count: number }>(),
+				]);
 
-			// Transform usersByRole results
-			const usersByRole = (usersByRoleResults.results || []).map((row) => ({
-				roleId: row.role_id,
-				roleName: row.role_name,
-				userCount: row.user_count,
-			}));
+				const adminCount = adminCountResult?.count || 0;
+				const totalRoles = totalRolesResult?.count || 0;
+				const systemRoles = systemRolesResult?.count || 0;
 
-			return c.json({
-				users: {
-					total: totalUsers,
-					admins: adminCount,
-					regular: regularUsers,
-				},
-				roles: {
-					total: totalRoles,
-					systemRoles: systemRoles,
-					customRoles: customRoles,
-				},
-				usersByRole: usersByRole,
+				// Calculate regular users (non-admin users)
+				const regularUsers = totalUsers - adminCount;
+
+				// Calculate custom roles (total - system)
+				const customRoles = totalRoles - systemRoles;
+
+				// Transform usersByRole results
+				const usersByRole = (usersByRoleResults.results || []).map((row) => ({
+					roleId: row.role_id,
+					roleName: row.role_name,
+					userCount: row.user_count,
+				}));
+
+				return {
+					users: {
+						total: totalUsers,
+						admins: adminCount,
+						regular: regularUsers,
+					},
+					roles: {
+						total: totalRoles,
+						systemRoles: systemRoles,
+						customRoles: customRoles,
+					},
+					usersByRole: usersByRole,
+				};
 			});
+			return c.json(stats);
 		} catch (error) {
 			console.error('Error fetching admin stats:', error);
 			return c.json(

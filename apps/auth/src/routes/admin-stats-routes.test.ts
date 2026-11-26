@@ -11,7 +11,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { Hono } from 'hono';
-import adminStatsRoutes from './admin-stats-routes';
+import adminStatsRoutes, { adminStatsCache } from './admin-stats-routes';
+import { liveUserCount } from '../services/admin-count-cache';
 
 // Mock the auth middleware to always allow admin
 vi.mock('../middleware/admin-auth', () => ({
@@ -34,6 +35,8 @@ describe('AdminStatsRoutes', () => {
 	const mockCtx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
 
 	beforeEach(async () => {
+		adminStatsCache.clear();
+		liveUserCount.clear();
 		// Ensure tables exist (minimal schema)
 		await env.AUTH_DB.prepare(`
 			CREATE TABLE IF NOT EXISTS tenants (
@@ -93,6 +96,39 @@ describe('AdminStatsRoutes', () => {
 		await env.AUTH_DB.prepare('DELETE FROM rbac_user_roles').run();
 		await env.AUTH_DB.prepare('DELETE FROM rbac_roles').run();
 		await env.AUTH_DB.prepare('DELETE FROM users').run();
+	});
+
+	it('reuses counts within the TTL and isolates tenants', async () => {
+		const first = vi.fn().mockResolvedValue({ count: 1 });
+		const prepare = vi.fn(() => ({
+			bind: () => ({ first, all: async () => ({ results: [] }) }),
+		}));
+		const bindings = { AUTH_DB: { prepare } } as unknown as Env;
+		const app = new Hono<{ Bindings: Env; Variables: { tenantId: string } }>();
+		app.use('*', async (c, next) => {
+			c.set('tenantId', c.req.query('tenant') ?? 'default');
+			await next();
+		});
+		app.route('/', adminStatsRoutes);
+		const request = (tenant: string) => app.request(`/admin/stats?tenant=${tenant}`, {}, bindings, mockCtx);
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(100_000);
+		try {
+			expect((await request('first')).status).toBe(200);
+			expect((await request('first')).status).toBe(200);
+			expect(prepare).toHaveBeenCalledTimes(5);
+			expect(first).toHaveBeenCalledTimes(4);
+
+			await request('second');
+			expect(prepare).toHaveBeenCalledTimes(10);
+			expect(first).toHaveBeenCalledTimes(8);
+
+			clock.mockReturnValue(160_000);
+			await request('first');
+			expect(prepare).toHaveBeenCalledTimes(15);
+			expect(first).toHaveBeenCalledTimes(12);
+		} finally {
+			clock.mockRestore();
+		}
 	});
 
 	describe('GET /admin/stats', () => {

@@ -861,20 +861,27 @@ export interface AuditLogsResponse {
 /**
  * GET /admin/audit-logs - Get audit logs with filtering and pagination
  */
+type AuditLogFilters = {
+  page?: number;
+  limit?: number;
+  event_type?: string;
+  severity?: string;
+  user_id?: string;
+  start_date?: string;
+  end_date?: string;
+};
+
+export function getAuditLogs(
+  env: ApiEnv, actingUser: ActingUser, params: AuditLogFilters & { count: 'none' },
+): Promise<Pick<AuditLogsResponse, 'data'> | ErrorResponse>;
+export function getAuditLogs(
+  env: ApiEnv, actingUser: ActingUser, params?: AuditLogFilters,
+): Promise<AuditLogsResponse | ErrorResponse>;
 export async function getAuditLogs(
-  env: ApiEnv,
-  actingUser: ActingUser,
-  params?: {
-    page?: number;
-    limit?: number;
-    event_type?: string;
-    severity?: string;
-    user_id?: string;
-    start_date?: string;
-    end_date?: string;
-  }
-): Promise<AuditLogsResponse | ErrorResponse> {
+  env: ApiEnv, actingUser: ActingUser, params?: AuditLogFilters & { count?: 'none' },
+): Promise<Pick<AuditLogsResponse, 'data'> | ErrorResponse> {
   const searchParams = new URLSearchParams();
+  if (params?.count) searchParams.set('count', params.count);
   if (params?.page) searchParams.set('page', String(params.page));
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.event_type) searchParams.set('event_type', params.event_type);
@@ -886,7 +893,7 @@ export async function getAuditLogs(
   const query = searchParams.toString();
   const endpoint = `/admin/audit-logs${query ? `?${query}` : ''}`;
 
-  return m2mRequest<AuditLogsResponse>(env, endpoint, actingUser, { method: 'GET' });
+  return m2mRequest<Pick<AuditLogsResponse, 'data'>>(env, endpoint, actingUser, { method: 'GET' });
 }
 
 // ============================================================================

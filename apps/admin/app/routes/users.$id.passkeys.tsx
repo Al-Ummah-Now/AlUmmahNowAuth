@@ -36,7 +36,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
     getUser(env, acting, userId),
     listUserPasskeys(env, acting, userId, request),
     // The user's failed adds (Auth passkeys/routes.ts /passkeys/prompt/failed): reason + coarse browser/OS
-    getAuditLogs(env as never, acting, { user_id: userId, event_type: "passkey.add_failed", limit: 10 }),
+    getAuditLogs(env as never, acting, { user_id: userId, event_type: "passkey.add_failed", limit: 10, count: "none" }),
   ]);
   return {
     user: { id: user.id, email: user.email },
