@@ -11,12 +11,14 @@
  * must return { type: 'code_send_failed' } instead of throwing, so the provider
  * re-renders the same form with a localized error.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { env } from 'cloudflare:test';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import '../test-setup';
 import { fakeLimiter } from './helpers/fake-limiter';
 import { MemoryStorage } from '@al-ummah-now/openauth/storage/memory';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
+import { initializeAuditEmitter } from '../audit-emitter';
+import { AuditEventType } from '../audit-events';
 
 const sendEmailMock = vi.fn();
 vi.mock('../email', () => ({
@@ -45,7 +47,13 @@ function makeHandler(
 	pathname: string,
 	userService: UserServiceLike,
 	storage?: ReturnType<typeof MemoryStorage>,
-	options: { resendApiKey?: string; ip?: string; limiter?: RateLimit } = { resendApiKey: 'test-resend-key' }
+	options: {
+		resendApiKey?: string;
+		ip?: string;
+		limiter?: RateLimit;
+		ctx?: ExecutionContext;
+		analytics?: AnalyticsEngineDataset;
+	} = { resendApiKey: 'test-resend-key' }
 ) {
 	// Unique IP per handler, so a limiter shared between handlers never carries over
 	ipCounter += 1;
@@ -54,7 +62,7 @@ function makeHandler(
 		method: 'POST',
 		headers: { 'CF-Connecting-IP': options.ip ?? `203.0.113.${ipCounter}` },
 	});
-	const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() } as unknown as ExecutionContext;
+	const ctx = options.ctx ?? { waitUntil: vi.fn(), passThroughOnException: vi.fn() } as unknown as ExecutionContext;
 	return createSendCodeHandler(
 		userService,
 		{
@@ -62,6 +70,7 @@ function makeHandler(
 			env: {
 				AUTH_STORAGE: env.AUTH_STORAGE,
 				AUTH_DB: env.AUTH_DB,
+				AUTH_ANALYTICS: options.analytics,
 				SEND_CODE_LIMITER: options.limiter,
 				RESEND_API_KEY: options.resendApiKey,
 				ENVIRONMENT: 'test',
@@ -87,6 +96,7 @@ describe('createSendCodeHandler', () => {
 			iterations: 1,
 		});
 	});
+	afterEach(() => vi.restoreAllMocks());
 
 	describe('the email language', () => {
 		it('follows the page: ?lang=ar gives an Arabic reset email, never Accept-Language', async () => {
@@ -225,24 +235,53 @@ describe('createSendCodeHandler', () => {
 			expect(sendEmailMock).not.toHaveBeenCalled();
 		});
 
-		it('returns code_send_failed once the rate limit is exceeded', async () => {
+		it('returns code_send_failed and counts every denial while auditing once per IP and minute', async () => {
 			const ip = '198.51.100.77';
 			const limiter = fakeLimiter(5);
+			const ctx = createExecutionContext();
+			const writeDataPoint = vi.fn<AnalyticsEngineDataset['writeDataPoint']>();
+			const analytics = { writeDataPoint };
 			const sendCode = makeHandler('/password/register', makeUserService(), storage, {
 				resendApiKey: 'test-resend-key',
 				ip,
 				limiter: limiter as unknown as RateLimit,
+				ctx,
+				analytics,
 			});
+			initializeAuditEmitter({ db: env.AUTH_DB, enableStdout: false });
+			let now = Date.now();
+			vi.spyOn(Date, 'now').mockImplementation(() => now);
 
 			// SEND_CODE_LIMITER (Workers Rate Limiting), keyed by client IP
 			for (let i = 0; i < 5; i++) {
 				await expect(sendCode(`user${i}@example.com`, '123456')).resolves.toBeUndefined();
 			}
-			await expect(sendCode('one-more@example.com', '123456')).resolves.toEqual({
-				type: 'code_send_failed',
-			});
+			const denial = { type: 'code_send_failed' };
+			const outcomes = await Promise.all(Array.from({ length: 24 }, (_, i) =>
+				sendCode(`denied${i}@example.com`, '654321'),
+			));
+			expect(outcomes).toEqual(Array(24).fill(denial));
 			expect(sendEmailMock).toHaveBeenCalledTimes(5);
 			expect([...limiter.counts.keys()]).toEqual([`ip:${ip}`]);
+
+			await waitOnExecutionContext(ctx);
+			const auditRows = () => env.AUTH_DB.prepare(
+				'SELECT * FROM audit_events WHERE event_type = ? AND ip_address = ?',
+			).bind(AuditEventType.RATE_LIMIT_EXCEEDED, ip).all().then(result => result.results);
+			const rows = await auditRows();
+			expect(rows).toHaveLength(1);
+			expect(JSON.stringify(rows)).toContain('/sendCode');
+			expect(JSON.stringify(rows)).not.toMatch(/@example\.com|654321/);
+
+			now += 60_000;
+			const nextContext = createExecutionContext();
+			const resetCode = makeHandler('/password/change', makeUserService(), storage, {
+				ip, limiter: limiter as unknown as RateLimit, ctx: nextContext, analytics,
+			});
+			await expect(resetCode(KNOWN_USER_EMAIL, '654321')).resolves.toEqual(denial);
+			await waitOnExecutionContext(nextContext);
+			expect(await auditRows()).toHaveLength(2);
+			expect(writeDataPoint.mock.calls.filter(([point]) => point.indexes?.[0] === 'rate_limit_hit')).toHaveLength(25);
 		});
 	});
 });

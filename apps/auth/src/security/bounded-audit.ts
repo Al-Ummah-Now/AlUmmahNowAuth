@@ -40,32 +40,49 @@ function emitOnce(ctx: AuditContext['ctx'], key: string, event: () => AuditEvent
 }
 
 export function recordTokenRejection(
-	{ request, env, ctx, requestId }: AuditContext,
+	context: AuditContext,
 	endpoint: string,
 	bucketKey: string,
 	status: number,
 	rateLimited = false,
 ): void {
+	const auditKey = `token:${bucketKey}`;
+	if (rateLimited) {
+		recordRateLimitDenial(context, endpoint, auditKey);
+		return;
+	}
+	const { request, env, ctx, requestId } = context;
 	const ipAddress = getClientIP(request);
 	const userAgent = request.headers.get('User-Agent') ?? undefined;
 	trackEvent(env, {
-		event: rateLimited ? 'rate_limit_hit' : 'token_rejected',
+		event: 'token_rejected',
 		ipAddress,
 		userAgent,
-		...(rateLimited ? {} : { errorCode: String(status), success: false }),
+		errorCode: String(status),
+		success: false,
 	});
-	emitOnce(ctx, `token:${bucketKey}`, () => rateLimited
-		? createRateLimitExceededEvent(endpoint, 0, RATE_LIMIT_PERIOD_SECONDS, RATE_LIMIT_PERIOD_SECONDS, {
-			ipAddress, userAgent, requestId,
-		})
-		: createAuditEvent(AuditEventType.TOKEN_VERIFY_FAILED, {
-			severity: AuditEventSeverity.WARNING,
-			ipAddress,
-			userAgent,
-			requestId,
-			success: false,
-			metadata: { endpoint, status },
-		}));
+	emitOnce(ctx, auditKey, () => createAuditEvent(AuditEventType.TOKEN_VERIFY_FAILED, {
+		severity: AuditEventSeverity.WARNING,
+		ipAddress,
+		userAgent,
+		requestId,
+		success: false,
+		metadata: { endpoint, status },
+	}));
+}
+
+export function recordRateLimitDenial(
+	{ request, env, ctx, requestId }: AuditContext,
+	endpoint: string,
+	auditKey: string,
+	analyticsEmail?: string,
+): void {
+	const ipAddress = getClientIP(request);
+	const userAgent = request.headers.get('User-Agent') ?? undefined;
+	trackEvent(env, { event: 'rate_limit_hit', email: analyticsEmail, ipAddress, userAgent });
+	emitOnce(ctx, auditKey, () => createRateLimitExceededEvent(
+		endpoint, 0, RATE_LIMIT_PERIOD_SECONDS, RATE_LIMIT_PERIOD_SECONDS, { ipAddress, userAgent, requestId },
+	));
 }
 
 export type PasswordSignInFailure =
