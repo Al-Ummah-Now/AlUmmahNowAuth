@@ -84,7 +84,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
     "@cloudflare/vitest-plugin": "^1.9.0",
-    "@cloudflare/workers-types": "^5.20261118.1",
+    "@cloudflare/workers-types": "^5.20261123.1",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.6",
@@ -95,9 +95,9 @@
     "globals": "^17.14.0",
     "playwright": "^1.65.1",
     "typescript": "6.0.3",
-    "typescript-eslint": "^8.73.0",
+    "typescript-eslint": "^8.74.0",
     "vitest": "^5.1.1",
-    "wrangler": "~4.164.0"
+    "wrangler": "~4.166.0"
   },
   "dependencies": {
     "@al-ummah-now/openauth": "1.2.2"
