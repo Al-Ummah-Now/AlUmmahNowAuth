@@ -388,10 +388,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // first passkey (utils/email-availability.ts). Read by the router
     // (passkeys), the password routes below and the after-sign-in card.
     const emailAvailable = await isEmailAvailable(env);
-    const path = routedPath(url.pathname);
-    const tokenPath = url.pathname;
-    const tokenBuckets = tokenPath === '/token' || tokenPath === '/token/introspect' || tokenPath === '/token/revoke'
-      ? tokenRateLimitBuckets(request, tokenPath, getClientIP(request), await readTokenRequestFields(request))
+    const { pathname } = url;
+    const path = routedPath(pathname);
+    const tokenBuckets = pathname === '/token' || pathname === '/token/introspect' || pathname === '/token/revoke'
+      ? tokenRateLimitBuckets(request, pathname, getClientIP(request), await readTokenRequestFields(request))
       : [];
 
     const routerContext: RouterContext = {
@@ -630,9 +630,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // Call issuer to handle the request
     // OpenAuth enterprise issuer manages sessions via D1SessionAdapter and sets the __session cookie
     const issued = await timer.stage('issuer', () => app.fetch(passwordGuard.request, env, ctx));
-    if (tokenPath === '/token' && request.method === 'POST' && issued.status >= 400 && issued.status < 500) {
+    if (pathname === '/token' && request.method === 'POST' && issued.status >= 400 && issued.status < 500) {
       const [bucket] = tokenBuckets;
-      if (bucket) recordTokenRejection(routerContext, tokenPath, bucket.key, issued.status);
+      if (bucket) recordTokenRejection(routerContext, pathname, bucket.key, issued.status);
     }
     let issuerResponse = await timer.stage('guard.finish', () => passwordGuard.finish(issued));
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects

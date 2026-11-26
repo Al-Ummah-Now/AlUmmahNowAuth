@@ -149,7 +149,16 @@ const LITERALS: Record<string, Record<string, string[]>> = {
 	'handlers/account-picker-signout.ts': { '/account-picker/remove': DISPATCH },
 	// Which paths' answers get the account headers, not a route
 	'utils/account-answers.ts': { '/account': DISPATCH, '/account/': DISPATCH },
-	'index.ts': { '/authorize': DISPATCH, '/health': ops('GET /health', 'HEAD /health'), '/session/': DISPATCH, '/session/accounts': DISPATCH, '/token/revoke': DISPATCH },
+	'index.ts': {
+		'/authorize': DISPATCH,
+		'/health': ops('GET /health', 'HEAD /health'),
+		'/password/authorize': DISPATCH,
+		'/session/': DISPATCH,
+		'/session/accounts': DISPATCH,
+		'/token': DISPATCH,
+		'/token/introspect': DISPATCH,
+		'/token/revoke': DISPATCH,
+	},
 	'invites/routes.ts': {
 		'/^\\/invite\\/([^/]+)(?:\\/(send|request))?\\/?$/': ops('GET /invite/{}', 'POST /invite/{}', 'POST /invite/{}/send', 'POST /invite/{}/request'),
 		'/^\\/provisioning\\/invites(?:\\/([^/]+)(?:\\/(resend|link|revoke|restore|purge))?)?\\/?$/': ops(
@@ -208,7 +217,7 @@ const LITERALS: Record<string, Record<string, string[]>> = {
 				'/account/passkeys', '/account/passkeys/', '/admin', '/admin/', '/admin/audit', '/admin/audit-logs', '/admin/clients', '/admin/deletions', '/admin/deletions/', '/admin/dlq', '/admin/health', '/admin/metrics',
 				'/admin/moderation-requests', '/admin/moderation-requests/', '/admin/permissions', '/admin/roles', '/admin/sessions', '/admin/sessions/revoke', '/admin/sessions/revoke-user', '/admin/settings/staff-passkeys',
 				'/admin/stats', '/admin/tenants', '/admin/themes', '/admin/themes/', '/admin/users', '/admin/users/tokens/revoke', '/api/permissions', '/authorize', '/invite/', '/moderation/requests', '/moderation/requests/',
-				'/passkeys/', '/provisioning/invites', '/provisioning/invites/', '/session/', '/tenants', '/tenants/', '/test/', '/token', '/token/introspect', '/token/revoke',
+				'/passkeys/', '/provisioning/invites', '/provisioning/invites/', '/session/', '/tenants', '/tenants/', '/test/',
 			].map((literal) => [literal, DISPATCH]),
 		),
 	},
