@@ -343,6 +343,36 @@ describe('AdminEnterpriseRoutes', () => {
       }
     });
 
+    it('caches offset-based user audit trail counts by userId and expires after TTL', async () => {
+      const first = vi.fn().mockResolvedValue({ total: 5 });
+      const prepare = vi.fn((_sql: string) => ({
+        bind: () => ({ first, all: async () => ({ results: [] }) }),
+      }));
+      const cachedRoutes = new AdminEnterpriseRoutes({ prepare } as unknown as D1Database, env.AUTH_STORAGE);
+      const trail = (userId: string) => cachedRoutes.handle(
+        new Request(`http://localhost/admin/audit-logs/user/${userId}?offset=0`), mockEnv, mockCtx,
+      );
+      const countPrepares = () => prepare.mock.calls.filter(([sql]) => sql.includes('COUNT(*)')).length;
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(200_000);
+      try {
+        expect((await trail('u-1')).status).toBe(200);
+        expect((await trail('u-1')).status).toBe(200);
+        expect(countPrepares()).toBe(1);
+        expect(first).toHaveBeenCalledTimes(1);
+
+        expect((await trail('u-2')).status).toBe(200);
+        expect(countPrepares()).toBe(2);
+        expect(first).toHaveBeenCalledTimes(2);
+
+        clock.mockReturnValue(260_000);
+        expect((await trail('u-1')).status).toBe(200);
+        expect(countPrepares()).toBe(3);
+        expect(first).toHaveBeenCalledTimes(3);
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
     it('GET /admin/audit-logs should return paginated audit events', async () => {
       const request = new Request('http://localhost/admin/audit-logs', { method: 'GET' });
       const response = await routes.handle(request, mockEnv, mockCtx);

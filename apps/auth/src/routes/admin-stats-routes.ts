@@ -148,7 +148,7 @@ adminStatsRoutes.get(
 				const systemRoles = systemRolesResult?.count || 0;
 
 				// Calculate regular users (non-admin users)
-				const regularUsers = totalUsers - adminCount;
+				const regularUsers = Math.max(0, totalUsers - adminCount);
 
 				// Calculate custom roles (total - system)
 				const customRoles = totalRoles - systemRoles;
