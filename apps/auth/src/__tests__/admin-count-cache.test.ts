@@ -27,8 +27,11 @@ describe('createAdminCountCache', () => {
     const p1 = cache.get(db, ['default'], load);
     await expect(cache.get(db, ['default'], load)).resolves.toBe(7);
     expect(load).toHaveBeenCalledTimes(2);
-    resolveFirst(7);
-    await expect(p1).resolves.toBe(7);
+    // Earlier read resolving last must not overwrite the fresher cached entry
+    resolveFirst(5);
+    await expect(p1).resolves.toBe(5);
+    await expect(cache.get(db, ['default'], load)).resolves.toBe(7);
+    expect(load).toHaveBeenCalledTimes(2);
   });
 
   it('bounds cache size at 128 entries by evicting the oldest key', async () => {
