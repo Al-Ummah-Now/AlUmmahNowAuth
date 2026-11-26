@@ -79,7 +79,7 @@ import { openauthThemeFor } from '../../../packages/ui/src/auth-theme/compile.ts
 import { compileBuiltin } from '../../../packages/ui/src/auth-theme/builtin.ts';
 import { BUILTIN_DEFAULT_THEME } from '../../../packages/ui/src/auth-theme/resolve.ts';
 import { serveIcon, signInFavicon } from './themes/favicon';
-import { PASSWORD_COPY } from "./ui/copy";
+import { PASSWORD_COPY, sendCodeRateLimitMessage } from "./ui/copy";
 import { ThemeStore } from "./themes/store";
 import { assetBaseOf, resolveRequestTheme } from "./themes/runtime";
 import { finishThemedResponse, requestedTheme, signInHeaderFor, wantsPage } from "./themes/pages";
@@ -463,7 +463,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     // PasswordUI reads this copy object on every render, so the guard can swap in
     // a "too many attempts" message for this request.
     // In the page's own language: copy overrides openauth's translation in every locale.
-    const passwordCopy: PasswordCopy = { ...PASSWORD_COPY[getLocaleFromRequest(request)] };
+    const locale = getLocaleFromRequest(request);
+    const passwordCopy: PasswordCopy = { ...PASSWORD_COPY[locale] };
     // Register and forgot password only work by emailing a code: without email they are not there
     if (!emailAvailable && isEmailOnlyPasswordRoute(routedPath(url.pathname))) {
       return addSecurityHeaders(new Response('Not found', { status: 404 }), isProduction);
@@ -498,10 +499,17 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
     const openauthTheme = { ...openauthThemeFor(theme), favicon: signInFavicon(theme, env.ENVIRONMENT) };
     // Scholar sites: the one exact callback of a live site's primary host (site-redirects.ts)
     const siteRedirect = await allowedSiteRedirect(env, request);
+    let sendCodeRetryAfter: number | undefined;
     const passwordUI = PasswordUI({
       sendCode: createSendCodeHandler(
         userService,
-        { request, env, ctx, requestId, url, emailTheme: theme.email, timer },
+        {
+          request, env, ctx, requestId, url, emailTheme: theme.email, timer,
+          onRateLimit(retryAfterSeconds) {
+            sendCodeRetryAfter = retryAfterSeconds;
+            passwordCopy.error_code_send_failed = sendCodeRateLimitMessage(locale, retryAfterSeconds);
+          },
+        },
         storage,
       ),
       copy: passwordCopy,
@@ -635,6 +643,14 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       if (bucket) recordTokenRejection(routerContext, pathname, bucket.key, issued.status);
     }
     let issuerResponse = await timer.stage('guard.finish', () => passwordGuard.finish(issued));
+    if (sendCodeRetryAfter !== undefined) {
+      issuerResponse = new Response(issuerResponse.body, {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: issuerResponse.headers,
+      });
+      issuerResponse.headers.set('Retry-After', String(sendCodeRetryAfter));
+    }
     // Theme and page names, header graphic, and the theme kept on in-flow links and redirects
     // and the shared site header on top (AlUmmahNow docs/design/NAV.md "Header")
     if (isPage) issuerResponse = await timer.stage('themed', () => finishThemedResponse(issuerResponse, theme, url, issuerOrigin, signInHeaderFor(url, getLocaleFromRequest(request), env)));

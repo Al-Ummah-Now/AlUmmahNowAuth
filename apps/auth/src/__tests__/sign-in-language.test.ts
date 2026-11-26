@@ -13,6 +13,8 @@ import { env } from 'cloudflare:test';
 import '../test-setup';
 import worker from '../index';
 import { registerTestClients, PROFILE } from './helpers/clients';
+import { fakeLimiter } from './helpers/fake-limiter';
+import { mockResend } from './helpers/mock-resend';
 import { sinkKey } from '../utils/e2e-sink';
 import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
@@ -39,11 +41,11 @@ const E = (): Env =>
 const ctx = () =>
 	({ waitUntil: (p: Promise<unknown>) => void p.catch(() => {}), passThroughOnException: () => {} }) as unknown as ExecutionContext;
 
-async function call(path: string, jar: Jar, init: RequestInit = {}) {
+async function call(path: string, jar: Jar, init: RequestInit = {}, bindings: Env = E()) {
 	const headers = new Headers(init.headers);
 	headers.set('cookie', [...jar].map(([k, v]) => `${k}=${v}`).join('; '));
 	headers.set('Host', 'localhost');
-	const res = await worker.fetch(new Request(`${ORIGIN}${path}`, { ...init, headers, redirect: 'manual' }), E(), ctx());
+	const res = await worker.fetch(new Request(`${ORIGIN}${path}`, { ...init, headers, redirect: 'manual' }), bindings, ctx());
 	for (const c of res.headers.getSetCookie()) {
 		const [pair] = c.split(';');
 		const i = pair.indexOf('=');
@@ -134,6 +136,55 @@ describe('sign-in pages are English unless the link asks for Arabic', () => {
 		expect(arHtml).not.toContain('Code (check your inbox)');
 		expect(arHtml).toContain('الرمز');
 	});
+});
+
+describe('verification code errors', () => {
+	const messages = {
+		en: {
+			throttled: 'Too many codes requested. Try again in 1 minute.',
+			delivery: 'Check the address and try again.',
+		},
+		ar: {
+			throttled: 'طُلبت رموز كثيرة جدًا. يُرجى الانتظار دقيقة واحدة ثم المحاولة مرة أخرى.',
+			delivery: 'تعذّر إرسال الرمز إلى هذا البريد الإلكتروني. تحقق من العنوان وحاول مرة أخرى.',
+		},
+	};
+
+	for (const lang of ['en', 'ar'] as const) {
+		for (const flow of ['register', 'change'] as const) {
+			it(`${flow}: shows a localized rate limit followed by a localized delivery failure (${lang})`, async () => {
+				const email = `send-code-${crypto.randomUUID()}@example.com`;
+				if (flow === 'change') await createAccount(email, 'Original-pass-123');
+				const fields: Record<string, string> = flow === 'register'
+					? { action: 'register', email, password: 'New-pass-123', repeat: 'New-pass-123' }
+					: { action: 'code', email };
+				const { jar, query } = await startFlow();
+				const path = `/password/${flow}${query}&lang=${lang}`;
+				const resend = mockResend(() => Response.json({ message: 'Delivery failed' }, { status: 422 }));
+				resend.install();
+				try {
+					const denied = await call(path, jar, form(fields), { ...E(), SEND_CODE_LIMITER: fakeLimiter(0) });
+					expect(denied.status).toBe(429);
+					expect(denied.headers.get('Retry-After')).toBe('60');
+					const deniedHtml = await denied.text();
+					expect(deniedHtml).toContain(messages[lang].throttled);
+					expect(deniedHtml).not.toContain(messages[lang].delivery);
+					expect(deniedHtml).toContain(`value="${email}"`);
+					expect(resend.sends).toHaveLength(0);
+
+					const failed = await call(path, jar, form(fields), { ...E(), SEND_CODE_LIMITER: fakeLimiter(1) });
+					expect(failed.status).toBe(flow === 'change' ? 400 : 200);
+					expect(failed.headers.has('Retry-After')).toBe(false);
+					const failedHtml = await failed.text();
+					expect(failedHtml).toContain(messages[lang].delivery);
+					expect(failedHtml).not.toContain(messages[lang].throttled);
+					expect(resend.sends).toHaveLength(1);
+				} finally {
+					resend.restore();
+				}
+			});
+		}
+	}
 });
 
 describe('concurrent English and Arabic sign-ins', () => {

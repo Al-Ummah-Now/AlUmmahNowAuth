@@ -434,6 +434,7 @@ export interface SendCodeContext {
 	url: URL;
 	/** The sign-in's theme `email` section (colours, header image) */
 	emailTheme?: import('../email-templates').EmailTheme;
+	onRateLimit?: (retryAfterSeconds: number) => void;
 	/** This request's timings (Server-Timing, auth.timing log) */
 	timer?: RequestTimer;
 }
@@ -531,6 +532,7 @@ export function createSendCodeHandler(
 				retryAfter: RATE_LIMIT_PERIOD_SECONDS,
 			});
 			recordRateLimitDenial(handlerCtx, '/sendCode', `send-code:${rateLimitKey}`, email);
+			handlerCtx.onRateLimit?.(RATE_LIMIT_PERIOD_SECONDS);
 			return CODE_SEND_FAILED;
 		}
 

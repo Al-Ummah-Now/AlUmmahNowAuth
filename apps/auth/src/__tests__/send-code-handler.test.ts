@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import '../test-setup';
+import { sendCodeRateLimitMessage } from '../ui/copy';
 import { fakeLimiter } from './helpers/fake-limiter';
 import { MemoryStorage } from '@al-ummah-now/openauth/storage/memory';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
@@ -304,5 +305,18 @@ describe('createSendCodeHandler: code attempt record (AU-2)', () => {
 		const sendCode = makeHandler('/password/change', makeUserService(), MemoryStorage());
 		await sendCode('nobody-here@example.com', '424242');
 		expect(await checkCode(env.AUTH_DB, 'nobody-here@example.com', '424242')).toBe('wrong');
+	});
+});
+
+describe('send code retry copy', () => {
+	it.each([
+		[0, '1 minute', 'دقيقة واحدة'],
+		[61, '2 minutes', 'دقيقتين'],
+		[121, '3 minutes', '3 دقائق'],
+		[600, '10 minutes', '10 دقائق'],
+		[601, '11 minutes', '11 دقيقة'],
+	] as const)('formats a retry of %i seconds in both locales', (seconds, en, ar) => {
+		expect(sendCodeRateLimitMessage('en', seconds)).toBe(`Too many codes requested. Try again in ${en}.`);
+		expect(sendCodeRateLimitMessage('ar', seconds)).toBe(`طُلبت رموز كثيرة جدًا. يُرجى الانتظار ${ar} ثم المحاولة مرة أخرى.`);
 	});
 });

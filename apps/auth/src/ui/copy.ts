@@ -23,3 +23,16 @@ export const PASSWORD_COPY = {
 		login: 'تسجيل الدخول',
 	},
 } as const satisfies Record<'en' | 'ar', Record<string, string>>;
+
+export function sendCodeRateLimitMessage(locale: keyof typeof PASSWORD_COPY, retryAfterSeconds: number): string {
+	const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+	if (locale === 'en') {
+		return `Too many codes requested. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+	}
+
+	let wait = `${minutes} دقيقة`;
+	if (minutes === 1) wait = 'دقيقة واحدة';
+	else if (minutes === 2) wait = 'دقيقتين';
+	else if (minutes <= 10) wait = `${minutes} دقائق`;
+	return `طُلبت رموز كثيرة جدًا. يُرجى الانتظار ${wait} ثم المحاولة مرة أخرى.`;
+}
