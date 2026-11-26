@@ -41,6 +41,7 @@ import { routeTokenRevocations, TOKEN_REVOCATION_PATH } from './revocation/insta
 import { handleSigningKeys, SIGNING_KEYS_PATH } from './signing-keys/routes';
 import { handleAccountEvents, ACCOUNT_EVENTS_PATH } from './account-events/admin';
 import { moderationAdminRoutes } from './moderation/admin-routes';
+import { inviteAdminRoutes } from './invites/admin-routes';
 import { deletionAdminRoutes } from './deletions/routes';
 import { routeInvitePage, routeInviteProvisioning } from './invites/routes';
 import { routeSignInLink, SIGN_IN_LINK_PATH, SIGN_IN_METHOD_PATH } from './sign-in-link/routes';
@@ -807,6 +808,11 @@ async function routeAdminPaths(rctx: RouterContext): Promise<RouteResult> {
 
 	if (pathname === '/admin/moderation-requests' || pathname.startsWith('/admin/moderation-requests/')) {
 		return await handleAdminModerationRoutes(rctx);
+	}
+
+	if (pathname === '/admin/invites' || pathname.startsWith('/admin/invites/')) {
+		const response = await inviteAdminRoutes(rctx.requestId).fetch(rctx.request, rctx.env, rctx.ctx);
+		return addSecurityHeaders(response, rctx.isProduction);
 	}
 
 	if (pathname === '/admin/deletions' || pathname.startsWith('/admin/deletions/')) {

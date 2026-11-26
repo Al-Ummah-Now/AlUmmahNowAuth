@@ -5,10 +5,12 @@ import { createRoutesStub } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cloudflareLoadContext } from "../lib/cloudflare-context";
 import { pagesCopy } from "../lib/pages-copy";
-import Users, { action } from "./users._index";
+import Users, { action, loader } from "./users._index";
 
 const { api, requireStepUp } = vi.hoisted(() => ({
   api: {
+    listUsers: vi.fn(),
+    listRoles: vi.fn(),
     createUser: vi.fn(),
     updateUser: vi.fn(),
     getUserRoles: vi.fn(),
@@ -21,6 +23,7 @@ const admin = { id: "admin", email: "admin@example.com", roles: ["Admin"] };
 const alice = {
   id: "alice",
   email: "alice@example.com",
+  status: "invited",
   created_at: 1_700_000_000_000,
   roles: [{ id: "member", name: "Member" }, { id: "editor", name: "Editor" }],
 };
@@ -47,13 +50,13 @@ const post = (fields: Array<[string, string]>) =>
     request: new Request(usersUrl, { method: "POST", body: new URLSearchParams(fields) }),
   });
 const edit = (...fields: Array<[string, string]>) => post([["intent", "editUser"], ["userId", alice.id], ...fields]);
-const show = (lang = "en", users = [alice], roles = allRoles) => {
+const show = (lang = "en", users = [alice], roles = allRoles, query = "") => {
   const data = { users, allRoles: roles, user: admin, authServerUrl: "" };
   const Stub = createRoutesStub([{
     id: "users", path: "/users", Component: Users, loader: () => data,
     action: (args) => action({ ...args, context } as Parameters<typeof action>[0]),
   }]);
-  render(<Stub initialEntries={[`/users?lang=${lang}`]} hydrationData={{ loaderData: { users: data } }} />);
+  render(<Stub initialEntries={[`/users?lang=${lang}${query}`]} hydrationData={{ loaderData: { users: data } }} />);
 };
 const editDialog = () => {
   fireEvent.click(screen.getAllByTitle(`Edit ${alice.email}`)[0]!);
@@ -186,4 +189,17 @@ describe("edit user", () => {
     expect(api.assignUserRole.mock.calls.map((call) => call[3])).toEqual(["reviewer"]);
     expect(api.removeUserRole).not.toHaveBeenCalled();
   });
+});
+
+it("passes the invited filter to Auth and shows the localized badge and Invites link", async () => {
+  api.listUsers.mockResolvedValue({ users: [alice], pagination: {} });
+  api.listRoles.mockResolvedValue([]);
+  const url = new URL("https://admin.example.com/users?lang=ar&status=invited");
+  const result = await loader({ context, params: {}, request: new Request(url), url, pattern: "/users" });
+  expect(result.users[0]?.status).toBe("invited");
+  expect(api.listUsers).toHaveBeenCalledWith(expect.anything(), admin, { skipCount: true, status: "invited" }, expect.any(Request));
+  show("ar", [alice], allRoles, "&status=invited");
+  expect(within(screen.getByRole("combobox", { name: "الحالة" })).getByRole("option", { selected: true }).getAttribute("value")).toBe("invited");
+  expect(within(screen.getByTestId("user-card")).getByText("مدعو")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "عرض الدعوات" }).getAttribute("href")).toBe("/invites?lang=ar");
 });

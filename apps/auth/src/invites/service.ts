@@ -597,7 +597,7 @@ export class InviteService {
 			this.db
 				.prepare(
 					`UPDATE user_invites SET deleted_at = ?3, deleted_by = ?4, deleted_by_email = ?5, deleted_reason = ?6, token_used_at = COALESCE(token_used_at, ?3), updated_at = ?3
-					 WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL`
+					 WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL AND accepted_at IS NULL`
 				)
 				.bind(this.tenantId, id, now, actor.userId, actor.email || null, why),
 		];
@@ -615,6 +615,7 @@ export class InviteService {
 						 WHERE tenant_id = ?1 AND id = ?2 AND status = 'invited' AND deleted_at IS NULL`
 					)
 					.bind(this.tenantId, row.user_id, now),
+				// Insert only if the preceding update actually deleted the invited account.
 				new DeletionStore(this.db).insertStatement({
 					kind: 'user',
 					itemId: row.user_id,
@@ -625,12 +626,16 @@ export class InviteService {
 					reason: why ? `Invite revoked: ${why}` : 'Invite revoked',
 					snapshot: { status: 'invited', email: row.email },
 					now,
-				})
+				}, true)
 			);
 		}
 		await this.db.batch(statements);
+		const current = await this.requireRow(id);
+		if (current.deleted_at === null && current.accepted_at !== null) {
+			throw new InviteError(409, 'already_accepted', 'This invite was already accepted; manage the account instead');
+		}
 		await this.enqueue(event.jtis, now);
-		return toInvite(await this.requireRow(id), now);
+		return toInvite(current, now);
 	}
 
 	/** The account event of a change, for its batch; nothing without the events env. */

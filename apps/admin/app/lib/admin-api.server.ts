@@ -17,6 +17,7 @@ export interface User {
   name?: string;
   /** Free-form; may hold first/last/display names (see packages/ui/src/display-name.ts) */
   metadata?: unknown;
+  status?: string;
   created_at: number;
   password_reset_required: boolean;
   roles: Array<{
@@ -175,7 +176,7 @@ export function clearTokenCache(): void {
 // Request Helper
 // ============================================================================
 
-type ApiEnv = {
+export type ApiEnv = {
   AUTH_SERVER_URL?: string;
   ADMIN_CLIENT_ID?: string;
   ADMIN_CLIENT_SECRET?: string;
@@ -293,7 +294,7 @@ export function isErrorResponse(response: unknown): response is ErrorResponse {
 export async function listUsers(
   env: ApiEnv,
   actingUser: ActingUser,
-  params?: { cursor?: string; limit?: number; search?: string; role?: string; email?: string; skipCount?: boolean },
+  params?: { cursor?: string; limit?: number; search?: string; role?: string; email?: string; status?: string; skipCount?: boolean },
   request?: Request
 ): Promise<PaginatedUsers | ErrorResponse> {
   const searchParams = new URLSearchParams();
@@ -302,6 +303,7 @@ export async function listUsers(
   if (params?.search) searchParams.set('search', params.search);
   if (params?.role) searchParams.set('role', params.role);
   if (params?.email) searchParams.set('email', params.email);
+  if (params?.status) searchParams.set('status', params.status);
   // A picker's page: no COUNT over every user (total_count comes back null)
   if (params?.skipCount) searchParams.set('count', 'none');
 
@@ -1253,4 +1255,33 @@ export async function getAccountEvents(env: ApiEnv, actingUser: ActingUser, para
 /** POST /admin/settings/account-events: send a failed delivery again */
 export async function resendAccountEvent(env: ApiEnv, actingUser: ActingUser, jti: string) {
   return m2mRequest<{ queued: true }>(env, `/admin/settings/account-events`, actingUser, { method: 'POST', body: JSON.stringify({ action: 'resend', jti }) });
+}
+
+export type AdminInviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked';
+
+export interface AdminInvite {
+  id: string;
+  email: string;
+  name: string | null;
+  clientId: string;
+  clientName: string | null;
+  status: AdminInviteStatus;
+  invitedByUserId: string;
+  invitedByEmail: string | null;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export function listInvites(
+  env: ApiEnv, actingUser: ActingUser, params: URLSearchParams, request: Request
+) {
+  return m2mRequest<{ invites: AdminInvite[]; nextCursor: string | null }>(
+    env, `/admin/invites?${params}`, actingUser, { method: 'GET' }, request
+  );
+}
+
+export function revokeInvite(env: ApiEnv, actingUser: ActingUser, id: string, request: Request) {
+  return m2mRequest<SuccessResponse>(
+    env, `/admin/invites/${encodeURIComponent(id)}/revoke`, actingUser, { method: 'POST' }, request
+  );
 }

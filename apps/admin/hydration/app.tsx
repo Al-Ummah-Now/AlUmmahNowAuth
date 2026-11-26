@@ -5,6 +5,7 @@
  * `ar` gives 0–9 in Node and ٠–٩ in WebKit) shows up as a hydration error (React #418).
  */
 import { createRoutesStub, Outlet } from "react-router";
+import Invites from "../app/routes/invites";
 import RecentlyDeleted from "../app/routes/deleted";
 import UserPasskeys from "../app/routes/users.$id.passkeys";
 import Users from "../app/routes/users._index";
@@ -26,17 +27,18 @@ import type { AuthThemeJson } from "../../../packages/ui/src/auth-theme/types.ts
 import { swatchesOf } from "../app/lib/theme-builder";
 
 export type PageName =
-  | "deleted" | "users" | "passkeys" | "audit" | "sessions" | "clients"
+  | "invites" | "deleted" | "users" | "passkeys" | "audit" | "sessions" | "clients"
   | "dashboard" | "roles" | "role" | "moderation" | "moderation-request" | "themes" | "theme" | "security" | "signing-keys" | "account-events" | "account-events-delivered" | "account-events-empty";
 
 /** Every page's path in the admin (with ?lang= added by the server). */
 export const PAGE_PATHS: Record<PageName, string> = {
-  deleted: "/deleted", users: "/users", passkeys: "/users/u-10/passkeys", audit: "/audit", sessions: "/sessions", clients: "/clients",
+  invites: "/invites", deleted: "/deleted", users: "/users", passkeys: "/users/u-10/passkeys", audit: "/audit", sessions: "/sessions", clients: "/clients",
   dashboard: "/", roles: "/roles", role: "/roles/r-2", moderation: "/moderation", "moderation-request": "/moderation/mr-1",
   themes: "/themes", theme: "/themes/fawanees", security: "/security", "signing-keys": "/signing-keys", "account-events": "/account-events", "account-events-delivered": "/account-events", "account-events-empty": "/account-events",
 };
 
 const PAGES = {
+  invites: { path: "invites", Component: Invites },
   deleted: { path: "deleted", Component: RecentlyDeleted },
   users: { path: "users", Component: Users },
   passkeys: { path: "users/:id/passkeys", Component: UserPasskeys },
@@ -121,6 +123,17 @@ const NEWEST_SIGN_IN = SESSION_ROWS.reduce((a, b) => (b.authenticatedAt > a.auth
 const ADMIN = { id: "admin-1", email: "omar.saleh@mail.alummahnow.net" };
 
 export const FIXTURES: Record<string, unknown> = {
+  invites: {
+    user: ADMIN,
+    authServerUrl: "",
+    nextCursor: null,
+    invites: [
+      { id: "inv-a", email: "mariam@example.com", name: T("Mariam Nasser", "مريم ناصر"), status: "pending", clientId: "videos", clientName: T("Videos", "المرئيات"), invitedByUserId: "admin-1", invitedByEmail: ADMIN.email, createdAt: ago(1), expiresAt: NOW + 13 * DAY },
+      { id: "inv-b", email: "omar@example.com", name: T("Omar Ali", "عمر علي"), status: "accepted", clientId: "videos", clientName: T("Videos", "المرئيات"), invitedByUserId: "admin-1", invitedByEmail: ADMIN.email, createdAt: ago(9), expiresAt: NOW + 5 * DAY },
+      { id: "inv-c", email: "sara@example.com", name: T("Sara Hassan", "سارة حسن"), status: "expired", clientId: "videos", clientName: T("Videos", "المرئيات"), invitedByUserId: "admin-1", invitedByEmail: ADMIN.email, createdAt: ago(16), expiresAt: ago(2) },
+      { id: "inv-d", email: "yusuf@example.com", name: T("Yusuf Khalil", "يوسف خليل"), status: "revoked", clientId: "videos", clientName: T("Videos", "المرئيات"), invitedByUserId: "admin-1", invitedByEmail: ADMIN.email, createdAt: ago(19), expiresAt: ago(5) },
+    ],
+  },
   deleted: {
     kind: "user",
     now: NOW,
@@ -133,19 +146,19 @@ export const FIXTURES: Record<string, unknown> = {
   },
   users: {
     users: [
-      { id: "admin-1", email: "omar.saleh@mail.alummahnow.net", name: "Omar Saleh", created_at: new Date(ago(71, 4, 22, 9)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
-      { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", name: "Yusuf Rahman", created_at: new Date(ago(40, 6, 3, 51)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
-      { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "Maryam Alhassan", created_at: new Date(ago(12, 2, 44, 18)).toISOString(), roles: [{ id: "r-2", name: "Moderator" }] },
-      { id: "u-11", name: "Khadija Noor", email: "khadija.noor@mail.alummahnow.net", created_at: new Date(ago(19, 11, 26, 9)).toISOString(), roles: [] },
-      { id: "u-13", name: "Ibrahim Saeed", email: "ibrahim.saeed@mail.alummahnow.net", created_at: new Date(ago(22, 8, 14, 3)).toISOString(), roles: [] },
-      { id: "u-14", name: "Fatima Zahra", email: "fatima.zahra@mail.alummahnow.net", created_at: new Date(ago(25, 1, 37, 55)).toISOString(), roles: [] },
-      { id: "u-15", name: "Bilal Hamdan", email: "bilal.hamdan@mail.alummahnow.net", created_at: new Date(ago(31, 14, 2, 41)).toISOString(), roles: [] },
-      { id: "u-16", name: "Aisha Karim", email: "aisha.karim@mail.alummahnow.net", created_at: new Date(ago(33, 9, 51, 17)).toISOString(), roles: [] },
-      { id: "u-17", name: "Zaid Mansour", email: "zaid.mansour@mail.alummahnow.net", created_at: new Date(ago(36, 20, 8, 29)).toISOString(), roles: [] },
-      { id: "u-18", name: "Huda Qasim", email: "huda.qasim@mail.alummahnow.net", created_at: new Date(ago(44, 3, 45, 12)).toISOString(), roles: [] },
-      { id: "u-19", name: "Tariq Aziz", email: "tariq.aziz@mail.alummahnow.net", created_at: new Date(ago(51, 17, 19, 48)).toISOString(), roles: [] },
-      { id: "u-20", name: "Safiya Omar", email: "safiya.omar@mail.alummahnow.net", created_at: new Date(ago(58, 6, 33, 6)).toISOString(), roles: [] },
-      { id: "u-21", name: "Idris Farouk", email: "idris.farouk@mail.alummahnow.net", created_at: new Date(ago(63, 12, 57, 34)).toISOString(), roles: [] },
+      { id: "admin-1", email: "omar.saleh@mail.alummahnow.net", name: "Omar Saleh", status: "active", created_at: new Date(ago(71, 4, 22, 9)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
+      { id: "u-10", email: "yusuf.rahman@mail.alummahnow.net", name: "Yusuf Rahman", status: "active", created_at: new Date(ago(40, 6, 3, 51)).toISOString(), roles: [{ id: "r-1", name: "Admin" }] },
+      { id: "u-12", email: "maryam.alhassan@mail.alummahnow.net", name: "Maryam Alhassan", status: "invited", created_at: new Date(ago(12, 2, 44, 18)).toISOString(), roles: [{ id: "r-2", name: "Moderator" }] },
+      { id: "u-11", name: "Khadija Noor", email: "khadija.noor@mail.alummahnow.net", status: "active", created_at: new Date(ago(19, 11, 26, 9)).toISOString(), roles: [] },
+      { id: "u-13", name: "Ibrahim Saeed", email: "ibrahim.saeed@mail.alummahnow.net", status: "active", created_at: new Date(ago(22, 8, 14, 3)).toISOString(), roles: [] },
+      { id: "u-14", name: "Fatima Zahra", email: "fatima.zahra@mail.alummahnow.net", status: "active", created_at: new Date(ago(25, 1, 37, 55)).toISOString(), roles: [] },
+      { id: "u-15", name: "Bilal Hamdan", email: "bilal.hamdan@mail.alummahnow.net", status: "active", created_at: new Date(ago(31, 14, 2, 41)).toISOString(), roles: [] },
+      { id: "u-16", name: "Aisha Karim", email: "aisha.karim@mail.alummahnow.net", status: "active", created_at: new Date(ago(33, 9, 51, 17)).toISOString(), roles: [] },
+      { id: "u-17", name: "Zaid Mansour", email: "zaid.mansour@mail.alummahnow.net", status: "active", created_at: new Date(ago(36, 20, 8, 29)).toISOString(), roles: [] },
+      { id: "u-18", name: "Huda Qasim", email: "huda.qasim@mail.alummahnow.net", status: "active", created_at: new Date(ago(44, 3, 45, 12)).toISOString(), roles: [] },
+      { id: "u-19", name: "Tariq Aziz", email: "tariq.aziz@mail.alummahnow.net", status: "active", created_at: new Date(ago(51, 17, 19, 48)).toISOString(), roles: [] },
+      { id: "u-20", name: "Safiya Omar", email: "safiya.omar@mail.alummahnow.net", status: "active", created_at: new Date(ago(58, 6, 33, 6)).toISOString(), roles: [] },
+      { id: "u-21", name: "Idris Farouk", email: "idris.farouk@mail.alummahnow.net", status: "active", created_at: new Date(ago(63, 12, 57, 34)).toISOString(), roles: [] },
     ],
     allRoles: [{ id: "r-1", name: "Admin", is_system: true }, { id: "r-2", name: "Moderator", is_system: false }],
     user: ADMIN,

@@ -33,7 +33,7 @@ async function hydrate(page: Page, path: string): Promise<string[]> {
 /** Every admin page the harness renders (hydration/app.tsx PAGE_PATHS). */
 const PAGES = [
   "dashboard", "users", "passkeys", "roles", "role", "sessions", "clients", "audit", "moderation", "moderation-request",
-  "themes", "theme", "deleted", "security", "signing-keys", "account-events", "account-events-delivered", "account-events-empty",
+  "themes", "theme", "invites", "deleted", "security", "signing-keys", "account-events", "account-events-delivered", "account-events-empty",
 ] as const;
 
 for (const lang of ["ar", "en"] as const) {
@@ -43,6 +43,16 @@ for (const lang of ["ar", "en"] as const) {
     });
   }
 }
+
+test("Invites in Arabic: timestamps use Eastern Arabic digits", async ({ page }) => {
+  expect(await hydrate(page, "/admin/invites?lang=ar")).toEqual([]);
+  const dates = await page.locator("main time").allInnerTexts();
+  expect(dates).toHaveLength(8);
+  for (const value of dates) {
+    expect(value).toMatch(EASTERN_DIGIT);
+    expect(value).not.toMatch(ASCII_DIGIT);
+  }
+});
 
 test("Recently deleted in Arabic: dates and days left in ٠–٩", async ({ page }) => {
   expect(await hydrate(page, "/admin/deleted?lang=ar")).toEqual([]);

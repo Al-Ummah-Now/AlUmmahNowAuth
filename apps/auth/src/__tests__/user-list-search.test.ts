@@ -62,6 +62,17 @@ describe('GET /admin/users?search=', () => {
 		expect(((await res.json()) as { users: { id: string }[] }).users.map((u) => u.id)).toEqual(['usr_long555']);
 	});
 
+	it('filters invited accounts and treats all as an unfiltered status', async () => {
+		await env.AUTH_DB.prepare("UPDATE users SET status = 'invited' WHERE id IN ('usr_aaa111', 'usr_ddd444')").run();
+		const invited = await app().request('/?status=invited');
+		expect(await invited.json()).toMatchObject({
+			users: [{ id: 'usr_aaa111', status: 'invited' }],
+			total_count: 1,
+		});
+		const all = await app().request('/?status=all');
+		expect(await all.json()).toMatchObject({ total_count: 3 });
+	});
+
 	it('matches an exact id', async () => {
 		expect((await search('usr_bbb222')).ids).toEqual(['usr_bbb222']);
 	});

@@ -115,6 +115,7 @@ const HONO: Mount[] = [
 	{ file: `${SRC}/custom/user-list-routes.ts`, prefix: '/admin/users' },
 	{ file: `${SRC}/custom/user-role-routes.ts`, prefix: '/admin/users' },
 	{ file: `${SRC}/deletions/routes.ts`, prefix: '/admin/deletions', with: [`${SRC}/deletions/service.ts`, KINDS] },
+	{ file: `${SRC}/invites/admin-routes.ts`, prefix: '/admin/invites', with: [LIMIT] },
 	{ file: `${SRC}/moderation/admin-routes.ts`, prefix: '/admin/moderation-requests', with: [LIMIT] },
 	{ file: `${SRC}/routes/admin-stats-routes.ts`, prefix: '/admin', with: [LIMIT] },
 	{ file: `${SRC}/custom/role-admin-routes.ts`, prefix: '/admin' },

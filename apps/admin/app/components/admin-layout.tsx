@@ -3,6 +3,7 @@ import { useAdminTime } from "./admin-time";
 import {
   LayoutDashboard,
   Users,
+  Mail,
   Shield,
   AppWindow,
   Monitor,
@@ -33,6 +34,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { key: "dashboard", href: "/", icon: <LayoutDashboard className="h-5 w-5" /> },
   { key: "users", href: "/users", icon: <Users className="h-5 w-5" /> },
+  { key: "invites", href: "/invites", icon: <Mail className="h-5 w-5" /> },
   { key: "roles", href: "/roles", icon: <Shield className="h-5 w-5" /> },
   { key: "sessions", href: "/sessions", icon: <Monitor className="h-5 w-5" /> },
   { key: "clients", href: "/clients", icon: <AppWindow className="h-5 w-5" /> },
