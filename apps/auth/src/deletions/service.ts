@@ -88,7 +88,8 @@ export async function softDelete(
 	opts: { reason?: unknown; tenantId?: string; now?: number } = {}
 ): Promise<DeletionView> {
 	const store = new DeletionStore(env.AUTH_DB);
-	const tenantId = opts.tenantId ?? 'default';
+	// Tenant deletions belong to the platform admin's Recently deleted list.
+	const tenantId = kind === 'tenant' ? 'default' : opts.tenantId ?? 'default';
 	const now = opts.now ?? Date.now();
 	if (await store.isDeleted(kind, itemId)) throw new DeletionError(404, 'already_deleted', 'Already deleted');
 	let prepared;
@@ -133,9 +134,15 @@ export async function restore(env: DeletionEnv, kind: DeletionKind, itemId: stri
 	if (!row) throw new DeletionError(404, 'not_deleted', 'Not in Recently deleted');
 	const plan = await HANDLERS[kind].restore(env, row, now);
 	try {
-		const remove = kind === 'user' ? store.removeRestorableUserStatement(itemId) : store.removeStatement(kind, itemId);
+		const remove = kind === 'tenant'
+			? env.AUTH_DB.prepare(`DELETE FROM admin_deletions WHERE kind = 'tenant' AND item_id = ?1 AND deleted_at = ?2
+				AND EXISTS (SELECT 1 FROM tenants WHERE id = ?1 AND status = 'active')`).bind(itemId, row.deleted_at)
+			: kind === 'user' ? store.removeRestorableUserStatement(itemId) : store.removeStatement(kind, itemId);
 		// The user restore statements and the final delete all check the purge claim in the same transaction.
-		const results = await env.AUTH_DB.batch(kind === 'user' ? [...plan.statements, remove] : [remove, ...plan.statements]);
+		const results = await env.AUTH_DB.batch(kind === 'user' || kind === 'tenant' ? [...plan.statements, remove] : [remove, ...plan.statements]);
+		if (kind === 'tenant' && !results.at(-1)?.meta.changes) {
+			throw new DeletionError(404, 'not_deleted', 'Not in Recently deleted');
+		}
 		if (kind === 'user' && !results.at(-1)?.meta.changes) {
 			if (await store.isDeleted(kind, itemId)) throw new DeletionError(409, 'purge_in_progress', 'Permanent deletion has already started');
 			throw new DeletionError(404, 'not_deleted', 'Not in Recently deleted');

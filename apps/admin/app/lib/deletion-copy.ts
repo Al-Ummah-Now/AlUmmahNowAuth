@@ -10,7 +10,7 @@ export type AdminLang = 'en' | 'ar';
 
 /** A number in Arabic copy: Eastern Arabic (Hindi) numerals ٠–٩. */
 const N = (n: number) => formatNumber(n, 'ar');
-export type DeletionKind = 'user' | 'client' | 'role' | 'theme';
+export type DeletionKind = 'user' | 'client' | 'role' | 'theme' | 'tenant';
 
 export const RETENTION_DAYS = 30;
 
@@ -22,13 +22,13 @@ export const langOf = (search: string | URLSearchParams | null | undefined): Adm
 export const dirOf = (lang: AdminLang) => (lang === 'ar' ? 'rtl' : 'ltr');
 
 const KIND = {
-  en: { user: 'user', client: 'OAuth client', role: 'role', theme: 'theme' },
-  ar: { user: 'المستخدم', client: 'عميل OAuth', role: 'الدور', theme: 'السمة' },
+  en: { user: 'user', client: 'OAuth client', role: 'role', theme: 'theme', tenant: 'tenant' },
+  ar: { user: 'المستخدم', client: 'عميل OAuth', role: 'الدور', theme: 'السمة', tenant: 'المستأجر' },
 } as const;
 
 const TAB = {
-  en: { user: 'Users', client: 'OAuth clients', role: 'Roles', theme: 'Sign-in themes' },
-  ar: { user: 'المستخدمون', client: 'عملاء OAuth', role: 'الأدوار', theme: 'سمات تسجيل الدخول' },
+  en: { user: 'Users', client: 'OAuth clients', role: 'Roles', theme: 'Sign-in themes', tenant: 'Tenants' },
+  ar: { user: 'المستخدمون', client: 'عملاء OAuth', role: 'الأدوار', theme: 'سمات تسجيل الدخول', tenant: 'المستأجرون' },
 } as const;
 
 export interface DeletionCopy {
@@ -42,7 +42,7 @@ export interface DeletionCopy {
   deleteConfirm: string;
   roleHolders(count: number): string;
   restoreTitle(kind: DeletionKind): string;
-  restoreBody(label: string): string;
+  restoreBody(label: string, kind?: DeletionKind): string;
   restoreConfirm: string;
   purgeTitle: string;
   purgeBody(label: string): string;
@@ -82,7 +82,9 @@ const en: DeletionCopy = {
   deleteConfirm: 'Delete',
   roleHolders: (n) => ` ${n === 1 ? '1 user holds' : `${n} users hold`} this role; they lose it now and get it back if the role is restored.`,
   restoreTitle: (k) => `Restore ${KIND.en[k]}`,
-  restoreBody: (label) => `Restore “${label}”? It comes back exactly as it was before it was deleted.`,
+  restoreBody: (label, kind) => kind === 'tenant'
+    ? `Restore “${label}” and make the tenant active?`
+    : `Restore “${label}”? It comes back exactly as it was before it was deleted.`,
   restoreConfirm: 'Restore',
   purgeTitle: 'Delete permanently',
   purgeBody: (label) =>
@@ -123,7 +125,9 @@ const ar: DeletionCopy = {
   deleteConfirm: 'حذف',
   roleHolders: (n) => ` يحمل هذا الدور ${n === 1 ? 'مستخدم واحد' : `${N(n)} من المستخدمين`}؛ يفقدونه الآن ويستعيدونه إذا استُعيد الدور.`,
   restoreTitle: (k) => `استعادة ${KIND.ar[k]}`,
-  restoreBody: (label) => `استعادة «${label}»؟ سيعود كما كان قبل حذفه تمامًا.`,
+  restoreBody: (label, kind) => kind === 'tenant'
+    ? `استعادة «${label}» وتفعيل المستأجر؟`
+    : `استعادة «${label}»؟ سيعود كما كان قبل حذفه تمامًا.`,
   restoreConfirm: 'استعادة',
   purgeTitle: 'حذف نهائي',
   purgeBody: (label) => `سيُحذف «${label}» نهائيًا في تشغيل التنظيف التالي (خلال ساعة). لا يمكن التراجع عن ذلك بعد تشغيل التنظيف.`,

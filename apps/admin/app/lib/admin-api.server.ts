@@ -891,7 +891,7 @@ export async function getAuditLogs(
 // Recently deleted (admin soft delete; the auth worker's hourly cleanup purges)
 // ============================================================================
 
-export type DeletionKind = 'user' | 'client' | 'role' | 'theme';
+export type DeletionKind = 'user' | 'client' | 'role' | 'theme' | 'tenant';
 
 export interface DeletedItem {
   kind: DeletionKind;

@@ -18,7 +18,7 @@ export interface PurgeResult {
 	failed: Record<DeletionKind, number>;
 }
 
-const zero = (): Record<DeletionKind, number> => ({ user: 0, client: 0, role: 0, theme: 0 });
+const zero = (): Record<DeletionKind, number> => ({ user: 0, client: 0, role: 0, theme: 0, tenant: 0 });
 
 /**
  * Hard-deletes one soft-deleted item now and drops it from the list. False when
@@ -34,7 +34,7 @@ export async function purgeItem(env: DeletionEnv, kind: DeletionKind, itemId: st
 	if (!current || Date.now() >= deadline) return false;
 	const outcome = await HANDLERS[kind].purge(env, current, { ...opts, deadline });
 	if (outcome === 'deferred') return false;
-	if (kind !== 'user') await store.removeStatement(kind, itemId).run();
+	if (kind !== 'user' && kind !== 'tenant') await store.removeStatement(kind, itemId).run();
 	const trigger = current.purge_requested_at !== null ? 'requested' : 'retention';
 	await auditDeletion(
 		AuditEventType.ADMIN_ITEM_PURGED,

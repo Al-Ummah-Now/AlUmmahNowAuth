@@ -15,6 +15,7 @@
 
 import type { Tenant, TenantSettings, TenantBranding, TenantAdmin } from '../types/tenant';
 import { DEFAULT_TENANT_ID } from '../types/tenant';
+import { deletedClause } from '../deletions/store';
 import { clearTenantCache } from './tenant-cache';
 
 /**
@@ -266,9 +267,10 @@ export class TenantService {
 
     values.push(id);
 
-    await this.db.prepare(`
-      UPDATE tenants SET ${sets.join(', ')} WHERE id = ?
+    const result = await this.db.prepare(`
+      UPDATE tenants SET ${sets.join(', ')} WHERE id = ? AND NOT EXISTS (${deletedClause('tenant', 'tenants.id')})
     `).bind(...values).run();
+    if (!result.meta.changes) throw new Error('Tenant not found');
     clearTenantCache();
 
     const tenant = await this.getTenantById(id);
@@ -313,11 +315,11 @@ export class TenantService {
     limit?: number;
     offset?: number;
   }): Promise<{ tenants: Tenant[]; total: number }> {
-    let whereClause = '';
+    let whereClause = `WHERE NOT EXISTS (${deletedClause('tenant', 'tenants.id')})`;
     const values: unknown[] = [];
 
     if (params?.status) {
-      whereClause = 'WHERE status = ?';
+      whereClause += ' AND status = ?';
       values.push(params.status);
     }
 
