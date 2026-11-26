@@ -22,6 +22,10 @@ describe("roleLabel", () => {
       expect(roleLabel(role, "ar")).toBe(arabic);
     }
   });
+  it.each(["Content Editor", "content_editor"])("localizes %s in English and Arabic", (role) => {
+    expect(roleLabel(role, "en")).toBe("Content editor");
+    expect(roleLabel(role, "ar")).toBe("محرر المحتوى");
+  });
   it("keeps an unknown role's own name in Arabic", () => {
     expect(roleLabel("Translator", "ar")).toBe("Translator");
   });
@@ -33,5 +37,6 @@ describe("roleDescription", () => {
     expect(roleDescription("Administrative access", "en")).toBe("Administrative access");
     expect(roleDescription("مراجعة الترجمات", "ar")).toBe("مراجعة الترجمات");
     expect(roleDescription(null, "ar")).toBe("");
+    expect(roleDescription("Edit website content in the CMS", "ar")).toBe("تحرير محتوى الموقع في نظام إدارة المحتوى");
   });
 });

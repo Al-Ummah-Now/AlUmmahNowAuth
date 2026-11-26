@@ -98,7 +98,8 @@ export const APP_CATALOG: readonly AppEntry[] = [
       local: "http://localhost:8585",
     },
     // AlUmmahNowCMS docs/SPEC.md §3 (allowed roles; Scholar = CMS "writer", own articles only)
-    requiredRoles: ["super_admin", "admin", "moderator", "scholar"],
+    // Keep Moderator access during the Content Editor rollout (AlUmmahNowAuth #212).
+    requiredRoles: ["super_admin", "admin", "moderator", "scholar", "content_editor"],
   },
   {
     id: "content-admin",
