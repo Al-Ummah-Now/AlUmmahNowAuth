@@ -8520,7 +8520,7 @@
         ],
         "operationId": "adminUserAudit",
         "summary": "One user’s audit log",
-        "description": "Keyset-paginated audit trail for a single user, ordered newest first by (timestamp, id). Pass pagination.nextCursor as cursor (lossless tie-breaking) or pagination.nextBefore as before (ISO-8601, normalized to UTC milliseconds). Response returns { data, pagination: { limit, hasMore, nextCursor, nextBefore } } without a total count.",
+        "description": "Returns one user’s audit events ordered by timestamp and ID, newest first. Numbered pages are the default and include exact totals. To start keyset pagination, send pagination=cursor or supply an exclusive before timestamp. For subsequent pages, pass pagination.nextCursor as cursor. The cursor includes the event ID so events sharing a timestamp are all returned.",
         "x-audience": "admin",
         "parameters": [
           {
@@ -8532,19 +8532,39 @@
             }
           },
           {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Page number for numbered pagination, starting at 1 by default.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
+            "description": "Page size. Keyset pagination accepts integers from 1 through 100.",
             "schema": {
               "type": "integer",
-              "minimum": 1,
-              "maximum": 100
+              "default": 50
+            }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "required": false,
+            "description": "Use cursor to start keyset pagination at the newest event. Omit page when using keyset pagination.",
+            "schema": {
+              "type": "string",
+              "const": "cursor"
             }
           },
           {
             "name": "cursor",
             "in": "query",
             "required": false,
+            "description": "The opaque pagination.nextCursor value from the previous page.",
             "schema": {
               "type": "string"
             }
@@ -8553,6 +8573,7 @@
             "name": "before",
             "in": "query",
             "required": false,
+            "description": "Exclusive timestamp filter for the first keyset page, normalized to UTC milliseconds. Continue with cursor.",
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -8561,11 +8582,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Done",
+            "description": "An audit trail page with numbered or keyset pagination metadata.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "required": ["data", "pagination"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "type": "object" }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "limit": { "type": "integer" },
+                        "page": { "type": "integer" },
+                        "total": { "type": "integer" },
+                        "pages": { "type": ["integer", "null"] },
+                        "hasMore": { "type": "boolean" },
+                        "nextCursor": { "type": ["string", "null"] }
+                      },
+                      "required": ["limit"],
+                      "oneOf": [
+                        { "title": "Numbered pagination", "required": ["page", "total", "pages"] },
+                        { "title": "Keyset pagination", "required": ["hasMore", "nextCursor"] }
+                      ]
+                    }
+                  }
                 }
               }
             }

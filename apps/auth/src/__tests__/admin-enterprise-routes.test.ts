@@ -271,10 +271,10 @@ describe('AdminEnterpriseRoutes', () => {
       const data = await response.json() as any;
       expect(data.data).toHaveLength(2);
       expect(data.pagination).toEqual({
+        page: 1,
         limit: 50,
-        hasMore: false,
-        nextCursor: null,
-        nextBefore: null,
+        total: 2,
+        pages: 1,
       });
     });
   });
