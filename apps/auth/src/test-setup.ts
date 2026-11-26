@@ -17,6 +17,7 @@ import accountEventsSql from "../migrations/0048_account_events.sql?raw";
 import birthDatesSql from "../migrations/0049_user_birth_dates.sql?raw";
 import accountEventClientIndexSql from "../migrations/0050_account_event_client_index.sql?raw";
 import auditCountsSql from "../migrations/0052_audit_daily_counts_and_user_index.sql?raw";
+import tokenAuditIndexesSql from "../migrations/0053_token_audit_keyset_indexes.sql?raw";
 
 /** Statements of a migration file (comments stripped; a CREATE TRIGGER ... END stays one statement). */
 export function sqlStatements(sql: string): string[] {
@@ -276,6 +277,7 @@ export async function setupDatabase() {
     )
   `).run();
   await env.AUTH_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at)`).run();
+  for (const stmt of sqlStatements(tokenAuditIndexesSql)) await env.AUTH_DB.prepare(stmt).run();
 
   // browser_sessions / account_sessions (OpenAuth 001_schema.sql)
   await env.AUTH_DB.prepare(`

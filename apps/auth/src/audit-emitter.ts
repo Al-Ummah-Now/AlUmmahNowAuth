@@ -200,48 +200,11 @@ export class WebhookSink implements AuditEventSink {
       const events = [...this.eventQueue];
       this.eventQueue = [];
 
-      const body = JSON.stringify({ events });
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'User-Agent': 'AlUmmahNow-Auth/1.0',
-      };
-
-      // Add signature if secret is configured
-      if (this.secret) {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(body);
-        const keyData = encoder.encode(this.secret);
-        const key = await crypto.subtle.importKey(
-          'raw',
-          keyData,
-          { name: 'HMAC', hash: 'SHA-256' },
-          false,
-          ['sign']
-        );
-        const signature = await crypto.subtle.sign('HMAC', key, data);
-        const hexSignature = Array.from(new Uint8Array(signature))
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-        headers['X-Audit-Signature'] = `sha256=${hexSignature}`;
-      }
-
-      // Attempt delivery with retry logic
+      const priorAttempts = this.deliveryMetrics.totalAttempts;
       try {
-        this.deliveryMetrics.totalAttempts++;
-
-        const response = await this.fetchWithRetry(this.url, {
-          method: 'POST',
-          headers,
-          body,
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
+        await this.deliverBatch(events);
         this.deliveryMetrics.successfulDeliveries++;
         console.info(`Webhook delivery successful: ${events.length} events delivered`);
-
       } catch (error) {
         this.deliveryMetrics.failedDeliveries++;
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -252,17 +215,48 @@ export class WebhookSink implements AuditEventSink {
           url: this.url,
         });
 
-        // Store in DLQ if database is available
         if (this.db) {
-          await this.storeToDLQ(events, errorMessage);
+          const retryCount = Math.max(0, this.deliveryMetrics.totalAttempts - priorAttempts - 1);
+          await this.storeToDLQ(events, errorMessage, retryCount);
         } else {
-          // Fallback: log events that would go to DLQ
-          console.error('DLQ not configured. Lost events:', JSON.stringify({ events, error: errorMessage }));
+          console.error('DLQ not configured. Lost events:', { eventCount: events.length, error: errorMessage });
         }
       }
     } finally {
-      // Always reset flushing flag
       this.flushing = false;
+    }
+  }
+
+  /** Deliver a batch directly so replay can act on delivery success or failure. */
+  async deliverBatch(events: AuditEvent[]): Promise<void> {
+    const body = JSON.stringify({ events });
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'AlUmmahNow-Auth/1.0',
+    };
+
+    // Add signature if secret is configured
+    if (this.secret) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(body);
+      const keyData = encoder.encode(this.secret);
+      const key = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+      const signature = await crypto.subtle.sign('HMAC', key, data);
+      const hexSignature = Array.from(new Uint8Array(signature))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      headers['X-Audit-Signature'] = `sha256=${hexSignature}`;
+    }
+
+    const response = await this.fetchWithRetry(this.url, { method: 'POST', headers, body });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
   }
 
@@ -275,6 +269,7 @@ export class WebhookSink implements AuditEventSink {
     attemptNumber: number = 1
   ): Promise<Response> {
     const startTime = Date.now();
+    this.deliveryMetrics.totalAttempts++;
 
     try {
       // Add timeout to prevent hanging requests
@@ -284,9 +279,7 @@ export class WebhookSink implements AuditEventSink {
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
+      }).finally(() => clearTimeout(timeoutId));
 
       // Success - return the response
       if (response.ok) {
@@ -355,30 +348,28 @@ export class WebhookSink implements AuditEventSink {
   /**
    * Store failed events to Dead Letter Queue
    */
-  private async storeToDLQ(events: AuditEvent[], error: string): Promise<void> {
+  private async storeToDLQ(events: AuditEvent[], error: string, retryCount: number): Promise<void> {
     if (!this.db) {
       return;
     }
 
     try {
-      const result = await this.db.prepare(
-        `INSERT INTO webhook_dlq (events, webhook_url, error, timestamp, retry_count)
-         VALUES (?, ?, ?, ?, ?)`
-      ).bind(
-        JSON.stringify(events),
-        this.url,
-        error,
-        new Date().toISOString(),
-        this.maxRetries
-      ).run();
+      const now = Date.now();
+      const eventType = events.every(event => event.eventType === events[0]?.eventType)
+        ? events[0]!.eventType
+        : 'audit.batch';
+      await this.db.prepare(
+        `INSERT INTO webhook_dlq
+           (webhook_url, event_type, payload, error_message, retry_count, max_retries, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(this.url, eventType, JSON.stringify(events), error, retryCount, this.maxRetries, now, now).run();
 
       this.deliveryMetrics.dlqWrites++;
 
       // Log only non-sensitive metadata
       console.info(`Stored ${events.length} events to DLQ`, {
-        dlqId: result.meta.last_row_id,
         eventTypes: events.map(e => e.eventType),
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(now).toISOString(),
       });
     } catch (dlqError) {
       // Critical: Failed to store in DLQ - last resort logging

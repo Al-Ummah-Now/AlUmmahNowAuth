@@ -48,6 +48,8 @@
 --   migrations-qa/0050_account_event_client_index.sql
 --   migrations-qa/0051_disable_unused_profile_client.sql
 --   migrations-qa/0052_audit_daily_counts_and_user_index.sql
+--   migrations-qa/0053_token_audit_keyset_indexes.sql
+--   migrations-qa/0054_webhook_dlq_replay_timestamps.sql
 
 CREATE TABLE _openauth_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, checksum TEXT);
 CREATE TABLE account_event_deliveries (jti TEXT PRIMARY KEY, seq INTEGER NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')), attempts INTEGER NOT NULL DEFAULT 0, error TEXT, next_at INTEGER NOT NULL, created_at INTEGER NOT NULL, settled_at INTEGER);
@@ -92,7 +94,7 @@ CREATE TABLE user_revocations (user_id TEXT PRIMARY KEY, revoked_before INTEGER 
 CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT, metadata TEXT, status TEXT NOT NULL DEFAULT 'active', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, last_login_at INTEGER, deleted_at INTEGER, password_reset_required INTEGER DEFAULT 0, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE TABLE webauthn_credentials (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, public_key TEXT NOT NULL, counter INTEGER NOT NULL DEFAULT 0, transports TEXT, device_type TEXT NOT NULL, backed_up INTEGER NOT NULL DEFAULT 0, aaguid TEXT, name TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER, deleted_at INTEGER);
 CREATE TABLE webauthn_prompts (user_id TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL);
-CREATE TABLE webhook_dlq (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', webhook_url TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, error_message TEXT, retry_count INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, next_retry_at INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
+CREATE TABLE webhook_dlq (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), tenant_id TEXT NOT NULL DEFAULT 'default', webhook_url TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, error_message TEXT, retry_count INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, next_retry_at INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), replayed_at INTEGER, replaying_started_at INTEGER, FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE);
 CREATE INDEX idx_migrations_applied ON _openauth_migrations(applied_at);
 CREATE INDEX idx_account_event_deliveries_client ON account_event_deliveries(client_id, status, settled_at);
 CREATE INDEX idx_account_event_deliveries_due ON account_event_deliveries(next_at) WHERE status = 'pending';
@@ -172,9 +174,13 @@ CREATE INDEX idx_tenant_invitations_token_hash ON tenant_invitations(token_hash)
 CREATE INDEX idx_tenants_created ON tenants(created_at);
 CREATE INDEX idx_tenants_domain ON tenants(domain);
 CREATE INDEX idx_tenants_status ON tenants(status);
+CREATE INDEX idx_token_usage_action_created_at ON token_usage(token_type, created_at, id);
+CREATE INDEX idx_token_usage_client_created_at ON token_usage(client_id, created_at, id);
 CREATE INDEX idx_token_usage_client_id ON token_usage(client_id);
 CREATE INDEX idx_token_usage_created_at ON token_usage(created_at);
+CREATE INDEX idx_token_usage_created_at_id ON token_usage(created_at, id);
 CREATE INDEX idx_token_usage_tenant_id ON token_usage(tenant_id);
+CREATE INDEX idx_token_usage_user_created_at ON token_usage(user_id, created_at, id);
 CREATE INDEX idx_token_usage_user_id ON token_usage(user_id);
 CREATE UNIQUE INDEX idx_identities_provider ON user_identities(tenant_id, provider, provider_user_id);
 CREATE INDEX idx_identities_tenant_provider ON user_identities(tenant_id, provider);

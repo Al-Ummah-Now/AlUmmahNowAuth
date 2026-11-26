@@ -79,30 +79,30 @@ export const AUDIT_ADMIN_QUERIES = {
   `,
 } as const;
 
-interface UserTrailCursor {
-  t: string;
+interface AuditCursor {
+  t: string | number;
   i: string | number;
 }
 
-function encodeTrailCursor(timestamp: string, id: string | number): string {
-  const json = JSON.stringify({ t: timestamp, i: id } satisfies UserTrailCursor);
+function encodeAuditCursor(timestamp: string | number, id: string | number): string {
+  const json = JSON.stringify({ t: timestamp, i: id } satisfies AuditCursor);
   const bytes = new TextEncoder().encode(json);
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function decodeTrailCursor(raw: string): UserTrailCursor | null {
+function decodeAuditCursor(raw: string): AuditCursor | null {
   try {
     if (!raw || raw.length > 512) return null;
     const padded = raw.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (raw.length % 4)) % 4);
     const binary = atob(padded);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<UserTrailCursor>;
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<AuditCursor>;
     if (
-      typeof parsed.t !== 'string' ||
-      parsed.t.length === 0 ||
+      parsed.t === undefined ||
+      !((typeof parsed.t === 'string' && parsed.t.length > 0) || Number.isSafeInteger(parsed.t)) ||
       (typeof parsed.i !== 'string' && typeof parsed.i !== 'number') ||
       (typeof parsed.i === 'string' && parsed.i.length === 0)
     ) {
@@ -137,6 +137,9 @@ const TokenAuditQuerySchema = v.object({
   from: v.optional(v.string()),
   to: v.optional(v.string()),
   search: v.optional(v.string()),
+  pagination: v.optional(v.string()),
+  cursor: v.optional(v.string()),
+  before: v.optional(v.string()),
 });
 
 const RevokeUserTokensSchema = v.object({
@@ -170,13 +173,77 @@ interface AuditEvent {
  */
 interface TokenUsageRecord {
   id: string;
-  tenant_id: string;
   client_id: string;
   user_id: string | null;
   token_type: string;
   ip_address: string | null;
   user_agent: string | null;
   created_at: number;
+}
+
+type TokenAuditFilters = {
+  userId?: string;
+  clientId?: string;
+  action?: string;
+  from?: number;
+  to?: number;
+  before?: number;
+  cursor?: { timestamp: number; id: string };
+  search?: string;
+};
+
+const TOKEN_AUDIT_COLUMNS = 'id, client_id, user_id, token_type, ip_address, user_agent, created_at';
+const TOKEN_AUDIT_ORDER = 'ORDER BY created_at DESC, id DESC';
+
+// Exported to test the production query plans on D1.
+export function tokenAuditPageQuery(filters: TokenAuditFilters, fetchLimit: number) {
+  const branch = (userId?: string, clientId?: string) => {
+    const conditions: string[] = [];
+    const bindings: (string | number)[] = [];
+    const add = (condition: string, ...values: (string | number)[]) => {
+      conditions.push(condition);
+      bindings.push(...values);
+    };
+
+    if (userId) add('user_id = ?', userId);
+    if (clientId) add('client_id = ?', clientId);
+    if (filters.action) add('token_type = ?', filters.action);
+    if (filters.from !== undefined) add('created_at >= ?', filters.from);
+    if (filters.to !== undefined) add('created_at <= ?', filters.to);
+    if (filters.before !== undefined) add('created_at < ?', filters.before);
+    if (filters.cursor) add('(created_at, id) < (?, ?)', filters.cursor.timestamp, filters.cursor.id);
+
+    // Pick the same ordered index for the first page and continuation. Other
+    // explicit filters are applied before LIMIT so matching rows cannot be skipped.
+    const index = userId ? 'idx_token_usage_user_created_at'
+      : clientId ? 'idx_token_usage_client_created_at'
+      : filters.action ? 'idx_token_usage_action_created_at'
+      : 'idx_token_usage_created_at_id';
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    return {
+      sql: `SELECT ${TOKEN_AUDIT_COLUMNS} FROM token_usage INDEXED BY ${index}
+        ${where} ${TOKEN_AUDIT_ORDER} LIMIT ?`,
+      bindings: [...bindings, fetchLimit],
+    };
+  };
+
+  if (!filters.search || filters.userId === filters.search || filters.clientId === filters.search) {
+    return branch(filters.userId, filters.clientId);
+  }
+
+  // Split the OR into two ordered seeks. A row that matches both is returned
+  // once, and the union can sort at most 2 * fetchLimit rows.
+  if (filters.userId && filters.clientId) return undefined;
+  if (filters.clientId) return branch(filters.search, filters.clientId);
+  if (filters.userId) return branch(filters.userId, filters.search);
+
+  const userMatch = branch(filters.search);
+  const clientMatch = branch(undefined, filters.search);
+  return {
+    sql: `SELECT * FROM (${userMatch.sql}) UNION SELECT * FROM (${clientMatch.sql})
+      ${TOKEN_AUDIT_ORDER} LIMIT ?`,
+    bindings: [...userMatch.bindings, ...clientMatch.bindings, fetchLimit],
+  };
 }
 
 // ============================================================================
@@ -307,91 +374,68 @@ export class AdminEnterpriseRoutes {
       const queryParams = Object.fromEntries(url.searchParams);
       const params = v.parse(TokenAuditQuerySchema, queryParams);
 
-      const page = params.page || 1;
-      const limit = params.limit || 50;
-      const offset = (page - 1) * limit;
+      const limit = params.limit ?? 50;
+      const useKeyset = params.pagination === 'cursor' || params.cursor !== undefined || params.before !== undefined;
+      const from = params.from ? Date.parse(params.from) : undefined;
+      const to = params.to ? Date.parse(params.to) : undefined;
+      if (Number.isNaN(from)) return createAuthErrorResponse('Invalid query parameters: from must be an ISO date', 400);
+      if (Number.isNaN(to)) return createAuthErrorResponse('Invalid query parameters: to must be an ISO date', 400);
 
-      // Build dynamic query
-      const whereConditions: string[] = [];
-      const bindParams: unknown[] = [];
+      const filters: TokenAuditFilters = {
+        userId: params.user_id,
+        clientId: params.client_id,
+        action: params.action,
+        from,
+        to,
+        search: params.search,
+      };
 
-      if (params.user_id) {
-        whereConditions.push('user_id = ?');
-        bindParams.push(params.user_id);
+      let rows: TokenUsageRecord[];
+      let pagination: object;
+      if (useKeyset) {
+        if (params.page !== undefined || (params.cursor !== undefined && params.before !== undefined)) {
+          return createAuthErrorResponse('Invalid query parameters: omit page and provide at most one of cursor or before', 400);
+        }
+        if (params.before !== undefined) {
+          filters.before = Date.parse(params.before);
+          if (Number.isNaN(filters.before)) {
+            return createAuthErrorResponse('Invalid query parameters: before must be an ISO timestamp', 400);
+          }
+        }
+        if (params.cursor !== undefined) {
+          const cursor = decodeAuditCursor(params.cursor);
+          if (!cursor || typeof cursor.t !== 'number' || typeof cursor.i !== 'string') {
+            return createAuthErrorResponse('Invalid query parameters: malformed cursor', 400);
+          }
+          filters.cursor = { timestamp: cursor.t, id: cursor.i };
+        }
+
+        const query = tokenAuditPageQuery(filters, limit + 1);
+        const results = query
+          ? (await this.db.prepare(query.sql).bind(...query.bindings).all<TokenUsageRecord>()).results
+          : [];
+        const hasMore = results.length > limit;
+        rows = results.slice(0, limit);
+        const last = hasMore ? rows.at(-1) : undefined;
+        pagination = { limit, hasMore, nextCursor: last ? encodeAuditCursor(last.created_at, last.id) : null };
+      } else {
+        const legacy = await this.getNumberedTokenAuditPage(filters, params.page ?? 1, limit);
+        rows = legacy.rows;
+        pagination = legacy.pagination;
       }
 
-      if (params.action) {
-        whereConditions.push('token_type = ?');
-        bindParams.push(params.action);
-      }
-
-      if (params.client_id) {
-        whereConditions.push('client_id = ?');
-        bindParams.push(params.client_id);
-      }
-
-      // created_at is stored in epoch milliseconds
-      if (params.from) {
-        const fromMs = new Date(params.from).getTime();
-        if (Number.isNaN(fromMs)) return createAuthErrorResponse('Invalid query parameters: from must be an ISO date', 400);
-        whereConditions.push('created_at >= ?');
-        bindParams.push(fromMs);
-      }
-
-      if (params.to) {
-        const toMs = new Date(params.to).getTime();
-        if (Number.isNaN(toMs)) return createAuthErrorResponse('Invalid query parameters: to must be an ISO date', 400);
-        whereConditions.push('created_at <= ?');
-        bindParams.push(toMs);
-      }
-
-      if (params.search) {
-        // Search in user_id, client_id, and ip_address
-        // instr, not LIKE: D1 refuses LIKE patterns over 50 bytes (a long id or client id was a 500)
-        whereConditions.push('(instr(user_id, ?) > 0 OR instr(client_id, ?) > 0 OR instr(ip_address, ?) > 0)');
-        bindParams.push(params.search, params.search, params.search);
-      }
-
-      const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-
-      // Count total matching records
-      const countQuery = `SELECT COUNT(*) as total FROM token_usage ${whereClause}`;
-      const countResult = await this.db.prepare(countQuery).bind(...bindParams).first<{ total: number }>();
-      const total = countResult?.total || 0;
-
-      // Fetch paginated results
-      const dataQuery = `
-        SELECT id, tenant_id, client_id, user_id, token_type, ip_address, user_agent, created_at
-        FROM token_usage
-        ${whereClause}
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?
-      `;
-      const result = await this.db.prepare(dataQuery).bind(...bindParams, limit, offset).all<TokenUsageRecord>();
-
-      // Transform results to match API spec
-      const transformedData = (result.results || []).map(record => ({
-        id: record.id,
-        user_id: record.user_id,
-        client_id: record.client_id,
-        token_type: 'refresh', // token_usage tracks refresh-token lifecycle events
-        action: record.token_type,
-        ip_address: record.ip_address,
-        user_agent: record.user_agent,
-        created_at: new Date(record.created_at).toISOString(),
-      }));
-
-      return new Response(JSON.stringify({
-        data: transformedData,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
+      return Response.json({
+        data: rows.map(record => ({
+          id: record.id,
+          user_id: record.user_id,
+          client_id: record.client_id,
+          token_type: 'refresh', // token_usage tracks refresh-token lifecycle events
+          action: record.token_type,
+          ip_address: record.ip_address,
+          user_agent: record.user_agent,
+          created_at: new Date(record.created_at).toISOString(),
+        })),
+        pagination,
       });
     } catch (error) {
       logger.error('Failed to fetch token audit logs', {
@@ -404,6 +448,33 @@ export class AdminEnterpriseRoutes {
 
       return adminErrorResponse(error, 'Failed to fetch token audit logs');
     }
+  }
+
+  /** Keep the numbered contract available while clients can opt into indexed pages. */
+  private async getNumberedTokenAuditPage(filters: TokenAuditFilters, page: number, limit: number) {
+    const conditions: string[] = [];
+    const bindings: (string | number)[] = [];
+    const add = (condition: string, value: string | number) => {
+      conditions.push(condition);
+      bindings.push(value);
+    };
+    if (filters.userId) add('user_id = ?', filters.userId);
+    if (filters.clientId) add('client_id = ?', filters.clientId);
+    if (filters.action) add('token_type = ?', filters.action);
+    if (filters.from !== undefined) add('created_at >= ?', filters.from);
+    if (filters.to !== undefined) add('created_at <= ?', filters.to);
+    if (filters.search) {
+      conditions.push('(instr(user_id, ?) > 0 OR instr(client_id, ?) > 0 OR instr(ip_address, ?) > 0)');
+      bindings.push(filters.search, filters.search, filters.search);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const count = await this.db.prepare(`SELECT COUNT(*) AS total FROM token_usage ${where}`)
+      .bind(...bindings).first<{ total: number }>();
+    const total = count?.total ?? 0;
+    const { results } = await this.db.prepare(`SELECT ${TOKEN_AUDIT_COLUMNS} FROM token_usage
+      ${where} ${TOKEN_AUDIT_ORDER} LIMIT ? OFFSET ?`)
+      .bind(...bindings, limit, (page - 1) * limit).all<TokenUsageRecord>();
+    return { rows: results, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
   // ==========================================================================
@@ -625,8 +696,8 @@ export class AdminEnterpriseRoutes {
       let result: D1Result<AuditEvent>;
 
       if (rawCursor !== null) {
-        const parsedCursor = decodeTrailCursor(rawCursor);
-        if (!parsedCursor) {
+        const parsedCursor = decodeAuditCursor(rawCursor);
+        if (!parsedCursor || typeof parsedCursor.t !== 'string') {
           return createAuthErrorResponse('Invalid query parameters: malformed cursor', 400);
         }
         result = await this.db
@@ -660,7 +731,7 @@ export class AdminEnterpriseRoutes {
         pagination: {
           limit,
           hasMore,
-          nextCursor: lastRow ? encodeTrailCursor(lastRow.timestamp, lastRow.id) : null,
+          nextCursor: lastRow ? encodeAuditCursor(lastRow.timestamp, lastRow.id) : null,
         },
       });
     } catch (error) {
