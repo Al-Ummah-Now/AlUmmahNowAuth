@@ -1,3 +1,5 @@
+import { formatNumber } from '../../../../packages/ui/src/format.ts';
+
 /** Copy Auth overrides in OpenAuth's password pages (every locale). */
 
 /** The email-code field's label: points the user to their inbox. */
@@ -30,9 +32,10 @@ export function sendCodeRateLimitMessage(locale: keyof typeof PASSWORD_COPY, ret
 		return `Too many codes requested. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
 	}
 
-	let wait = `${minutes} دقيقة`;
+	const count = formatNumber(minutes, locale);
+	let wait = `${count} دقيقة`;
 	if (minutes === 1) wait = 'دقيقة واحدة';
 	else if (minutes === 2) wait = 'دقيقتين';
-	else if (minutes <= 10) wait = `${minutes} دقائق`;
+	else if (minutes <= 10) wait = `${count} دقائق`;
 	return `طُلبت رموز كثيرة جدًا. يُرجى الانتظار ${wait} ثم المحاولة مرة أخرى.`;
 }

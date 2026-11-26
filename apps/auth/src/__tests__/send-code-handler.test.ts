@@ -312,9 +312,9 @@ describe('send code retry copy', () => {
 	it.each([
 		[0, '1 minute', 'دقيقة واحدة'],
 		[61, '2 minutes', 'دقيقتين'],
-		[121, '3 minutes', '3 دقائق'],
-		[600, '10 minutes', '10 دقائق'],
-		[601, '11 minutes', '11 دقيقة'],
+		[121, '3 minutes', '٣ دقائق'],
+		[600, '10 minutes', '١٠ دقائق'],
+		[601, '11 minutes', '١١ دقيقة'],
 	] as const)('formats a retry of %i seconds in both locales', (seconds, en, ar) => {
 		expect(sendCodeRateLimitMessage('en', seconds)).toBe(`Too many codes requested. Try again in ${en}.`);
 		expect(sendCodeRateLimitMessage('ar', seconds)).toBe(`طُلبت رموز كثيرة جدًا. يُرجى الانتظار ${ar} ثم المحاولة مرة أخرى.`);
