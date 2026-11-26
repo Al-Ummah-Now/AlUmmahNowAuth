@@ -5,6 +5,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
+    // Cap worker fan-out on high-core machines so Vitest never spawns dozens of Node workers.
+    maxWorkers: 4,
+    minWorkers: 1,
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
