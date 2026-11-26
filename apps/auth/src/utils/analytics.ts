@@ -13,6 +13,7 @@ type EventType =
   | 'logout'
   | 'token_refresh'
   | 'token_revoke'
+  | 'token_rejected'
   | 'register'
   | 'password_reset'
   | 'rate_limit_hit'

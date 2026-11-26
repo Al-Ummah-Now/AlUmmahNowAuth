@@ -4,7 +4,7 @@
  * first-party /token call on one key, lost increments under concurrency and
  * failed open on KV's 1-write-per-second limit.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { env } from 'cloudflare:test';
 import { Hono } from 'hono';
 import '../test-setup';
@@ -12,6 +12,7 @@ import worker from '../index';
 import { withinRateLimit } from '../rate-limit';
 import { rateLimit } from '../middleware/rate-limit';
 import { fakeLimiter } from './helpers/fake-limiter';
+import { AuditEventType } from '../audit-events';
 
 const WORKER_IP = '2a06:98c0:3600::103';
 
@@ -54,6 +55,60 @@ describe('withinRateLimit', () => {
 });
 
 describe('/token through the Worker', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('writes one audit row per denied bucket and minute while reporting every 429', async () => {
+		let now = Date.now();
+		vi.spyOn(Date, 'now').mockImplementation(() => now);
+		const writeDataPoint = vi.fn();
+		const e = testEnv({ TOKEN_LIMITER: fakeLimiter(0), AUDIT_QUEUE: undefined, AUTH_ANALYTICS: { writeDataPoint } });
+		const pending: Promise<unknown>[] = [];
+		const execution = { ...ctx(), waitUntil: (p: Promise<unknown>) => pending.push(p) };
+		const ips = ['198.51.100.201', '198.51.100.202'];
+		const call = (ip: string) => worker.fetch(tokenRequest({ grant_type: 'authorization_code', code: 'x' }, { ip }), e, execution);
+		const responses = await Promise.all(ips.flatMap(ip => Array.from({ length: 24 }, () => call(ip))));
+		for (const response of responses) {
+			expect(response.status).toBe(429);
+			expect(response.headers.get('Retry-After')).toBe('60');
+			expect(await response.json()).toEqual({
+				error: 'rate_limit_exceeded',
+				error_description: 'Too many requests. Please try again in 1 minute(s).',
+			});
+		}
+		while (pending.length) await Promise.all(pending.splice(0));
+		const rows = () => e.AUTH_DB.prepare(
+			'SELECT ip_address FROM audit_events WHERE event_type = ? AND ip_address IN (?, ?) ORDER BY ip_address',
+		).bind(AuditEventType.RATE_LIMIT_EXCEEDED, ...ips).all<{ ip_address: string }>().then(result => result.results);
+		expect(await rows()).toEqual(ips.map(ip => ({ ip_address: ip })));
+		expect(writeDataPoint.mock.calls.filter(([point]) => point.indexes[0] === 'rate_limit_hit')).toHaveLength(48);
+
+		now += 60_000;
+		expect((await call(ips[0])).status).toBe(429);
+		while (pending.length) await Promise.all(pending.splice(0));
+		expect(await rows()).toEqual([ips[0], ...ips].map(ip => ({ ip_address: ip })));
+	});
+
+	it('shares the audit budget between issuer rejections and router rate limits', async () => {
+		vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+		const writeDataPoint = vi.fn();
+		const e = testEnv({ TOKEN_LIMITER: fakeLimiter(4), AUDIT_QUEUE: undefined, AUTH_ANALYTICS: { writeDataPoint } });
+		const pending: Promise<unknown>[] = [];
+		const execution = { ...ctx(), waitUntil: (p: Promise<unknown>) => pending.push(p) };
+		const ip = '198.51.100.203';
+		const call = () => worker.fetch(tokenRequest({ grant_type: 'unsupported' }, { ip }), e, execution);
+		const rejected = await Promise.all(Array.from({ length: 4 }, call));
+		expect(rejected.map(r => r.status)).toEqual([400, 400, 400, 400]);
+		const limited = await Promise.all(Array.from({ length: 4 }, call));
+		expect(limited.map(r => r.status)).toEqual([429, 429, 429, 429]);
+		while (pending.length) await Promise.all(pending.splice(0));
+		const { results } = await e.AUTH_DB.prepare(
+			'SELECT event_type FROM audit_events WHERE ip_address = ?',
+		).bind(ip).all();
+		expect(results).toEqual([{ event_type: AuditEventType.TOKEN_VERIFY_FAILED }]);
+		expect(writeDataPoint.mock.calls.filter(([point]) => point.indexes[0] === 'token_rejected')).toHaveLength(4);
+		expect(writeDataPoint.mock.calls.filter(([point]) => point.indexes[0] === 'rate_limit_hit')).toHaveLength(4);
+	});
+
 	it('300 parallel first-party refreshes for 300 users: none is refused by the limiter (no shared bucket)', async () => {
 		const TOKEN_LIMITER = fakeLimiter(1);
 		const TOKEN_CLIENT_LIMITER = fakeLimiter(1);
