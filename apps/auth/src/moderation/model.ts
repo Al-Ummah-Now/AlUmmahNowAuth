@@ -157,8 +157,6 @@ export async function payloadHash(input: CreateRequestInput): Promise<string> {
 	return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Clients holding this scope may file moderation requests. */
-export const MODERATION_CLIENT_SCOPE = 'moderation:request';
 /** Auth RBAC permission (granted to Admin and Super Admin) to review and decide. */
 export const MODERATION_PERMISSION = 'moderation_requests:manage';
 /** Per client: at most this many new requests per hour (on top of the per-minute limiter). */

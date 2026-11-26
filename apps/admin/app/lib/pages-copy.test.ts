@@ -33,3 +33,7 @@ describe("user Passkeys page copy (English)", () => {
     expect(t.removeBody("Laptop")).toBe("“Laptop” will no longer sign in to this account. The user is emailed.");
   });
 });
+
+it("keeps English and Arabic user-management copy keys in sync", () => {
+  expect(Object.keys(pagesCopy("ar").users).sort()).toEqual(Object.keys(pagesCopy("en").users).sort());
+});

@@ -146,13 +146,22 @@ export function userRoleRoutes(db: D1Database, kv: KVNamespace, issuer?: string)
         return createAuthErrorResponse('Role already assigned to user', 409);
       }
 
-      // Assign role
+      // A previous, expired grant can be renewed without touching active grants.
       const expiresAt = validated.expiresAt ? new Date(validated.expiresAt).getTime() : null;
 
-      await db.prepare(`
+      const result = await db.prepare(`
         INSERT INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by, expires_at)
         VALUES (?, ?, 'default', unixepoch() * 1000, ?, ?)
+        ON CONFLICT (user_id, role_id, tenant_id) DO UPDATE SET
+          assigned_at = excluded.assigned_at,
+          assigned_by = excluded.assigned_by,
+          expires_at = excluded.expires_at
+        WHERE rbac_user_roles.expires_at <= excluded.assigned_at
       `).bind(userId, validated.roleId, actorId, expiresAt).run();
+
+      if (!result.meta?.changes) {
+        return createAuthErrorResponse('Role already assigned to user', 409);
+      }
 
       // Invalidate permissions cache
       await kv.delete(`permissions:${userId}`);

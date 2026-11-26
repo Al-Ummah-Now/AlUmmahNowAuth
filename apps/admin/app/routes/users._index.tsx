@@ -40,6 +40,7 @@ import {
   listUsers,
   listSystemAccounts,
   listRoles,
+  getUserRoles,
   createUser,
   updateUser,
   deleteUser,
@@ -53,14 +54,24 @@ import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("users", langOf(location.search)) }];
 
+interface UserRow {
+  id: string;
+  email: string;
+  name?: string;
+  created_at: string;
+  roles: Array<{ id: string; name: string }>;
+}
+
+type RoleChange = { roleId: string; operation: "add" | "remove" };
+type RoleChangeFailure = RoleChange & { error: string };
+type PartialEdit = { emailSaved: boolean; applied: RoleChange[]; failures: RoleChangeFailure[] };
+type EditUserResult =
+  | { success: true }
+  | { error: string }
+  | PartialEdit;
+
 interface LoaderData {
-  users: Array<{
-    id: string;
-    email: string;
-    name?: string;
-    created_at: string;
-    roles: Array<{ id: string; name: string }>;
-  }>;
+  users: UserRow[];
   allRoles: Array<{ id: string; name: string; is_system: boolean; description?: string }>;
   user: { id: string; email: string } | null;
   authServerUrl: string;
@@ -267,7 +278,7 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       // Note: OpenAuth's userApiRoutes doesn't support initialRole, so we assign roles separately
       const result = await createUser(env, actingUser, {
         email,
-        sendInvite: false, // Don't send invite for now
+        sendInvite: false,
       });
 
       if (isErrorResponse(result)) {
@@ -315,43 +326,73 @@ export async function action({ request, context }: LoaderFunctionArgs) {
       return { success: true };
     }
 
-    // Combined edit user action - handles email AND role changes in one call
     if (intent === "editUser") {
-      const userId = formData.get("userId") as string;
-      const email = formData.get("email") as string;
-      const newRoleId = formData.get("newRoleId") as string | null;
-      const oldRoleId = formData.get("oldRoleId") as string | null;
-
-      if (!userId) {
+      const userId = formData.get("userId");
+      const email = formData.get("email");
+      if (typeof userId !== "string" || !userId) {
         return { error: "Missing userId" };
       }
-
-      // Update email first
-      const emailResult = await updateUser(env, actingUser, userId, { email });
-      if (isErrorResponse(emailResult)) {
-        return { error: emailResult.error };
+      if (email !== null && (typeof email !== "string" || !email.trim())) {
+        return { error: "Email is required" };
       }
 
-      // Handle role change if requested
-      if (newRoleId !== oldRoleId) {
-        // Remove old role if exists
-        if (oldRoleId) {
-          const removeResult = await removeUserRole(env, actingUser, userId, oldRoleId);
-          if (isErrorResponse(removeResult)) {
-            // Log but don't fail - user update succeeded
-            console.warn('Failed to remove old role:', removeResult.error);
-          }
+      const toAdd = new Set(formData.getAll("addRoleId"));
+      const toRemove = new Set(formData.getAll("removeRoleId"));
+      const changes: RoleChange[] = [];
+      for (const roleId of toRemove) {
+        if (typeof roleId !== "string" || !roleId || toAdd.has(roleId)) {
+          return { error: "Invalid role change" };
         }
-        // Assign new role
-        if (newRoleId) {
-          const assignResult = await assignUserRole(env, actingUser, userId, newRoleId);
-          if (isErrorResponse(assignResult)) {
-            return { error: assignResult.error };
-          }
+        changes.push({ roleId, operation: "remove" });
+      }
+      for (const roleId of toAdd) {
+        if (typeof roleId !== "string" || !roleId) {
+          return { error: "Invalid role change" };
+        }
+        changes.push({ roleId, operation: "add" });
+      }
+
+      // Apply only the roles the administrator changed. Checking the current
+      // assignments makes a retry safe if a prior request saved some changes.
+      const currentRoles = new Map<string, number | null>();
+      if (changes.length > 0) {
+        const current = await getUserRoles(env, actingUser, userId);
+        if (isErrorResponse(current)) return { error: current.error };
+        current.roles.forEach((role) => currentRoles.set(role.id, role.expires_at));
+      }
+
+      if (email !== null) {
+        const result = await updateUser(env, actingUser, userId, { email });
+        if (isErrorResponse(result)) return { error: result.error };
+      }
+
+      const applied: RoleChange[] = [];
+      const failures: RoleChangeFailure[] = [];
+      for (const change of changes) {
+        const { roleId, operation } = change;
+        const adding = operation === "add";
+        const expiresAt = currentRoles.get(roleId);
+        const alreadyApplied = adding
+          ? expiresAt === null || (expiresAt !== undefined && expiresAt > Date.now())
+          : !currentRoles.has(roleId);
+        if (alreadyApplied) {
+          applied.push(change);
+          continue;
+        }
+
+        const mutateRole = adding ? assignUserRole : removeUserRole;
+        const result = await mutateRole(env, actingUser, userId, roleId);
+        if (isErrorResponse(result)) {
+          failures.push({ ...change, error: result.error });
+        } else {
+          applied.push(change);
         }
       }
 
-      return { success: true };
+      const result: EditUserResult = failures.length > 0
+        ? { emailSaved: email !== null, applied, failures }
+        : { success: true };
+      return result;
     }
 
     if (intent === "deleteUser") {
@@ -383,6 +424,7 @@ export default function Users() {
   const { users, allRoles, user, authServerUrl, loadError, systemAccounts } = useLoaderData<LoaderData>();
   const revalidator = useRevalidator();
   const fetcher = useFetcher();
+  const editFetcher = useFetcher<EditUserResult>();
   const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
   const navigate = useNavigate();
@@ -391,9 +433,10 @@ export default function Users() {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [roleManagerOpen, setRoleManagerOpen] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<{ id: string; email: string; name?: string; roles: Array<{ id: string; name: string }> } | null>(null);
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editEmail, setEditEmail] = useState("");
-  const [editRole, setEditRole] = useState("");
+  const [editRoleIds, setEditRoleIds] = useState<string[]>([]);
+  const [editBaseline, setEditBaseline] = useState({ email: "", roleIds: [] as string[] });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const deleteLang = langOf(searchParams);
   const deleteCopy = deletionCopy(deleteLang);
@@ -411,11 +454,12 @@ export default function Users() {
   const [serverWarning, setServerWarning] = useState<string | null>(null);
   const [editServerError, setEditServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [partialEdit, setPartialEdit] = useState<PartialEdit | null>(null);
+  const isEditSubmitting = editFetcher.state !== "idle";
   // Track previous fetcher state to detect state transitions (not just idle with old data)
   // Use separate refs for create and edit to avoid interference
   const prevFetcherStateForCreateRef = useRef<string>(fetcher.state);
-  const prevFetcherStateForEditRef = useRef<string>(fetcher.state);
+  const prevFetcherStateForEditRef = useRef(editFetcher.state);
 
   // Handle fetcher response for create user
   // Use queueMicrotask to avoid synchronous setState in effect body
@@ -464,42 +508,31 @@ export default function Users() {
     }
   }, [fetcher.state, fetcher.data, isSubmitting, revalidator]);
 
-  // Handle fetcher response for edit user
-  // Use queueMicrotask to avoid synchronous setState in effect body
   useEffect(() => {
     const prevState = prevFetcherStateForEditRef.current;
-    prevFetcherStateForEditRef.current = fetcher.state;
+    prevFetcherStateForEditRef.current = editFetcher.state;
+    const data = editFetcher.data;
+    if (editFetcher.state !== "idle" || prevState === "idle" || !data) return;
 
-    // Only process response when transitioning from loading/submitting to idle
-    if (isEditSubmitting && fetcher.state === "idle" && prevState !== "idle") {
-      const data = fetcher.data as { success?: boolean; error?: string } | undefined;
-      queueMicrotask(() => {
-        setIsEditSubmitting(false);
-        if (data?.success) {
-          // Success - close dialog and reset form
-          setEditDialogOpen(false);
-          setEditingUser(null);
-          setEditEmail("");
-          setEditRole("");
-          setEditServerError(null);
-          // Revalidate to fetch fresh data (fetcher.submit doesn't auto-revalidate like Form)
-          revalidator.revalidate();
-        } else if (data?.error) {
-          // Server error - show error in dialog
-          setEditServerError(data.error);
-        } else {
-          // No explicit success/error but operation completed - assume success
-          setEditDialogOpen(false);
-          setEditingUser(null);
-          setEditEmail("");
-          setEditRole("");
-          setEditServerError(null);
-          // Revalidate to fetch fresh data
-          revalidator.revalidate();
-        }
-      });
-    }
-  }, [fetcher.state, fetcher.data, isEditSubmitting, revalidator]);
+    queueMicrotask(() => {
+      if ("success" in data) {
+        setEditDialogOpen(false);
+        setEditingUser(null);
+      } else if ("error" in data) {
+        setEditServerError(data.error);
+      } else {
+        setPartialEdit(data);
+        setEditBaseline((saved) => {
+          const roleIds = new Set(saved.roleIds);
+          for (const { roleId, operation } of data.applied) {
+            if (operation === "add") roleIds.add(roleId);
+            else roleIds.delete(roleId);
+          }
+          return { email: data.emailSaved ? editEmail : saved.email, roleIds: [...roleIds] };
+        });
+      }
+    });
+  }, [editFetcher.state, editFetcher.data, editEmail]);
 
   // Simple email format validation
   const isValidEmail = (email: string): boolean => {
@@ -531,38 +564,38 @@ export default function Users() {
     // Dialog stays open - will be closed by useEffect on success
   };
 
-  const handleEditUser = (user: { id: string; email: string; name?: string; roles: Array<{ id: string; name: string }> }) => {
+  const handleEditUser = (user: UserRow) => {
+    const roleIds = user.roles.map(({ id }) => id);
     setEditingUser(user);
     setEditEmail(user.email);
-    // Set the current role (take the first one or default to user)
-    const currentRole = user.roles.length > 0 ? user.roles[0].name : 'user';
-    setEditRole(currentRole);
+    setEditRoleIds(roleIds);
+    setEditBaseline({ email: user.email, roleIds });
     setEditServerError(null);
+    setPartialEdit(null);
     setEditDialogOpen(true);
   };
 
-  const handleSaveEdit = () => {
-    if (!editingUser) return;
+  const handleSaveEdit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingUser || isEditSubmitting) return;
 
     setEditServerError(null);
-    setIsEditSubmitting(true);
-
-    // Find role IDs for the combined action
-    const targetRoleId = allRoles.find((r) => r.name === editRole)?.id || null;
-    const currentRoleId = editingUser.roles.length > 0 ? editingUser.roles[0].id : null;
-
-    // Use the combined editUser action that handles email AND role in one call
+    setPartialEdit(null);
     const formData = new FormData();
-    formData.append("intent", "editUser");
-    formData.append("userId", editingUser.id);
-    formData.append("email", editEmail);
-    if (targetRoleId) formData.append("newRoleId", targetRoleId);
-    if (currentRoleId) formData.append("oldRoleId", currentRoleId);
-
-    fetcher.submit(formData, { method: "POST" });
-
-    // Dialog stays open - will be closed by useEffect on success
+    formData.set("intent", "editUser");
+    formData.set("userId", editingUser.id);
+    if (editEmail !== editBaseline.email) formData.set("email", editEmail);
+    for (const id of editRoleIds) {
+      if (!editBaseline.roleIds.includes(id)) formData.append("addRoleId", id);
+    }
+    for (const id of editBaseline.roleIds) {
+      if (!editRoleIds.includes(id)) formData.append("removeRoleId", id);
+    }
+    editFetcher.submit(formData, { method: "POST" });
   };
+
+  // Assigned roles remain visible if the role catalog could not be loaded.
+  const editRoleOptions = new Map([...allRoles, ...(editingUser?.roles ?? [])].map((role) => [role.id, role.name]));
 
   const handleConfirmDelete = ({ reason }: { reason: string }) => {
     if (!deletingUserId) return;
@@ -869,52 +902,77 @@ export default function Users() {
       ))}
 
       {/* Edit User Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent dir={dirOf(lang)} lang={lang}>
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        if (!isEditSubmitting) setEditDialogOpen(open);
+      }}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto" dir={dirOf(lang)} lang={lang}>
           <DialogHeader>
             <DialogTitle>{t.editTitle}</DialogTitle>
             <DialogDescription>{t.editIntro}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="email">{c.email}</Label>
-              <Input
-                id="email"
-                type="email"
-                dir="ltr"
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-                disabled={isEditSubmitting}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="role">{t.role}</Label>
-              <select
-                id="role"
-                className="flex h-10 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2"
-                value={editRole}
-                onChange={(e) => setEditRole(e.target.value)}
-                disabled={isEditSubmitting}
-              >
-                  {allRoles.map((role) => (
-                  <option key={role.id} value={role.name}>{role.name}</option>
-                ))}
-              </select>
-            </div>
-            {editServerError && (
-              <div className="p-3 text-sm ui-alert-error rounded-md" role="alert">
-                {editServerError}
+          <form onSubmit={handleSaveEdit}>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">{c.email}</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  dir="ltr"
+                  required
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  disabled={isEditSubmitting}
+                />
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={isEditSubmitting}>
-              {c.cancel}
-            </Button>
-            <Button type="submit" onClick={handleSaveEdit} disabled={isEditSubmitting}>
-              {isEditSubmitting ? (lang === "ar" ? c.saving : "Saving...") : c.save}
-            </Button>
-          </DialogFooter>
+              <fieldset className="grid gap-2" disabled={isEditSubmitting}>
+                <legend className="mb-2 text-sm font-medium">{t.colRoles}</legend>
+                {editRoleOptions.size === 0 && <p className="text-sm text-muted-foreground">{t.noRoles}</p>}
+                {[...editRoleOptions].map(([id, name]) => (
+                  <label key={id} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editRoleIds.includes(id)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setEditRoleIds((ids) => checked ? [...ids, id] : ids.filter((roleId) => roleId !== id));
+                      }}
+                      className="h-4 w-4 rounded border-[var(--color-input)]"
+                    />
+                    <bdi className="text-sm">{name}</bdi>
+                  </label>
+                ))}
+              </fieldset>
+              {editServerError && (
+                <div className="p-3 text-sm ui-alert-error rounded-md" role="alert">
+                  {editServerError}
+                </div>
+              )}
+              {partialEdit && (
+                <div className="p-3 text-sm ui-alert-warning rounded-md" role="alert">
+                  <p>{partialEdit.emailSaved && `${t.editEmailSaved} `}{t.editRoleError}</p>
+                  <ul className="list-disc ps-4">
+                    {partialEdit.failures.map(({ operation, roleId, error }) => {
+                      const name = editRoleOptions.get(roleId) ?? roleId;
+                      return (
+                        <li key={roleId}>
+                          {operation === "add" ? t.roleAddFailed(name) : t.roleRemoveFailed(name)}
+                          {" · "}<bdi>{error}</bdi>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)} disabled={isEditSubmitting}>
+                {c.cancel}
+              </Button>
+              <Button type="submit" disabled={isEditSubmitting}>
+                {isEditSubmitting ? c.saving : c.save}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

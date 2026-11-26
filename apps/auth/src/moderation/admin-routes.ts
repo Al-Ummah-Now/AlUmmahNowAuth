@@ -15,6 +15,7 @@
  * the same account code as the Users and Sessions pages (moderation/actions.ts);
  * a failure that outlives the retries flags the request ("needs attention").
  */
+import { MODERATION_CLIENT_SCOPE } from '../../../../packages/auth-contract/client-scopes';
 import { Hono } from 'hono';
 import { requireAdmin } from '../middleware/admin-auth';
 import { rateLimit } from '../middleware/rate-limit';
@@ -266,7 +267,7 @@ async function clientNames(db: D1Database, rows: ModerationRequestRow[]) {
 /** Clients that may file requests (the queue's client filter). */
 async function allModerationClients(db: D1Database) {
 	const { results } = await db
-		.prepare(`SELECT id, name FROM oauth_clients WHERE scopes LIKE '%"moderation:request"%' ORDER BY name`)
+		.prepare(`SELECT id, name FROM oauth_clients WHERE scopes LIKE '%"${MODERATION_CLIENT_SCOPE}"%' ORDER BY name`)
 		.all<{ id: string; name: string }>();
 	return results ?? [];
 }

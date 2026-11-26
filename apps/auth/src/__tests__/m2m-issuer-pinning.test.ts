@@ -151,6 +151,22 @@ describe('M2M token issuer pinning', () => {
       expect(res.status).toBe(200);
     });
 
+    it('renews an expired role and keeps active assignments intact', async () => {
+      const db = env.AUTH_DB;
+      await db.prepare(`
+        INSERT OR REPLACE INTO rbac_user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by, expires_at)
+        VALUES ('target-user', ?, 'default', 1, 'test', 2)
+      `).bind(memberRoleId).run();
+
+      const app = userRoleRoutes(db, env.AUTH_STORAGE, env.OPENAUTH_ISSUER);
+      expect((await assign(app)).status).toBe(200);
+      expect((await assign(app)).status).toBe(409);
+      const grant = await db.prepare(`
+        SELECT assigned_by, expires_at FROM rbac_user_roles WHERE user_id = 'target-user' AND role_id = ?
+      `).bind(memberRoleId).first();
+      expect(grant).toEqual({ assigned_by: 'm2m:admin-client', expires_at: null });
+    });
+
     it('refuses a role assignment from an M2M client without an admin scope', async () => {
       await env.AUTH_DB.prepare(`DELETE FROM rbac_user_roles WHERE user_id = 'target-user' AND role_id = ?`).bind(memberRoleId).run();
       const res = await assign(userRoleRoutes(env.AUTH_DB, env.AUTH_STORAGE, env.OPENAUTH_ISSUER), { client_id: 'videos-moderation', scope: 'moderation:request' });

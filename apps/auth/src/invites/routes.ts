@@ -20,6 +20,7 @@
  *
  * Every change is audit-logged; tokens and their hashes never are.
  */
+import { INVITE_CLIENT_SCOPE } from '../../../../packages/auth-contract/client-scopes';
 import { createClientAuthMiddleware, type OAuthClient } from '../middleware/clientAuth';
 import { withinRateLimit, RATE_LIMIT_PERIOD_SECONDS, getClientIP } from '../rate-limit';
 import { emitAuditEvent } from '../audit-emitter';
@@ -43,7 +44,6 @@ import { createLoginSuccessEvent } from '../audit-events';
 import { getAuditEmitter } from '../audit-emitter';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
 
-export const INVITE_CLIENT_SCOPE = 'invites:provision';
 const INVITE_FROM = 'Al Ummah Now <login@alummahnow.net>';
 const JSON_HEADERS = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
 

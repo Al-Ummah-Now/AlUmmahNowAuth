@@ -3,10 +3,8 @@
  * = { "uri": "https://…", "types": [...] }. Only an enabled confidential machine
  * client with the scope account-events:receive counts (docs/account-hub/SPEC.md §5.4).
  */
+import { ACCOUNT_EVENTS_RECEIVE_SCOPE, ACCOUNT_EXPORTS_WRITE_SCOPE } from '../../../../packages/auth-contract/client-scopes';
 import { ACCOUNT_EVENT_TYPES, type AccountEventType } from './types';
-
-export const RECEIVE_SCOPE = 'account-events:receive';
-export const EXPORT_SCOPE = 'account-exports:write';
 
 export interface Subscriber {
 	clientId: string;
@@ -63,12 +61,12 @@ export function subscriberOf(row: ClientRow | null): Subscriber | null {
 	if (!row || row.enabled !== 1 || !row.client_secret_hash) return null;
 	if (!strings(parse(row.grant_types)).includes('client_credentials')) return null;
 	const scopes = strings(parse(row.scopes));
-	if (!scopes.includes(RECEIVE_SCOPE)) return null;
+	if (!scopes.includes(ACCOUNT_EVENTS_RECEIVE_SCOPE)) return null;
 	const metadata = parse(row.metadata) as { events?: { uri?: unknown; types?: unknown }; exportPart?: unknown } | null;
 	const uri = metadata?.events?.uri;
 	if (!isDeliverable(uri)) return null;
 	const wanted = strings(metadata?.events?.types);
-	const canExport = scopes.includes(EXPORT_SCOPE) && typeof metadata?.exportPart === 'string' && metadata.exportPart !== '';
+	const canExport = scopes.includes(ACCOUNT_EXPORTS_WRITE_SCOPE) && typeof metadata?.exportPart === 'string' && metadata.exportPart !== '';
 	const types = ACCOUNT_EVENT_TYPES.filter((t) => wanted.includes(t) && (t !== 'account-export-requested' || canExport));
 	return types.length ? { clientId: row.id, uri, types } : null;
 }

@@ -1,3 +1,4 @@
+import { CLIENT_SCOPES, type ClientScope } from "../../../../packages/auth-contract/client-scopes";
 import { adminCopy, pageTitle } from "../lib/admin-copy";
 import { AdminTime, adminDate, useAdminTime } from "../components/admin-time";
 import { pagesCopy } from "../lib/pages-copy";
@@ -205,8 +206,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   if (intent === "update") {
     const clientId = formData.get("client_id") as string;
-    const redirectUris = (formData.get("redirect_uris") as string).split("\n").filter(u => u.trim());
-    const grantTypes = formData.getAll("grant_types") as string[];
+    const redirectUris = (formData.get("redirect_uris") as string | null)?.split("\n").filter(u => u.trim());
+    const grantTypes = formData.has("update_grants") || formData.has("grant_types")
+      ? formData.getAll("grant_types") as string[]
+      : undefined;
     const scopes = formData.getAll("scopes") as string[];
     const metadataStr = formData.get("metadata") as string;
 
@@ -383,8 +386,15 @@ export default function ClientsPage() {
     const formData = new FormData();
     formData.append("intent", "update");
     formData.append("client_id", selectedClient.client_id);
-    formData.append("redirect_uris", editRedirectUris);
-    editAllowedGrants.forEach(grant => formData.append("grant_types", grant));
+    // Existing native redirects and device grants may predate validation.
+    if (editRedirectUris !== selectedClient.redirect_uris.join("\n")) {
+      formData.append("redirect_uris", editRedirectUris);
+    }
+    if (editAllowedGrants.length !== selectedClient.allowed_grants.length ||
+      editAllowedGrants.some((grant) => !selectedClient.allowed_grants.includes(grant))) {
+      formData.append("update_grants", "true");
+      editAllowedGrants.forEach(grant => formData.append("grant_types", grant));
+    }
     editScopes.forEach(scope => formData.append("scopes", scope));
     formData.append("metadata", editMetadata);
 
@@ -420,18 +430,7 @@ export default function ClientsPage() {
 
   const availableGrants = ["authorization_code", "refresh_token", "client_credentials"].map((value) => ({ value, label: t.grantNames[value] ?? value }));
 
-  const availableScopes = [
-    // Scope names are protocol values (shown as they are); the hint is in the page's language
-    { value: "openid", label: "OpenID" },
-    { value: "profile", label: "Profile" },
-    { value: "email", label: "Email" },
-    { value: "offline_access", label: "Offline Access" },
-    { value: "admin", label: "Admin" },
-    { value: "admin:users", label: "Admin: Users" },
-    { value: "admin:roles", label: "Admin: Roles" },
-    { value: "admin:clients", label: "Admin: Clients" },
-    { value: "admin:audit", label: "Admin: Audit" },
-  ].map((scope) => ({ ...scope, description: t.scopeHints[scope.value] ?? "" }));
+  const editAvailableScopes = [...new Set([...CLIENT_SCOPES, ...(selectedClient?.scopes ?? [])])];
 
   const toggleScope = (scope: string, scopes: string[], setScopes: (s: string[]) => void) => {
     if (scopes.includes(scope)) {
@@ -609,7 +608,7 @@ export default function ClientsPage() {
 
       {/* Create Client Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-md" dir={dirOf(lang)} lang={lang}>
+        <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto" dir={dirOf(lang)} lang={lang}>
           <DialogHeader>
             <DialogTitle>{t.createTitle}</DialogTitle>
             <DialogDescription>{t.createIntro}</DialogDescription>
@@ -655,15 +654,15 @@ export default function ClientsPage() {
             <div className="space-y-2">
               <Label>{t.scopes}</Label>
               <div className="grid grid-cols-2 gap-2">
-                {availableScopes.map((scope) => (
-                  <label key={scope.value} className="flex items-center gap-2" title={scope.description}>
+                {CLIENT_SCOPES.map((scope) => (
+                  <label key={scope} className="flex items-center gap-2" title={t.scopeHints[scope]}>
                     <input
                       type="checkbox"
-                      checked={newScopes.includes(scope.value)}
-                      onChange={() => toggleScope(scope.value, newScopes, setNewScopes)}
+                      checked={newScopes.includes(scope)}
+                      onChange={() => toggleScope(scope, newScopes, setNewScopes)}
                       className="rounded border-[var(--color-input)] accent-[var(--color-primary)]"
                     />
-                    <span className="text-sm" dir="ltr">{scope.label}</span>
+                    <span className="min-w-0 break-all text-sm" dir="ltr">{scope}</span>
                   </label>
                 ))}
               </div>
@@ -693,7 +692,7 @@ export default function ClientsPage() {
 
       {/* Edit Client Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-md" dir={dirOf(lang)} lang={lang}>
+        <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto" dir={dirOf(lang)} lang={lang}>
           <DialogHeader>
             <DialogTitle>{t.editTitle(selectedClient?.name ?? "")}</DialogTitle>
             <DialogDescription>
@@ -730,15 +729,15 @@ export default function ClientsPage() {
             <div className="space-y-2">
               <Label>{t.scopes}</Label>
               <div className="grid grid-cols-2 gap-2">
-                {availableScopes.map((scope) => (
-                  <label key={scope.value} className="flex items-center gap-2" title={scope.description}>
+                {editAvailableScopes.map((scope) => (
+                  <label key={scope} className="flex items-center gap-2" title={Object.hasOwn(t.scopeHints, scope) ? t.scopeHints[scope as ClientScope] : undefined}>
                     <input
                       type="checkbox"
-                      checked={editScopes.includes(scope.value)}
-                      onChange={() => toggleScope(scope.value, editScopes, setEditScopes)}
+                      checked={editScopes.includes(scope)}
+                      onChange={() => toggleScope(scope, editScopes, setEditScopes)}
                       className="rounded border-[var(--color-input)] accent-[var(--color-primary)]"
                     />
-                    <span className="text-sm" dir="ltr">{scope.label}</span>
+                    <span className="min-w-0 break-all text-sm" dir="ltr">{scope}</span>
                   </label>
                 ))}
               </div>

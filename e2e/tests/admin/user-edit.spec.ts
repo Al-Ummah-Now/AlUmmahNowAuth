@@ -49,7 +49,7 @@ test.describe('Admin User Editing', () => {
     await createUser(page, { email: userEmail, role: 'member' });
 
     // Edit user role
-    await editUser(page, userEmail, { role: 'admin' });
+    await editUser(page, userEmail, { roles: ['Admin'] });
 
     // Verify role updated in list
     // Already on /users page from previous action
@@ -63,7 +63,7 @@ test.describe('Admin User Editing', () => {
     await createUser(page, { email: adminEmail, role: 'admin' });
 
     // Edit user role to member (the basic user role in the system)
-    await editUser(page, adminEmail, { role: 'member' });
+    await editUser(page, adminEmail, { roles: ['Member'] });
 
     // Verify role updated in list
     // Already on /users page from previous action
@@ -81,7 +81,7 @@ test.describe('Admin User Editing', () => {
 
     // Edit both fields
     const newEmail = generateAdminCreatedEmail('both-updated');
-    await editUser(page, originalEmail, { email: newEmail, role: 'admin' });
+    await editUser(page, originalEmail, { email: newEmail, roles: ['Admin'] });
 
     // Verify both updated
     // Already on /users page from previous action
