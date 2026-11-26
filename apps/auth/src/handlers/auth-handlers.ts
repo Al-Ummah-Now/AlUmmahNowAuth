@@ -6,7 +6,7 @@
  */
 
 import { logger } from '../logger';
-import { getClientIP } from '../rate-limit';
+import { getClientIP, RATE_LIMIT_PERIOD_SECONDS } from '../rate-limit';
 import { getAuditEmitter } from '../audit-emitter';
 import { createLoginSuccessEvent, createLoginFailedEvent } from '../audit-events';
 import { trackEvent } from '../utils/analytics';
@@ -17,7 +17,7 @@ import { Storage, type StorageAdapter } from '@al-ummah-now/openauth/storage/sto
 import type { PasswordSendCodeError } from '@al-ummah-now/openauth/provider/password';
 import { getLocaleFromRequest } from '@al-ummah-now/openauth/ui/i18n';
 import { accountStateOf, isRefusedAccountState, readAccountState, type AccountState } from '../security/account-status';
-import type { PasswordSignInFailure } from '../security/bounded-audit';
+import { recordRateLimitDenial, type PasswordSignInFailure } from '../security/bounded-audit';
 import { endBrowserSignIns } from '../revocation/lifecycle';
 import { renderAccountSuspendedPage } from '../ui/account-suspended-page';
 import type { Theme } from '@al-ummah-now/openauth/ui/theme';
@@ -477,9 +477,6 @@ export function createSendCodeHandler(
 	const sendEmailPromise = import('../email').then((m) => m.default);
 	const emailTemplatesPromise = import('../email-templates');
 	const requireSecretPromise = import('../utils/secrets').then((m) => m.requireSecret);
-	const rateLimitEventPromise = import('../audit-events').then(
-		(m) => m.createRateLimitExceededEvent
-	);
 
 	/** The live D1 account of this address (idx_users_email_lower), if any. */
 	async function d1Account(email: string): Promise<{ id: string; metadata: string | null } | null> {
@@ -509,13 +506,11 @@ export function createSendCodeHandler(
 			SendEmail,
 			emailTemplates,
 			requireSecret,
-			createRateLimitExceededEvent,
 		] = await Promise.all([
 			withinRateLimitPromise,
 			sendEmailPromise,
 			emailTemplatesPromise,
 			requireSecretPromise,
-			rateLimitEventPromise,
 		]);
 
 		logger.info('Sending login code', { codeLength: code.length });
@@ -531,28 +526,11 @@ export function createSendCodeHandler(
 		const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
 
 		if (!(await withinRateLimit(env.SEND_CODE_LIMITER, rateLimitKey))) {
-			const retryAfter = 60;
 			logger.warn('Rate limit exceeded for login attempt', {
 				clientIP,
-				retryAfter,
+				retryAfter: RATE_LIMIT_PERIOD_SECONDS,
 			});
-
-			// Emit rate limit exceeded audit event
-			const auditEvent = createRateLimitExceededEvent('/sendCode', 0, 60, retryAfter, {
-				ipAddress: clientIP,
-				userAgent: request.headers.get('User-Agent') ?? undefined,
-				requestId,
-			});
-			ctx.waitUntil(getAuditEmitter().emit(auditEvent));
-
-			// Track rate limit in analytics
-			trackEvent(env, {
-				event: 'rate_limit_hit',
-				email,
-				ipAddress: clientIP,
-				userAgent: request.headers.get('User-Agent') ?? undefined,
-			});
-
+			recordRateLimitDenial(handlerCtx, '/sendCode', `send-code:${rateLimitKey}`, email);
 			return CODE_SEND_FAILED;
 		}
 
