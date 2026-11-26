@@ -8414,14 +8414,102 @@
         ],
         "operationId": "adminTokenAudit",
         "summary": "Token audit log",
+        "description": "Use cursor pagination for indexed pages without a total. Numbered pagination is supported for existing callers.",
         "x-audience": "admin",
+        "parameters": [
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Set to cursor to start keyset pagination. Omit page.",
+            "schema": { "type": "string", "const": "cursor" }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Continue with pagination.nextCursor from the previous page, keeping the same filters. Omit before and page.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Start keyset pagination strictly before this timestamp. Continue with cursor.",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number for numbered pagination.",
+            "schema": { "type": "integer", "minimum": 1, "default": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["generated", "refreshed", "revoked", "reused"] }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive lower timestamp boundary.",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Inclusive upper timestamp boundary.",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Cursor mode matches complete user and client IDs. Numbered mode supports substring matches across IDs and IP addresses.",
+            "schema": { "type": "string" }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Done",
+            "description": "Token audit page ordered by creation time and event ID, newest first.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "required": ["data", "pagination"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "type": "object" }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "required": ["limit"],
+                      "properties": {
+                        "limit": { "type": "integer" },
+                        "hasMore": { "type": "boolean" },
+                        "nextCursor": { "type": ["string", "null"] },
+                        "page": { "type": "integer" },
+                        "total": { "type": "integer" },
+                        "totalPages": { "type": "integer" }
+                      },
+                      "oneOf": [
+                        { "required": ["hasMore", "nextCursor"] },
+                        { "required": ["page", "total", "totalPages"] }
+                      ]
+                    }
+                  }
                 }
               }
             }
@@ -8812,6 +8900,7 @@
         ],
         "operationId": "adminDlqReplay",
         "summary": "Try failed audit events again",
+        "description": "Replays a batch to its stored destination. The optional webhookUrl body field filters which batches to replay.",
         "x-audience": "admin",
         "responses": {
           "200": {

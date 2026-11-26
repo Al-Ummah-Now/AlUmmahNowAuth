@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { env } from 'cloudflare:test';
 import '../test-setup';
-import { AdminEnterpriseRoutes } from '../admin-enterprise-routes';
+import { AdminEnterpriseRoutes, tokenAuditPageQuery } from '../admin-enterprise-routes';
 
 // Mock the auth middleware
 vi.mock('../auth-middleware', () => ({
@@ -163,6 +163,104 @@ describe('AdminEnterpriseRoutes', () => {
       expect(data.data).toHaveLength(2);
       expect(data.pagination.limit).toBe(2);
       expect(data.pagination.totalPages).toBe(2);
+    });
+
+    it('preserves numbered page 2 and its totals', async () => {
+      const response = await routes.handle(new Request('http://localhost/admin/audit?page=2&limit=2'), mockEnv, mockCtx);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        data: [{ id: 'token-audit-1' }],
+        pagination: { page: 2, limit: 2, total: 3, totalPages: 2 },
+      });
+    });
+
+    it('cursors traverse timestamp ties and before is exclusive', async () => {
+      const createdAt = await env.AUTH_DB.prepare("SELECT created_at FROM token_usage WHERE id = 'token-audit-3'").first<number>('created_at');
+      for (const id of ['tie-a', 'tie-z']) {
+        await env.AUTH_DB.prepare(
+          "INSERT INTO token_usage (id, client_id, user_id, token_type, created_at) VALUES (?, 'client-web', 'user-123', 'generated', ?)"
+        ).bind(id, createdAt).run();
+      }
+      const list = async (params: URLSearchParams) => {
+        const response = await routes.handle(new Request(`http://localhost/admin/audit?${params}`), mockEnv, mockCtx);
+        expect(response.status).toBe(200);
+        return response.json<{ data: { id: string }[]; pagination: { limit: number; hasMore: boolean; nextCursor: string | null } }>();
+      };
+      const params = new URLSearchParams({ pagination: 'cursor', limit: '2', user_id: 'user-123' });
+      const first = await list(params);
+      expect(first.data.map(row => row.id)).toEqual(['token-audit-3', 'tie-z']);
+      expect(first.pagination).toEqual({ limit: 2, hasMore: true, nextCursor: expect.any(String) });
+
+      params.set('cursor', first.pagination.nextCursor!);
+      const second = await list(params);
+      expect(second.data.map(row => row.id)).toEqual(['tie-a', 'token-audit-1']);
+      expect(second.pagination).toEqual({ limit: 2, hasMore: false, nextCursor: null });
+
+      params.delete('cursor');
+      params.set('before', new Date(createdAt!).toISOString());
+      expect((await list(params)).data.map(row => row.id)).toEqual(['token-audit-1']);
+    });
+
+    it('merges exact user and client matches across pages and deduplicates overlaps', async () => {
+      const now = Date.now();
+      for (const [id, user, client, createdAt] of [
+        ['match-both', 'exact', 'exact', now],
+        ['match-user', 'exact', 'client', now - 1],
+        ['match-client', null, 'exact', now - 2],
+        ['substring', 'exact-longer', 'client-exact', now + 1],
+        ['ip-only', 'different', 'different', now + 2],
+      ] as const) {
+        await env.AUTH_DB.prepare(
+          "INSERT INTO token_usage (id, user_id, client_id, token_type, ip_address, created_at) VALUES (?, ?, ?, 'generated', 'exact', ?)"
+        ).bind(id, user, client, createdAt).run();
+      }
+      const url = new URL('http://localhost/admin/audit?pagination=cursor&search=exact&limit=2');
+      const first = await routes.handle(new Request(url), mockEnv, mockCtx);
+      expect(first.status).toBe(200);
+      const payload = await first.json<{ pagination: { nextCursor: string } }>();
+      expect(payload).toMatchObject({ data: [{ id: 'match-both' }, { id: 'match-user' }] });
+
+      url.searchParams.set('cursor', payload.pagination.nextCursor);
+      const next = await routes.handle(new Request(url), mockEnv, mockCtx);
+      expect(await next.json()).toMatchObject({
+        data: [{ id: 'match-client' }],
+        pagination: { hasMore: false, nextCursor: null },
+      });
+
+      url.searchParams.delete('cursor');
+      url.searchParams.set('client_id', 'different');
+      const filtered = await routes.handle(new Request(url), mockEnv, mockCtx);
+      expect(await filtered.json()).toMatchObject({ data: [], pagination: { hasMore: false } });
+    });
+
+    it.each([
+      'cursor=bad',
+      'before=bad',
+      'cursor=bad&before=2026-11-26T00:00:00Z',
+      'pagination=cursor&page=2',
+      'pagination=cursor&limit=101',
+    ])('rejects invalid cursor parameters (%s)', async (query) => {
+      const response = await routes.handle(new Request(`http://localhost/admin/audit?${query}`), mockEnv, mockCtx);
+      expect(response.status).toBe(400);
+    });
+
+    it.each([
+      [{}, ['idx_token_usage_created_at_id']],
+      [{ userId: 'user-123' }, ['idx_token_usage_user_created_at']],
+      [{ clientId: 'client-web' }, ['idx_token_usage_client_created_at']],
+      [{ action: 'generated' }, ['idx_token_usage_action_created_at']],
+      [{ search: 'user-123' }, ['idx_token_usage_user_created_at', 'idx_token_usage_client_created_at']],
+    ] as const)('uses indexed range seeks for the cursor query with %j', async (filters, indexes) => {
+      const query = tokenAuditPageQuery({ ...filters, cursor: { timestamp: Date.now(), id: 'event-id' } }, 3);
+      expect(query).toBeDefined();
+      const plan = await env.AUTH_DB.prepare(`EXPLAIN QUERY PLAN ${query!.sql}`)
+        .bind(...query!.bindings).all<{ detail: string }>();
+      const details = plan.results.map(row => row.detail);
+      for (const index of indexes) {
+        expect(details.some(detail => detail.includes('SEARCH token_usage USING INDEX ' + index) &&
+          detail.includes('(created_at,id)<')), details.join('\n')).toBe(true);
+      }
+      expect(details.some(detail => detail.includes('SCAN token_usage'))).toBe(false);
     });
 
     it('GET /admin/audit returns newest first with ISO created_at from ms timestamps', async () => {

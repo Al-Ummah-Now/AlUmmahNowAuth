@@ -1,36 +1,29 @@
-/**
- * Dead Letter Queue Replay Service
- *
- * Provides functionality to replay failed webhook deliveries from the DLQ
- */
-
-import { AuditEvent } from './audit-events';
+import type { AuditEvent } from './audit-events';
 import { WebhookSink } from './audit-emitter';
 
-/**
- * Database row structure from webhook_dlq table
- */
+type DLQStatus = 'pending' | 'replaying' | 'completed' | 'failed';
+const HOUR_MS = 60 * 60 * 1000;
+
 interface DLQRow {
-  id: number;
-  events: string;           // JSON string of AuditEvent[]
+  id: string;
+  payload: string;
   webhook_url: string;
-  error: string;
-  timestamp: string;
+  error_message: string | null;
   retry_count: number;
-  status: string;
-  replayed_at: string | null;
-  replaying_started_at: string | null;
-  created_at: string;
+  status: DLQStatus;
+  replayed_at: number | null;
+  replaying_started_at: number | null;
+  created_at: number;
 }
 
 export interface DLQEntry {
-  id: number;
+  id: string;
   events: AuditEvent[];
   webhookUrl: string;
   error: string;
   timestamp: string;
   retryCount: number;
-  status: 'pending' | 'replaying' | 'completed' | 'failed';
+  status: DLQStatus;
   replayedAt?: string;
   replayingStartedAt?: string;
   createdAt: string;
@@ -40,281 +33,161 @@ export interface ReplayResult {
   totalEntries: number;
   successfulReplays: number;
   failedReplays: number;
-  errors: Array<{ id: number; error: string }>;
+  errors: Array<{ id: string; error: string }>;
 }
 
 export interface DLQReplayOptions {
-  batchSize?: number;      // Number of entries to process at once
-  maxAge?: number;         // Max age in hours for entries to replay
-  filterStatus?: 'pending' | 'failed'; // Filter by status
-  webhookUrl?: string;     // Filter by specific webhook URL
-  dryRun?: boolean;        // Simulate replay without actual delivery
+  batchSize?: number;
+  maxAge?: number;
+  filterStatus?: 'pending' | 'failed';
+  webhookUrl?: string;
+  dryRun?: boolean;
 }
 
 export class DLQReplayService {
-  private db: D1Database;
-  private webhookSecret?: string;
+  constructor(private db: D1Database, private webhookSecret?: string) {}
 
-  constructor(db: D1Database, webhookSecret?: string) {
-    this.db = db;
-    this.webhookSecret = webhookSecret;
-  }
-
-  /**
-   * Get queued events from DLQ
-   */
   async getQueuedEvents(options: {
     limit?: number;
     offset?: number;
     status?: string;
     maxAge?: number;
+    webhookUrl?: string;
   } = {}): Promise<{ entries: DLQEntry[]; total: number }> {
-    const limit = options.limit ?? 100;
-    const offset = options.offset ?? 0;
-
-    let query = 'SELECT * FROM webhook_dlq WHERE 1=1';
-    const bindings: unknown[] = [];
+    const conditions: string[] = [];
+    const bindings: (string | number)[] = [];
 
     if (options.status) {
-      query += ' AND status = ?';
+      conditions.push('status = ?');
       bindings.push(options.status);
     }
-
     if (options.maxAge) {
-      const cutoff = new Date(Date.now() - options.maxAge * 60 * 60 * 1000).toISOString();
-      query += ' AND timestamp >= ?';
-      bindings.push(cutoff);
+      conditions.push('created_at >= ?');
+      bindings.push(Date.now() - options.maxAge * HOUR_MS);
+    }
+    if (options.webhookUrl) {
+      conditions.push('webhook_url = ?');
+      bindings.push(options.webhookUrl);
     }
 
-    // Get total count
-    const countResult = await this.db.prepare(
-      query.replace('SELECT *', 'SELECT COUNT(*) as count')
-    ).bind(...bindings).first<{ count: number }>();
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const count = await this.db.prepare(`SELECT COUNT(*) AS count FROM webhook_dlq ${where}`)
+      .bind(...bindings).first<{ count: number }>();
+    const { results } = await this.db.prepare(`
+      SELECT id, payload, webhook_url, error_message, retry_count, status,
+             replayed_at, replaying_started_at, created_at
+      FROM webhook_dlq ${where}
+      ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+    `).bind(...bindings, options.limit ?? 100, options.offset ?? 0).all<DLQRow>();
 
-    // Get paginated results
-    query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
-    bindings.push(limit, offset);
-
-    const results = await this.db.prepare(query).bind(...bindings).all<DLQRow>();
-
-    const entries: DLQEntry[] = results.results.map(row => ({
-      id: row.id,
-      events: JSON.parse(row.events),
-      webhookUrl: row.webhook_url,
-      error: row.error,
-      timestamp: row.timestamp,
-      retryCount: row.retry_count,
-      status: row.status as DLQEntry['status'],
-      replayedAt: row.replayed_at ?? undefined,
-      replayingStartedAt: row.replaying_started_at ?? undefined,
-      createdAt: row.created_at,
-    }));
-
-    return {
-      entries,
-      total: countResult?.count ?? 0,
-    };
+    const entries = results.map(row => {
+      const payload: AuditEvent | AuditEvent[] = JSON.parse(row.payload);
+      const createdAt = new Date(row.created_at).toISOString();
+      return {
+        id: row.id,
+        events: Array.isArray(payload) ? payload : [payload],
+        webhookUrl: row.webhook_url,
+        error: row.error_message ?? '',
+        timestamp: createdAt,
+        retryCount: row.retry_count,
+        status: row.status,
+        replayedAt: row.replayed_at === null ? undefined : new Date(row.replayed_at).toISOString(),
+        replayingStartedAt: row.replaying_started_at === null ? undefined : new Date(row.replaying_started_at).toISOString(),
+        createdAt,
+      };
+    });
+    return { entries, total: count?.count ?? 0 };
   }
 
-  /**
-   * Replay failed events from DLQ
-   */
   async replayFailedEvents(options: DLQReplayOptions = {}): Promise<ReplayResult> {
-    const batchSize = options.batchSize ?? 10;
-    const maxAge = options.maxAge ?? 24; // Default 24 hours
-    const dryRun = options.dryRun ?? false;
-
-    console.info(`Starting DLQ replay (dryRun: ${dryRun}):`, options);
-
-    // Fetch entries to replay
     const { entries } = await this.getQueuedEvents({
-      limit: batchSize,
+      limit: options.batchSize ?? 10,
       status: options.filterStatus ?? 'pending',
-      maxAge: maxAge,
+      maxAge: options.maxAge ?? 24,
+      webhookUrl: options.webhookUrl,
     });
 
-    if (entries.length === 0) {
-      console.info('No entries found for replay');
-      return {
-        totalEntries: 0,
-        successfulReplays: 0,
-        failedReplays: 0,
-        errors: [],
-      };
-    }
+    const result: ReplayResult = { totalEntries: 0, successfulReplays: 0, failedReplays: 0, errors: [] };
+    if (options.dryRun) return { ...result, totalEntries: entries.length, successfulReplays: entries.length };
 
-    const result: ReplayResult = {
-      totalEntries: entries.length,
-      successfulReplays: 0,
-      failedReplays: 0,
-      errors: [],
-    };
-
-    // Mark entries as replaying
-    if (!dryRun) {
-      const ids = entries.map(e => e.id);
-      await this.updateStatus(ids, 'replaying');
-    }
-
-    // Process each entry
     for (const entry of entries) {
+      const startedAt = Date.now();
+      // Claim each row before sending so overlapping admin requests cannot both deliver it.
+      const claim = await this.db.prepare(`
+        UPDATE webhook_dlq SET status = 'replaying', replaying_started_at = ?, updated_at = ?
+        WHERE id = ? AND status = ?
+      `).bind(startedAt, startedAt, entry.id, entry.status).run();
+      if (!claim.meta.changes) continue;
+      result.totalEntries++;
+
+      let errorMessage: string | null = null;
       try {
-        console.info(`Replaying DLQ entry ${entry.id} (${entry.events.length} events)`);
-
-        if (!dryRun) {
-          // Create a temporary webhook sink for replay
-          const webhookSink = new WebhookSink({
-            url: options.webhookUrl ?? entry.webhookUrl,
-            secret: this.webhookSecret,
-            maxRetries: 2, // Fewer retries for replay
-            retryDelays: [1000, 2000],
-          });
-
-          // Emit all events
-          for (const event of entry.events) {
-            await webhookSink.emit(event);
-          }
-
-          // Flush to trigger delivery
-          await webhookSink.flush();
-
-          // Mark as completed
-          await this.updateStatus([entry.id], 'completed', new Date().toISOString());
-          result.successfulReplays++;
-
-          console.error(`Successfully replayed entry ${entry.id}`);
-        } else {
-          // Dry run - just count as successful
-          result.successfulReplays++;
-          console.error(`[DRY RUN] Would replay entry ${entry.id}`);
-        }
-
+        const sink = new WebhookSink({
+          url: entry.webhookUrl,
+          secret: this.webhookSecret,
+          maxRetries: 2,
+          retryDelays: [1000],
+        });
+        await sink.deliverBatch(entry.events);
       } catch (error) {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+
+      const now = Date.now();
+      const finished = await this.db.prepare(`
+        UPDATE webhook_dlq
+        SET status = ?, replayed_at = ?, replaying_started_at = NULL, updated_at = ?,
+            error_message = COALESCE(?, error_message)
+        WHERE id = ? AND status = 'replaying' AND replaying_started_at = ?
+      `).bind(errorMessage === null ? 'completed' : 'failed',
+        errorMessage === null ? now : null, now, errorMessage, entry.id, startedAt).run();
+
+      if (!finished.meta.changes) errorMessage = 'Replay claim expired before completion';
+      if (errorMessage === null) {
+        result.successfulReplays++;
+      } else {
         result.failedReplays++;
-        const errorMessage = error instanceof Error ? error.message : String(error);
         result.errors.push({ id: entry.id, error: errorMessage });
-
-        if (!dryRun) {
-          // Mark as failed
-          await this.updateStatus([entry.id], 'failed');
-        }
-
-        console.error(`Failed to replay entry ${entry.id}:`, errorMessage);
       }
     }
 
-    console.info('DLQ replay completed:', result);
     return result;
   }
 
-  /**
-   * Update status of DLQ entries
-   */
-  private async updateStatus(
-    ids: number[],
-    status: 'pending' | 'replaying' | 'completed' | 'failed',
-    replayedAt?: string
-  ): Promise<void> {
-    if (ids.length === 0) return;
-
-    const placeholders = ids.map(() => '?').join(',');
-    let query = `UPDATE webhook_dlq SET status = ?`;
-    const bindings: unknown[] = [status];
-
-    // When marking as replaying, set the replaying_started_at timestamp
-    if (status === 'replaying') {
-      query += ', replaying_started_at = ?';
-      bindings.push(new Date().toISOString());
-    }
-
-    // When moving out of replaying status, clear the replaying_started_at
-    if (status !== 'replaying') {
-      query += ', replaying_started_at = NULL';
-    }
-
-    if (replayedAt) {
-      query += ', replayed_at = ?';
-      bindings.push(replayedAt);
-    }
-
-    query += ` WHERE id IN (${placeholders})`;
-    bindings.push(...ids);
-
-    await this.db.prepare(query).bind(...bindings).run();
-  }
-
-  /**
-   * Clean up old DLQ entries
-   */
   async cleanup(options: {
-    maxAge?: number;        // Max age in days
-    statusFilter?: string;  // Only cleanup specific status
+    maxAge?: number;
+    statusFilter?: string;
   } = {}): Promise<{ deleted: number }> {
-    const maxAge = options.maxAge ?? 30; // Default 30 days
-    const cutoff = new Date(Date.now() - maxAge * 24 * 60 * 60 * 1000).toISOString();
-
-    let query = 'DELETE FROM webhook_dlq WHERE created_at < ?';
-    const bindings: unknown[] = [cutoff];
-
+    const cutoff = Date.now() - (options.maxAge ?? 30) * 24 * HOUR_MS;
+    let query = "DELETE FROM webhook_dlq WHERE created_at < ? AND status != 'replaying'";
+    const bindings: (number | string)[] = [cutoff];
     if (options.statusFilter) {
       query += ' AND status = ?';
       bindings.push(options.statusFilter);
     }
-
     const result = await this.db.prepare(query).bind(...bindings).run();
-
-    console.info(`Cleaned up ${result.meta.changes} old DLQ entries`);
     return { deleted: result.meta.changes };
   }
 
-  /**
-   * Reset stale 'replaying' entries back to 'pending' status
-   *
-   * This method identifies DLQ entries that have been stuck in 'replaying' status
-   * for longer than the specified timeout. This can happen when a replay process
-   * crashes, times out, or fails before marking entries as completed/failed.
-   *
-   * Uses replaying_started_at timestamp to accurately detect stale entries.
-   *
-   * @param options.staleTimeout - Timeout in minutes after which a 'replaying' entry is considered stale (default: 30 minutes)
-   * @param options.batchSize - Maximum number of entries to reset at once (default: 100)
-   * @returns Object containing the count of reset entries
-   */
   async resetStaleReplayingEntries(options: {
-    staleTimeout?: number;  // Timeout in minutes (default: 30)
-    batchSize?: number;     // Max entries to reset (default: 100)
+    staleTimeout?: number;
+    batchSize?: number;
   } = {}): Promise<{ reset: number }> {
-    const timeoutMinutes = options.staleTimeout ?? 30; // Default 30 minutes
-    const batchSize = options.batchSize ?? 100; // Default batch size
-    const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000).toISOString();
-
-    // Find replaying entries that have been in that state for longer than the timeout
-    // We check against 'replaying_started_at' which tracks when the entry entered 'replaying' status
-    // Also handles entries where replaying_started_at is NULL (legacy data before migration)
-    const query = `
+    const now = Date.now();
+    const cutoff = now - (options.staleTimeout ?? 30) * 60 * 1000;
+    const result = await this.db.prepare(`
       UPDATE webhook_dlq
-      SET status = 'pending', replaying_started_at = NULL
+      SET status = 'pending', replaying_started_at = NULL, updated_at = ?
       WHERE id IN (
         SELECT id FROM webhook_dlq
         WHERE status = 'replaying'
           AND (replaying_started_at < ? OR replaying_started_at IS NULL)
         LIMIT ?
       )
-    `;
-
-    const result = await this.db.prepare(query).bind(cutoff, batchSize).run();
-
-    const resetCount = result.meta.changes;
-    if (resetCount > 0) {
-      console.info(`Reset ${resetCount} stale 'replaying' entries back to 'pending' (timeout: ${timeoutMinutes}min, batch: ${batchSize})`);
-    }
-
-    return { reset: resetCount };
+    `).bind(now, cutoff, options.batchSize ?? 100).run();
+    return { reset: result.meta.changes };
   }
 
-  /**
-   * Get DLQ statistics
-   */
   async getStatistics(): Promise<{
     total: number;
     pending: number;
@@ -324,27 +197,20 @@ export class DLQReplayService {
     oldestEntry?: string;
     newestEntry?: string;
   }> {
-    interface StatsRow {
-      total: number;
-      pending: number;
-      replaying: number;
-      completed: number;
-      failed: number;
-      oldest_entry: string | null;
-      newest_entry: string | null;
-    }
-
     const stats = await this.db.prepare(`
       SELECT
-        COUNT(*) as total,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-        SUM(CASE WHEN status = 'replaying' THEN 1 ELSE 0 END) as replaying,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-        MIN(timestamp) as oldest_entry,
-        MAX(timestamp) as newest_entry
+        COUNT(*) AS total,
+        COALESCE(SUM(status = 'pending'), 0) AS pending,
+        COALESCE(SUM(status = 'replaying'), 0) AS replaying,
+        COALESCE(SUM(status = 'completed'), 0) AS completed,
+        COALESCE(SUM(status = 'failed'), 0) AS failed,
+        MIN(created_at) AS oldest_entry,
+        MAX(created_at) AS newest_entry
       FROM webhook_dlq
-    `).first<StatsRow>();
+    `).first<Record<'total' | DLQStatus, number> & {
+      oldest_entry: number | null;
+      newest_entry: number | null;
+    }>();
 
     return {
       total: stats?.total ?? 0,
@@ -352,8 +218,8 @@ export class DLQReplayService {
       replaying: stats?.replaying ?? 0,
       completed: stats?.completed ?? 0,
       failed: stats?.failed ?? 0,
-      oldestEntry: stats?.oldest_entry ?? undefined,
-      newestEntry: stats?.newest_entry ?? undefined,
+      oldestEntry: stats?.oldest_entry == null ? undefined : new Date(stats.oldest_entry).toISOString(),
+      newestEntry: stats?.newest_entry == null ? undefined : new Date(stats.newest_entry).toISOString(),
     };
   }
 }

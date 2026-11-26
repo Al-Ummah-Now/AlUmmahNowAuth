@@ -3,6 +3,15 @@ import * as v from 'valibot';
 import { logger } from './logger';
 
 const EmailSchema = v.pipe(v.string(), v.email());
+const MAX_RETRY_DELAY_MS = 5000;
+
+function retryAfterMs(header: string | undefined): number | undefined {
+  const value = header?.trim();
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return Number(value) * 1000;
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
+}
 
 /**
  * Extract email address from RFC 5322 format
@@ -90,58 +99,54 @@ export default async function SendEmail(
   }
 
   const resend = new Resend(options.apiKey);
-  let _lastError: unknown = null;
+  const emailPayload: Parameters<typeof resend.emails.send>[0] = {
+    from: options.from,
+    to: options.to,
+    subject: options.subject,
+    html: options.html,
+    ...(options.text ? { text: options.text } : {}),
+  };
+  let lastError: unknown;
   let attempt = 0;
 
   while (attempt < maxRetries) {
     attempt++;
+    let backoffMs = Math.min(1000 * 2 ** (attempt - 1), MAX_RETRY_DELAY_MS);
     try {
       logger.debug('Attempting to send email', { attempt, maxRetries, to: options.to, subject: options.subject });
-
-      const emailPayload: Parameters<typeof resend.emails.send>[0] = {
-        from: options.from,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-      };
-
-      // Include plain text version if provided
-      if (options.text) {
-        emailPayload.text = options.text;
-      }
-
-      const { data, error } = await resend.emails.send(emailPayload);
-
-      if (error) {
-        _lastError = error;
-        logger.error('Error sending email', { attempt, maxRetries, error });
-
-        // If we haven't exhausted retries, wait before retry with exponential backoff
-        if (attempt < maxRetries) {
-          const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5s
-          logger.info('Retrying email send', { backoffMs });
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
-          continue;
-        }
-      } else {
-        logger.info("Email sent successfully", { emailId: data.id });
+      const { data, error, headers } = await resend.emails.send(emailPayload);
+      if (!error) {
+        logger.info('Email sent successfully', { emailId: data.id });
         return { success: true, emailId: data.id };
       }
-    } catch (error) {
-      _lastError = error;
-      logger.error('Exception sending email', { attempt, maxRetries, error });
 
-      // If we haven't exhausted retries, wait before retry
-      if (attempt < maxRetries) {
-        const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        logger.info('Retrying email send', { backoffMs });
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-        continue;
+      lastError = error;
+      const status = error.statusCode;
+      logger.error('Error sending email', { attempt, maxRetries, error });
+
+      // The SDK forwards JSON errors as-is and uses application_error with
+      // a null status for a network failure.
+      const rateLimited = status === 429 || (status == null && error.name === 'rate_limit_exceeded');
+      const transient = status == null
+        ? error.name === 'application_error' || error.name === 'internal_server_error'
+        : status >= 500 && status < 600;
+      if (!rateLimited && !transient) break;
+      if (rateLimited) {
+        backoffMs = retryAfterMs(headers?.['retry-after']) ?? backoffMs;
+        // End this send if Resend asks us to wait longer than the in-request budget.
+        if (backoffMs > MAX_RETRY_DELAY_MS) break;
       }
+    } catch (error) {
+      lastError = error;
+      logger.error('Exception sending email', { attempt, maxRetries, error });
+    }
+
+    if (attempt < maxRetries) {
+      logger.info('Retrying email send', { backoffMs });
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
 
-  // All retries exhausted
-  logger.error('Failed to send email after all retries', { maxRetries });
-  throw new Error(`Unable to send email after ${maxRetries} attempts. Please try again later.`);
-};
+  logger.error('Failed to send email', { attempt, maxRetries });
+  throw new Error(`Unable to send email after ${attempt} ${attempt === 1 ? 'attempt' : 'attempts'}. Please try again later.`, { cause: lastError });
+}
