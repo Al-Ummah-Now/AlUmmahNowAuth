@@ -26,9 +26,13 @@ export function createAdminCountCache<T>() {
         entries = new Map();
         databases.set(db, entries);
       }
+      const now = Date.now();
+      const existing = entries.get(key);
+      if (existing && now < existing.expiresAt) return value;
+
       entries.delete(key);
       if (entries.size >= MAX_ENTRIES) entries.delete(entries.keys().next().value!);
-      entries.set(key, { expiresAt: Date.now() + TTL_MS, value });
+      entries.set(key, { expiresAt: now + TTL_MS, value });
       return value;
     },
     clear() {
