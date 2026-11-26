@@ -27,5 +27,7 @@ describe('deletion copy', () => {
       if (typeof en[key] === 'string') expect(ar[key]).not.toBe(en[key]);
     }
     expect(ar.deleteBody('user', 'x')).toContain('x');
+    expect([en.kindName('tenant'), en.tab('tenant')]).toEqual(['tenant', 'Tenants']);
+    expect([ar.kindName('tenant'), ar.tab('tenant')]).toEqual(['المستأجر', 'المستأجرون']);
   });
 });

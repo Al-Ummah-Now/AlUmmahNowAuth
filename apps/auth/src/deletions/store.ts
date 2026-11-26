@@ -5,7 +5,7 @@
  * hourly cleanup (purge.ts) hard-deletes the item and then the row.
  */
 
-export const DELETION_KINDS = ['user', 'client', 'role', 'theme'] as const;
+export const DELETION_KINDS = ['user', 'client', 'role', 'theme', 'tenant'] as const;
 export type DeletionKind = (typeof DELETION_KINDS)[number];
 
 export const isDeletionKind = (value: unknown): value is DeletionKind =>

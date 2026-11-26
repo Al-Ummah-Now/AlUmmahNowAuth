@@ -17,6 +17,8 @@
  *   theme   delete: hidden from the admin list, the public theme list and page
  *           rendering (ThemeStore leaves deleted themes out). purge: the row
  *           and its stored packages and files no other theme uses.
+ *   tenant  delete: status = 'deleted'. Restore reactivates the tenant. Purge
+ *           removes the tenant and its tenant-scoped rows in one transaction.
  *
  * Only purge() removes data, and only the cleanup (purge.ts) calls it.
  */
@@ -31,6 +33,8 @@ import { ThemeStore } from '../themes/store';
 import { ThemeService } from '../themes/service';
 import { invalidateThemeSettings } from '../themes/runtime';
 import { deleteBirthDate } from '../birth-date/store';
+import { clearTenantCache } from '../services/tenant-cache';
+import { DEFAULT_TENANT_ID } from '../types/tenant';
 import { logger } from '../logger';
 import { enqueue, recordAccountEvent } from '../account-events/record';
 import { withoutAccountEvents } from '../account-events/types';
@@ -433,4 +437,55 @@ const theme: KindHandler = {
 	},
 };
 
-export const HANDLERS: Record<DeletionKind, KindHandler> = { user, client, role, theme };
+// ------------------------------------------------------------------ tenants
+
+function protectDefaultTenant(id: string): void {
+	if (id === DEFAULT_TENANT_ID) throw new DeletionError(400, 'cannot_delete_default_tenant', 'Cannot delete default tenant');
+}
+
+const tenant: KindHandler = {
+	async prepare(env, id, { now }) {
+		protectDefaultTenant(id);
+		const row = await env.AUTH_DB.prepare('SELECT name FROM tenants WHERE id = ?').bind(id).first<{ name: string }>();
+		if (!row) throw new DeletionError(404, 'tenant_not_found', 'Tenant not found');
+		return {
+			label: row.name,
+			statements: [env.AUTH_DB.prepare("UPDATE tenants SET status = 'deleted', updated_at = ? WHERE id = ?").bind(now, id)],
+			after: async () => clearTenantCache(),
+		};
+	},
+
+	async restore(env, row, now) {
+		protectDefaultTenant(row.item_id);
+		// The globally unique domain stays reserved until the tenant is purged.
+		return {
+			statements: [
+				env.AUTH_DB.prepare("UPDATE tenants SET status = 'active', updated_at = ? WHERE id = ? AND status = 'deleted' AND EXISTS (SELECT 1 FROM admin_deletions WHERE kind = 'tenant' AND item_id = tenants.id AND deleted_at = ?)")
+					.bind(now, row.item_id, row.deleted_at),
+			],
+			after: async () => clearTenantCache(),
+		};
+	},
+
+	async purge(env, row) {
+		protectDefaultTenant(row.item_id);
+		const db = env.AUTH_DB;
+		// The generation check prevents an old cleanup from purging a restored or re-deleted tenant.
+		const eligible = `EXISTS (SELECT 1 FROM admin_deletions WHERE kind = 'tenant' AND item_id = ?1 AND deleted_at = ?2)
+			AND EXISTS (SELECT 1 FROM tenants WHERE id = ?1 AND status = 'deleted')`;
+		const prepare = (sql: string) => db.prepare(sql).bind(row.item_id, row.deleted_at);
+		// Direct tenant foreign keys cascade. These tenant-scoped tables lack that FK.
+		const results = await db.batch([
+			prepare(`DELETE FROM auth_theme_client_defaults WHERE client_id IN (SELECT id FROM oauth_clients WHERE tenant_id = ?1) AND ${eligible}`),
+			...['user_identities', 'user_invites', 'user_invite_superseded_tokens', 'moderation_requests', 'admin_deletions'].map((table) =>
+				prepare(`DELETE FROM ${table} WHERE tenant_id = ?1 AND ${eligible}`)),
+			prepare(`DELETE FROM tenants WHERE id = ?1 AND ${eligible}`),
+			prepare("DELETE FROM admin_deletions WHERE kind = 'tenant' AND item_id = ?1 AND deleted_at = ?2 AND NOT EXISTS (SELECT 1 FROM tenants WHERE id = ?1)"),
+		]);
+		if (!results.at(-1)?.meta.changes) return 'deferred';
+		clearTenantCache();
+		return 'done';
+	},
+};
+
+export const HANDLERS: Record<DeletionKind, KindHandler> = { user, client, role, theme, tenant };

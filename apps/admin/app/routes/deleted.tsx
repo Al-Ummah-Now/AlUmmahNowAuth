@@ -27,7 +27,7 @@ import { getCloudflare } from "../lib/cloudflare-context";
 
 export const meta: MetaFunction = ({ location }) => [{ title: pageTitle("deleted", langOf(location.search)) }];
 
-const KINDS: DeletionKind[] = ["user", "client", "role", "theme"];
+const KINDS: DeletionKind[] = ["user", "client", "role", "theme", "tenant"];
 const kindOf = (value: string | null): DeletionKind => (KINDS.includes(value as DeletionKind) ? (value as DeletionKind) : "user");
 
 type Env = { AUTH_STORAGE: KVNamespace; AUTH_SERVER_URL?: string; ADMIN_CLIENT_ID?: string; ADMIN_CLIENT_SECRET?: string };
@@ -247,7 +247,7 @@ export default function RecentlyDeleted() {
         open={pending?.mode === "restore"}
         danger={false}
         title={t.restoreTitle(kind)}
-        description={pending ? t.restoreBody(labelOf(pending.item)) : ""}
+        description={pending ? t.restoreBody(labelOf(pending.item), pending.item.kind) : ""}
         confirmLabel={t.restoreConfirm}
         cancelLabel={t.cancel}
         busy={busy}

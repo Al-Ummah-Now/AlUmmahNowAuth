@@ -7,6 +7,7 @@
  * @module admin-tenant-routes
  */
 
+import { DeletionError, softDelete } from './deletions/service';
 import { verifyAdminAuth, createAuthErrorResponse } from './auth-middleware';
 import { logger } from './logger';
 import { emitAuditEvent } from './audit-emitter';
@@ -331,8 +332,14 @@ export class AdminTenantRoutes {
       // Verify admin authentication
       const authContext = await verifyAdminAuth(request, env);
 
-      // Delete tenant
-      await this.tenantService.deleteTenant(tenantId);
+      const body = await request.json().catch(() => null) as { reason?: unknown } | null;
+      const deleted = await softDelete(env, 'tenant', tenantId, {
+        userId: authContext.user.id,
+        email: authContext.user.email,
+        ip: getClientIP(request),
+        userAgent: request.headers.get('User-Agent'),
+        requestId: request.headers.get('X-Request-Id'),
+      }, { reason: body?.reason ?? new URL(request.url).searchParams.get('reason') });
 
       // Emit audit event
       const clientIP = getClientIP(request);
@@ -354,13 +361,13 @@ export class AdminTenantRoutes {
         deletedBy: authContext.user.id,
       });
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({ success: true, deleted }), {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (error) {
       logger.error('Failed to delete tenant', { error });
       const message = safeErrorMessage(error, 'Failed to delete tenant', TENANT_ERROR_MESSAGES);
-      return createAuthErrorResponse(message, 400);
+      return createAuthErrorResponse(error instanceof DeletionError ? error.message : message, error instanceof DeletionError ? error.status : 400);
     }
   }
 

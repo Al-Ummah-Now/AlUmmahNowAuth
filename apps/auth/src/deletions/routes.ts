@@ -3,7 +3,7 @@
  *
  *   DELETE /admin/users/:id, /admin/clients/:id, /admin/roles/:id, /admin/themes/:id
  *       soft delete; optional JSON body { reason }. 200 { deleted: DeletionView }
- *   GET  /admin/deletions[?kind=user|client|role|theme]   "Recently deleted"
+ *   GET  /admin/deletions[?kind=user|client|role|theme|tenant]   "Recently deleted"
  *   POST /admin/deletions/:kind/:id/restore
  *   POST /admin/deletions/:kind/:id/purge   { confirm: <label> }  "Delete permanently now"
  *
