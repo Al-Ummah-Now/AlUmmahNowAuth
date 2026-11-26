@@ -6,7 +6,7 @@
  * - AFTER INSERT trigger keeps count tables accurate and idempotent across
  *   D1Sink and audit-consumer's WHERE NOT EXISTS inserts.
  * - GET /admin/audit-logs/user/:userId uses idx_audit_events_user_timestamp
- *   with lossless keyset paging (cursor / normalized before) and returns
+ *   with lossless keyset paging (cursor) after an optional timestamp filter and returns
  *   hasMore instead of COUNT(*).
  * - backfillAuditCounts folds pre-migration rows in bounded indexed batches
  *   with atomic compare-and-swap so overlapping runners never double-count,
@@ -308,91 +308,78 @@ describe('Audit stats, user trail keyset paging, and counts backfill (#514)', ()
     });
   });
 
-  describe('GET /admin/audit-logs/user/:userId (keyset pagination)', () => {
-    it('pages losslessly with cursor across identical timestamps and returns hasMore instead of total', async () => {
-      // Seed 5 events for user-123 (two share the exact same timestamp) + 1 event for another user
+  describe('GET /admin/audit-logs/user/:userId', () => {
+    const trailUrl = 'http://localhost/admin/audit-logs/user/user-123';
+
+    it('keeps numbered pages and exact totals for existing clients', async () => {
+      for (const [i, hour] of ['01', '02', '03'].entries()) {
+        await insertAuditRow({ timestamp: `2026-11-24T${hour}:00:00.000Z`, eventType: `e${i + 1}`, severity: 'info' });
+      }
+      await insertAuditRow({ timestamp: '2026-11-24T04:00:00.000Z', eventType: 'other', severity: 'info', userId: 'user-456' });
+
+      const res = await routes.handle(new Request(`${trailUrl}?page=2&limit=2`), mockEnv, mockCtx);
+      expect(res.status).toBe(200);
+      const body = await res.json<{ data: Array<{ event_type: string }>; pagination: unknown }>();
+      expect(body.data.map((row) => row.event_type)).toEqual(['e1']);
+      expect(body.pagination).toEqual({ page: 2, limit: 2, total: 3, pages: 2 });
+
+      const largerPage = await routes.handle(new Request(`${trailUrl}?limit=101`), mockEnv, mockCtx);
+      expect(largerPage.status).toBe(200);
+      expect(await largerPage.json()).toMatchObject({ pagination: { page: 1, limit: 101, total: 3, pages: 1 } });
+    });
+
+    it.each([
+      ['explicit cursor mode', 'pagination=cursor', ['exact', 'tie-3', 'tie-2', 'tie-1', 'older']],
+      ['exclusive before timestamp without milliseconds', 'before=2026-11-24T03:00:00Z', ['tie-3', 'tie-2', 'tie-1', 'older']],
+    ])('continues with a cursor through a split timestamp tie after starting with %s', async (_mode, start, expected) => {
       const rows = [
-        { timestamp: '2026-11-24T01:00:00.000Z', eventType: 'e1', userId: 'user-123' },
-        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'e2', userId: 'user-123' },
-        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'e3', userId: 'user-123' },
-        { timestamp: '2026-11-24T03:00:00.000Z', eventType: 'e4', userId: 'user-123' },
-        { timestamp: '2026-11-24T04:00:00.000Z', eventType: 'e5', userId: 'user-123' },
-        { timestamp: '2026-11-24T05:00:00.000Z', eventType: 'other', userId: 'user-456' },
+        { timestamp: '2026-11-24T01:00:00.000Z', eventType: 'older' },
+        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-1' },
+        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-2' },
+        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'tie-3' },
+        { timestamp: '2026-11-24T03:00:00.000Z', eventType: 'exact' },
+        { timestamp: '2026-11-24T02:00:00.000Z', eventType: 'other', userId: 'user-456' },
       ];
-      for (const r of rows) {
-        await insertAuditRow({ timestamp: r.timestamp, eventType: r.eventType, severity: 'info', userId: r.userId });
+      for (const row of rows) {
+        await insertAuditRow({ ...row, severity: 'info' });
       }
 
       const seen: string[] = [];
       let cursor: string | null = null;
-      let pages = 0;
-
-      do {
-        const qs = cursor ? `?limit=2&cursor=${encodeURIComponent(cursor)}` : '?limit=2';
+      for (let offset = 0; offset < expected.length; offset += 2) {
+        const query = cursor ? `cursor=${encodeURIComponent(cursor)}` : start;
         const res = await routes.handle(
-          new Request(`http://localhost/admin/audit-logs/user/user-123${qs}`, { method: 'GET' }),
+          new Request(`${trailUrl}?limit=2&${query}`),
           mockEnv,
           mockCtx
         );
         expect(res.status).toBe(200);
-        const body = (await res.json()) as {
-          data: Array<{ event_type: string; user_id: string }>;
-          pagination: { limit: number; hasMore: boolean; nextCursor: string | null; nextBefore: string | null; total?: number };
-        };
-
-        expect(body.pagination.total).toBeUndefined();
-        for (const ev of body.data) {
-          expect(ev.user_id).toBe('user-123');
-          seen.push(ev.event_type);
-        }
-        cursor = body.pagination.hasMore ? body.pagination.nextCursor : null;
-        if (body.pagination.hasMore) {
-          expect(body.pagination.nextCursor).toBeTruthy();
-          expect(body.pagination.nextBefore).toBeTruthy();
-        } else {
-          expect(body.pagination.nextCursor).toBeNull();
-          expect(body.pagination.nextBefore).toBeNull();
-        }
-        pages++;
-      } while (cursor);
-
-      expect(pages).toBe(3);
-      // Newest first, with deterministic id DESC tie-break for e3 vs e2
-      expect(seen).toEqual(['e5', 'e4', 'e3', 'e2', 'e1']);
+        const body = await res.json<{
+          data: Array<{ event_type: string }>;
+          pagination: { limit: number; hasMore: boolean; nextCursor: string | null };
+        }>();
+        const hasMore = offset + 2 < expected.length;
+        expect(body.data).toHaveLength(Math.min(2, expected.length - offset));
+        expect(body.pagination).toEqual({ limit: 2, hasMore, nextCursor: hasMore ? expect.any(String) : null });
+        seen.push(...body.data.map((row) => row.event_type));
+        cursor = body.pagination.nextCursor;
+      }
+      expect(seen).toEqual(expected);
     });
 
-    it('supports before=<timestamp> and normalizes timestamps without milliseconds so exact instants are excluded', async () => {
-      await insertAuditRow({ timestamp: '2026-11-24T01:00:00.000Z', eventType: 'older', severity: 'info', userId: 'user-123' });
-      await insertAuditRow({ timestamp: '2026-11-24T03:00:00.000Z', eventType: 'exact', severity: 'info', userId: 'user-123' });
-
-      // Without normalizing, '2026-11-24T03:00:00Z' > '2026-11-24T03:00:00.000Z' in ASCII ('Z' > '.')
-      const res = await routes.handle(
-        new Request('http://localhost/admin/audit-logs/user/user-123?before=2026-11-24T03:00:00Z', { method: 'GET' }),
-        mockEnv,
-        mockCtx
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        data: Array<{ event_type: string }>;
-        pagination: { hasMore: boolean };
-      };
-      expect(body.data.map((d) => d.event_type)).toEqual(['older']);
-      expect(body.pagination.hasMore).toBe(false);
-    });
-
-    it('returns 400 for invalid limit, malformed cursor, conflicting params, or offset page > 1', async () => {
-      const badUrls = [
-        'http://localhost/admin/audit-logs/user/user-123?limit=0',
-        'http://localhost/admin/audit-logs/user/user-123?limit=101',
-        'http://localhost/admin/audit-logs/user/user-123?limit=abc',
-        'http://localhost/admin/audit-logs/user/user-123?cursor=not-valid-base64!!!',
-        'http://localhost/admin/audit-logs/user/user-123?before=not-a-date',
-        'http://localhost/admin/audit-logs/user/user-123?cursor=e30&before=2026-11-24T00:00:00Z',
-        'http://localhost/admin/audit-logs/user/user-123?page=2',
+    it('returns 400 for invalid keyset limits, malformed cursors or timestamps, and conflicting parameters', async () => {
+      const badQueries = [
+        'pagination=cursor&limit=0',
+        'pagination=cursor&limit=101',
+        'pagination=cursor&limit=abc',
+        'cursor=not-valid-base64!!!',
+        'before=not-a-date',
+        'cursor=e30&before=2026-11-24T00:00:00Z',
+        'pagination=cursor&page=2',
       ];
-      for (const u of badUrls) {
-        const res = await routes.handle(new Request(u, { method: 'GET' }), mockEnv, mockCtx);
-        expect(res.status, u).toBe(400);
+      for (const query of badQueries) {
+        const res = await routes.handle(new Request(`${trailUrl}?${query}`), mockEnv, mockCtx);
+        expect(res.status, query).toBe(400);
       }
     });
   });

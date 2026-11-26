@@ -50,6 +50,15 @@ export const AUDIT_ADMIN_QUERIES = {
   statsBackfillStatus: `
     SELECT value FROM auth_settings WHERE key = ?1
   `,
+  userTrailPage: `
+    SELECT * FROM audit_events
+    WHERE user_id = ?1
+    ORDER BY timestamp DESC, id DESC
+    LIMIT ?2 OFFSET ?3
+  `,
+  userTrailCount: `
+    SELECT COUNT(*) as total FROM audit_events WHERE user_id = ?1
+  `,
   userTrailFirst: `
     SELECT * FROM audit_events
     WHERE user_id = ?1
@@ -572,33 +581,44 @@ export class AdminEnterpriseRoutes {
   /**
    * GET /admin/audit-logs/user/:userId - Get audit trail for specific user
    *
-   * Uses idx_audit_events_user_timestamp(user_id, timestamp, id) with keyset
-   * pagination (`cursor` or `before`) and returns `hasMore` instead of a
-   * total COUNT(*) scan (AlUmmahNowAuth#514).
+   * Both pagination modes use idx_audit_events_user_timestamp(user_id, timestamp, id).
+   * Clients can opt into keyset pagination to avoid counting all of the user's events.
    */
   private async getUserAuditTrail(userId: string, request: Request, url: URL, env: Env): Promise<Response> {
     try {
       await verifyAdminRequest(request, env, 'admin:audit');
 
       const rawLimit = url.searchParams.get('limit');
+      const rawPage = url.searchParams.get('page');
+      const rawCursor = url.searchParams.get('cursor');
+      const rawBefore = url.searchParams.get('before');
+      const useKeyset = url.searchParams.get('pagination') === 'cursor' || rawCursor !== null || rawBefore !== null;
+
+      if (!useKeyset) {
+        const page = parseInt(rawPage || '1');
+        const limit = parseInt(rawLimit || '50');
+        const offset = (page - 1) * limit;
+        const countResult = await this.db.prepare(AUDIT_ADMIN_QUERIES.userTrailCount).bind(userId).first<{ total: number }>();
+        const total = countResult?.total || 0;
+        const result = await this.db.prepare(AUDIT_ADMIN_QUERIES.userTrailPage).bind(userId, limit, offset).all<AuditEvent>();
+
+        return Response.json({
+          data: result.results || [],
+          pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+        });
+      }
+
       const limit = rawLimit === null ? 50 : Number(rawLimit);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         return createAuthErrorResponse('Invalid query parameters: limit must be an integer between 1 and 100', 400);
       }
 
-      const rawCursor = url.searchParams.get('cursor');
-      const rawBefore = url.searchParams.get('before');
-      const rawPage = url.searchParams.get('page');
-
       if (rawCursor !== null && rawBefore !== null) {
         return createAuthErrorResponse('Invalid query parameters: provide either cursor or before, not both', 400);
       }
 
-      if (rawPage !== null && rawCursor === null && rawBefore === null) {
-        const pageNum = Number(rawPage);
-        if (!Number.isInteger(pageNum) || pageNum !== 1) {
-          return createAuthErrorResponse('Invalid query parameters: use cursor or before for keyset pagination', 400);
-        }
+      if (rawPage !== null) {
+        return createAuthErrorResponse('Invalid query parameters: page cannot be combined with cursor pagination', 400);
       }
 
       const fetchLimit = limit + 1;
@@ -635,17 +655,13 @@ export class AdminEnterpriseRoutes {
       const data = hasMore ? rows.slice(0, limit) : rows;
       const lastRow = hasMore ? data[data.length - 1] : undefined;
 
-      return new Response(JSON.stringify({
+      return Response.json({
         data,
         pagination: {
           limit,
           hasMore,
           nextCursor: lastRow ? encodeTrailCursor(lastRow.timestamp, lastRow.id) : null,
-          nextBefore: lastRow ? lastRow.timestamp : null,
         },
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
       });
     } catch (error) {
       logger.error('Failed to fetch user audit trail', {
