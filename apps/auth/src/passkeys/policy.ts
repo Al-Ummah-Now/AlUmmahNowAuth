@@ -9,8 +9,10 @@
  *
  * Deadline: staff whose staff role was assigned before enforcement was switched
  * on get `graceDays` (7); anyone made staff later has none (deadline =
- * enforcedAt, already past).
+ * enforcedAt, already past). QA and stage also allow provisioned E2E run
+ * accounts to keep using their password-based fixtures.
  */
+import { isRunUserEmail, RUN_USER_MARKER, runUsersEnabled, type RunUsersEnv } from '../utils/e2e-sink';
 import { getSetting, putSetting } from './store';
 
 export const STAFF_PASSKEYS_SETTING = 'staff_passkeys';
@@ -96,10 +98,38 @@ export function deadlineFor(setting: StaffPasskeySetting, staffSince: number | n
 	return Math.floor((existingStaff ? graceEnd : setting.enforcedAt) / 1000);
 }
 
+type PasskeyPolicyEnv = Omit<RunUsersEnv, 'AUTH_STORAGE'>;
+
+/** Verify the current D1 address and server-written provisioning marker on QA/stage. */
+async function isProvisionedRunUser(db: D1Database, userId: string, env: PasskeyPolicyEnv): Promise<boolean> {
+	const deployment = env.ENVIRONMENT;
+	if (deployment !== 'qa' && deployment !== 'stage') return false;
+	if (env.OPENAUTH_ISSUER !== `https://auth.${deployment}.alummahnow.net`) return false;
+	if (!(await runUsersEnabled(env))) return false;
+
+	const marker = `$.${RUN_USER_MARKER}`;
+	const row = await db
+		.prepare(
+			`SELECT email FROM users
+			 WHERE id = ? AND CASE WHEN json_valid(metadata) THEN
+				json_extract(metadata, '${marker}.via') IN ('e2e-sink-registration', 'invite', 'admin-create')
+				AND json_type(metadata, '${marker}.at') = 'integer'
+			 END`
+		)
+		.bind(userId)
+		.first<{ email: string }>();
+	return !!row && isRunUserEmail(row.email.toLowerCase());
+}
+
 /** The deadline for a user, read from D1 only when it can apply. */
-export async function passkeyDeadline(db: D1Database, userId: string, roles: readonly string[]): Promise<number | undefined> {
+export async function passkeyDeadline(
+	db: D1Database,
+	userId: string,
+	roles: readonly string[],
+	env: PasskeyPolicyEnv
+): Promise<number | undefined> {
 	if (!isStaff(roles)) return undefined;
 	const setting = await readStaffPasskeySetting(db);
-	if (!setting.enforced) return undefined;
+	if (!setting.enforced || (await isProvisionedRunUser(db, userId, env))) return undefined;
 	return deadlineFor(setting, await staffRoleAssignedAt(db, userId), roles);
 }

@@ -40,7 +40,7 @@ async function resolveSecret(binding: unknown): Promise<string> {
 	return '';
 }
 
-function isNonProductionEnv(env: E2ESinkEnv): boolean {
+function isNonProductionEnv(env: Pick<E2ESinkEnv, 'ENVIRONMENT' | 'OPENAUTH_ISSUER'>): boolean {
 	if (!env.ENVIRONMENT || !SINK_ENVIRONMENTS.has(env.ENVIRONMENT)) return false;
 	try {
 		return new URL(env.OPENAUTH_ISSUER ?? '').hostname !== PRODUCTION_ISSUER_HOST;
@@ -50,7 +50,7 @@ function isNonProductionEnv(env: E2ESinkEnv): boolean {
 }
 
 /** The secret, when test support is enabled in this deployment; otherwise ''. */
-async function testSecret(env: E2ESinkEnv): Promise<string> {
+async function testSecret(env: Omit<E2ESinkEnv, 'AUTH_STORAGE'>): Promise<string> {
 	if (!isNonProductionEnv(env)) return '';
 	return resolveSecret(env.E2E_CODE_SINK_SECRET);
 }
@@ -120,7 +120,7 @@ export interface RunUsersEnv extends E2ESinkEnv {
  * needs ALL of: the E2E_RUN_USERS flag, a non-production environment and issuer,
  * the E2E_CODE_SINK_SECRET binding and the TEST_PROMOTE_SECRET secret.
  */
-export async function runUsersEnabled(env: RunUsersEnv): Promise<boolean> {
+export async function runUsersEnabled(env: Omit<RunUsersEnv, 'AUTH_STORAGE'>): Promise<boolean> {
 	if (env.E2E_RUN_USERS !== RUN_USERS_FLAG) return false;
 	if (typeof env.TEST_PROMOTE_SECRET !== 'string' || env.TEST_PROMOTE_SECRET.length < 16) return false;
 	return (await testSecret(env)) !== '';

@@ -39,6 +39,7 @@ import { coarseAgent, failureReason } from './agent';
 import { verifyUserAccessToken } from '../routes/account-routes';
 import { checkCode, recordCode } from '../security/password-attempts';
 import { generateUnbiasedCode } from './util';
+import type { RunUsersEnv } from '../utils/e2e-sink';
 import { sendPasskeyEmail } from './email';
 import { copyFor, renderAddPasskeyPage, renderPasskeyNotice, type PageLocale } from './pages';
 import {
@@ -71,9 +72,8 @@ import {
 	getCredential,
 } from './store';
 
-export interface PasskeyEnv extends RpEnv {
+export interface PasskeyEnv extends RpEnv, RunUsersEnv {
 	AUTH_DB: D1Database;
-	AUTH_STORAGE: KVNamespace;
 	SESSION_SECRET?: string;
 	RESEND_API_KEY?: unknown;
 	PROFILE_APP_URL?: string;
@@ -267,7 +267,7 @@ async function handleSetupPage(rctx: PasskeyRouteContext): Promise<Response> {
 		return renderPasskeyNotice({ locale, theme: rctx.theme, message: messages[g.error] ?? t.failed, action, back: returnTo });
 	}
 	if (g.needsCode && !rctx.emailAvailable) return notFound();
-	const deadline = await passkeyDeadline(env.AUTH_DB, account!.userId, g.roles);
+	const deadline = await passkeyDeadline(env.AUTH_DB, account!.userId, g.roles, env);
 	return renderAddPasskeyPage({
 		locale,
 		theme: rctx.theme,

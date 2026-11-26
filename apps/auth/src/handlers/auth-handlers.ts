@@ -312,7 +312,7 @@ export function createOnSuccessHandler(
 
 			const user = { id: existingUser.id, roles };
 			// Staff passkey policy (AUTH-PASSKEYS): the deadline consumers enforce
-			const deadline = db ? await staged(timer, 'onsuccess.passkey', () => passkeyDeadline(db, user.id, roles)) : undefined;
+			const deadline = db ? await staged(timer, 'onsuccess.passkey', () => passkeyDeadline(db, user.id, roles, env)) : undefined;
 
 			// Emit login success audit event (use outer ctx for waitUntil)
 			const clientIP = getClientIP(request);

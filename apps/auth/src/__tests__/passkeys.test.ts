@@ -17,9 +17,10 @@ import { PROFILE, registerTestClients } from './helpers/clients';
 import { CloudflarePatchedStorage } from '../storage/cloudflare-patched';
 import { Storage } from '@al-ummah-now/openauth/storage/storage';
 import { ScryptHasher } from '@al-ummah-now/openauth/provider/password';
-import { clearPolicyCache, deadlineFor, isStaff, passkeyBlocked, writeStaffPasskeySetting } from '../passkeys/policy';
+import { clearPolicyCache, deadlineFor, isStaff, passkeyBlocked, passkeyDeadline, writeStaffPasskeySetting } from '../passkeys/policy';
 import { createSetupTicket, peekSetupTicket, useSetupTicket, defaultPasskeyName, cleanPasskeyName } from '../passkeys/store';
 import { cardEnabledFor } from '../passkeys/card';
+import { markRunUser, RUN_USERS_FLAG } from '../utils/e2e-sink';
 import { safeReturnTo, signRegistration, readRegistration, staffWithoutPasskey, STAFF_OF_ROLE_SQL } from '../passkeys/routes';
 
 const ISSUER = 'http://localhost:3301';
@@ -28,6 +29,15 @@ const PASSWORD = 'Passkeys-Test-123!';
 // A Resend key that resolves, so emailed-code features are on (email-unconfigured.test.ts
 // covers them without one). Resend itself is a mock: nothing leaves the test.
 const E = { ...(env as object), RESEND_API_KEY: 're_test_unused' } as unknown as Env;
+const QA = {
+	...E,
+	ENVIRONMENT: 'qa',
+	OPENAUTH_ISSUER: 'https://auth.qa.alummahnow.net',
+	SESSION_SECRET: 'ab'.repeat(32),
+	E2E_RUN_USERS: RUN_USERS_FLAG,
+	E2E_CODE_SINK_SECRET: 'e2e-secret-for-tests',
+	TEST_PROMOTE_SECRET: 'promote-secret-for-tests',
+};
 
 // ---------- minimal CBOR (maps, ints, byte and text strings) ----------
 function cborHead(major: number, n: number): number[] {
@@ -131,12 +141,13 @@ class SoftAuthenticator {
 // ---------- a browser against the worker ----------
 class Browser {
 	jar = new Map<string, string>();
+	constructor(private readonly bindings: Env = E, private readonly issuer = ISSUER) {}
 	async fetch(path: string, init: RequestInit = {}) {
 		const headers = new Headers(init.headers);
-		headers.set('host', new URL(ISSUER).host);
+		headers.set('host', new URL(this.issuer).host);
 		headers.set('cookie', [...this.jar].map(([k, v]) => `${k}=${v}`).join('; '));
 		const ctx = createExecutionContext();
-		const res = await worker.fetch(new Request(new URL(path, ISSUER), { ...init, headers, redirect: 'manual' }), E, ctx);
+		const res = await worker.fetch(new Request(new URL(path, this.issuer), { ...init, headers, redirect: 'manual' }), this.bindings, ctx);
 		await waitOnExecutionContext(ctx);
 		for (const c of res.headers.getSetCookie()) {
 			const [pair] = c.split(';');
@@ -392,6 +403,91 @@ describe('passkeys (worker)', () => {
 		const r = decodeJwt(((await refreshed.json()) as any).access_token) as any;
 		expect(r.properties.passkey_deadline).toBeUndefined();
 		expect(r.amr).toEqual(['pwd']);
+	});
+
+	it('QA run fixtures can sign in and refresh after promotion with enforcement on', async () => {
+		const email = `e2e+12345-1-admin-${unique()}@e2e.alummahnow.net`;
+		const enforcedAt = Date.now() - 1000;
+		await writeStaffPasskeySetting(E.AUTH_DB, { enforced: true, enforcedAt, graceDays: 7 }, 'test');
+		await makeUser(email);
+
+		const fixture = new Browser(QA, QA.OPENAUTH_ISSUER);
+		const registered = await fixture.passwordSignIn(email);
+		expect(registered.status).toBe(302);
+		const promoted = await fixture.fetch(`/test/promote/${encodeURIComponent(email)}`, {
+			method: 'POST',
+			headers: { 'X-Test-Secret': QA.TEST_PROMOTE_SECRET, 'X-E2E-Secret': QA.E2E_CODE_SINK_SECRET },
+		});
+		expect(promoted.status).toBe(200);
+
+		const browser = new Browser(QA, QA.OPENAUTH_ISSUER);
+		const signedIn = await browser.passwordSignIn(email);
+		expect(signedIn.status).toBe(302);
+		const tokens = await browser.exchange(signedIn.headers.get('location')!);
+		const refreshed = await browser.form('/token', {
+			grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: PROFILE.id,
+		});
+		expect(refreshed.status).toBe(200);
+
+		const { access_token: refreshedToken } = (await refreshed.json()) as { access_token: string };
+		for (const token of [tokens.access_token, refreshedToken]) {
+			const claims = decodeJwt(token) as Parameters<typeof passkeyBlocked>[0];
+			expect(claims.amr).toEqual(['pwd']);
+			expect(claims.properties?.roles).toContain('Admin');
+			expect(claims.properties?.passkey_deadline).toBeUndefined();
+			expect(passkeyBlocked(claims)).toBe(false);
+		}
+	});
+
+	it('exempts only provisioned run addresses in enabled QA/stage deployments', async () => {
+		const db = E.AUTH_DB;
+		const enforcedAt = Date.now() - 1000;
+		await writeStaffPasskeySetting(db, { enforced: true, enforcedAt, graceDays: 7 }, 'test');
+		const expected = Math.floor(enforcedAt / 1000);
+		const id = `pk-run-policy-${unique()}`;
+
+		const addStaff = async (suffix: string, email: string, metadata: string | null = null) => {
+			const userId = `${id}-${suffix}`;
+			await db.prepare(
+				`INSERT INTO users (id, tenant_id, email, status, created_at, updated_at, metadata)
+				 VALUES (?, 'default', ?, 'active', ?, ?, ?)`
+			).bind(userId, email, enforcedAt + 1, enforcedAt + 1, metadata).run();
+			await grant(userId, 'role_admin', enforcedAt + 1);
+			return userId;
+		};
+		const runEmail = (suffix: string) => `e2e+12345-1-${id}-${suffix}@e2e.alummahnow.net`;
+		const staff = await addStaff('real', `${id}@example.com`);
+		const unmarked = await addStaff('unmarked', runEmail('unmarked'));
+		const malformed = await addStaff('malformed', runEmail('malformed'), '{"e2eRun":');
+		const invalidMarker = await addStaff('invalid', runEmail('invalid'), '{"e2eRun":true}');
+		const fixture = await addStaff('marked', runEmail('marked'));
+		expect(await markRunUser(QA, db, { id: fixture, email: runEmail('marked') })).toBe(true);
+
+		for (const userId of [staff, unmarked, malformed, invalidMarker]) {
+			const deadline = await passkeyDeadline(db, userId, ['Admin'], QA);
+			expect(deadline).toBe(expected);
+			expect(passkeyBlocked({ amr: ['pwd'], properties: { roles: ['Admin'], passkey_deadline: deadline } })).toBe(true);
+		}
+
+		const stage = { ...QA, ENVIRONMENT: 'stage', OPENAUTH_ISSUER: 'https://auth.stage.alummahnow.net' };
+		for (const deployment of [QA, stage]) {
+			expect(await passkeyDeadline(db, fixture, ['Admin'], deployment)).toBeUndefined();
+		}
+		for (const deployment of [
+			{ ...QA, ENVIRONMENT: 'production', OPENAUTH_ISSUER: 'https://auth.alummahnow.net' },
+			{ ...QA, ENVIRONMENT: 'production' },
+			{ ...QA, ENVIRONMENT: 'development' },
+			{ ...QA, OPENAUTH_ISSUER: 'https://auth.alummahnow.net' },
+			{ ...QA, E2E_RUN_USERS: undefined },
+			{ ...QA, E2E_CODE_SINK_SECRET: undefined },
+			{ ...QA, TEST_PROMOTE_SECRET: undefined },
+		]) {
+			expect(await passkeyDeadline(db, fixture, ['Admin'], deployment)).toBe(expected);
+		}
+
+		// A retained marker alone does not exempt an account with a different address.
+		await db.prepare('UPDATE users SET email = ? WHERE id = ?').bind(`${id}-renamed@example.com`, fixture).run();
+		expect(await passkeyDeadline(db, fixture, ['Admin'], QA)).toBe(expected);
 	});
 
 	it('staff without a passkey: the right accounts, in one batch however many staff there are', async () => {

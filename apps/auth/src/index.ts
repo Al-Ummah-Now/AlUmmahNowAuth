@@ -604,7 +604,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext, re
       // A system account's refresh is refused, audited and flagged (security/system-accounts.ts)
       onRefresh: createRefreshCheck(
         userService,
-        (userId, roles) => passkeyDeadline(env.AUTH_DB, userId, roles),
+        (userId, roles) => passkeyDeadline(env.AUTH_DB, userId, roles, env),
         (userId, clientId) => flagSystemAccountAttempt(env, ctx, { userId, attempt: 'token_refresh', detail: clientId, request, requestId }),
         // The native Admin apps need a staff role at every refresh (#363)
         {
