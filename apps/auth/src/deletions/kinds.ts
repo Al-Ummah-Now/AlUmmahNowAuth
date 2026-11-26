@@ -474,10 +474,31 @@ const tenant: KindHandler = {
 		const eligible = `EXISTS (SELECT 1 FROM admin_deletions WHERE kind = 'tenant' AND item_id = ?1 AND deleted_at = ?2)
 			AND EXISTS (SELECT 1 FROM tenants WHERE id = ?1 AND status = 'deleted')`;
 		const prepare = (sql: string) => db.prepare(sql).bind(row.item_id, row.deleted_at);
-		// Direct tenant foreign keys cascade. These tenant-scoped tables lack that FK.
+		const users = 'SELECT id FROM users WHERE tenant_id = ?1';
+		const clients = 'SELECT id FROM oauth_clients WHERE tenant_id = ?1';
+		const exclusiveEmails = `SELECT lower(u.email) FROM users u WHERE u.tenant_id = ?1
+			AND NOT EXISTS (SELECT 1 FROM users other WHERE lower(other.email) = lower(u.email) AND other.tenant_id != ?1)`;
+		// Remove dependencies while the tenant's user and client IDs still exist.
+		// Delivery events can be shared with other clients. The event janitor owns their retention.
 		const results = await db.batch([
-			prepare(`DELETE FROM auth_theme_client_defaults WHERE client_id IN (SELECT id FROM oauth_clients WHERE tenant_id = ?1) AND ${eligible}`),
-			...['user_identities', 'user_invites', 'user_invite_superseded_tokens', 'moderation_requests', 'admin_deletions'].map((table) =>
+			...['webauthn_credentials', 'webauthn_prompts', 'passkey_setup_tickets', 'user_birth_dates',
+				'user_invite_superseded_tokens', 'user_revocations', 'rbac_user_roles', 'account_sessions'].map((table) =>
+				prepare(`DELETE FROM ${table} WHERE user_id IN (${users}) AND ${eligible}`)),
+			prepare(`DELETE FROM app_sessions WHERE json_extract(user_json, '$.id') IN (${users}) AND ${eligible}`),
+			prepare(`UPDATE browser_sessions SET active_user_id = NULL WHERE active_user_id IN (${users}) AND ${eligible}`),
+			prepare(`DELETE FROM openauth_atomic WHERE key IN (SELECT 'profile:delete-account::' || id FROM users WHERE tenant_id = ?1) AND ${eligible}`),
+			prepare(`DELETE FROM openauth_atomic WHERE key >= 'oauth:refresh' AND key < 'oauth:refresi'
+				AND json_extract(value, '$.properties.id') IN (${users}) AND ${eligible}`),
+			prepare(`DELETE FROM openauth_atomic WHERE key >= '${CODE_RANGE[0]}' AND key < '${CODE_RANGE[1]}'
+				AND json_extract(value, '$.properties.id') IN (${users}) AND ${eligible}`),
+			prepare(`DELETE FROM openauth_atomic WHERE key >= '${DEVICE_RANGE[0]}' AND key < '${DEVICE_RANGE[1]}'
+				AND json_extract(value, '$.grant.properties.id') IN (${users}) AND ${eligible}`),
+			...['password_codes', 'password_login_attempts'].map((table) =>
+				prepare(`DELETE FROM ${table} WHERE email IN (${exclusiveEmails}) AND ${eligible}`)),
+			...['auth_theme_client_defaults', 'account_event_deliveries', 'account_sessions', 'authorization_codes', 'refresh_tokens'].map((table) =>
+				prepare(`DELETE FROM ${table} WHERE client_id IN (${clients}) AND ${eligible}`)),
+			// Some tenant-scoped records can outlive their associated users and clients.
+			...['user_identities', 'user_invites', 'moderation_requests', 'admin_deletions'].map((table) =>
 				prepare(`DELETE FROM ${table} WHERE tenant_id = ?1 AND ${eligible}`)),
 			prepare(`DELETE FROM tenants WHERE id = ?1 AND ${eligible}`),
 			prepare("DELETE FROM admin_deletions WHERE kind = 'tenant' AND item_id = ?1 AND deleted_at = ?2 AND NOT EXISTS (SELECT 1 FROM tenants WHERE id = ?1)"),
